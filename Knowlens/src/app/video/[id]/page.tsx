@@ -3,11 +3,12 @@
 import { CaseDetailRoute } from "@/components/featured/CaseDetailRoute";
 
 type VideoDetailPageProps = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
-export default function VideoDetailPage({ params }: VideoDetailPageProps) {
-  return <CaseDetailRoute slug={params.id} kind="video" />;
+export default async function VideoDetailPage({ params }: VideoDetailPageProps) {
+  const resolved = await params;
+  return <CaseDetailRoute slug={resolved.id} kind="video" />;
 }

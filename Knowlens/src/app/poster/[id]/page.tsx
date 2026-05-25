@@ -3,11 +3,12 @@
 import { CaseDetailRoute } from "@/components/featured/CaseDetailRoute";
 
 type PosterDetailPageProps = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
-export default function PosterDetailPage({ params }: PosterDetailPageProps) {
-  return <CaseDetailRoute slug={params.id} kind="poster" />;
+export default async function PosterDetailPage({ params }: PosterDetailPageProps) {
+  const resolved = await params;
+  return <CaseDetailRoute slug={resolved.id} kind="poster" />;
 }

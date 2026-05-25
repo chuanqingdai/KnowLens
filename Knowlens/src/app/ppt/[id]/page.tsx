@@ -3,11 +3,12 @@
 import { CaseDetailRoute } from "@/components/featured/CaseDetailRoute";
 
 type PptDetailPageProps = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
-export default function PptDetailPage({ params }: PptDetailPageProps) {
-  return <CaseDetailRoute slug={params.id} kind="ppt" />;
+export default async function PptDetailPage({ params }: PptDetailPageProps) {
+  const resolved = await params;
+  return <CaseDetailRoute slug={resolved.id} kind="ppt" />;
 }
