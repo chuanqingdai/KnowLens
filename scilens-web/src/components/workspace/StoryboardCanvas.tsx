@@ -2606,7 +2606,7 @@ export function StoryboardCanvas({
                 <div className="mt-3 flex justify-end">
                   <a
                     href={exportedPptUrl}
-                    download="Scilens-科普分镜-PPT版.pptx"
+                    download="KnowLens.ai-科普分镜-PPT版.pptx"
                     className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
                   >
                     <Download size={13} />

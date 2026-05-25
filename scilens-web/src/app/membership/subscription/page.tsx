@@ -19,7 +19,7 @@ import {
 } from "@/lib/billing";
 
 function formatDate(input: string) {
-  return new Date(input).toLocaleString("zh-CN", {
+  return new Date(input).toLocaleString("en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -36,30 +36,30 @@ export default function SubscriptionManagePage() {
   const [detailFeedback, setDetailFeedback] = useState("");
 
   const surveyOptions = [
-    "价格超出当前预算",
-    "使用频率不高，暂时用不到",
-    "功能还不够满足我的需求",
-    "体验不顺手，操作有点复杂",
-    "导出质量或速度未达到预期",
-    "我想先尝试其它工具",
+    "The price is above my current budget",
+    "I do not use it frequently enough right now",
+    "The current features do not fully meet my needs",
+    "The workflow feels complex in some steps",
+    "Export quality or speed did not meet expectations",
+    "I want to try other tools first",
   ];
 
   function handleCancel() {
     const next = cancelSubscription();
     if (!next) {
-      setToast("当前没有生效中的订阅");
+      setToast("There is no active subscription to cancel.");
       return;
     }
     setSub(next);
     setShowSurvey(false);
     setSelectedReason("");
     setDetailFeedback("");
-    setToast("感谢你的反馈，已提交取消订阅，将在当前周期结束后生效");
+    setToast("Thanks for your feedback. Cancellation is submitted and will take effect at period end.");
   }
 
   function handleSubmitSurveyAndCancel() {
     if (!selectedReason) {
-      setToast("请先选择一个主要原因，帮助我持续改进");
+      setToast("Please select a primary reason so I can keep improving.");
       return;
     }
     handleCancel();
@@ -75,11 +75,11 @@ export default function SubscriptionManagePage() {
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             <ArrowLeft size={14} />
-            返回
+            Back
           </button>
           <div className="text-center">
-            <p className="text-sm font-medium text-zinc-900">订阅状态</p>
-            <p className="text-xs text-zinc-500">查看当前套餐与续费周期</p>
+            <p className="text-sm font-medium text-zinc-900">Subscription Status</p>
+            <p className="text-xs text-zinc-500">View your current plan and renewal cycle</p>
           </div>
           <button
             type="button"
@@ -89,7 +89,7 @@ export default function SubscriptionManagePage() {
             <Zap size={14} className="text-zinc-500" />
             <span className="font-medium text-zinc-900">{credits}</span>
             <span className="text-zinc-500">|</span>
-            <span>积分</span>
+            <span>Credits</span>
           </button>
         </div>
       </header>
@@ -97,24 +97,23 @@ export default function SubscriptionManagePage() {
       <div className="mx-auto max-w-3xl px-4 pb-12 pt-20 sm:px-6">
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-zinc-900">订阅状态</h1>
+          <h1 className="text-xl font-semibold text-zinc-900">Subscription Status</h1>
           {!sub ? (
             <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-6 text-sm text-zinc-600">
-              当前暂无订阅记录。你可以返回会员中心完成购买。
+              No subscription record found yet. You can return to Membership and complete a purchase.
             </div>
           ) : (
             <>
               <div className="mt-4 space-y-2 text-sm">
                 <p className="inline-flex items-center gap-1.5 text-zinc-700">
                   <BadgeCheck size={14} />
-                  套餐：{sub.planName}
+                  Plan: {sub.planName}
                 </p>
-                <p className="text-zinc-600">周期：{sub.cycle === "yearly" ? "包年" : "包月"}</p>
-                <p className="text-zinc-600">开通时间：{formatDate(sub.startedAt)}</p>
-                <p className="text-zinc-600">下次续费：{formatDate(sub.renewAt)}</p>
+                <p className="text-zinc-600">Cycle: {sub.cycle === "yearly" ? "Yearly" : "Monthly"}</p>
+                <p className="text-zinc-600">Started at: {formatDate(sub.startedAt)}</p>
+                <p className="text-zinc-600">Next renewal: {formatDate(sub.renewAt)}</p>
                 <p className="text-zinc-600">
-                  状态：
-                  {sub.status === "canceling" ? "将于周期结束后取消" : "生效中"}
+                  Status: {sub.status === "canceling" ? "Cancels at period end" : "Active"}
                 </p>
               </div>
 
@@ -125,12 +124,12 @@ export default function SubscriptionManagePage() {
                   className="mt-5 inline-flex h-10 items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 hover:bg-red-100"
                 >
                   <XCircle size={14} />
-                  取消订阅
+                  Cancel Subscription
                 </button>
               ) : (
                 <div className="mt-5 inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                   <CircleAlert size={14} />
-                  取消已提交，当前权益保持到周期结束
+                  Cancellation submitted. Your access remains active until the period ends.
                 </div>
               )}
             </>
@@ -145,11 +144,11 @@ export default function SubscriptionManagePage() {
               <div>
                 <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-900">
                   <HeartHandshake size={15} />
-                  在你离开前，想认真听听你的感受
+                  Before you leave, I&apos;d truly value your feedback
                 </p>
                 <p className="mt-1 text-sm leading-6 text-zinc-600">
-                  我是 Scilens 的个人开发者。你遇到的体验问题，我会尽快修复。只需 1
-                  分钟，你的建议对我非常重要。
+                  I&apos;m the independent developer behind KnowLens.ai. If you hit friction, I&apos;ll work to fix it quickly.
+                  It only takes a minute, and your input helps me improve the product in a meaningful way.
                 </p>
               </div>
               <button
@@ -157,12 +156,12 @@ export default function SubscriptionManagePage() {
                 onClick={() => setShowSurvey(false)}
                 className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100"
               >
-                关闭
+                Close
               </button>
             </div>
 
             <div className="mt-4">
-              <p className="text-sm font-medium text-zinc-900">你本次取消的主要原因是？</p>
+              <p className="text-sm font-medium text-zinc-900">What is the main reason for cancellation?</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {surveyOptions.map((option) => (
                   <button
@@ -184,12 +183,12 @@ export default function SubscriptionManagePage() {
             <div className="mt-4">
               <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-900">
                 <MessageCircleHeart size={15} />
-                还有什么建议想告诉我？（可选）
+                Anything else you&apos;d like to share? (optional)
               </p>
               <textarea
                 value={detailFeedback}
                 onChange={(event) => setDetailFeedback(event.target.value)}
-                placeholder="例如：哪个环节最影响体验、你希望优先新增什么能力。"
+                placeholder="For example: which part felt most frustrating, or which feature you want first."
                 className="mt-2 h-24 w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-800 outline-none ring-zinc-300 placeholder:text-zinc-400 focus:ring-2"
               />
             </div>
@@ -200,14 +199,14 @@ export default function SubscriptionManagePage() {
                 onClick={() => setShowSurvey(false)}
                 className="inline-flex h-10 items-center rounded-xl border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-100"
               >
-                我再想想
+                Keep Subscription
               </button>
               <button
                 type="button"
                 onClick={handleSubmitSurveyAndCancel}
                 className="inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
               >
-                提交反馈并取消订阅
+                Submit Feedback & Cancel
               </button>
             </div>
           </div>

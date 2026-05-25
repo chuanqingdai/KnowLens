@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,8 +13,9 @@ import {
   Shield,
   UserCircle2,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
-import { getStoredAuthUser } from "@/lib/auth";
+import { resolveRoleByEmail } from "@/lib/auth";
 
 const navItems = [
   { label: "首页", icon: HomeIcon, href: "/" },
@@ -37,8 +38,11 @@ type AdminShellProps = {
 
 export function AdminShell({ title, description, children }: AdminShellProps) {
   const pathname = usePathname();
-  const [auth] = useState(() => getStoredAuthUser());
-  const isAdmin = auth?.role === "admin";
+  const { data: session } = useSession();
+  const isAdmin = useMemo(() => {
+    const email = session?.user?.email ?? "";
+    return resolveRoleByEmail(email) === "admin";
+  }, [session?.user?.email]);
 
   const activeTab = useMemo(() => {
     return adminTabs.find((tab) => pathname === tab.href) ?? adminTabs[0];
@@ -70,33 +74,38 @@ export function AdminShell({ title, description, children }: AdminShellProps) {
       <SidebarNav items={navItems} />
       <main className="px-4 pb-10 pt-6 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-6xl">
-          <header className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+          <header className="space-y-3">
             <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-900">
               <Shield size={15} />
               管理后台 · {activeTab.label}
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900">{title}</h1>
-            <p className="mt-1 text-sm text-zinc-600">{description}</p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {adminTabs.map((tab) => {
-                const Icon = tab.icon;
-                const active = pathname === tab.href;
-                return (
-                  <Link
-                    key={tab.href}
-                    href={tab.href}
-                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${
-                      active
-                        ? "border-zinc-900 bg-zinc-900 text-white"
-                        : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {tab.label}
-                  </Link>
-                );
-              })}
+            <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{title}</h1>
+                <p className="mt-1 text-sm text-zinc-600">{description}</p>
+              </div>
+
+              <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5">
+                {adminTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = pathname === tab.href;
+                  return (
+                    <Link
+                      key={tab.href}
+                      href={tab.href}
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition ${
+                        active
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-transparent bg-transparent text-zinc-700 hover:border-zinc-300 hover:bg-white"
+                      }`}
+                    >
+                      <Icon size={14} />
+                      {tab.label}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           </header>
 

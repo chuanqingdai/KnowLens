@@ -1,264 +1,129 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import Image from "next/image";
+import { useSession } from "next-auth/react";
 
 import {
   Check,
   ChevronDown,
-  CirclePlus,
+  Crown,
   FileText,
   FolderOpen,
   Globe,
+  Headphones,
+  Heart,
   Home as HomeIcon,
   ImagePlay,
   Link2,
+  Minus,
+  Plus,
   SendHorizontal,
-  Upload,
   UserCircle2,
+  Upload,
   X,
   Zap,
 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
+import { getAdminProjects, getAdminUserByEmail } from "@/lib/admin";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { useLocale } from "@/components/i18n/LocaleProvider";
+import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
+import { getSubscription } from "@/lib/billing";
+import {
+  getCaseMetrics,
+  incrementCaseView,
+  getResolvedFeaturedCases,
+  type FeaturedCaseItem,
+  featuredCategories as feedCategories,
+  normalizeFormatLabel,
+  toggleCaseLike,
+} from "@/lib/featured-cases";
+import { PaywallDialog } from "@/components/billing/PaywallDialog";
 
 const navItems = [
-  { label: "首页", icon: HomeIcon, href: "/" },
-  { label: "我的项目", icon: FolderOpen, href: "/projects" },
-  { label: "个人主页", icon: UserCircle2, href: "/profile" },
+  { key: "home", label: "Home", icon: HomeIcon, href: "/" },
+  { key: "projects", label: "Projects", icon: FolderOpen, href: "/projects" },
+  { key: "profile", label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
 const recentProjects = [
   {
     id: "p1",
-    title: "黑洞真相",
-    updatedAt: "更新于 2026-04-11",
+    title: "Black Hole Truth",
+    updatedAt: "Updated on 2026-04-11",
     cover: "/picture/f49e94e8-81c8-4982-830c-a5f87128eae5.png",
-    format: "海报",
+    format: "Poster",
   },
   {
     id: "p2",
-    title: "电解反应",
-    updatedAt: "更新于 2026-02-26",
+    title: "Electrolysis Reaction",
+    updatedAt: "Updated on 2026-02-26",
     cover: "/picture/8755ea1a-c5cc-4644-a505-553ec5905d71.png",
     format: "PPT",
   },
   {
     id: "p3",
-    title: "免疫机制",
-    updatedAt: "更新于 2026-02-26",
+    title: "Immune Mechanism",
+    updatedAt: "Updated on 2026-02-26",
     cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png",
-    format: "视频",
+    format: "Video",
     duration: "01:42",
   },
 ];
 
-const feedCategories = [
-  "全部",
-  "天文",
-  "经济",
-  "历史",
-  "生物",
-  "地理",
-  "物理",
-  "医学",
-];
-
-const templateFeedItems = [
-  {
-    id: "feed-1",
-    title: "潮汐原理 1 分钟视觉拆解",
-    author: "scilens_lab",
-    views: 3482,
-    likes: 216,
-    cover: "/picture/176e6527-21ef-4528-a0fc-91c879a00b4c.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "视频",
-    duration: "01:18",
-  },
-  {
-    id: "feed-2",
-    title: "火山喷发机制科普卡片组",
-    author: "geology_daily",
-    views: 2901,
-    likes: 173,
-    cover: "/picture/39f7e57c-2e46-4e53-8ba6-756b22ef6437.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "PPT",
-  },
-  {
-    id: "feed-3",
-    title: "光合作用分镜教学版",
-    author: "bio_classroom",
-    views: 4120,
-    likes: 301,
-    cover: "/picture/0207e54b-cd89-4f61-99b2-3d5041609e73.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "海报",
-  },
-  {
-    id: "feed-4",
-    title: "黑洞与时空弯曲长图",
-    author: "astro_studio",
-    views: 3875,
-    likes: 245,
-    cover: "/picture/eab2accf-e36a-45a2-89bb-0faa73e518e6.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "视频",
-    duration: "02:06",
-  },
-  {
-    id: "feed-5",
-    title: "电解反应实验可视化",
-    author: "chem_visuals",
-    views: 2184,
-    likes: 128,
-    cover: "/picture/fb1ec712-8275-4b22-989b-756e17684fbe.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "PPT",
-  },
-  {
-    id: "feed-6",
-    title: "DNA 复制流程动图脚本",
-    author: "gene_space",
-    views: 4512,
-    likes: 337,
-    cover: "/picture/c24ee34d-8ee2-498a-b95d-c17d30640f2a.png",
-    coverWidth: 941,
-    coverHeight: 1672,
-    format: "海报",
-  },
-  {
-    id: "feed-7",
-    title: "地震波传播路径解释图",
-    author: "earth_scope",
-    views: 1965,
-    likes: 94,
-    cover: "/picture/989f14bd-ff95-4298-a091-57a54ac5332f.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "PPT",
-  },
-  {
-    id: "feed-8",
-    title: "免疫记忆机制动画分镜",
-    author: "med_edu",
-    views: 3687,
-    likes: 222,
-    cover: "/picture/3f6e9b7d-0d47-4dae-8b43-9be1bd35c232.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "视频",
-    duration: "00:54",
-  },
-  {
-    id: "feed-9",
-    title: "细胞分裂课堂长图版",
-    author: "bio_notes",
-    views: 2756,
-    likes: 146,
-    cover: "/picture/8755ea1a-c5cc-4644-a505-553ec5905d71.png",
-    coverWidth: 941,
-    coverHeight: 1672,
-    format: "海报",
-  },
-  {
-    id: "feed-10",
-    title: "免疫防线三层机制",
-    author: "med_visual",
-    views: 3198,
-    likes: 188,
-    cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png",
-    coverWidth: 941,
-    coverHeight: 1672,
-    format: "PPT",
-  },
-  {
-    id: "feed-11",
-    title: "星系形成过程速览",
-    author: "astro_graph",
-    views: 2294,
-    likes: 121,
-    cover: "/picture/feb2b176-157f-44f9-ac52-5a271e25ed6e.png",
-    coverWidth: 941,
-    coverHeight: 1672,
-    format: "视频",
-    duration: "01:26",
-  },
-  {
-    id: "feed-12",
-    title: "行星轨道与引力关系",
-    author: "space_class",
-    views: 3544,
-    likes: 207,
-    cover: "/picture/f49e94e8-81c8-4982-830c-a5f87128eae5.png",
-    coverWidth: 1122,
-    coverHeight: 1402,
-    format: "海报",
-  },
-  {
-    id: "feed-13",
-    title: "地层结构图解合集",
-    author: "earth_scope",
-    views: 2679,
-    likes: 139,
-    cover: "/picture/9cfe9227-c75b-40d0-a459-8d85064a1e55.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "PPT",
-  },
-  {
-    id: "feed-14",
-    title: "熔岩冷却后的地貌演化",
-    author: "geo_lab",
-    views: 3017,
-    likes: 176,
-    cover: "/picture/feae00f9-c831-47b1-9b6d-c08b70701e62.png",
-    coverWidth: 1672,
-    coverHeight: 941,
-    format: "视频",
-    duration: "01:03",
-  },
-];
 
 const textModelOptions = [
   {
-    value: "gpt-4.1",
-    label: "GPT-4.1",
-    desc: "结构化推理能力强，适合知识拆解和脚本生成。",
+    value: "gemini-2.5",
+    label: "Gemini 2.5",
+    desc: "Free model for quick drafting and daily content generation.",
+    premium: false,
   },
   {
-    value: "gpt-4o",
-    label: "GPT-4o",
-    desc: "多模态理解更均衡，适合图文混合输入场景。",
+    value: "deepseek-v4",
+    label: "DeepSeek V4",
+    desc: "Free model with strong bilingual drafting quality.",
+    premium: false,
+  },
+  {
+    value: "gpt-5.5",
+    label: "GPT-5.5",
+    desc: "Premium model for the highest-quality reasoning and writing.",
+    premium: true,
+  },
+  {
+    value: "gpt-5.4",
+    label: "GPT-5.4",
+    desc: "Premium model for stable high-quality generation.",
+    premium: true,
+  },
+  {
+    value: "gemini-3.1-pro",
+    label: "Gemini 3.1 Pro",
+    desc: "Premium model for complex long-context understanding.",
+    premium: true,
+  },
+  {
+    value: "claude-sonnet-4.6",
+    label: "Claude Sonnet 4.6",
+    desc: "Premium model for polished language quality and refinement.",
+    premium: true,
   },
 ];
 
-const videoModelOptions = [
-  {
-    value: "gpt-image2",
-    label: "GPT Image2",
-    desc: "出图速度快，适合封面草图和知识图解首稿。",
-  },
-  {
-    value: "kling-1.6",
-    label: "Kling 1.6",
-    desc: "镜头运动自然，适合短视频分镜动态生成。",
-  },
-];
+function defaultFreeModelByLocale(locale: "en" | "zh") {
+  return locale === "zh" ? "deepseek-v4" : "gemini-2.5";
+}
 
 const inputPlaceholders = [
-  "输入你想讲清楚的知识点，例如“为什么会有潮汐”",
-  "直接粘贴网页链接，让 Scilens 自动提炼核心信息",
-  "上传 PDF、PPT 或文档，快速生成可视化科普内容",
+  'Describe what you want to explain, for example: "Why do tides happen?"',
+  "Paste a webpage URL and let KnowLens.ai extract key points automatically",
+  "Upload a PDF, PPT, or document to generate visual learning content quickly",
 ];
 
-type SourceKind = "file" | "web" | "youtube";
+type SourceKind = "file" | "web" | "youtube" | "podcast";
 
 type SourceItem = {
   id: string;
@@ -269,29 +134,142 @@ type SourceItem = {
   excerpt: string;
 };
 
+function normalizeLegacySourceName(name: string) {
+  if (name === "网页链接") {
+    return "Web URL";
+  }
+  if (name === "YouTube 视频") {
+    return "YouTube Video";
+  }
+  if (name === "播客链接") {
+    return "Podcast Link";
+  }
+  return name;
+}
+
+function normalizeLegacySourceExcerpt(excerpt: string) {
+  if (excerpt === "正在提取文本内容...") {
+    return "Extracting text content...";
+  }
+  if (excerpt === "正在提取视频字幕...") {
+    return "Extracting video transcript...";
+  }
+  if (excerpt === "正在提取网页正文...") {
+    return "Extracting webpage text...";
+  }
+  if (excerpt === "正在提取播客字幕...") {
+    return "Extracting podcast transcript...";
+  }
+  if (excerpt === "文本内容较短，已完成解析。") {
+    return "The extracted text is short. Parsing completed.";
+  }
+  if (excerpt.includes("字幕提取完成")) {
+    return "Transcript extracted: key concepts, steps, and practical examples were detected.";
+  }
+  if (excerpt.includes("正文提取完成")) {
+    return "Text extracted: title, key viewpoints, and main sections were identified.";
+  }
+  if (excerpt.includes("播客字幕提取完成")) {
+    return "Transcript extracted: key arguments, examples, and speaking structure were identified.";
+  }
+  if (excerpt.includes("已识别图片素材")) {
+    return "Image source detected. It can be used for visual explanation and prompt generation.";
+  }
+  if (excerpt.includes("已识别音视频素材")) {
+    return "Audio/video source detected. Transcript draft extracted and ready for scripting.";
+  }
+  if (excerpt.includes("已识别文档")) {
+    return "Document detected. Outline and key paragraphs extracted for visual generation.";
+  }
+  return excerpt;
+}
+
 const supportedUploadAccept = [
   "image/*",
   ".pdf",
   ".doc",
   ".docx",
+  ".rtf",
+  ".epub",
   ".ppt",
   ".pptx",
+  ".key",
   ".xls",
   ".xlsx",
   ".csv",
+  ".tsv",
+  ".json",
+  ".xml",
   ".txt",
   ".md",
+  ".srt",
+  ".vtt",
   ".mp4",
   ".mov",
+  ".avi",
+  ".mkv",
   ".mp3",
   ".wav",
   ".m4a",
+  ".flac",
+  ".aac",
+  ".ogg",
 ].join(",");
+
+const MIN_COMPOSER_HEIGHT = 132;
+const MAX_COMPOSER_HEIGHT = 260;
+const DEFAULT_COVER_FALLBACK = "/picture/text-to-poster.png";
+
+type ProgressiveCoverProps = {
+  src: string;
+  alt: string;
+  className?: string;
+  loading?: "lazy" | "eager";
+};
+
+function ProgressiveCover({
+  src,
+  alt,
+  className = "h-full w-full object-cover",
+  loading = "lazy",
+}: ProgressiveCoverProps) {
+  const [imgSrc, setImgSrc] = useState(() => src);
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="relative h-full w-full">
+      <div
+        className={`absolute inset-0 bg-zinc-200 transition-opacity ${
+          loaded ? "opacity-0" : "animate-pulse opacity-100"
+        }`}
+      />
+      <img
+        src={imgSrc}
+        alt={alt}
+        loading={loading}
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          if (imgSrc !== DEFAULT_COVER_FALLBACK) {
+            setImgSrc(DEFAULT_COVER_FALLBACK);
+            setLoaded(false);
+            return;
+          }
+          setLoaded(true);
+        }}
+        className={`${className} transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+      />
+    </div>
+  );
+}
 
 function guessLinkKind(url: URL): SourceKind {
   const host = url.hostname.replace("www.", "");
   if (host.includes("youtube.com") || host.includes("youtu.be")) {
     return "youtube";
+  }
+  if (isPodcastLink(url)) {
+    return "podcast";
   }
   return "web";
 }
@@ -309,6 +287,37 @@ function hasValidYoutubeVideoId(url: URL) {
   return false;
 }
 
+function isPodcastLink(url: URL) {
+  const host = url.hostname.replace("www.", "").toLowerCase();
+  const path = url.pathname.toLowerCase();
+
+  if (
+    host.includes("podcasts.apple.com") ||
+    host.includes("open.spotify.com") ||
+    host.includes("anchor.fm") ||
+    host.includes("castbox.fm") ||
+    host.includes("overcast.fm") ||
+    host.includes("pocketcasts.com") ||
+    host.includes("xiaoyuzhoufm.com") ||
+    host.includes("music.163.com")
+  ) {
+    return true;
+  }
+
+  if (host.includes("podcast") || path.includes("/podcast")) {
+    return true;
+  }
+
+  return /\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(path);
+}
+
+function isMediaFile(file: File) {
+  if (file.type.startsWith("audio/") || file.type.startsWith("video/")) {
+    return true;
+  }
+  return /\.(mp4|mov|avi|mkv|mp3|wav|m4a|flac|aac|ogg)$/i.test(file.name.toLowerCase());
+}
+
 async function extractFromFile(file: File) {
   const lowerName = file.name.toLowerCase();
   const canReadText =
@@ -323,43 +332,64 @@ async function extractFromFile(file: File) {
     if (cleaned.length > 180) {
       return `${cleaned.slice(0, 180)}...`;
     }
-    return cleaned || "文本内容较短，已完成解析。";
+    return cleaned || "The extracted text is short. Parsing completed.";
   }
 
   if (file.type.startsWith("image/")) {
-    return `已识别图片素材「${file.name}」，可用于自动图文解释与画面提示词生成。`;
+    return `Image source detected: "${file.name}". It can be used for visual explanation and prompt generation.`;
   }
 
   if (file.type.startsWith("video/") || file.type.startsWith("audio/")) {
-    return `已识别音视频素材「${file.name}」，已完成字幕草稿提取，可继续用于脚本生成。`;
+    return `Audio/video source detected: "${file.name}". Transcript draft extracted and ready for scripting.`;
   }
 
-  return `已识别文档「${file.name}」，已提取目录与关键段落，可继续生成可视化内容。`;
+  return `Document detected: "${file.name}". Outline and key paragraphs extracted for visual generation.`;
 }
 
 export default function Home() {
   const router = useRouter();
   const pathname = usePathname();
-  const [textModel, setTextModel] = useState(textModelOptions[0].value);
-  const [videoModel, setVideoModel] = useState(videoModelOptions[0].value);
-  const [openMenu, setOpenMenu] = useState<"text" | "video" | null>(null);
+  const { data: session } = useSession();
+  const { locale } = useLocale();
+  const [textModel, setTextModel] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<"text" | null>(null);
+  const [textMenuOpenUp, setTextMenuOpenUp] = useState(true);
+  const [textMenuMaxHeight, setTextMenuMaxHeight] = useState(360);
   const [composeInput, setComposeInput] = useState("");
   const [linkInputOpen, setLinkInputOpen] = useState(false);
   const [linkValue, setLinkValue] = useState("");
   const [linkError, setLinkError] = useState("");
+  const [modelPaywallOpen, setModelPaywallOpen] = useState(false);
+  const [mediaUploadPaywallOpen, setMediaUploadPaywallOpen] = useState(false);
+  const [hasMembership] = useState(() => {
+    const subscription = getSubscription();
+    return !!subscription && (subscription.status === "active" || subscription.status === "canceling");
+  });
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeCategory, setActiveCategory] = useState(feedCategories[0]);
+  const [featuredItems] = useState<FeaturedCaseItem[]>(() => getResolvedFeaturedCases());
+  const [featuredVisibleCount, setFeaturedVisibleCount] = useState(8);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<FeaturedCaseItem | null>(null);
+  const [previewPaywallOpen, setPreviewPaywallOpen] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const [, setMetricVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
+  const composeRef = useRef<HTMLTextAreaElement | null>(null);
+  const textModelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const featuredLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const previewScrollRef = useRef<HTMLDivElement | null>(null);
 
+  const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const selectedTextModel =
-    textModelOptions.find((item) => item.value === textModel) ?? textModelOptions[0];
-  const selectedVideoModel =
-    videoModelOptions.find((item) => item.value === videoModel) ?? videoModelOptions[0];
+    textModelOptions.find((item) => item.value === resolvedTextModel) ?? textModelOptions[0];
 
   useEffect(() => {
     const currentText = inputPlaceholders[placeholderIndex];
@@ -418,9 +448,35 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [uploadToast]);
 
+  useEffect(() => {
+    const node = composeRef.current;
+    if (!node) {
+      return;
+    }
+    node.style.height = `${MIN_COMPOSER_HEIGHT}px`;
+    const nextHeight = Math.min(node.scrollHeight, MAX_COMPOSER_HEIGHT);
+    node.style.height = `${Math.max(nextHeight, MIN_COMPOSER_HEIGHT)}px`;
+    node.style.overflowY = node.scrollHeight > MAX_COMPOSER_HEIGHT ? "auto" : "hidden";
+  }, [composeInput]);
+
   async function handleUploadChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
+    const selectedFiles = Array.from(event.target.files ?? []);
+    const blockedMediaFiles = selectedFiles.filter((file) => isMediaFile(file));
+    const allowedFiles =
+      !hasMembership && blockedMediaFiles.length
+        ? selectedFiles.filter((file) => !isMediaFile(file))
+        : selectedFiles;
+
+    if (!hasMembership && blockedMediaFiles.length) {
+      setMediaUploadPaywallOpen(true);
+      setUploadToast(
+        `Audio/video files require a premium model (GPT-5.5). ${blockedMediaFiles.length} file(s) blocked.`,
+      );
+    }
+
+    const files = allowedFiles;
     if (!files.length) {
+      event.target.value = "";
       return;
     }
 
@@ -430,17 +486,18 @@ export default function Home() {
       name: file.name,
       origin: file.name,
       status: "extracting" as const,
-      excerpt: "正在提取文本内容...",
+      excerpt: "Extracting text content...",
     }));
 
-    setSourceItems((prev) => [...items, ...prev].slice(0, 6));
+    setSourceItems((prev) => [...items, ...prev]);
+    setUploadProgress({ done: 0, total: files.length });
 
-    const extracted = await Promise.all(
-      files.map(async (file, idx) => {
-        const excerpt = await extractFromFile(file);
-        return { id: items[idx].id, excerpt };
-      }),
-    );
+    const extracted: Array<{ id: string; excerpt: string }> = [];
+    for (let idx = 0; idx < files.length; idx += 1) {
+      const excerpt = await extractFromFile(files[idx]);
+      extracted.push({ id: items[idx].id, excerpt });
+      setUploadProgress({ done: idx + 1, total: files.length });
+    }
 
     setSourceItems((prev) =>
       prev.map((item) => {
@@ -455,26 +512,27 @@ export default function Home() {
         };
       }),
     );
-    setUploadToast(`已导入 ${files.length} 个文件，文本提取完成`);
+    window.setTimeout(() => setUploadProgress(null), 500);
+    setUploadToast(`Imported ${files.length} file(s). Text extraction completed.`);
     event.target.value = "";
   }
 
   async function handleSubmitLink() {
     const value = linkValue.trim();
     if (!value) {
-      setLinkError("请输入网页链接或 YouTube 链接");
+      setLinkError("Please enter a webpage, YouTube, or podcast URL.");
       return;
     }
     let parsed: URL;
     try {
       parsed = new URL(value);
     } catch {
-      setLinkError("链接格式不正确，请输入完整 URL（含 http:// 或 https://）");
+      setLinkError("Invalid link format. Enter a full URL including http:// or https://.");
       return;
     }
 
     if (!["https:", "http:"].includes(parsed.protocol)) {
-      setLinkError("仅支持 http / https 链接");
+      setLinkError("Only http and https links are supported.");
       return;
     }
 
@@ -482,12 +540,12 @@ export default function Home() {
     const isYoutube = kind === "youtube";
 
     if (isYoutube && !hasValidYoutubeVideoId(parsed)) {
-      setLinkError("YouTube 链接缺少有效视频 ID，请检查后重试");
+      setLinkError("The YouTube URL is missing a valid video ID. Please check and try again.");
       return;
     }
 
     if (!isYoutube && !parsed.hostname.includes(".")) {
-      setLinkError("网页链接域名不完整，请输入可访问的网页 URL");
+      setLinkError("Incomplete domain. Please enter an accessible webpage URL.");
       return;
     }
 
@@ -496,13 +554,18 @@ export default function Home() {
     const pendingItem: SourceItem = {
       id: itemId,
       kind,
-      name: isYoutube ? "YouTube 视频" : "网页链接",
+      name: isYoutube ? "YouTube Video" : kind === "podcast" ? "Podcast Link" : "Web URL",
       origin: value,
       status: "extracting",
-      excerpt: isYoutube ? "正在提取视频字幕..." : "正在提取网页正文...",
+      excerpt:
+        kind === "youtube"
+          ? "Extracting video transcript..."
+          : kind === "podcast"
+            ? "Extracting podcast transcript..."
+            : "Extracting webpage text...",
     };
 
-    setSourceItems((prev) => [pendingItem, ...prev].slice(0, 6));
+    setSourceItems((prev) => [pendingItem, ...prev]);
     setLinkValue("");
     setLinkInputOpen(false);
     setLinkError("");
@@ -517,24 +580,57 @@ export default function Home() {
         return {
           ...item,
           status: "ready",
-          excerpt: isYoutube
-            ? "字幕提取完成：本视频主要讲解核心概念、关键步骤与实际案例。"
-            : "正文提取完成：已识别标题、核心观点与主要段落，可继续生成脚本。",
+          excerpt:
+            kind === "youtube"
+              ? "Transcript extracted: key concepts, steps, and practical examples were detected."
+              : kind === "podcast"
+                ? "Transcript extracted: key arguments, examples, and speaking structure were identified."
+                : "Text extracted: title, key viewpoints, and main sections were identified.",
         };
       }),
     );
-    setUploadToast(isYoutube ? "YouTube 字幕提取完成" : "网页正文提取完成");
+    setUploadToast(
+      kind === "youtube"
+        ? "YouTube transcript extraction completed."
+        : kind === "podcast"
+          ? "Podcast transcript extraction completed."
+          : "Webpage text extraction completed.",
+    );
   }
 
   function removeSourceItem(id: string) {
     setSourceItems((prev) => prev.filter((item) => item.id !== id));
   }
 
+  function toggleTextModelMenu() {
+    if (openMenu === "text") {
+      setOpenMenu(null);
+      return;
+    }
+    const rect = textModelButtonRef.current?.getBoundingClientRect();
+    const viewportHeight =
+      typeof window === "undefined" ? 800 : window.innerHeight || 800;
+    const spaceAbove = rect ? rect.top : viewportHeight * 0.5;
+    const spaceBelow = rect ? viewportHeight - rect.bottom : viewportHeight * 0.5;
+    const openUp = spaceAbove >= spaceBelow;
+    const available = openUp ? spaceAbove - 16 : spaceBelow - 16;
+    setTextMenuOpenUp(openUp);
+    setTextMenuMaxHeight(Math.max(180, Math.min(available, 420)));
+    setOpenMenu("text");
+  }
+
+  function openMembershipFromHome() {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("membership:return-path", pathname || "/");
+    }
+    router.push("/membership");
+  }
+
   function handleGoGenerate() {
     const payload = {
       prompt: composeInput.trim(),
-      textModel,
-      imageModel: videoModel,
+      textModel: resolvedTextModel,
+      imageModel: "gpt-image2",
       sources: sourceItems,
     };
     if (typeof window !== "undefined") {
@@ -543,11 +639,146 @@ export default function Home() {
     router.push("/workspace");
   }
 
+  function handleFeaturedDownload() {
+    if (!previewItem) {
+      return;
+    }
+    if (!hasMembership) {
+      setPreviewPaywallOpen(true);
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = previewItem.cover;
+    link.download = `${toFileSlug(previewItem.title)}.png`;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function openFeaturedPreview(item: FeaturedCaseItem) {
+    incrementCaseView(item.id);
+    setMetricVersion((prev) => prev + 1);
+    setPreviewZoom(1);
+    setPreviewItem(item);
+  }
+
+  function closeFeaturedPreview() {
+    setPreviewZoom(1);
+    setPreviewItem(null);
+  }
+
+  function applyPreviewZoom(nextZoom: number) {
+    const clamped = Math.max(1, Math.min(3, Number(nextZoom.toFixed(2))));
+    setPreviewZoom(clamped);
+
+    window.requestAnimationFrame(() => {
+      const node = previewScrollRef.current;
+      if (!node || clamped <= 1) {
+        return;
+      }
+      const centerX = Math.max(0, (node.scrollWidth - node.clientWidth) / 2);
+      const centerY = Math.max(0, (node.scrollHeight - node.clientHeight) / 2);
+      node.scrollTo({ left: centerX, top: centerY, behavior: "smooth" });
+    });
+  }
+
+  function handleFeaturedCategoryChange(category: string) {
+    setActiveCategory(category);
+    setFeaturedVisibleCount(8);
+  }
+
+  function handleToggleLike(item: FeaturedCaseItem) {
+    toggleCaseLike(item.id);
+    setMetricVersion((prev) => prev + 1);
+  }
+
+  const localizedNavItems = navItems.map((item) => ({
+    label: item.label,
+    icon: item.icon,
+    href: item.href,
+  }));
+
+  const resolvedRecentProjects = useMemo(() => {
+    const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
+    if (!currentEmail) {
+      return recentProjects;
+    }
+    const currentUser = getAdminUserByEmail(currentEmail);
+    if (!currentUser) {
+      return [] as typeof recentProjects;
+    }
+    const covers = recentProjects.map((item) => item.cover);
+    const ownedProjects = getAdminProjects()
+      .filter((item) => item.userId === currentUser.id)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+    return ownedProjects.slice(0, 8).map((project, index) => ({
+      id: project.id,
+      title: project.title,
+      updatedAt: `Updated ${project.updatedAt}`,
+      cover: covers[index % covers.length] || recentProjects[0].cover,
+      format: normalizeFormatLabel(project.format || "海报"),
+      duration: project.duration,
+    }));
+  }, [session?.user?.email]);
+
+  const featuredFilteredItems = useMemo(
+    () =>
+      featuredItems.filter(
+        (item) =>
+          activeCategory === "All" || normalizeCategoryLabel(item.category) === activeCategory,
+      ),
+    [activeCategory, featuredItems],
+  );
+
+  const featuredVisibleItems = useMemo(
+    () => featuredFilteredItems.slice(0, featuredVisibleCount),
+    [featuredFilteredItems, featuredVisibleCount],
+  );
+
+  const hasMoreFeaturedItems = featuredVisibleCount < featuredFilteredItems.length;
+
+  useEffect(() => {
+    const target = featuredLoadMoreRef.current;
+    if (!target || !hasMoreFeaturedItems) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) {
+          return;
+        }
+        setFeaturedVisibleCount((prev) => Math.min(prev + 8, featuredFilteredItems.length));
+      },
+      { rootMargin: "280px 0px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreFeaturedItems, featuredFilteredItems.length]);
+
   return (
     <div className="min-h-screen bg-page text-zinc-900">
-      <SidebarNav items={navItems} />
+      <SidebarNav items={localizedNavItems} />
 
-      <main className="px-4 py-6 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
+      <main className="px-3 py-4 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
+        <div className="mb-3 flex items-center justify-end gap-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => router.push("/membership")}
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+          >
+            <Zap size={14} className="text-zinc-500" />
+            <span className="font-medium text-zinc-900">80</span>
+            <span className="text-zinc-500">|</span>
+            <span className="font-medium">Upgrade</span>
+          </button>
+          <LocaleSwitch />
+          <UserMenu />
+        </div>
         <div className="fixed right-6 top-6 z-50 hidden items-center gap-3 md:flex">
           <button
             type="button"
@@ -557,21 +788,15 @@ export default function Home() {
             <Zap size={15} className="text-zinc-500" />
             <span className="font-medium text-zinc-900">80</span>
             <span className="text-zinc-500">|</span>
-            <span className="font-medium">升级</span>
+            <span className="font-medium">Upgrade</span>
           </button>
-          <button
-            type="button"
-            aria-label="用户中心"
-            title="用户中心"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2d8cff] text-white transition hover:brightness-95"
-          >
-            <UserCircle2 size={19} />
-          </button>
+          <LocaleSwitch />
+          <UserMenu />
         </div>
 
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 sm:gap-8">
             <div className="grid grid-cols-3 gap-2 md:hidden">
-              {navItems.map((item) => {
+              {localizedNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
                 return (
@@ -593,21 +818,22 @@ export default function Home() {
               })}
             </div>
 
-            <div className="h-2" />
+            <div className="h-1 sm:h-2" />
 
-            <section className="relative z-20 mx-auto flex min-h-[56vh] w-full max-w-3xl flex-col justify-center">
+            <section className="relative z-20 mx-auto flex min-h-[48vh] w-full max-w-3xl flex-col justify-center sm:min-h-[56vh]">
               <div className="mb-6 flex flex-col items-center text-center">
-                <h1 className="text-4xl font-semibold tracking-tight text-zinc-900">
-                  <span className="text-blue-600">SciLens</span> 知识可视化创作
+                <h1 className="text-[30px] font-semibold tracking-tight text-zinc-900 sm:text-4xl">
+                  <span className="text-blue-600">KnowLens.ai</span> Visual Creation Studio
                 </h1>
-                <p className="mt-2 text-base text-zinc-500">
-                  将网页、视频和播客等内容，一键转化为可视化长图、PPT 或视频
+                <p className="mt-2 text-sm text-zinc-500 sm:text-base">
+                  Turn webpages, videos, and podcasts into visual long-form graphics, PPTs, or
+                  videos.
                 </p>
               </div>
 
               <div
                 ref={menuLayerRef}
-                className="relative rounded-[30px] border border-zinc-200 bg-zinc-50 shadow-[0_20px_45px_rgba(15,23,42,0.08)]"
+                className="rounded-[30px] border border-zinc-200 bg-zinc-50 shadow-[0_20px_45px_rgba(15,23,42,0.08)]"
               >
                 <input
                   ref={fileInputRef}
@@ -618,18 +844,19 @@ export default function Home() {
                   className="hidden"
                 />
                 <label className="block">
-                  <span className="sr-only">创作输入</span>
+                  <span className="sr-only">Creation input</span>
                   <textarea
+                    ref={composeRef}
                     value={composeInput}
                     onChange={(event) => setComposeInput(event.target.value)}
-                    className="h-52 min-h-44 w-full max-h-64 resize-y rounded-[30px] bg-transparent px-6 py-6 pb-20 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400"
+                    className="w-full resize-none rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400"
                     placeholder={typedPlaceholder}
                   />
                 </label>
 
                 {sourceItems.length ? (
                   <div className="mx-5 mt-1 rounded-2xl border border-zinc-200 bg-white/85 p-2">
-                    <div className="space-y-1.5">
+                    <div className="max-h-56 space-y-1.5 overflow-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-400">
                       {sourceItems.map((item) => (
                         <div
                           key={item.id}
@@ -638,6 +865,8 @@ export default function Home() {
                           <span className="mt-0.5 text-zinc-500">
                             {item.kind === "youtube" ? (
                               <ImagePlay size={13} />
+                            ) : item.kind === "podcast" ? (
+                              <Headphones size={13} />
                             ) : item.kind === "web" ? (
                               <Globe size={13} />
                             ) : (
@@ -646,11 +875,11 @@ export default function Home() {
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-medium text-zinc-900">
-                              {item.name}
+                              {normalizeLegacySourceName(item.name)}
                             </p>
                             <p className="truncate text-[11px] text-zinc-500">{item.origin}</p>
                             <p className="mt-0.5 text-[11px] leading-4 text-zinc-600">
-                              {item.excerpt}
+                              {normalizeLegacySourceExcerpt(item.excerpt)}
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
@@ -661,13 +890,13 @@ export default function Home() {
                                   : "bg-zinc-100 text-zinc-500"
                               }`}
                             >
-                              {item.status === "ready" ? "已提取" : "提取中"}
+                              {item.status === "ready" ? "Ready" : "Extracting"}
                             </span>
                             <button
                               type="button"
                               onClick={() => removeSourceItem(item.id)}
                               className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
-                              aria-label="移除来源"
+                              aria-label="Remove source"
                             >
                               <X size={12} />
                             </button>
@@ -675,16 +904,34 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
+                    {uploadProgress ? (
+                      <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                          <span>Uploading & extracting...</span>
+                          <span>
+                            {uploadProgress.done}/{uploadProgress.total}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200">
+                          <div
+                            className="h-full rounded-full bg-zinc-800 transition-all duration-200"
+                            style={{
+                              width: `${Math.round((uploadProgress.done / Math.max(uploadProgress.total, 1)) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-3 px-5 py-4">
-                  <div className="pointer-events-auto flex items-center gap-3">
+                <div className="mt-3 px-4 py-4 sm:px-5">
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      aria-label="上传资料"
-                      title="上传资料"
+                      aria-label="Upload files"
+                      title="Upload files"
                       className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-100"
                     >
                       <Upload size={15} />
@@ -696,8 +943,8 @@ export default function Home() {
                           setLinkInputOpen((prev) => !prev);
                           setLinkError("");
                         }}
-                        aria-label="添加链接"
-                        title="添加链接"
+                        aria-label="Add link"
+                        title="Add link"
                         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-100"
                       >
                         <Link2 size={15} />
@@ -705,7 +952,7 @@ export default function Home() {
                       {linkInputOpen ? (
                         <div className="absolute bottom-12 left-0 z-[80] w-[min(92vw,440px)] rounded-2xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
                           <p className="mb-2 text-sm text-zinc-500">
-                            支持网页链接和 YouTube 链接
+                            Supports webpage URLs, YouTube URLs, and podcast URLs
                           </p>
                           <input
                             value={linkValue}
@@ -715,7 +962,7 @@ export default function Home() {
                                 setLinkError("");
                               }
                             }}
-                            placeholder="粘贴链接后回车或点击提取"
+                            placeholder="Paste a link and press Enter or click Extract"
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
                                 event.preventDefault();
@@ -729,7 +976,7 @@ export default function Home() {
                             onClick={() => void handleSubmitLink()}
                             className="mt-3 inline-flex h-9 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                           >
-                            提取文本
+                            Extract text
                           </button>
                           {linkError ? (
                             <p className="mt-2 text-xs text-red-600">{linkError}</p>
@@ -737,36 +984,51 @@ export default function Home() {
                         </div>
                       ) : null}
                     </div>
-                  </div>
-
-                  <div className="pointer-events-auto flex items-center gap-3">
-                    <div className="relative">
+                    <div className="relative w-[calc(50%-6px)] min-w-[130px] sm:w-auto">
                       <button
+                        ref={textModelButtonRef}
                         type="button"
-                        onClick={() => setOpenMenu((prev) => (prev === "text" ? null : "text"))}
-                        className="inline-flex h-10 w-40 items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50"
+                        onClick={toggleTextModelMenu}
+                        className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 sm:w-36"
                       >
-                        {selectedTextModel.label}
+                        <span className="truncate">{selectedTextModel.label}</span>
                         <ChevronDown
                           size={14}
                           className={`text-zinc-500 transition ${openMenu === "text" ? "rotate-180" : ""}`}
                         />
                       </button>
                       {openMenu === "text" ? (
-                        <div className="absolute bottom-12 left-0 z-[80] w-[270px] rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
+                        <div
+                          className={`absolute left-0 z-[80] w-[310px] rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-400 ${
+                            textMenuOpenUp ? "bottom-12" : "top-12"
+                          }`}
+                          style={{ maxHeight: textMenuMaxHeight, overflowY: "auto" }}
+                        >
                           {textModelOptions.map((option) => (
                             <button
                               key={option.value}
                               type="button"
                               onClick={() => {
+                                if (option.premium && !hasMembership) {
+                                  setModelPaywallOpen(true);
+                                  setOpenMenu(null);
+                                  return;
+                                }
                                 setTextModel(option.value);
                                 setOpenMenu(null);
                               }}
                               className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
                             >
                               <span className="flex items-center justify-between text-sm font-medium text-zinc-900">
-                                {option.label}
-                                {textModel === option.value ? <Check size={14} /> : null}
+                                <span className="inline-flex items-center gap-1.5">{option.label}</span>
+                                <span className="inline-flex items-center gap-1.5">
+                                  {option.premium ? (
+                                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-[0_2px_8px_rgba(245,158,11,0.45)]">
+                                      <Crown size={11} />
+                                    </span>
+                                  ) : null}
+                                  {resolvedTextModel === option.value ? <Check size={14} /> : null}
+                                </span>
                               </span>
                               <span className="mt-1 block text-xs leading-5 text-zinc-500">
                                 {option.desc}
@@ -776,102 +1038,52 @@ export default function Home() {
                         </div>
                       ) : null}
                     </div>
-
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setOpenMenu((prev) => (prev === "video" ? null : "video"))}
-                        className="inline-flex h-10 w-40 items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50"
-                      >
-                        {selectedVideoModel.label}
-                        <ChevronDown
-                          size={14}
-                          className={`text-zinc-500 transition ${openMenu === "video" ? "rotate-180" : ""}`}
-                        />
-                      </button>
-                      {openMenu === "video" ? (
-                        <div className="absolute bottom-12 left-0 z-[80] w-[270px] rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
-                          {videoModelOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => {
-                                setVideoModel(option.value);
-                                setOpenMenu(null);
-                              }}
-                              className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
-                            >
-                              <span className="flex items-center justify-between text-sm font-medium text-zinc-900">
-                                {option.label}
-                                {videoModel === option.value ? <Check size={14} /> : null}
-                              </span>
-                              <span className="mt-1 block text-xs leading-5 text-zinc-500">
-                                {option.desc}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGoGenerate}
+                      className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 sm:ml-auto sm:mt-0 sm:w-auto"
+                    >
+                      <SendHorizontal size={15} />
+                      Generate
+                    </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGoGenerate}
-                    className="pointer-events-auto ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700"
-                  >
-                    <SendHorizontal size={15} />
-                    生成
-                  </button>
                 </div>
               </div>
             </section>
 
+            {resolvedRecentProjects.length ? (
             <section className="mx-auto w-full max-w-6xl">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
-                  最近项目
+                <h2 className="text-base font-semibold tracking-tight text-zinc-900">
+                  Recent Projects
                 </h2>
                 <button
                   type="button"
                   onClick={() => router.push("/projects")}
                   className="text-sm text-zinc-500 transition hover:text-zinc-800"
                 >
-                  查看全部
+                  View all
                 </button>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <button
-                  type="button"
-                  className="rounded-2xl border border-dashed border-zinc-300 bg-white p-2 text-left transition hover:border-zinc-400 hover:text-zinc-600"
-                >
-                  <div className="flex h-44 items-center justify-center rounded-xl bg-zinc-100 text-zinc-400">
-                    <CirclePlus size={30} />
-                  </div>
-                  <p className="px-1 pb-1 pt-3 text-lg font-medium leading-none text-zinc-900">
-                    New Project
-                  </p>
-                </button>
-                {recentProjects.map((project) => (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                {resolvedRecentProjects.map((project) => (
                   <article
                     key={project.id}
-                    className="rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                    className="group rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
                   >
-                    <div
-                      className="relative aspect-video w-full rounded-xl bg-zinc-100 bg-cover bg-center"
-                      style={{ backgroundImage: `url("${project.cover}")` }}
-                    >
-                      <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
-                        {project.format}
+                    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-100">
+                      <ProgressiveCover
+                        key={project.cover}
+                        src={project.cover}
+                        alt={project.title}
+                        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+                      />
+                      <span className="absolute left-2 top-2 inline-flex items-center rounded-md border border-white/25 bg-black/78 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-[2px]">
+                        {normalizeFormatLabel(project.format)}
                       </span>
-                      {project.format === "视频" && project.duration ? (
-                        <span className="absolute right-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
-                          {project.duration}
-                        </span>
-                      ) : null}
                     </div>
                     <div className="px-1 pb-1 pt-3">
-                      <p className="text-lg font-medium leading-none text-zinc-900">
+                      <p className="text-[15px] font-medium leading-6 text-zinc-900">
                         {project.title}
                       </p>
                       <p className="mt-2 text-sm text-zinc-500">{project.updatedAt}</p>
@@ -880,17 +1092,18 @@ export default function Home() {
                 ))}
               </div>
             </section>
+            ) : null}
 
             <section className="mx-auto w-full max-w-6xl">
-              <h2 className="mb-3 text-lg font-semibold tracking-tight text-zinc-900">
-                优秀案例
+              <h2 className="mb-3 text-base font-semibold tracking-tight text-zinc-900">
+                Featured Cases
               </h2>
               <div className="mb-4 flex flex-wrap gap-2">
                 {feedCategories.map((category) => (
                   <button
                     key={category}
                     type="button"
-                    onClick={() => setActiveCategory(category)}
+                    onClick={() => handleFeaturedCategoryChange(category)}
                     className={`rounded-xl px-4 py-2 text-sm transition ${
                       activeCategory === category
                         ? "bg-zinc-900 text-white"
@@ -902,44 +1115,76 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="columns-1 gap-4 [column-gap:1rem] md:columns-2 xl:columns-4">
-                {templateFeedItems.map((item) => (
+              <div className="columns-2 gap-4 [column-gap:1rem] md:columns-3 lg:columns-4">
+                {featuredVisibleItems.map((item) => {
+                    const metric = getCaseMetrics(item.id, item.views, item.likes);
+                    return (
                   <article
                     key={item.id}
-                    className="mb-4 break-inside-avoid overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)]"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openFeaturedPreview(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openFeaturedPreview(item);
+                      }
+                    }}
+                    className="group mb-4 break-inside-avoid overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative w-full bg-zinc-100">
-                      <Image
-                        src={item.cover}
-                        alt={item.title}
-                        width={item.coverWidth}
-                        height={item.coverHeight}
-                        sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 25vw"
-                        className="h-auto w-full object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                      <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
-                        {item.format}
-                      </span>
-                      {item.format === "视频" && item.duration ? (
-                        <span className="absolute right-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
-                          {item.duration}
-                        </span>
-                      ) : null}
+                      <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>
+                        <ProgressiveCover
+                          key={item.cover}
+                          src={item.cover}
+                          alt={item.title}
+                          className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+                        />
+                      </div>
                     </div>
                     <div className="p-3">
-                      <h3 className="text-lg font-medium leading-6 text-zinc-900">
-                        {item.title}
-                      </h3>
-                      <div className="mt-2 flex items-center justify-between text-sm text-zinc-500">
-                        <span>@{item.author}</span>
-                        <span>
-                          {item.views} 观看 · {item.likes} 喜欢
+                      <div className="mt-0.5 flex items-center justify-between gap-2 text-xs text-zinc-500">
+                        <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
+                          {normalizeFormatLabel(item.format)}
+                        </span>
+                        <span className="truncate">@{item.author}</span>
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-zinc-500">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleToggleLike(item);
+                          }}
+                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 transition ${
+                            metric.liked
+                              ? "bg-rose-50 text-rose-600"
+                              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+                          }`}
+                          aria-label={metric.liked ? "Unlike" : "Like"}
+                        >
+                          <Heart size={12} className={metric.liked ? "fill-current" : ""} />
+                          <span>{metric.likes}</span>
+                        </button>
+                        <span className="shrink-0 whitespace-nowrap tabular-nums">
+                          {metric.views} views
                         </span>
                       </div>
                     </div>
                   </article>
-                ))}
+                    );
+                })}
+              </div>
+              <div className="mt-4 flex justify-center" ref={hasMoreFeaturedItems ? featuredLoadMoreRef : undefined}>
+                {hasMoreFeaturedItems ? (
+                  <div className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-500">
+                    Scroll down to load more cases ({featuredVisibleItems.length}/{featuredFilteredItems.length})
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-500">
+                    You reached the end — all {featuredFilteredItems.length} featured cases are shown.
+                  </div>
+                )}
               </div>
             </section>
         </div>
@@ -949,6 +1194,145 @@ export default function Home() {
           {uploadToast}
         </div>
       ) : null}
+      <PaywallDialog
+        open={modelPaywallOpen}
+        title="Premium model access required"
+        description="This advanced model is available for members only. Upgrade your plan to unlock premium model quality."
+        onClose={() => setModelPaywallOpen(false)}
+        onConfirm={() => {
+          setModelPaywallOpen(false);
+          openMembershipFromHome();
+        }}
+        confirmLabel="Upgrade for Premium Models"
+      />
+      {previewItem ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close preview"
+            className="absolute inset-0 bg-zinc-950/75 backdrop-blur-[2px]"
+            onClick={closeFeaturedPreview}
+          />
+          <div className="relative z-[111] w-full max-w-5xl">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const metric = getCaseMetrics(previewItem.id, previewItem.views, previewItem.likes);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLike(previewItem)}
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm transition ${
+                        metric.liked
+                          ? "border-rose-300 bg-rose-50 text-rose-600"
+                          : "border-white/20 bg-black/40 text-white hover:bg-black/55"
+                      }`}
+                    >
+                      <Heart size={14} className={metric.liked ? "fill-current" : ""} />
+                      <span>{metric.likes}</span>
+                    </button>
+                  );
+                })()}
+                <div className="inline-flex h-9 items-center gap-1 rounded-xl border border-white/15 bg-black/45 px-1">
+                  <button
+                    type="button"
+                    onClick={() => applyPreviewZoom(previewZoom - 0.25)}
+                    disabled={previewZoom <= 1}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Zoom out"
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className="min-w-[48px] text-center text-xs font-medium text-white/90">
+                    {Math.round(previewZoom * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyPreviewZoom(previewZoom + 0.25)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15"
+                    aria-label="Zoom in"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleFeaturedDownload}
+                  className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
+                >
+                  Download
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={closeFeaturedPreview}
+                aria-label="Close"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-black/40 text-white hover:bg-black/60"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-white/15 bg-black/40 shadow-[0_30px_70px_rgba(0,0,0,0.5)]">
+              <div
+                ref={previewScrollRef}
+                className={`max-h-[88vh] bg-zinc-950/45 p-1 sm:p-1.5 ${
+                  previewZoom > 1
+                    ? "overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    : "overflow-hidden"
+                }`}
+              >
+                <img
+                  src={previewItem.cover}
+                  alt={previewItem.title}
+                  className="mx-auto h-auto rounded-xl object-contain"
+                  style={
+                    previewZoom <= 1
+                      ? { maxWidth: "100%", maxHeight: "86vh" }
+                      : { width: `${previewZoom * 100}%`, maxWidth: "none", height: "auto" }
+                  }
+                  draggable={false}
+                  onContextMenu={(event) => event.preventDefault()}
+                  onDragStart={(event) => event.preventDefault()}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <PaywallDialog
+        open={previewPaywallOpen}
+        title="Membership required for downloads"
+        description="Image download is available to members only. Upgrade your plan to unlock high-quality downloads."
+        onClose={() => setPreviewPaywallOpen(false)}
+        onConfirm={() => {
+          setPreviewPaywallOpen(false);
+          closeFeaturedPreview();
+          openMembershipFromHome();
+        }}
+        confirmLabel="Upgrade to Download"
+      />
+      <PaywallDialog
+        open={mediaUploadPaywallOpen}
+        title="Premium membership required for media files"
+        description="Audio and video file processing requires a premium language model (GPT-5.5). Upgrade to continue with multimedia extraction."
+        onClose={() => setMediaUploadPaywallOpen(false)}
+        onConfirm={() => {
+          setMediaUploadPaywallOpen(false);
+          openMembershipFromHome();
+        }}
+        confirmLabel="Upgrade for Media Processing"
+      />
     </div>
+  );
+}
+
+function toFileSlug(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "featured-case"
   );
 }

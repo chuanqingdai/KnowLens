@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getCreditRecords, type CreditRecord } from "@/lib/billing";
 
 function formatDate(input: string) {
-  return new Date(input).toLocaleString("zh-CN", {
+  return new Date(input).toLocaleString("en-US", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -35,11 +35,11 @@ export default function CreditRecordsPage() {
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             <ArrowLeft size={14} />
-            返回
+            Back
           </button>
           <div className="text-center">
-            <p className="text-sm font-medium text-zinc-900">积分消耗记录</p>
-            <p className="text-xs text-zinc-500">查看积分变化与明细</p>
+            <p className="text-sm font-medium text-zinc-900">Credit Activity</p>
+            <p className="text-xs text-zinc-500">View credit changes and transaction details</p>
           </div>
           <button
             type="button"
@@ -49,25 +49,25 @@ export default function CreditRecordsPage() {
             <Zap size={14} className="text-zinc-500" />
             <span className="font-medium text-zinc-900">{summary.balance}</span>
             <span className="text-zinc-500">|</span>
-            <span>积分</span>
+            <span>Credits</span>
           </button>
         </div>
       </header>
 
       <div className="mx-auto max-w-4xl px-4 pb-12 pt-20 sm:px-6">
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <h1 className="text-xl font-semibold text-zinc-900">积分消耗记录</h1>
+          <h1 className="text-xl font-semibold text-zinc-900">Credit Activity</h1>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-              <p className="text-xs text-zinc-500">当前积分</p>
+              <p className="text-xs text-zinc-500">Current Balance</p>
               <p className="text-lg font-semibold text-zinc-900">{summary.balance}</p>
             </div>
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-              <p className="text-xs text-zinc-500">累计充值</p>
+              <p className="text-xs text-zinc-500">Total Top-ups</p>
               <p className="text-lg font-semibold text-emerald-700">+{summary.income}</p>
             </div>
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-              <p className="text-xs text-zinc-500">累计消耗</p>
+              <p className="text-xs text-zinc-500">Total Spent</p>
               <p className="text-lg font-semibold text-red-700">{summary.cost}</p>
             </div>
           </div>
@@ -76,11 +76,11 @@ export default function CreditRecordsPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500">
                 <tr>
-                  <th className="px-3 py-2 font-medium">时间</th>
-                  <th className="px-3 py-2 font-medium">类型</th>
-                  <th className="px-3 py-2 font-medium">描述</th>
-                  <th className="px-3 py-2 font-medium">变化</th>
-                  <th className="px-3 py-2 font-medium">余额</th>
+                  <th className="px-3 py-2 font-medium">Time</th>
+                  <th className="px-3 py-2 font-medium">Type</th>
+                  <th className="px-3 py-2 font-medium">Description</th>
+                  <th className="px-3 py-2 font-medium">Change</th>
+                  <th className="px-3 py-2 font-medium">Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -91,17 +91,17 @@ export default function CreditRecordsPage() {
                       {record.type === "topup" ? (
                         <span className="inline-flex items-center gap-1 text-emerald-700">
                           <Plus size={12} />
-                          充值
+                          Top-up
                         </span>
                       ) : record.type === "refund" ? (
                         <span className="inline-flex items-center gap-1 text-sky-700">
                           <RotateCcw size={12} />
-                          返还
+                          Refund
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-red-700">
                           <Minus size={12} />
-                          消耗
+                          Usage
                         </span>
                       )}
                     </td>

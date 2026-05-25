@@ -1,0 +1,127 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import { CreditCard, LogOut, UserCircle2 } from "lucide-react";
+import { useLocale } from "@/components/i18n/LocaleProvider";
+
+function getAvatarFallback(nameOrEmail: string) {
+  const value = nameOrEmail.trim();
+  if (!value) {
+    return "U";
+  }
+  return value.slice(0, 1).toUpperCase();
+}
+
+type UserMenuProps = {
+  buttonClassName?: string;
+};
+
+export function UserMenu({ buttonClassName }: UserMenuProps) {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const displayName = session?.user?.name?.trim() || session?.user?.email || "User";
+  const displayEmail = session?.user?.email || "";
+
+  const fallbackInitial = useMemo(() => getAvatarFallback(displayName), [displayName]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent) {
+      if (!menuRef.current) {
+        return;
+      }
+      if (!menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label={t("User menu", "用户中心")}
+        title={t("User menu", "用户中心")}
+        className={
+          buttonClassName ??
+          "flex h-10 w-10 items-center justify-center rounded-full bg-[#2d8cff] text-white transition hover:brightness-95"
+        }
+      >
+        {displayName ? (
+          <span className="text-xs font-semibold">{fallbackInitial}</span>
+        ) : (
+          <UserCircle2 size={19} />
+        )}
+      </button>
+
+      {open ? (
+        <div className="absolute right-0 top-12 z-[90] w-56 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
+          <div className="border-b border-zinc-100 px-3 py-2.5">
+            <p className="truncate text-sm font-medium text-zinc-900">{displayName}</p>
+            {displayEmail ? (
+              <p className="mt-0.5 truncate text-xs text-zinc-500">{displayEmail}</p>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              router.push("/profile");
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100"
+          >
+            <UserCircle2 size={14} />
+            {t("Profile", "个人主页")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              router.push("/membership");
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100"
+          >
+            <CreditCard size={14} />
+            {t("Membership", "会员中心")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              void signOut({ callbackUrl: "/auth" });
+            }}
+            className="flex w-full items-center gap-2 border-t border-zinc-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+          >
+            <LogOut size={14} />
+            {t("Sign out", "退出登录")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

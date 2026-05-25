@@ -36,10 +36,10 @@ export async function POST(request: NextRequest) {
     const [{ default: PptxGenJS }] = await Promise.all([import("pptxgenjs")]);
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
-    pptx.author = "Scilens";
-    pptx.company = "Scilens";
+    pptx.author = "KnowLens.ai";
+    pptx.company = "KnowLens.ai";
     pptx.subject = "科普内容生成";
-    pptx.title = body.title?.trim() || "Scilens 内容草稿";
+    pptx.title = body.title?.trim() || "KnowLens.ai 内容草稿";
     pptx.lang = "zh-CN";
 
     for (const slide of slides) {
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "Content-Disposition":
-          "attachment; filename*=UTF-8''Scilens-%E7%A7%91%E6%99%AE%E5%88%86%E9%95%9C-PPT%E7%89%88.pptx",
+          "attachment; filename*=UTF-8''KnowLens.ai-%E7%A7%91%E6%99%AE%E5%88%86%E9%95%9C-PPT%E7%89%88.pptx",
       },
     });
   } catch (error) {

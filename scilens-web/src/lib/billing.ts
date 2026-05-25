@@ -18,6 +18,10 @@ export type CreditRecord = {
   description: string;
   delta: number;
   balance: number;
+  userId?: string;
+  userEmail?: string;
+  projectId?: string;
+  projectTitle?: string;
 };
 
 const SUBSCRIPTION_KEY = "scilens_subscription_v1";
@@ -98,6 +102,10 @@ function seedCreditRecords() {
       description: "火山喷发项目 · 分镜生成",
       delta: -20,
       balance: initialBalance,
+      userId: "u-admin",
+      userEmail: "chuanqingdai@gmail.com",
+      projectId: "p-admin-001",
+      projectTitle: "行星运动与万有引力可视化课程",
     },
     {
       id: "seed-2",
@@ -106,6 +114,10 @@ function seedCreditRecords() {
       description: "潮汐原理项目 · 图片重绘",
       delta: -12,
       balance: 100,
+      userId: "u-001",
+      userEmail: "lin@example.com",
+      projectId: "p-002",
+      projectTitle: "潮汐原理可视化长图",
     },
     {
       id: "seed-3",
@@ -114,6 +126,8 @@ function seedCreditRecords() {
       description: "会员积分到账",
       delta: 120,
       balance: 112,
+      userId: "u-admin",
+      userEmail: "chuanqingdai@gmail.com",
     },
   ];
   window.localStorage.setItem(CREDIT_RECORDS_KEY, JSON.stringify(records));

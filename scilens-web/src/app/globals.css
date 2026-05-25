@@ -76,3 +76,42 @@ body {
 .workspace-left-shell ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+.landing-marquee-row {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+}
+
+.landing-marquee-track {
+  display: flex;
+  width: max-content;
+  gap: 0.75rem;
+  will-change: transform;
+}
+
+.landing-marquee-track-left {
+  animation: landing-marquee-left 48s linear infinite;
+}
+
+.landing-marquee-track-right {
+  animation: landing-marquee-right 52s linear infinite;
+}
+
+@keyframes landing-marquee-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes landing-marquee-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}

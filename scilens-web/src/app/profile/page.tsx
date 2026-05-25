@@ -26,7 +26,7 @@ export default function ProfilePage() {
         <div className="mx-auto max-w-5xl">
           <header className="mb-5">
             <div>
-              <p className="text-sm text-zinc-500">Scilens</p>
+              <p className="text-sm text-zinc-500">KnowLens.ai</p>
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">个人主页</h1>
             </div>
           </header>

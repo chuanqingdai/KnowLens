@@ -1,14 +1,18 @@
-import { ArrowLeft, Clapperboard, FileDown, UserCircle2, Zap } from "lucide-react";
+"use client";
+
+import { ArrowLeft, Clapperboard, FileDown, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 type SaveState = "saved" | "saving" | "error";
 
 type TopBarProps = {
   credits: number;
+  title?: string;
+  stageLabel?: string;
   saveState?: SaveState;
   hasUnsavedChanges?: boolean;
   canvasMode?: "free" | "ppt";
-  onCanvasModeChange?: (mode: "free" | "ppt") => void;
   onDownloadPpt?: () => void;
   onDownloadVideo?: () => void;
   actionsDisabled?: boolean;
@@ -28,10 +32,11 @@ function getSaveStateLabel(saveState: SaveState) {
 
 export function TopBar({
   credits,
+  title = "内容生成工作台",
+  stageLabel = "内容草稿中",
   saveState = "saved",
   hasUnsavedChanges = false,
   canvasMode = "free",
-  onCanvasModeChange,
   onDownloadPpt,
   onDownloadVideo,
   actionsDisabled = false,
@@ -39,8 +44,7 @@ export function TopBar({
   isComposingVideo = false,
 }: TopBarProps) {
   const router = useRouter();
-  const showWorkspaceActions =
-    Boolean(onCanvasModeChange) && Boolean(onDownloadPpt || onDownloadVideo);
+  const showWorkspaceActions = Boolean(onDownloadPpt || onDownloadVideo);
   const showPptAction = canvasMode === "ppt";
   const isPrimaryBusy = showPptAction ? isExportingPpt : isComposingVideo;
   const primaryActionLabel = showPptAction
@@ -73,42 +77,11 @@ export function TopBar({
           </button>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-zinc-900">
-              火山喷发过程科普 PPT
+              {title}
             </p>
-            <p className="mt-0.5 text-xs text-zinc-500">内容草稿中</p>
+            <p className="mt-0.5 text-xs text-zinc-500">{stageLabel}</p>
           </div>
         </div>
-
-        {showWorkspaceActions ? (
-        <div className="hidden shrink-0 items-center gap-2 lg:ml-3 lg:flex">
-          <div className="inline-flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
-            <button
-              type="button"
-              disabled={actionsDisabled}
-              onClick={() => onCanvasModeChange?.("ppt")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                canvasMode === "ppt"
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-600 hover:bg-zinc-100"
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-            >
-              PPT 模式
-            </button>
-            <button
-              type="button"
-              disabled={actionsDisabled}
-              onClick={() => onCanvasModeChange?.("free")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                canvasMode === "free"
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-600 hover:bg-zinc-100"
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-            >
-              自由画布
-            </button>
-          </div>
-        </div>
-        ) : null}
 
         <div className="hidden min-w-0 flex-1 items-center justify-end gap-3 sm:flex">
           <span
@@ -145,14 +118,7 @@ export function TopBar({
             <span className="text-zinc-500">|</span>
             <span className="font-medium">升级</span>
           </button>
-          <button
-            type="button"
-            aria-label="用户中心"
-            title="用户中心"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2d8cff] text-white transition hover:brightness-95"
-          >
-            <UserCircle2 size={19} />
-          </button>
+          <UserMenu />
         </div>
       </div>
     </header>
