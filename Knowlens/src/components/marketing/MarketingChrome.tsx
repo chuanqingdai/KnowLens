@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale } from "@/components/i18n/LocaleProvider";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 type MarketingChromeProps = {
   children: React.ReactNode;
@@ -16,11 +16,12 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
   const { t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
 
   function openMembershipModal() {
+    const currentPath =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : pathname || "/";
     try {
       window.sessionStorage.setItem("membership:return-path", currentPath);
     } catch {
@@ -44,7 +45,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
 
       <header className="sticky top-0 z-40 border-b border-zinc-200/80 bg-white/85 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/landing" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
+          <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
               <img
                 src="/logo.png?v=202605241930"
@@ -66,7 +67,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
               {t("Plans", "会员方案")}
             </button>
             <Link
-              href="/auth?callbackUrl=%2Fworkspace"
+              href="/auth?callbackUrl=%2Fapp"
               className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
             >
               {t("Start now", "开始使用")}

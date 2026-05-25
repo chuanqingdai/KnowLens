@@ -10,7 +10,7 @@ type LocaleContextValue = {
   t: (en: string, zh: string) => string;
 };
 
-const STORAGE_KEY = "scilens-locale";
+const STORAGE_KEY = "knowlens-locale";
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 

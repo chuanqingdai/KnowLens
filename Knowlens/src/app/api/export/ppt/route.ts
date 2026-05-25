@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
     pptx.company = "KnowLens.ai";
     pptx.subject = "科普内容生成";
     pptx.title = body.title?.trim() || "KnowLens.ai 内容草稿";
-    pptx.lang = "zh-CN";
 
     for (const slide of slides) {
       const page = pptx.addSlide();
@@ -95,15 +94,15 @@ export async function POST(request: NextRequest) {
         fontFace: "Calibri",
         fontSize: 13,
         color: "374151",
-        valign: "mid",
       });
     }
 
     const buffer = (await pptx.write({
       outputType: "nodebuffer",
     })) as Buffer;
+    const responseBody = new Uint8Array(buffer);
 
-    return new NextResponse(buffer, {
+    return new NextResponse(responseBody, {
       status: 200,
       headers: {
         "Content-Type":

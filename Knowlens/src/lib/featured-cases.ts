@@ -247,7 +247,7 @@ type CaseMetric = {
   liked: boolean;
 };
 
-const METRICS_KEY = "scilens_featured_case_metrics_v1";
+const METRICS_KEY = "knowlens_featured_case_metrics_v1";
 
 function readMetrics() {
   if (typeof window === "undefined") {

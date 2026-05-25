@@ -432,7 +432,7 @@ export default function LandingPage() {
       priceCurrency: "CNY",
       price: "39",
     },
-    url: "https://knowlens.ai/landing",
+    url: "https://knowlens.ai",
   };
 
   const faqSchema = {
@@ -511,7 +511,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-5 flex items-center sm:mt-6">
               <Link
-                href="/auth?callbackUrl=%2Fworkspace"
+                href="/auth?callbackUrl=%2Fapp"
                 className="inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-900 px-5 text-sm font-medium text-white hover:bg-zinc-700"
               >
                 {t("Start now", "开始使用")}
@@ -585,12 +585,12 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="text-center">
             <h2 className="text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
-              {t("Case Preview", "案例预览")}
+              {t("Featured Case Gallery", "精选案例画廊")}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
               {t(
-                "Selected examples displayed in original image ratios.",
-                "精选案例展示，按原图比例完整呈现。",
+                "Explore curated visual cases shown in their original aspect ratios for true, distortion-free preview.",
+                "浏览精选可视化案例，按原始比例真实呈现，预览不裁切不变形。",
               )}
             </p>
           </div>

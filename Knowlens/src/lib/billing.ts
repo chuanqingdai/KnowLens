@@ -24,8 +24,8 @@ export type CreditRecord = {
   projectTitle?: string;
 };
 
-const SUBSCRIPTION_KEY = "scilens_subscription_v1";
-const CREDIT_RECORDS_KEY = "scilens_credit_records_v1";
+const SUBSCRIPTION_KEY = "knowlens_subscription_v1";
+const CREDIT_RECORDS_KEY = "knowlens_credit_records_v1";
 
 function safeParse<T>(raw: string | null): T | null {
   if (!raw) {

@@ -44,9 +44,9 @@ export type HomeFeaturedCase = {
   order: number;
 };
 
-const ADMIN_USERS_KEY = "scilens_admin_users_v1";
-const ADMIN_PROJECTS_KEY = "scilens_admin_projects_v1";
-const FEATURED_CASES_KEY = "scilens_featured_cases_v1";
+const ADMIN_USERS_KEY = "knowlens_admin_users_v1";
+const ADMIN_PROJECTS_KEY = "knowlens_admin_projects_v1";
+const FEATURED_CASES_KEY = "knowlens_featured_cases_v1";
 
 const seedUsers: AdminUser[] = [
   {

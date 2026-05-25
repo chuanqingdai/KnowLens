@@ -6,7 +6,7 @@ export default function Head() {
         name="description"
         content="KnowLens.ai 官网：将网页、视频、播客与文档内容转化为可视化海报、PPT 与分镜视频。"
       />
-      <link rel="canonical" href="https://knowlens.ai/landing" />
+      <link rel="canonical" href="https://knowlens.ai/" />
       <meta property="og:title" content="官网落地页 · KnowLens.ai" />
       <meta
         property="og:description"

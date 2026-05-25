@@ -68,7 +68,7 @@ export function TopBar({
               ) {
                 return;
               }
-              router.push("/");
+              router.push("/app");
             }}
             className="inline-flex h-8 w-8 items-center justify-center text-zinc-700 hover:text-zinc-900"
             aria-label="返回"

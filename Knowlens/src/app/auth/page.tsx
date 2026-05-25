@@ -1,28 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { Loader2, LogIn, ShieldCheck } from "lucide-react";
 import { signIn } from "next-auth/react";
 
 export default function AuthPage() {
-  const searchParams = useSearchParams();
-  const authError = searchParams.get("error");
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isDevLoading, setIsDevLoading] = useState(false);
   const [devEmail, setDevEmail] = useState("chuanqingdai@gmail.com");
   const [devName, setDevName] = useState("Chuanqing Dai");
   const allowDevLogin = process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true";
-  const callbackUrl = useMemo(() => {
-    const raw = searchParams.get("callbackUrl");
-    if (!raw) {
-      return "/";
+  const { authError, callbackUrl } = useMemo(() => {
+    if (typeof window === "undefined") {
+      return { authError: null as string | null, callbackUrl: "/app" };
     }
-    if (raw.startsWith("/") && !raw.startsWith("//")) {
-      return raw;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("callbackUrl");
+    if (raw && raw.startsWith("/") && !raw.startsWith("//")) {
+      return { authError: params.get("error"), callbackUrl: raw };
     }
-    return "/";
-  }, [searchParams]);
+    return { authError: params.get("error"), callbackUrl: "/app" };
+  }, []);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f7f7f8] px-4">

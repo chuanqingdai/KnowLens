@@ -159,7 +159,7 @@ export default function MembershipPage() {
   );
   const [returnPath] = useState(() => {
     if (typeof window === "undefined") {
-      return "/landing";
+      return "/";
     }
     try {
       const storedPath = window.sessionStorage.getItem("membership:return-path");
@@ -167,9 +167,9 @@ export default function MembershipPage() {
         return storedPath;
       }
     } catch {
-      return "/landing";
+      return "/";
     }
-    return "/landing";
+    return "/";
   });
 
   useEffect(() => {

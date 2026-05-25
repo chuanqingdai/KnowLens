@@ -168,6 +168,9 @@ function parseJsonContent(content: string) {
       body?: string;
       points?: string[];
       cta?: string;
+      visualType?: string;
+      layoutSuggestion?: string;
+      visualElements?: string[];
       posterDraft?: {
         headline?: string;
         subtitle?: string;

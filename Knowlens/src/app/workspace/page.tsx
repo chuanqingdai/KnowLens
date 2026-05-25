@@ -89,9 +89,9 @@ type ConfirmedConfigSnapshot = {
   videoRatio: "16:9" | "9:16";
 };
 
-const HOME_DRAFT_KEY = "scilens-home-draft";
-const WORKSPACE_DRAFT_CACHE_KEY = "scilens-workspace-draft-v1";
-const WORKSPACE_SESSION_PREFS_KEY = "scilens-workspace-session-prefs-v1";
+const HOME_DRAFT_KEY = "knowlens-home-draft";
+const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
+const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {

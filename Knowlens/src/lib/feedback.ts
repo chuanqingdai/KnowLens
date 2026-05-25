@@ -13,7 +13,7 @@ export type FeedbackRecord = {
   repliedBy?: string;
 };
 
-export const FEEDBACK_STORAGE_KEY = "scilens_feedback_records_v1";
+export const FEEDBACK_STORAGE_KEY = "knowlens_feedback_records_v1";
 
 export function getFeedbackRecords() {
   if (typeof window === "undefined") {

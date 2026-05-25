@@ -8,7 +8,7 @@ import { getFeedbackRecords, type FeedbackRecord } from "@/lib/feedback";
 type TicketStatus = "新建" | "处理中" | "已修复";
 
 type TicketItem = FeedbackRecord & {
-  status: TicketStatus;
+  uiStatus: TicketStatus;
 };
 
 function ticketStatusByIndex(index: number): TicketStatus {
@@ -26,7 +26,7 @@ export default function AdminTicketsPage() {
   const [tickets] = useState<TicketItem[]>(() =>
     getFeedbackRecords().map((item, idx) => ({
       ...item,
-      status: ticketStatusByIndex(idx),
+      uiStatus: ticketStatusByIndex(idx),
     })),
   );
 
@@ -66,19 +66,19 @@ export default function AdminTicketsPage() {
                   </span>
                   <span
                     className={`inline-flex items-center gap-1 text-xs ${
-                      ticket.status === "新建"
+                      ticket.uiStatus === "新建"
                         ? "text-amber-700"
-                        : ticket.status === "处理中"
+                        : ticket.uiStatus === "处理中"
                           ? "text-sky-700"
                           : "text-emerald-700"
                     }`}
                   >
-                    {ticket.status === "已修复" ? (
+                    {ticket.uiStatus === "已修复" ? (
                       <CheckCircle2 size={12} />
                     ) : (
                       <Clock3 size={12} />
                     )}
-                    {ticket.status}
+                    {ticket.uiStatus}
                   </span>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-zinc-700">{ticket.detail}</p>

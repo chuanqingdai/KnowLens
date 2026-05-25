@@ -34,7 +34,7 @@ export function SidebarNav({ items }: SidebarNavProps) {
         type="button"
         aria-label="KnowLens.ai"
         title="KnowLens.ai"
-        onClick={() => router.push("/")}
+        onClick={() => router.push("/app")}
         className="mb-6 flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:bg-zinc-100"
       >
         <Image

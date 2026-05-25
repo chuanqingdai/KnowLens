@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       return new Response("text is too long", { status: 400 });
     }
 
-    const basename = `scilens-tts-${randomUUID()}`;
+    const basename = `knowlens-tts-${randomUUID()}`;
     aiffPath = path.join(os.tmpdir(), `${basename}.aiff`);
     wavPath = path.join(os.tmpdir(), `${basename}.wav`);
 

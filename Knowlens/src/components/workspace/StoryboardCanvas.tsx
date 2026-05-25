@@ -115,7 +115,7 @@ type GeneratedAudioMeta = {
 type ExportPhase = "prepare" | "images" | "slides" | "file" | "done";
 type PptExportStatus = "idle" | "running" | "success" | "error";
 
-const STORAGE_KEY = "scilens.workspace.storyboard.v1";
+const STORAGE_KEY = "knowlens.workspace.storyboard.v1";
 const HISTORY_LIMIT = 60;
 
 const LENS_MODES = ["广角建立镜头", "剖面特写", "流程箭头跟拍", "对比双画面"];
@@ -1539,7 +1539,7 @@ export function StoryboardCanvas({
           extent: [
             [-100000, 24],
             [100000, 124],
-          ] as const,
+          ] as [[number, number], [number, number]],
           sourcePosition: Position.Bottom,
           style: {
             border: "none",
@@ -1682,7 +1682,7 @@ export function StoryboardCanvas({
           extent: [
             [-100000, 520],
             [100000, 980],
-          ] as const,
+          ] as [[number, number], [number, number]],
           targetPosition: Position.Top,
           style: {
             border: "none",
@@ -2520,7 +2520,7 @@ export function StoryboardCanvas({
                 <div className="mt-3 flex justify-end">
                   <a
                     href={composedVideoUrl}
-                    download="scilens-compose-preview.webm"
+                    download="knowlens-compose-preview.webm"
                     className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
                   >
                     <Download size={13} />

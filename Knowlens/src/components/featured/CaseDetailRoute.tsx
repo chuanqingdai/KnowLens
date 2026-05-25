@@ -27,7 +27,7 @@ export function CaseDetailRoute({ slug, kind }: CaseDetailRouteProps) {
             The featured case link may be outdated, or this case has been removed.
           </p>
           <Link
-            href="/"
+            href="/app"
             className="mt-4 inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
           >
             Back to Home
