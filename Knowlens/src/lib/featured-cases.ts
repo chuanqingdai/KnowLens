@@ -249,12 +249,22 @@ type CaseMetric = {
 
 const METRICS_KEY = "knowlens_featured_case_metrics_v1";
 
-function readMetrics() {
+function normalizeScope(email?: string | null) {
+  const value = (email ?? "").trim().toLowerCase();
+  return value || "guest";
+}
+
+function scopedMetricKey(email?: string | null) {
+  return `${METRICS_KEY}:${normalizeScope(email)}`;
+}
+
+function readMetrics(email?: string | null) {
   if (typeof window === "undefined") {
     return {} as Record<string, CaseMetric>;
   }
   try {
-    const raw = window.localStorage.getItem(METRICS_KEY);
+    const key = email ? scopedMetricKey(email) : METRICS_KEY;
+    const raw = window.localStorage.getItem(key);
     if (!raw) {
       return {} as Record<string, CaseMetric>;
     }
@@ -264,15 +274,16 @@ function readMetrics() {
   }
 }
 
-function writeMetrics(value: Record<string, CaseMetric>) {
+function writeMetrics(value: Record<string, CaseMetric>, email?: string | null) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(METRICS_KEY, JSON.stringify(value));
+  const key = email ? scopedMetricKey(email) : METRICS_KEY;
+  window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-export function getCaseMetrics(caseId: string, baseViews: number, baseLikes: number) {
-  const metric = readMetrics()[caseId];
+export function getCaseMetrics(caseId: string, baseViews: number, baseLikes: number, email?: string | null) {
+  const metric = readMetrics(email)[caseId];
   return {
     views: baseViews + (metric?.viewsDelta ?? 0),
     likes: baseLikes + (metric?.likesDelta ?? 0),
@@ -280,18 +291,18 @@ export function getCaseMetrics(caseId: string, baseViews: number, baseLikes: num
   };
 }
 
-export function incrementCaseView(caseId: string) {
-  const current = readMetrics();
+export function incrementCaseView(caseId: string, email?: string | null) {
+  const current = readMetrics(email);
   const existing = current[caseId] ?? { viewsDelta: 0, likesDelta: 0, liked: false };
   current[caseId] = {
     ...existing,
     viewsDelta: existing.viewsDelta + 1,
   };
-  writeMetrics(current);
+  writeMetrics(current, email);
 }
 
-export function toggleCaseLike(caseId: string) {
-  const current = readMetrics();
+export function toggleCaseLike(caseId: string, email?: string | null) {
+  const current = readMetrics(email);
   const existing = current[caseId] ?? { viewsDelta: 0, likesDelta: 0, liked: false };
   const nextLiked = !existing.liked;
   current[caseId] = {
@@ -299,6 +310,6 @@ export function toggleCaseLike(caseId: string) {
     liked: nextLiked,
     likesDelta: existing.likesDelta + (nextLiked ? 1 : -1),
   };
-  writeMetrics(current);
+  writeMetrics(current, email);
   return current[caseId];
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, FolderOpen, Home as HomeIcon, UserCircle2, Zap } from "lucide-react";
+import { BadgeCheck, FolderOpen, Home as HomeIcon, ReceiptText, UserCircle2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
@@ -47,8 +47,8 @@ export default function ProfilePage() {
                 onClick={() => router.push("/membership")}
                 className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-zinc-900 px-3.5 text-sm font-medium text-white hover:bg-zinc-700"
               >
-                <BadgeCheck size={15} />
-                管理会员
+                <ReceiptText size={15} />
+                Billing Center
               </button>
             </div>
 
@@ -73,7 +73,7 @@ export default function ProfilePage() {
             >
               <span className="inline-flex items-center gap-2 text-sm font-medium text-zinc-900">
                 <BadgeCheck size={15} />
-                订阅状态
+                Subscription Status
               </span>
               <span className="text-xs text-zinc-500">查看</span>
             </button>
@@ -84,7 +84,7 @@ export default function ProfilePage() {
             >
               <span className="inline-flex items-center gap-2 text-sm font-medium text-zinc-900">
                 <Zap size={15} />
-                积分记录
+                Credit History
               </span>
               <span className="text-xs text-zinc-500">设置</span>
             </button>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -14,7 +15,7 @@ import { useRouter } from "next/navigation";
 import {
   cancelSubscription,
   getCreditRecords,
-  getSubscription,
+  getSubscriptionByUser,
   type SubscriptionSnapshot,
 } from "@/lib/billing";
 
@@ -28,9 +29,18 @@ function formatDate(input: string) {
 
 export default function SubscriptionManagePage() {
   const router = useRouter();
-  const [sub, setSub] = useState<SubscriptionSnapshot | null>(() => getSubscription());
+  const { data: session } = useSession();
+  const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const sub = useMemo<SubscriptionSnapshot | null>(() => {
+    void refreshVersion;
+    return getSubscriptionByUser(currentEmail);
+  }, [currentEmail, refreshVersion]);
   const [toast, setToast] = useState<string | null>(null);
-  const [credits] = useState(() => getCreditRecords()[0]?.balance ?? 80);
+  const credits = useMemo(() => {
+    void refreshVersion;
+    return getCreditRecords(currentEmail)[0]?.balance ?? 80;
+  }, [currentEmail, refreshVersion]);
   const [showSurvey, setShowSurvey] = useState(false);
   const [selectedReason, setSelectedReason] = useState("");
   const [detailFeedback, setDetailFeedback] = useState("");
@@ -45,12 +55,12 @@ export default function SubscriptionManagePage() {
   ];
 
   function handleCancel() {
-    const next = cancelSubscription();
+    const next = cancelSubscription(currentEmail);
     if (!next) {
       setToast("There is no active subscription to cancel.");
       return;
     }
-    setSub(next);
+    setRefreshVersion((prev) => prev + 1);
     setShowSurvey(false);
     setSelectedReason("");
     setDetailFeedback("");

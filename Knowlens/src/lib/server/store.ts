@@ -1,0 +1,392 @@
+import { randomUUID } from "node:crypto";
+import { getDb } from "./db";
+
+type RateLimitResult = {
+  allowed: boolean;
+  retryAfterSeconds?: number;
+  remaining: number;
+};
+
+type UploadJobInput = {
+  userScope: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  sourceKind: "file" | "web" | "youtube" | "podcast";
+};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeScope(email?: string | null) {
+  const value = (email ?? "").trim().toLowerCase();
+  return value || "guest";
+}
+
+export { normalizeScope };
+
+export function enforceRateLimit(input: {
+  scopeKey: string;
+  endpoint: string;
+  limit: number;
+  windowMs: number;
+}): RateLimitResult {
+  const { db } = getDb();
+  const now = Date.now();
+  const windowStart = Math.floor(now / input.windowMs) * input.windowMs;
+  const row = db
+    .prepare(
+      "SELECT count FROM api_rate_limits WHERE scope_key = ? AND endpoint = ? AND window_start = ?",
+    )
+    .get(input.scopeKey, input.endpoint, windowStart) as { count?: number } | undefined;
+  const count = row?.count ?? 0;
+  if (count >= input.limit) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((windowStart + input.windowMs - now) / 1000)),
+      remaining: 0,
+    };
+  }
+
+  db.prepare(
+    `INSERT INTO api_rate_limits (scope_key, endpoint, window_start, count)
+     VALUES (?, ?, ?, 1)
+     ON CONFLICT(scope_key, endpoint, window_start)
+     DO UPDATE SET count = count + 1`,
+  ).run(input.scopeKey, input.endpoint, windowStart);
+
+  return {
+    allowed: true,
+    remaining: input.limit - count - 1,
+  };
+}
+
+export function upsertUser(input: {
+  email: string;
+  name: string;
+  role: "user" | "admin";
+}) {
+  const { db } = getDb();
+  const email = input.email.trim().toLowerCase();
+  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email) as { id?: string } | undefined;
+  const id = existing?.id ?? `u-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO users (id, email, name, role, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET
+       name = excluded.name,
+       role = excluded.role,
+       updated_at = excluded.updated_at`,
+  ).run(id, email, input.name, input.role, nowIso(), nowIso());
+  return id;
+}
+
+export function listProjectsByUser(email: string) {
+  const { db } = getDb();
+  const user = db.prepare("SELECT id FROM users WHERE email = ?").get(email.trim().toLowerCase()) as
+    | { id?: string }
+    | undefined;
+  if (!user?.id) {
+    return [] as Array<Record<string, unknown>>;
+  }
+  return db
+    .prepare("SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC")
+    .all(user.id) as Array<Record<string, unknown>>;
+}
+
+export function saveProject(input: {
+  id?: string;
+  userEmail: string;
+  title: string;
+  status: string;
+  format?: string;
+  duration?: string;
+  updatedAt?: string;
+}) {
+  const { db } = getDb();
+  const userId = upsertUser({
+    email: input.userEmail,
+    name: input.userEmail.split("@")[0] || input.userEmail,
+    role: "user",
+  });
+  const id = input.id ?? `p-${randomUUID()}`;
+  const updatedAt = input.updatedAt ?? new Date().toISOString();
+  db.prepare(
+    `INSERT INTO projects (id, user_id, title, status, format, duration, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       status = excluded.status,
+       format = excluded.format,
+       duration = excluded.duration,
+       updated_at = excluded.updated_at`,
+  ).run(id, userId, input.title, input.status, input.format ?? null, input.duration ?? null, updatedAt);
+  return id;
+}
+
+export function appendCreditRecordDb(input: {
+  userEmail?: string;
+  userId?: string;
+  projectId?: string;
+  projectTitle?: string;
+  type: "consume" | "topup" | "refund";
+  description: string;
+  delta: number;
+}) {
+  const { db } = getDb();
+  const scopeEmail = normalizeScope(input.userEmail);
+  const rows = db
+    .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+    .all(scopeEmail) as Array<{ balance?: number }>;
+  const latestBalance = rows[0]?.balance ?? 80;
+  const balance = latestBalance + input.delta;
+  const id = `record-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    nowIso(),
+    input.type,
+    input.description,
+    input.delta,
+    balance,
+    input.userId ?? null,
+    input.userEmail ?? null,
+    input.projectId ?? null,
+    input.projectTitle ?? null,
+  );
+  return { id, balance };
+}
+
+export function listCreditRecords(email?: string | null) {
+  const { db } = getDb();
+  const scopeEmail = normalizeScope(email);
+  return db
+    .prepare("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC")
+    .all(scopeEmail);
+}
+
+export function saveSubscriptionDb(input: {
+  userEmail: string;
+  planId: string;
+  planName: string;
+  cycle: "monthly" | "yearly";
+  status: "inactive" | "active" | "canceling" | "canceled";
+  startedAt: string;
+  renewAt: string;
+  canceledAt?: string;
+}) {
+  const { db } = getDb();
+  const userId = upsertUser({
+    email: input.userEmail,
+    name: input.userEmail.split("@")[0] || input.userEmail,
+    role: "user",
+  });
+  const id = `sub-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    userId,
+    input.planId,
+    input.planName,
+    input.cycle,
+    input.status,
+    input.startedAt,
+    input.renewAt,
+    input.canceledAt ?? null,
+    nowIso(),
+    nowIso(),
+  );
+  return id;
+}
+
+export function getLatestSubscriptionDb(email: string) {
+  const { db } = getDb();
+  const row = db
+    .prepare(
+      `SELECT s.* FROM subscriptions s
+       INNER JOIN users u ON u.id = s.user_id
+       WHERE u.email = ?
+       ORDER BY s.updated_at DESC, s.created_at DESC
+       LIMIT 1`,
+    )
+    .get(email.trim().toLowerCase());
+  return row ?? null;
+}
+
+export function replyFeedbackDb(input: {
+  recordId: string;
+  reply: string;
+  repliedBy: string;
+}) {
+  const { db } = getDb();
+  db.prepare(
+    `UPDATE feedback_tickets
+     SET admin_reply = ?, replied_at = ?, replied_by = ?, status = 'replied', updated_at = ?
+     WHERE id = ?`,
+  ).run(input.reply.trim(), nowIso(), input.repliedBy, nowIso(), input.recordId);
+}
+
+export function listFeedbackDb() {
+  const { db } = getDb();
+  return db
+    .prepare("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC")
+    .all();
+}
+
+export function insertFeedbackDb(input: {
+  type: string;
+  detail: string;
+  contact: string;
+  attachments: string[];
+  submitterEmail?: string;
+  submitterName?: string;
+}) {
+  const { db } = getDb();
+  const id = `fb-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO feedback_tickets (id, type, detail, contact, attachments_json, submitter_email, submitter_name, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+  ).run(
+    id,
+    input.type,
+    input.detail,
+    input.contact,
+    JSON.stringify(input.attachments),
+    input.submitterEmail ?? null,
+    input.submitterName ?? null,
+    nowIso(),
+  );
+  return id;
+}
+
+export function createUploadJob(input: UploadJobInput) {
+  const { db } = getDb();
+  const id = `upload-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO upload_jobs (id, user_scope, file_name, mime_type, file_size, source_kind, status, progress, attempts, max_attempts, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 0, 3, ?, ?)`,
+  ).run(
+    id,
+    input.userScope,
+    input.fileName,
+    input.mimeType,
+    input.fileSize,
+    input.sourceKind,
+    nowIso(),
+    nowIso(),
+  );
+  return id;
+}
+
+export function listUploadJobs(userScope?: string) {
+  const { db } = getDb();
+  if (!userScope) {
+    return db.prepare("SELECT * FROM upload_jobs ORDER BY created_at DESC").all();
+  }
+  return db
+    .prepare("SELECT * FROM upload_jobs WHERE user_scope = ? ORDER BY created_at DESC")
+    .all(normalizeScope(userScope));
+}
+
+export function getCaseMetricDelta(caseId: string, userScope: string) {
+  const { db } = getDb();
+  return (
+    db
+      .prepare(
+        "SELECT views_delta as viewsDelta, likes_delta as likesDelta, liked FROM featured_case_metrics WHERE case_id = ? AND user_scope = ?",
+      )
+      .get(caseId, normalizeScope(userScope)) ?? null
+  ) as
+    | { viewsDelta?: number; likesDelta?: number; liked?: number }
+    | null;
+}
+
+export function toggleCaseLikeDb(caseId: string, userScope: string) {
+  const { db } = getDb();
+  const scope = normalizeScope(userScope);
+  const existing = db
+    .prepare("SELECT likes_delta as likesDelta, liked FROM featured_case_metrics WHERE case_id = ? AND user_scope = ?")
+    .get(caseId, scope) as { likesDelta?: number; liked?: number } | undefined;
+  const nextLiked = existing?.liked ? 0 : 1;
+  const likesDelta = (existing?.likesDelta ?? 0) + (nextLiked ? 1 : -1);
+  db.prepare(
+    `INSERT INTO featured_case_metrics (case_id, user_scope, views_delta, likes_delta, liked, updated_at)
+     VALUES (?, ?, 0, ?, ?, datetime('now'))
+     ON CONFLICT(case_id, user_scope)
+     DO UPDATE SET likes_delta = ?, liked = ?, updated_at = datetime('now')`,
+  ).run(caseId, scope, likesDelta, nextLiked, likesDelta, nextLiked);
+  return { liked: Boolean(nextLiked), likesDelta };
+}
+
+export function updateUploadJob(
+  jobId: string,
+  patch: Partial<{
+    status: string;
+    progress: number;
+    attempts: number;
+    errorMessage: string | null;
+    storageKey: string | null;
+    publicUrl: string | null;
+  }>,
+) {
+  const { db } = getDb();
+  const current = db.prepare("SELECT * FROM upload_jobs WHERE id = ?").get(jobId) as Record<string, unknown> | undefined;
+  if (!current) {
+    return null;
+  }
+  const next = {
+    status: patch.status ?? current.status,
+    progress: patch.progress ?? current.progress,
+    attempts: patch.attempts ?? current.attempts,
+    errorMessage: patch.errorMessage ?? current.errorMessage ?? null,
+    storageKey: patch.storageKey ?? current.storageKey ?? null,
+    publicUrl: patch.publicUrl ?? current.publicUrl ?? null,
+  };
+  db.prepare(
+    `UPDATE upload_jobs
+     SET status = ?, progress = ?, attempts = ?, error_message = ?, storage_key = ?, public_url = ?, updated_at = ?
+     WHERE id = ?`,
+  ).run(
+    next.status,
+    next.progress,
+    next.attempts,
+    next.errorMessage,
+    next.storageKey,
+    next.publicUrl,
+    nowIso(),
+    jobId,
+  );
+  return next;
+}
+
+export function hasBillingFulfillment(sessionId: string) {
+  const { db } = getDb();
+  const row = db
+    .prepare("SELECT session_id as sessionId FROM billing_fulfillments WHERE session_id = ? LIMIT 1")
+    .get(sessionId) as { sessionId?: string } | undefined;
+  return Boolean(row?.sessionId);
+}
+
+export function recordBillingFulfillment(input: {
+  sessionId: string;
+  userEmail: string;
+  planId: string;
+  cycle: "monthly" | "yearly";
+}) {
+  const { db } = getDb();
+  db.prepare(
+    `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    input.sessionId,
+    normalizeScope(input.userEmail),
+    input.planId,
+    input.cycle,
+    nowIso(),
+  );
+}

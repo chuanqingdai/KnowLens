@@ -3,6 +3,8 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { signIn, useSession } from "next-auth/react";
+import { useEffect, useMemo, useState } from "react";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { usePathname, useRouter } from "next/navigation";
@@ -12,10 +14,102 @@ type MarketingChromeProps = {
   showLocaleSwitch?: boolean;
 };
 
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (input: {
+            client_id: string;
+            callback: (response: { credential?: string }) => void;
+            auto_select?: boolean;
+            cancel_on_tap_outside?: boolean;
+            context?: "signin" | "signup" | "use";
+          }) => void;
+          prompt: (
+            listener?: (notification: {
+              isNotDisplayed: () => boolean;
+              isSkippedMoment: () => boolean;
+              isDismissedMoment: () => boolean;
+              getNotDisplayedReason?: () => string;
+              getSkippedReason?: () => string;
+              getDismissedReason?: () => string;
+            }) => void,
+          ) => void;
+          cancel: () => void;
+        };
+      };
+    };
+  }
+}
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true" className="h-4 w-4 shrink-0" fill="none">
+      <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.643 32.657 29.257 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.042l5.657-5.657C34.041 6.053 29.297 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+      <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.042l5.657-5.657C34.041 6.053 29.297 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+      <path fill="#4CAF50" d="M24 44c5.192 0 9.839-1.991 13.36-5.228l-6.165-5.193C29.235 35.091 26.76 36 24 36c-5.236 0-9.608-3.315-11.3-7.946l-6.52 5.021C9.487 39.556 16.119 44 24 44z"/>
+      <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.134 3.221-3.331 5.676-6.108 7.579l.002-.001 6.165 5.193C34.924 39.252 44 33 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+    </svg>
+  );
+}
+
+function canUseOneTapNow() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const ua = navigator.userAgent;
+  const vendor = navigator.vendor || "";
+  const isIOS = /iP(ad|hone|od)/i.test(ua);
+  const isSafariLike = /Safari/i.test(ua) && /Apple/i.test(vendor) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR/i.test(ua);
+
+  try {
+    const key = "__knowlens_onetap_storage_check__";
+    window.localStorage.setItem(key, "1");
+    window.localStorage.removeItem(key);
+  } catch {
+    return false;
+  }
+
+  return !isIOS && !isSafariLike && navigator.cookieEnabled;
+}
+
 export function MarketingChrome({ children, showLocaleSwitch = false }: MarketingChromeProps) {
   const { t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
+  const { status } = useSession();
+  const [oneTapReady, setOneTapReady] = useState(false);
+  const [oneTapTriggered, setOneTapTriggered] = useState(false);
+  const [useGoogleFallback, setUseGoogleFallback] = useState(false);
+  const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
+  const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isLanding || !oneTapClientId) {
+      return;
+    }
+    if (!canUseOneTapNow()) {
+      setUseGoogleFallback(true);
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      setOneTapReady(true);
+      return;
+    }
+    const scriptId = "knowlens-google-onetap";
+    if (document.getElementById(scriptId)) {
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setOneTapReady(true);
+    document.head.appendChild(script);
+  }, [isLanding, oneTapClientId]);
 
   function openMembershipModal() {
     const currentPath =
@@ -28,6 +122,78 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
       // ignore storage errors
     }
     router.push("/membership");
+  }
+
+  useEffect(() => {
+    if (
+      !isLanding ||
+      status !== "unauthenticated" ||
+      !oneTapReady ||
+      !oneTapClientId ||
+      oneTapTriggered ||
+      useGoogleFallback
+    ) {
+      return;
+    }
+
+    try {
+      if (window.sessionStorage.getItem("knowlens-google-prompt-dismissed") === "1") {
+        return;
+      }
+    } catch {
+      // ignore storage access issues
+    }
+
+    const onScroll = () => {
+      const triggerHeight = Math.max(window.innerHeight * 0.9, 520);
+      if (window.scrollY >= triggerHeight) {
+        setOneTapTriggered(true);
+        window.google?.accounts?.id?.initialize({
+          client_id: oneTapClientId,
+          context: "signin",
+          auto_select: true,
+          cancel_on_tap_outside: true,
+          callback: async (response) => {
+            const credential = response?.credential?.trim();
+            if (!credential) {
+              return;
+            }
+            await signIn("google-onetap", {
+              credential,
+              callbackUrl: "/app",
+            });
+          },
+        });
+        window.google?.accounts?.id?.prompt((notification) => {
+          if (!notification) {
+            return;
+          }
+          if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+            const reason =
+              notification.getNotDisplayedReason?.() ||
+              notification.getSkippedReason?.() ||
+              notification.getDismissedReason?.() ||
+              "";
+            const unsupported =
+              /browser_not_supported|invalid_client|opt_out_or_no_session|suppressed_by_user|secure_http_required/i.test(
+                reason,
+              );
+            if (unsupported) {
+              setUseGoogleFallback(true);
+            }
+          }
+        });
+        window.removeEventListener("scroll", onScroll);
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isLanding, oneTapClientId, oneTapReady, oneTapTriggered, status, useGoogleFallback]);
+
+  async function handleGoogleFallback() {
+    await signIn("google", { callbackUrl: "/app" });
   }
 
   return (
@@ -66,13 +232,24 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
             >
               {t("Plans", "会员方案")}
             </button>
-            <Link
-              href="/auth?callbackUrl=%2Fapp"
-              className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
-            >
-              {t("Start now", "开始使用")}
-              <ArrowRight size={13} />
-            </Link>
+            {useGoogleFallback ? (
+              <button
+                type="button"
+                onClick={() => void handleGoogleFallback()}
+                className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
+              >
+                <GoogleMark />
+                {t("Continue with Google", "使用 Google 登录")}
+              </button>
+            ) : (
+              <Link
+                href="/auth?callbackUrl=%2Fapp"
+                className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
+              >
+                {t("Start now", "开始使用")}
+                <ArrowRight size={13} />
+              </Link>
+            )}
           </div>
         </div>
       </header>

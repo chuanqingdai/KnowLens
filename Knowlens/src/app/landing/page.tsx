@@ -2,29 +2,83 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, BadgeCheck, Check } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
+import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 
 const heroImage = "/picture/knowlens-hero.png";
 
 const previewWideCases = [
-  { id: "w-1", titleEn: "Volcano Eruption Mechanism", titleZh: "火山喷发机制", cover: "/picture/39f7e57c-2e46-4e53-8ba6-756b22ef6437.png" },
-  { id: "w-2", titleEn: "Black Hole Visual Explainer", titleZh: "黑洞可视化讲解", cover: "/picture/eab2accf-e36a-45a2-89bb-0faa73e518e6.png" },
-  { id: "w-3", titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/fb1ec712-8275-4b22-989b-756e17684fbe.png" },
-  { id: "w-4", titleEn: "Inflation Causal Flow", titleZh: "通货膨胀因果流图", cover: "/picture/989f14bd-ff95-4298-a091-57a54ac5332f.png" },
-  { id: "w-5", titleEn: "Blue Light Science", titleZh: "蓝光伤眼机制", cover: "/picture/9cfe9227-c75b-40d0-a459-8d85064a1e55.png" },
-  { id: "w-6", titleEn: "Cellular Process Map", titleZh: "细胞过程图解", cover: "/picture/176e6527-21ef-4528-a0fc-91c879a00b4c.png" },
+  {
+    id: "w-1",
+    titleEn: "How Vaccines Train the Immune System",
+    titleZh: "疫苗如何训练免疫系统",
+    cover: "/en-picture/0f5851a2-0325-48f8-a520-9fe5679ce303.png",
+    keywordsEn: "vaccines, immune system, biology, education, infographic",
+    keywordsZh: "疫苗, 免疫系统, 生物, 教育, 信息图",
+  },
+  {
+    id: "w-2",
+    titleEn: "How a Black Hole Bends Light",
+    titleZh: "黑洞如何扭曲光线",
+    cover: "/en-picture/2f12cc0f-cca8-4ecd-83ea-25f1c5966e8b.png",
+    keywordsEn: "black hole, space, physics, astronomy, infographic",
+    keywordsZh: "黑洞, 宇宙, 物理, 天文, 信息图",
+  },
+  {
+    id: "w-3",
+    titleEn: "How Diversification Reduces Risk",
+    titleZh: "分散投资如何降低风险",
+    cover: "/en-picture/214f0573-c509-494c-8647-f7c94b79fb8a.png",
+    keywordsEn: "diversification, risk, finance, economics, infographic",
+    keywordsZh: "分散投资, 风险, 金融, 经济, 信息图",
+  },
+  {
+    id: "w-4",
+    titleEn: "How Photosynthesis Works",
+    titleZh: "光合作用如何运作",
+    cover: "/en-picture/645ecabf-1b29-4d05-a377-1c886b5a2ae8.png",
+    keywordsEn: "photosynthesis, plant, biology, science, infographic",
+    keywordsZh: "光合作用, 植物, 生物, 科学, 信息图",
+  },
+  {
+    id: "w-5",
+    titleEn: "Why Inflation Changes Daily Life",
+    titleZh: "为什么通胀会改变日常生活",
+    cover: "/en-picture/a4e1d8cf-9ce8-4301-8eaf-c2a0981ef380.png",
+    keywordsEn: "inflation, economy, daily life, finance, infographic",
+    keywordsZh: "通胀, 经济, 日常生活, 金融, 信息图",
+  },
+  {
+    id: "w-6",
+    titleEn: "Plate Tectonics and Earthquakes",
+    titleZh: "板块构造与地震",
+    cover: "/en-picture/a93133f7-46f9-4da1-a488-375e9f909169.png",
+    keywordsEn: "plate tectonics, earthquake, geology, earth science, infographic",
+    keywordsZh: "板块构造, 地震, 地质, 地球科学, 信息图",
+  },
+  {
+    id: "w-7",
+    titleEn: "The Printing Press",
+    titleZh: "印刷术",
+    cover: "/en-picture/d561aaef-2126-479e-bef3-5726b925f88e.png",
+    keywordsEn: "printing press, history, invention, education, infographic",
+    keywordsZh: "印刷术, 历史, 发明, 教育, 信息图",
+  },
 ];
 
 const previewTallCases = [
-  { id: "t-1", titleEn: "Ocean Circulation & Climate", titleZh: "洋流循环与气候", cover: "/picture/8755ea1a-c5cc-4644-a505-553ec5905d71.png" },
-  { id: "t-2", titleEn: "Deep Sea Knowledge Card", titleZh: "深海科普卡片", cover: "/picture/feb2b176-157f-44f9-ac52-5a271e25ed6e.png" },
-  { id: "t-3", titleEn: "DNA Replication Flow", titleZh: "DNA复制流程", cover: "/picture/c24ee34d-8ee2-498a-b95d-c17d30640f2a.png" },
-  { id: "t-4", titleEn: "Immune Mechanism", titleZh: "免疫机制", cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png" },
-  { id: "t-5", titleEn: "Clean Science Infographic", titleZh: "简洁科普信息图风", cover: "/style/clean-science-infographic.png" },
-  { id: "t-6", titleEn: "Premium Editorial Style", titleZh: "高级报告信息图风", cover: "/style/premium-editorial-infographic.png" },
+  { id: "t-1", titleEn: "Astronomy Card", titleZh: "天文卡片", cover: "/en-picture/astronomy/f811316c-2452-4a84-8785-c6de347998d4.png" },
+  { id: "t-2", titleEn: "Biology Card", titleZh: "生物卡片", cover: "/en-picture/biology/74380d3a-9a1b-44a2-998a-7c3482175ff4.png" },
+  { id: "t-3", titleEn: "Economics Card", titleZh: "经济卡片", cover: "/en-picture/economics/3e26f31b-fb9c-4855-8a32-d14e060ea98c.png" },
+  { id: "t-4", titleEn: "Geography Card", titleZh: "地理卡片", cover: "/en-picture/geography/8f861cf8-f326-4dcd-9c54-e1673f2caf13.png" },
+  { id: "t-5", titleEn: "History Card", titleZh: "历史卡片", cover: "/en-picture/history/88e45522-e408-429c-b670-92c62faa47d9.png" },
+  { id: "t-6", titleEn: "Medicine Card", titleZh: "医学卡片", cover: "/en-picture/mdeicine/15454ff0-b0e6-46b9-bc2a-787cb8ff2080.png" },
+  { id: "t-7", titleEn: "Astronomy Long Visual", titleZh: "天文长图", cover: "/en-picture/astronomy/63f2d8b5-da95-4f3c-9e02-46a61519071d.png" },
+  { id: "t-8", titleEn: "Biology Long Visual", titleZh: "生物长图", cover: "/en-picture/biology/c03468d1-6e9d-4808-9a69-2a3852412d0b.png" },
+  { id: "t-9", titleEn: "Geography Long Visual", titleZh: "地理长图", cover: "/en-picture/geography/94a41a11-5983-4b03-924c-e1e47aa8d945.png" },
 ];
 
 const principleModules = [
@@ -316,88 +370,143 @@ const DEFAULT_CAPABILITY_FLOW_ID = "text-to-poster";
 
 const planCards = [
   {
+    id: "starter",
     nameEn: "Starter",
-    nameZh: "基础版",
-    periodEn: "Monthly",
-    periodZh: "包月",
-    price: "¥39",
-    descEn: "Great for light daily creation and trial use",
-    descZh: "适合日常轻量创作与试用",
-    pointsEn: "2,000 credits / month",
-    pointsZh: "每月 2,000 积分",
-    featuresEn: ["Poster/PPT/video basic generation", "8 style templates", "Basic export options"],
-    featuresZh: ["海报/PPT/视频基础生成", "8 种风格模板", "基础导出能力"],
-    ctaEn: "Choose Starter",
-    ctaZh: "选择基础版",
+    nameZh: "Starter",
+    subtitleEn: "Create clean infographics and simple slides without watermark.",
+    subtitleZh: "创建简洁信息图和基础幻灯片，无水印。",
+    monthlyPrice: 14.9,
+    yearlyPrice: 124.9,
+    monthlyEquivalent: 10.43,
+    monthlyCreditsEn: "1,200 credits / month",
+    monthlyCreditsZh: "每月 1,200 积分",
+    usageEn:
+      "6 credits/output during promo, up to ~200 outputs/month.",
+    usageZh: "活动期 6 积分/输出，每月约可生成 200 个内容。",
+    modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
+    featuresEn: [
+      "No watermark",
+      "Standard infographic generation",
+      "Basic PPT generation",
+      "Standard image export",
+      "Basic visual styles",
+      "Standard queue",
+    ],
+    featuresZh: ["无水印", "标准信息图生成", "基础 PPT 生成", "标准图像导出", "基础风格", "标准队列"],
+    ctaEn: "Subscribe with Stripe",
+    ctaZh: "Stripe 订阅",
     highlight: false,
   },
   {
-    nameEn: "Pro",
-    nameZh: "专业版",
-    periodEn: "Monthly",
-    periodZh: "包月",
-    price: "¥99",
-    descEn: "Recommended for active creators",
-    descZh: "内容创作者常用，推荐",
-    pointsEn: "8,000 credits / month",
-    pointsZh: "每月 8,000 积分",
-    featuresEn: ["All 12 style presets", "Priority queue and faster generation", "High-resolution export and batch generation"],
-    featuresZh: ["全部 12 种风格", "优先队列与更快生成", "高分辨率导出与批量生成"],
-    ctaEn: "Start Pro",
-    ctaZh: "开通专业版",
+    id: "pro",
+    nameEn: "Creator",
+    nameZh: "Creator",
+    subtitleEn: "Best for creators turning articles, videos, and ideas into visual content.",
+    subtitleZh: "最适合把文章、视频和想法转成视觉内容的创作者。",
+    monthlyPrice: 29,
+    yearlyPrice: 242,
+    monthlyEquivalent: 20.17,
+    monthlyCreditsEn: "3,000 credits / month",
+    monthlyCreditsZh: "每月 3,000 积分",
+    usageEn:
+      "6 credits/output during promo, up to ~500 outputs/month.",
+    usageZh: "活动期 6 积分/输出，每月约可生成 500 个内容。",
+    modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
+    featuresEn: [
+      "No watermark",
+      "HD infographic export",
+      "More visual styles",
+      "Visual PPT generation",
+      "Video storyboard generation",
+      "Faster generation queue",
+      "Commercial usage",
+    ],
+    featuresZh: ["无水印", "HD 信息图导出", "更多视觉风格", "视觉化 PPT 生成", "视频分镜生成", "更快队列", "商用授权"],
+    ctaEn: "Subscribe with Stripe",
+    ctaZh: "Stripe 订阅",
     highlight: true,
   },
   {
-    nameEn: "Team",
-    nameZh: "团队版",
-    periodEn: "Yearly (30% off)",
-    periodZh: "包年（7 折）",
-    price: "¥699",
-    descEn: "For collaboration and high-frequency output",
-    descZh: "多人协作与高频产出",
-    pointsEn: "120,000 credits / year",
-    pointsZh: "每年 120,000 积分",
-    featuresEn: ["Team member management", "Project templates and review flow", "Priority support and growth guidance"],
-    featuresZh: ["团队成员管理", "项目模板与审核流", "会员优先支持与成长咨询"],
-    ctaEn: "Contact Sales",
-    ctaZh: "咨询团队方案",
+    id: "scale",
+    nameEn: "Pro",
+    nameZh: "Pro",
+    subtitleEn: "For high-volume creators producing HD visuals, presentations, and video-ready content regularly.",
+    subtitleZh: "适合高频产出 HD 视觉、演示文稿和视频内容的用户。",
+    monthlyPrice: 59,
+    yearlyPrice: 489.9,
+    monthlyEquivalent: 40.83,
+    monthlyCreditsEn: "7,500 credits / month",
+    monthlyCreditsZh: "每月 7,500 积分",
+    usageEn:
+      "6 credits/output during promo, up to ~1,250 outputs/month.",
+    usageZh: "活动期 6 积分/输出，每月约可生成 1,250 个内容。",
+    modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
+    featuresEn: [
+      "No watermark",
+      "Premium HD export",
+      "Long infographic generation",
+      "Full visual PPT generation",
+      "Video storyboard generation",
+      "Priority rendering",
+      "Batch generation",
+      "Commercial usage",
+    ],
+    featuresZh: ["无水印", "高级 HD 导出", "长图信息图生成", "完整视觉化 PPT 生成", "视频分镜生成", "优先渲染", "批量生成", "商用授权"],
+    ctaEn: "Subscribe with Stripe",
+    ctaZh: "Stripe 订阅",
     highlight: false,
   },
 ];
 
 type ProgressiveImageProps = {
   src: string;
+  fallbackSrc?: string;
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
   skeletonClassName?: string;
+  title?: string;
 };
 
 function ProgressiveImage({
   src,
+  fallbackSrc,
   alt,
   className = "",
   loading = "lazy",
   skeletonClassName = "",
+  title,
 }: ProgressiveImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const actualSrc = usingFallback && fallbackSrc ? fallbackSrc : src;
 
   return (
     <div className="relative h-full w-full">
       {!loaded ? (
         <div
-          className={`absolute inset-0 ${failed ? "bg-zinc-200" : "animate-pulse bg-zinc-200/80"} ${skeletonClassName}`}
+          className={`absolute inset-0 z-[2] ${failed ? "bg-zinc-200" : "animate-pulse bg-zinc-200/80"} ${skeletonClassName}`}
           aria-hidden="true"
         />
       ) : null}
       <img
-        src={src}
+        src={actualSrc}
         alt={alt}
+        title={title}
+        data-keywords={title}
         loading={loading}
         decoding="async"
-        onLoad={() => setLoaded(true)}
+        onLoad={() => {
+          setLoaded(true);
+          setFailed(false);
+        }}
         onError={() => {
+          if (fallbackSrc && !usingFallback) {
+            setUsingFallback(true);
+            setLoaded(false);
+            return;
+          }
           setFailed(true);
           setLoaded(false);
         }}
@@ -407,15 +516,43 @@ function ProgressiveImage({
   );
 }
 
+function AspectSkeleton({
+  ratioClassName,
+  className = "",
+  children,
+}: {
+  ratioClassName: string;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={`relative overflow-hidden bg-zinc-100 ${ratioClassName} ${className}`}>
+      {children ? <div className="absolute inset-0 z-[1]">{children}</div> : null}
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.85),rgba(229,231,235,0.55),rgba(255,255,255,0.7))] opacity-90" />
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent)] animate-[pulse_1.6s_ease-in-out_infinite]" />
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const { t, locale } = useLocale();
+  const toOptimized = (imagePath: string) => `/landing-optimized${imagePath}`;
   const previewWideLoop = [...previewWideCases, ...previewWideCases];
   const previewTallLoop = [...previewTallCases, ...previewTallCases];
   const [activeFlowId, setActiveFlowId] = useState(DEFAULT_CAPABILITY_FLOW_ID);
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("yearly");
   const activeFlow =
     capabilityFlows.find((flow) => flow.id === activeFlowId) ??
     capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID) ??
     capabilityFlows[0];
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const activePreview = new Image();
+    activePreview.src = toOptimized(activeFlow.previewImage);
+  }, [activeFlow.previewImage]);
   const softwareAppSchema = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -512,22 +649,25 @@ export default function LandingPage() {
             <div className="mt-5 flex items-center sm:mt-6">
               <Link
                 href="/auth?callbackUrl=%2Fapp"
-                className="inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-900 px-5 text-sm font-medium text-white hover:bg-zinc-700"
+                className="inline-flex h-12 min-w-[176px] items-center justify-center gap-2 rounded-xl bg-zinc-900 px-8 text-[15px] font-medium text-white transition hover:bg-zinc-700 sm:h-[52px]"
               >
                 {t("Start now", "开始使用")}
-                <ArrowRight size={14} />
+                <ArrowRight size={15} />
               </Link>
             </div>
           </div>
 
           <div className="w-full rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:p-2 lg:justify-self-end">
             <div className="overflow-hidden rounded-xl bg-zinc-100">
-              <ProgressiveImage
-                src={heroImage}
-                alt="KnowLens Hero"
-                className="h-auto w-full object-contain"
-                loading="eager"
-              />
+              <AspectSkeleton ratioClassName="aspect-square">
+                <ProgressiveImage
+                  src={toOptimized(heroImage)}
+                  fallbackSrc={heroImage}
+                  alt="KnowLens Hero"
+                  className="absolute inset-0 h-full w-full object-cover"
+                  loading="eager"
+                />
+              </AspectSkeleton>
             </div>
           </div>
         </section>
@@ -568,14 +708,16 @@ export default function LandingPage() {
             <div className="mx-auto mt-4 max-w-5xl">
               <article className="rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm">
                 <div className="relative overflow-hidden rounded-xl bg-zinc-100">
-                  <ProgressiveImage
-                    key={activeFlow.previewImage}
-                    src={activeFlow.previewImage}
-                    alt={t(`${activeFlow.tabEn} visual example`, `${activeFlow.tabZh} 案例示意`)}
-                    className="block h-auto w-full object-contain"
-                    loading="lazy"
-                    skeletonClassName="bg-zinc-200"
-                  />
+                  <AspectSkeleton ratioClassName="aspect-[16/9]">
+                    <ProgressiveImage
+                      src={toOptimized(activeFlow.previewImage)}
+                      fallbackSrc={activeFlow.previewImage}
+                      alt={t(`${activeFlow.tabEn} visual example`, `${activeFlow.tabZh} 案例示意`)}
+                      className="absolute inset-0 h-full w-full object-contain"
+                      loading="lazy"
+                      skeletonClassName="bg-zinc-200"
+                    />
+                  </AspectSkeleton>
                 </div>
               </article>
             </div>
@@ -606,10 +748,13 @@ export default function LandingPage() {
                   >
                     <div className="aspect-video overflow-hidden rounded-xl bg-zinc-100">
                       <ProgressiveImage
-                        src={item.cover}
+                        src={toOptimized(item.cover)}
+                        fallbackSrc={item.cover}
                         alt={t(item.titleEn, item.titleZh)}
+                        title={t(item.titleEn, item.titleZh)}
                         className="h-full w-full object-cover"
                         loading="lazy"
+                        skeletonClassName="bg-zinc-200"
                       />
                     </div>
                   </article>
@@ -627,10 +772,13 @@ export default function LandingPage() {
                   >
                     <div className="aspect-[9/16] overflow-hidden rounded-xl bg-zinc-100">
                       <ProgressiveImage
-                        src={item.cover}
+                        src={toOptimized(item.cover)}
+                        fallbackSrc={item.cover}
                         alt={t(item.titleEn, item.titleZh)}
+                        title={t(item.titleEn, item.titleZh)}
                         className="h-full w-full object-cover"
                         loading="lazy"
+                        skeletonClassName="bg-zinc-200"
                       />
                     </div>
                   </article>
@@ -742,68 +890,124 @@ export default function LandingPage() {
 
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs text-zinc-500">{t("Membership & Billing", "会员支付")}</p>
-                <h2 className="mt-1 text-xl font-semibold text-zinc-950 sm:text-2xl">
-                  {t("Pick the plan that fits your workflow", "选择适合你的创作计划")}
-                </h2>
-                <p className="mt-2 text-sm text-zinc-600">
-                  {t(
-                    "Supports monthly/yearly subscriptions and Stripe checkout, with better annual value.",
-                    "支持月付/年付与 Stripe 支付，年付方案默认享受更高折扣。",
-                  )}
-                </p>
-              </div>
-              <Link
-                href="/membership"
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-              >
-                {t("Go to billing", "前往支付中心")}
-                <ArrowRight size={14} />
-              </Link>
-            </div>
+            <PromoCountdownBanner variant="inline" />
 
-            <div className="mt-5 grid gap-3 lg:grid-cols-3">
-              {planCards.map((plan) => (
-                <article
-                  key={plan.nameEn}
-                  className={`rounded-2xl border p-4 ${
-                    plan.highlight ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-zinc-50 text-zinc-900"
+            <section className="mt-5 flex justify-center">
+              <div className="inline-flex rounded-full border border-zinc-200 bg-zinc-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("monthly")}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    billingCycle === "monthly" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"
                   }`}
                 >
+                  {t("Monthly", "月付")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("yearly")}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    billingCycle === "yearly" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"
+                  }`}
+                >
+                  {t("Annual (Save 30%)", "包年（省 30%）")}
+                </button>
+              </div>
+            </section>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-3">
+              {planCards.map((plan) => (
+                <article
+                  key={plan.id}
+                  className={`relative flex h-full flex-col rounded-2xl border bg-white p-4 shadow-sm sm:p-5 ${
+                    plan.highlight ? "border-zinc-900 ring-1 ring-zinc-900/15" : "border-zinc-200"
+                  }`}
+                >
+                  {plan.highlight ? (
+                    <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                      <BadgeCheck size={12} />
+                      {t("Most Popular", "最受欢迎")}
+                    </span>
+                  ) : null}
+
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-base font-semibold">{t(plan.nameEn, plan.nameZh)}</h3>
-                    <span
-                      className={`rounded-full px-2 py-1 text-[10px] ${
-                        plan.highlight ? "bg-white/20 text-white" : "bg-zinc-200 text-zinc-700"
-                      }`}
-                    >
-                      {t(plan.periodEn, plan.periodZh)}
-                    </span>
                   </div>
-                  <p className={`mt-2 text-2xl font-semibold ${plan.highlight ? "text-white" : "text-zinc-950"}`}>{plan.price}</p>
-                  <p className={`mt-1 text-xs ${plan.highlight ? "text-zinc-200" : "text-zinc-500"}`}>{t(plan.descEn, plan.descZh)}</p>
-                  <p className={`mt-3 text-sm font-medium ${plan.highlight ? "text-white" : "text-zinc-800"}`}>{t(plan.pointsEn, plan.pointsZh)}</p>
-                  <ul className="mt-3 space-y-1.5">
-                    {(t(plan.featuresEn.join("||"), plan.featuresZh.join("||")).split("||")).map((feature) => (
-                      <li key={feature} className={`flex items-start gap-1.5 text-xs ${plan.highlight ? "text-zinc-100" : "text-zinc-600"}`}>
-                        <Check size={12} className="mt-0.5" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <p className="mt-1 text-xs leading-5 text-zinc-500">{t(plan.subtitleEn, plan.subtitleZh)}</p>
+                  <p className="mt-1 text-sm text-zinc-500">{t(plan.monthlyCreditsEn, plan.monthlyCreditsZh)}</p>
+
+                  <div className="mt-4">
+                    <p className="text-3xl font-semibold leading-none text-zinc-900">
+                      $
+                      {billingCycle === "monthly"
+                        ? Number.isInteger(plan.monthlyPrice)
+                          ? plan.monthlyPrice.toString()
+                          : plan.monthlyPrice.toFixed(1)
+                        : Number.isInteger(plan.yearlyPrice)
+                          ? plan.yearlyPrice.toString()
+                          : plan.yearlyPrice.toFixed(1)}
+                      <span className="ml-1 text-base font-medium text-zinc-500">
+                        {billingCycle === "monthly" ? "/mo" : "/yr"}
+                      </span>
+                    </p>
+                    {billingCycle === "yearly" ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {t("Equivalent to", "折合")} $
+                        {Number.isInteger(plan.monthlyEquivalent)
+                          ? plan.monthlyEquivalent.toString()
+                          : plan.monthlyEquivalent.toFixed(2)}
+                        /mo
+                      </p>
+                    ) : null}
+                  </div>
+
                   <Link
                     href="/membership"
-                    className={`mt-4 inline-flex h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition ${
-                      plan.highlight ? "bg-white text-zinc-900 hover:bg-zinc-100" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                    className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition ${
+                      plan.highlight
+                        ? "bg-zinc-900 text-white hover:bg-zinc-700"
+                        : "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
                     }`}
                   >
                     {t(plan.ctaEn, plan.ctaZh)}
                   </Link>
+
+                  <p className="mt-2 text-xs text-zinc-500">{t(plan.usageEn, plan.usageZh)}</p>
+
+                  <ul className="mt-4 space-y-2 text-sm text-zinc-700">
+                    <li className="border-b border-zinc-200 pb-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-900">
+                        {t("Model Access", "模型权限")}
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        {plan.modelAccess.map((model) => (
+                          <p key={`${plan.id}-${model}`} className="flex items-center gap-2 text-[12px] leading-5 text-zinc-700">
+                            <Check size={12} className="shrink-0 text-zinc-900" />
+                            <span className="flex items-center gap-1.5">
+                              <span>{model}</span>
+                              {model === "GPT-image2" ? (
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                                  {t("Limited-time 70% off", "限时 3 折")}
+                                </span>
+                              ) : null}
+                            </span>
+                          </p>
+                        ))}
+                      </div>
+                    </li>
+                    {(t(plan.featuresEn.join("||"), plan.featuresZh.join("||")).split("||")).map((feature) => (
+                      <li key={feature} className="flex items-start gap-2">
+                        <Check size={14} className="mt-0.5 text-zinc-900" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </article>
               ))}
             </div>
+            <p className="mt-3 text-xs leading-5 text-amber-600">
+              * GPT-image2 limited-time 70% off offer. Availability windows may change.
+            </p>
           </div>
         </section>
     </MarketingChrome>

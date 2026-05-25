@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowLeft, Minus, Plus, RotateCcw, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getCreditRecords, type CreditRecord } from "@/lib/billing";
@@ -16,7 +17,9 @@ function formatDate(input: string) {
 
 export default function CreditRecordsPage() {
   const router = useRouter();
-  const [records] = useState<CreditRecord[]>(() => getCreditRecords());
+  const { data: session } = useSession();
+  const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
+  const records = useMemo<CreditRecord[]>(() => getCreditRecords(currentEmail), [currentEmail]);
 
   const summary = useMemo(() => {
     const income = records.filter((r) => r.delta > 0).reduce((sum, r) => sum + r.delta, 0);

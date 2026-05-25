@@ -2,10 +2,11 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Heart, Link2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getSubscription } from "@/lib/billing";
+import { useSession } from "next-auth/react";
+import { getSubscriptionByUser } from "@/lib/billing";
 import { PaywallDialog } from "@/components/billing/PaywallDialog";
 import {
   type FeaturedCaseItem,
@@ -57,30 +58,43 @@ function getCaseNarrative(item: FeaturedCaseItem): CaseNarrative {
 }
 
 function useCaseMetrics(item: FeaturedCaseItem) {
-  const [state, setState] = useState(() => {
-    incrementCaseView(item.id);
-    return getCaseMetrics(item.id, item.views, item.likes);
-  });
+  const { data: session } = useSession();
+  const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
+  const [likeVersion, setLikeVersion] = useState(0);
+  const metrics = useMemo(() => {
+    void likeVersion;
+    const base = getCaseMetrics(item.id, item.views, item.likes, currentEmail);
+    return {
+      ...base,
+      views: base.views + 1,
+    };
+  }, [item.id, item.likes, item.views, currentEmail, likeVersion]);
+
+  useEffect(() => {
+    incrementCaseView(item.id, currentEmail);
+  }, [currentEmail, item.id]);
 
   return {
-    metrics: state,
+    metrics,
     toggleLike: () => {
-      toggleCaseLike(item.id);
-      setState(getCaseMetrics(item.id, item.views, item.likes));
+      toggleCaseLike(item.id, currentEmail);
+      setLikeVersion((prev) => prev + 1);
     },
   };
 }
 
 export function CaseDetailPage({ item }: CaseDetailPageProps) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
   const [copied, setCopied] = useState(false);
   const [downloadPaywallOpen, setDownloadPaywallOpen] = useState(false);
   const { metrics, toggleLike } = useCaseMetrics(item);
 
-  const [isMember] = useState(() => {
-    const subscription = getSubscription();
+  const isMember = useMemo(() => {
+    const subscription = getSubscriptionByUser(currentEmail);
     return !!subscription && (subscription.status === "active" || subscription.status === "canceling");
-  });
+  }, [currentEmail]);
   const narrative = getCaseNarrative(item);
 
   useEffect(() => {
@@ -232,6 +246,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
         open={downloadPaywallOpen}
         title="Membership required for downloads"
         description="Image download is available to members only. Upgrade your plan to unlock high-quality downloads."
+        showPromoBanner
         onClose={() => setDownloadPaywallOpen(false)}
         onConfirm={() => {
           setDownloadPaywallOpen(false);

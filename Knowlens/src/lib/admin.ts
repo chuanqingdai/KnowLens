@@ -1,4 +1,5 @@
 import type { AuthUser } from "./auth";
+import { resolveRoleByEmail } from "./auth";
 import { appendCreditRecord } from "./billing";
 
 export type AdminUser = {
@@ -47,6 +48,7 @@ export type HomeFeaturedCase = {
 const ADMIN_USERS_KEY = "knowlens_admin_users_v1";
 const ADMIN_PROJECTS_KEY = "knowlens_admin_projects_v1";
 const FEATURED_CASES_KEY = "knowlens_featured_cases_v1";
+const USER_SCOPED_PROJECTS_KEY = "knowlens_user_projects_v1";
 
 const seedUsers: AdminUser[] = [
   {
@@ -219,6 +221,15 @@ function write<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeScope(email?: string | null) {
+  const value = (email ?? "").trim().toLowerCase();
+  return value || "guest";
+}
+
+function scopedKey(base: string, email?: string | null) {
+  return `${base}:${normalizeScope(email)}`;
+}
+
 function hashText(value: string) {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) {
@@ -303,6 +314,87 @@ export function getAdminProjects() {
   const next = [...seedAdminProjects, ...seedProjects];
   write(ADMIN_PROJECTS_KEY, next);
   return next;
+}
+
+export function getProjectsByUser(email?: string | null) {
+  const normalizedEmail = normalizeScope(email);
+  if (!email) {
+    return [] as AdminProject[];
+  }
+  const key = scopedKey(USER_SCOPED_PROJECTS_KEY, normalizedEmail);
+  const scoped = read<AdminProject[]>(key);
+  if (scoped?.length) {
+    return scoped;
+  }
+
+  const user = getAdminUserByEmail(normalizedEmail);
+  if (!user) {
+    write(key, []);
+    return [] as AdminProject[];
+  }
+
+  const base = getAdminProjects().filter((project) => project.userId === user.id);
+  write(key, base);
+  return base;
+}
+
+function formatProjectUpdatedAt(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d} ${hh}:${mm}`;
+}
+
+export function ensureUserProjectByEmail(input: {
+  email: string;
+  name?: string;
+  title?: string;
+  format?: "海报" | "PPT" | "视频";
+}) {
+  const email = input.email.trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+
+  const existingUser = getAdminUserByEmail(email);
+  if (!existingUser) {
+    upsertAdminUserFromAuth({
+      email,
+      name: input.name?.trim() || email.split("@")[0] || "User",
+      role: resolveRoleByEmail(email),
+      provider: "google",
+    });
+  }
+  const user = getAdminUserByEmail(email);
+  if (!user) {
+    return null;
+  }
+
+  const scopedProjects = getProjectsByUser(email).sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+  if (scopedProjects.length) {
+    return scopedProjects[0];
+  }
+
+  const now = formatProjectUpdatedAt();
+  const createdProject: AdminProject = {
+    id: `p-${Date.now()}`,
+    userId: user.id,
+    title: input.title?.trim() || `${user.name} · New Visual Project`,
+    status: "进行中",
+    updatedAt: now,
+    format: input.format,
+  };
+
+  const scopedKeyForUser = scopedKey(USER_SCOPED_PROJECTS_KEY, email);
+  write(scopedKeyForUser, [createdProject]);
+
+  const allProjects = getAdminProjects();
+  write(ADMIN_PROJECTS_KEY, [createdProject, ...allProjects.filter((item) => item.id !== createdProject.id)]);
+  return createdProject;
 }
 
 export function getFeaturedCaseConfigs() {
@@ -448,7 +540,7 @@ export function upsertAdminUserFromAuth(authUser: AuthUser) {
       email: authUser.email,
       role: authUser.role,
       plan: "free",
-      credits: 20,
+      credits: 80,
     },
     ...users,
   ];

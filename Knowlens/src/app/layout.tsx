@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 
@@ -7,17 +8,20 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://knowlens.ai";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "KnowLens.ai · 知识可视化创作",
+    default: "KnowLens.ai | AI Knowledge Visual Studio",
     template: "%s · KnowLens.ai",
   },
-  description: "将网页、视频和播客等内容，一键转化为可视化长图、PPT 或视频。",
+  description:
+    "KnowLens.ai turns articles, documents, videos, and podcasts into clear visual posters, slides, and video drafts.",
   keywords: [
-    "知识可视化",
-    "AI 海报生成",
-    "PPT 自动生成",
-    "科普内容创作",
-    "分镜视频生成",
-    "信息图生成",
+    "KnowLens.ai",
+    "AI knowledge visual studio",
+    "visual poster generator",
+    "presentation generator",
+    "storyboard video generator",
+    "infographic AI",
+    "content-to-visual AI",
+    "knowledge visualization",
     "KnowLens.ai",
   ],
   applicationName: "KnowLens.ai",
@@ -26,34 +30,38 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    locale: "zh_CN",
+    locale: "en_US",
     url: siteUrl,
     siteName: "KnowLens.ai",
-    title: "KnowLens.ai · 知识可视化创作",
-    description: "将网页、视频和播客等内容，一键转化为可视化长图、PPT 或视频。",
+    title: "KnowLens.ai | AI Knowledge Visual Studio",
+    description:
+      "KnowLens.ai turns articles, documents, videos, and podcasts into clear visual posters, slides, and video drafts.",
     images: [
       {
-        url: "/logo.png",
-        width: 376,
-        height: 376,
+        url: "/picture/knowlens-hero.png",
+        width: 1600,
+        height: 900,
         alt: "KnowLens.ai Logo",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "KnowLens.ai · 知识可视化创作",
-    description: "将网页、视频和播客等内容，一键转化为可视化长图、PPT 或视频。",
-    images: ["/logo.png"],
+    title: "KnowLens.ai | AI Knowledge Visual Studio",
+    description:
+      "KnowLens.ai turns articles, documents, videos, and podcasts into clear visual posters, slides, and video drafts.",
+    images: ["/picture/knowlens-hero.png"],
   },
   robots: {
     index: true,
     follow: true,
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: "/logo.png",
+    shortcut: "/logo.png",
     apple: "/logo.png",
   },
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
@@ -62,7 +70,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased">
+      <head>
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-HZDH17R044"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-HZDH17R044');
+          `}
+        </Script>
+      </head>
       <body className="min-h-full flex flex-col">
         <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>

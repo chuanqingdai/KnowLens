@@ -1,0 +1,50 @@
+{
+  "currency": "usd",
+  "plans": [
+    {
+      "planId": "essential",
+      "displayName": "KnowLens Essential",
+      "description": "For individuals getting started with knowledge visual creation. Includes core generation workflow, standard exports, and monthly credits.",
+      "features": [
+        "Core content understanding and draft generation",
+        "Poster / PPT / video basic generation",
+        "Standard export settings",
+        "Up to 3 active projects",
+        "Model access: GPT-5.4, GPT-5.5, Gemini 3.1 Pro, Claude Sonnet 4.6, GPT-image2"
+      ],
+      "monthlyPrice": 9.9,
+      "yearlyPrice": 82,
+      "monthlyCredits": 1200
+    },
+    {
+      "planId": "creator",
+      "displayName": "KnowLens Creator",
+      "description": "For weekly creators and educators. Includes advanced structuring controls, faster queue, and expanded export quality.",
+      "features": [
+        "Advanced content structuring and editing controls",
+        "Storyboard history and version snapshots",
+        "Faster queue and priority generation",
+        "Watermark-free exports up to 1080p",
+        "Model access: GPT-5.4, GPT-5.5, Gemini 3.1 Pro, Claude Sonnet 4.6, GPT-image2"
+      ],
+      "monthlyPrice": 18.9,
+      "yearlyPrice": 159,
+      "monthlyCredits": 3600
+    },
+    {
+      "planId": "business",
+      "displayName": "KnowLens Business",
+      "description": "For teams and high-volume production. Includes team permissions, reusable templates, and highest queue priority.",
+      "features": [
+        "High-volume generation workflow",
+        "Team role controls and project permissions",
+        "Reusable visual templates and shared assets",
+        "Approval flow and operation logs",
+        "Model access: GPT-5.4, GPT-5.5, Gemini 3.1 Pro, Claude Sonnet 4.6, GPT-image2"
+      ],
+      "monthlyPrice": 35.9,
+      "yearlyPrice": 299,
+      "monthlyCredits": 9000
+    }
+  ]
+}

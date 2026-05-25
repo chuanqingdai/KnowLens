@@ -13,8 +13,21 @@ import { StoryboardCanvas } from "@/components/workspace/StoryboardCanvas";
 import { PosterCanvas } from "@/components/workspace/PosterCanvas";
 import { TopBar } from "@/components/workspace/TopBar";
 import { outlineItems as volcanoOutlineItems, slideDrafts as volcanoSlideDrafts } from "@/components/workspace/mockData";
-import { appendCreditRecord, getCreditRecords, getSubscription } from "@/lib/billing";
-import { getAdminProjects, getAdminUserByEmail } from "@/lib/admin";
+import {
+  appendCreditRecord,
+  getCreditRecords,
+  getSubscriptionByUser,
+} from "@/lib/billing";
+import {
+  STANDARD_OUTPUT_PROMO_CREDITS,
+  STANDARD_OUTPUT_REGULAR_CREDITS,
+} from "@/lib/credit-pricing";
+import {
+  ensureUserProjectByEmail,
+  getAdminProjects,
+  getAdminUserByEmail,
+  getProjectsByUser,
+} from "@/lib/admin";
 import { getVisualizationRecommendation } from "@/lib/prompts/content-draft";
 
 type HomeSourceKind = "file" | "web" | "youtube";
@@ -92,6 +105,7 @@ type ConfirmedConfigSnapshot = {
 const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
+const DRAFT_MODE = process.env.NEXT_PUBLIC_KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto";
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {
@@ -107,8 +121,24 @@ type StyleOption = {
   coverImage: string;
 };
 
-function styleCoverByEnglishName(englishName: string) {
-  return `/style/${encodeURIComponent(englishName)}.png`;
+const styleCoverFileById: Record<string, string> = {
+  "clean-science-infographic": "Clean Science Infographic Style.png",
+  "premium-editorial-infographic": "Premium Editorial Infographic Style.png",
+  "youtube-science-thumbnail": "YouTube Science Thumbnail Style.png",
+  "minimal-line-art": "Minimal Line Art Style.png",
+  "hand-drawn-explainer": "Hand-drawn Explainer Style.png",
+  "cute-3d-educational": "Cute 3D Educational Style.png",
+  "3d-isometric-tech": "3D Isometric Tech Style.png",
+  "dark-premium-tech": "Dark Premium Tech Style.png",
+  "technical-blueprint": "Technical Blueprint Style.png",
+  "medical-educational-illustration": "Medical Educational Illustration Style.png",
+  "cinematic-science-illustration": "Cinematic Science Illustration Style.png",
+  "premium-sketchnote-science": "Premium Sketchnote Science Style.png",
+};
+
+function styleCoverById(styleId: string) {
+  const filename = styleCoverFileById[styleId] ?? styleCoverFileById["clean-science-infographic"];
+  return `/style/${encodeURIComponent(filename)}`;
 }
 
 const styleOptions = [
@@ -123,7 +153,7 @@ const styleOptions = [
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["科普", "自然", "物理", "地理", "人体", "机制", "原理", "解释"],
     palette: ["#1f2937", "#3b82f6", "#e5e7eb"],
-    coverImage: styleCoverByEnglishName("Clean Science Infographic Style"),
+    coverImage: styleCoverById("clean-science-infographic"),
   },
   {
     id: "premium-editorial-infographic",
@@ -136,7 +166,7 @@ const styleOptions = [
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
     palette: ["#111827", "#f59e0b", "#f3f4f6"],
-    coverImage: styleCoverByEnglishName("Premium Editorial Infographic Style"),
+    coverImage: styleCoverById("premium-editorial-infographic"),
   },
   {
     id: "youtube-science-thumbnail",
@@ -149,7 +179,7 @@ const styleOptions = [
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
     palette: ["#111827", "#ef4444", "#f8fafc"],
-    coverImage: styleCoverByEnglishName("YouTube Science Thumbnail Style"),
+    coverImage: styleCoverById("youtube-science-thumbnail"),
   },
   {
     id: "minimal-line-art",
@@ -162,7 +192,7 @@ const styleOptions = [
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["基础", "概念", "产品", "ai原理", "机制", "结构", "说明"],
     palette: ["#111827", "#64748b", "#f8fafc"],
-    coverImage: styleCoverByEnglishName("Minimal Line Art Style"),
+    coverImage: styleCoverById("minimal-line-art"),
   },
   {
     id: "hand-drawn-explainer",
@@ -175,7 +205,7 @@ const styleOptions = [
     carrierPriority: ["video", "ppt", "poster"],
     topicKeywords: ["儿童", "生活常识", "健康", "基础物理", "心理", "入门", "低龄"],
     palette: ["#334155", "#f59e0b", "#fef3c7"],
-    coverImage: styleCoverByEnglishName("Hand-drawn Explainer Style"),
+    coverImage: styleCoverById("hand-drawn-explainer"),
   },
   {
     id: "cute-3d-educational",
@@ -188,7 +218,7 @@ const styleOptions = [
     carrierPriority: ["video", "poster", "ppt"],
     topicKeywords: ["儿童", "动物", "人体健康", "营养", "低龄", "亲子", "启蒙"],
     palette: ["#0f172a", "#22d3ee", "#dbeafe"],
-    coverImage: styleCoverByEnglishName("Cute 3D Educational Style"),
+    coverImage: styleCoverById("cute-3d-educational"),
   },
   {
     id: "3d-isometric-tech",
@@ -201,7 +231,7 @@ const styleOptions = [
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["ai系统", "数据中心", "芯片", "城市系统", "互联网", "能源", "架构", "模块"],
     palette: ["#0f172a", "#10b981", "#d1fae5"],
-    coverImage: styleCoverByEnglishName("3D Isometric Tech Style"),
+    coverImage: styleCoverById("3d-isometric-tech"),
   },
   {
     id: "dark-premium-tech",
@@ -214,7 +244,7 @@ const styleOptions = [
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["ai", "芯片", "金融科技", "机器人", "数据", "未来科技", "前沿"],
     palette: ["#09090b", "#f59e0b", "#1d4ed8"],
-    coverImage: styleCoverByEnglishName("Dark Premium Tech Style"),
+    coverImage: styleCoverById("dark-premium-tech"),
   },
   {
     id: "technical-blueprint",
@@ -227,7 +257,7 @@ const styleOptions = [
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["航天", "机械", "潜艇", "机器人", "军事", "工程", "结构", "蓝图"],
     palette: ["#0b2447", "#38bdf8", "#bfdbfe"],
-    coverImage: styleCoverByEnglishName("Technical Blueprint Style"),
+    coverImage: styleCoverById("technical-blueprint"),
   },
   {
     id: "medical-educational-illustration",
@@ -240,7 +270,7 @@ const styleOptions = [
     carrierPriority: ["ppt", "video", "poster"],
     topicKeywords: ["心血管", "器官", "代谢", "疾病", "营养", "医学", "健康", "人体"],
     palette: ["#0f172a", "#14b8a6", "#e0f2fe"],
-    coverImage: styleCoverByEnglishName("Medical Educational Illustration Style"),
+    coverImage: styleCoverById("medical-educational-illustration"),
   },
   {
     id: "cinematic-science-illustration",
@@ -253,7 +283,7 @@ const styleOptions = [
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
     palette: ["#111827", "#7c3aed", "#e2e8f0"],
-    coverImage: styleCoverByEnglishName("Cinematic Science Illustration Style"),
+    coverImage: styleCoverById("cinematic-science-illustration"),
   },
   {
     id: "premium-sketchnote-science",
@@ -266,7 +296,7 @@ const styleOptions = [
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["心理学", "健康", "生活科学", "儿童科普", "学习方法", "认知科学", "经济学", "入门"],
     palette: ["#1f2937", "#ec4899", "#dbeafe"],
-    coverImage: styleCoverByEnglishName("Premium Sketchnote Science Style"),
+    coverImage: styleCoverById("premium-sketchnote-science"),
   },
 ] as StyleOption[];
 
@@ -538,38 +568,71 @@ function buildMissingHints(intent: WorkspaceIntent, prompt: string, posterSizeId
 }
 
 function buildGenericOutline(topic: string, intent: WorkspaceIntent, count: number) {
-  const tail = intent === "video" ? "分镜" : "讲解";
-  const seed = [
-    `${topic}是什么？先看核心问题`,
-    `${topic}的背景与典型场景`,
-    `${topic}的关键概念拆解`,
-    `${topic}的基本结构`,
-    `${topic}如何发生或运作`,
-    `${topic}过程中的关键变量`,
-    `${topic}常见类型或对比`,
-    `${topic}带来的影响`,
-    `${topic}常见误区与反例`,
-    `${topic}总结与延伸${tail}`,
+  const pptSeed = [
+    `${topic}的核心问题与学习目标`,
+    `${topic}在现实中的典型场景`,
+    `${topic}需要先理解的关键概念`,
+    `${topic}的机制链路：触发条件到结果`,
+    `${topic}的关键变量与变化路径`,
+    `${topic}的常见类型与对比差异`,
+    `${topic}案例拆解：一个可复述的真实情境`,
+    `${topic}影响评估：个人、行业与系统层面`,
+    `${topic}常见误区与纠偏方法`,
+    `${topic}总结与行动建议`,
   ];
+  const videoSeed = [
+    `${topic}开场钩子：一句话提出冲突`,
+    `${topic}场景建立：观众可感知的变化`,
+    `${topic}机制拆解①：第一层因果`,
+    `${topic}机制拆解②：关键变量如何传导`,
+    `${topic}对比视角：变化前后差异`,
+    `${topic}案例镜头：真实情境复现`,
+    `${topic}结论收束：可执行判断`,
+    `${topic}行动建议：下一步怎么做`,
+  ];
+  const defaultSeed = [
+    `${topic}是什么`,
+    `${topic}的背景与场景`,
+    `${topic}的关键机制`,
+    `${topic}的影响与应用`,
+  ];
+  const seed = intent === "video" ? videoSeed : intent === "ppt" ? pptSeed : defaultSeed;
   if (count <= seed.length) {
     return seed.slice(0, count);
   }
-  const extra = Array.from({ length: count - seed.length }, (_, idx) => `${topic}进阶补充 ${idx + 1}`);
+  const extra = Array.from({ length: count - seed.length }, (_, idx) => `${topic}进阶补充：扩展主题 ${idx + 1}`);
   return [...seed, ...extra];
 }
 
-function buildGenericSlides(topic: string, outline: string[]) {
-  return outline.map((title, index) => ({
-    page: index + 1,
-    title,
-    body: `${title}：围绕“${topic}”提炼课堂可理解表达，使用短句解释核心逻辑，并配一个具体例子帮助记忆。`,
-    visual: `使用图解/对比图突出第 ${index + 1} 页重点，避免纯文字堆叠。`,
-  }));
+function buildGenericSlides(topic: string, outline: string[], intent: WorkspaceIntent) {
+  return outline.map((title, index) => {
+    if (intent === "video") {
+      return {
+        page: index + 1,
+        title,
+        body: `镜头目标：用 10 秒讲清“${title}”。口播要点：先说现象，再点出原因，最后落在一个可执行判断；字幕控制为 1 句关键词，避免小字堆叠。`,
+        visual: `画面建议：主体居中 + 单一箭头或对比元素；第 ${index + 1} 镜头聚焦一个核心变化，减少装饰信息。`,
+      };
+    }
+    return {
+      page: index + 1,
+      title,
+      body: `本页目标：围绕“${title}”给出可直接讲解的内容。讲解顺序：先定义/现象，再解释机制，最后给一个生活化例子；正文保持 3-4 句，确保能直接用于页面绘制。`,
+      visual: `版式建议：标题 + 3 要点 + 1 个示意图；第 ${index + 1} 页突出单一结论，避免信息分散。`,
+    };
+  });
 }
 
 function makePptDensitySlides(slides: SlideDraft[]) {
+  return slides.map((slide) => ({
+    ...slide,
+    body: slide.body.trim(),
+  }));
+}
+
+function makeVideoDensitySlides(slides: SlideDraft[]) {
   return slides.map((slide) => {
-    const compactBody = slide.body
+    const conciseBody = slide.body
       .replace(/\s+/g, "")
       .split(/[。！？]/)
       .map((part) => part.trim())
@@ -578,23 +641,7 @@ function makePptDensitySlides(slides: SlideDraft[]) {
       .join("。");
     return {
       ...slide,
-      body: compactBody ? `${compactBody}。` : slide.body,
-    };
-  });
-}
-
-function makeVideoDensitySlides(slides: SlideDraft[]) {
-  return slides.map((slide) => {
-    const firstSentence =
-      slide.body
-        .replace(/\s+/g, "")
-        .split(/[。！？]/)
-        .map((part) => part.trim())
-        .filter(Boolean)[0] || slide.body;
-    const concise = firstSentence.length > 30 ? `${firstSentence.slice(0, 30)}...` : firstSentence;
-    return {
-      ...slide,
-      body: concise,
+      body: conciseBody ? `${conciseBody}。` : slide.body,
       visual: slide.visual.replace(/，/g, "、"),
     };
   });
@@ -806,18 +853,23 @@ function readWorkspaceSessionPrefs(scopeKey: string) {
 
 export default function WorkspacePage() {
   const { data: session } = useSession();
+  const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [initialEntry] = useState(() => readHomeDraftPayload());
   const [sessionPrefsScopeKey] = useState(() => buildWorkspaceSessionScopeKey(initialEntry));
   const [sessionPrefs] = useState(() => readWorkspaceSessionPrefs(sessionPrefsScopeKey));
   const [topicContextPrompt, setTopicContextPrompt] = useState(() => initialEntry.prompt);
-  const [credits, setCredits] = useState(() => getCreditRecords()[0]?.balance ?? 80);
+  const [creditVersion, setCreditVersion] = useState(0);
+  const credits = useMemo(() => {
+    void creditVersion;
+    return getCreditRecords(currentEmail)[0]?.balance ?? 80;
+  }, [currentEmail, creditVersion]);
   const isFreeUser = useMemo(() => {
-    const subscription = getSubscription();
+    const subscription = getSubscriptionByUser(currentEmail);
     if (!subscription) {
       return true;
     }
     return !(subscription.status === "active" || subscription.status === "canceling");
-  }, []);
+  }, [currentEmail]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [updates, setUpdates] = useState<ChatTurn[]>([]);
@@ -904,7 +956,6 @@ export default function WorkspacePage() {
     downloadVideo: () => {},
   });
   const storyboardPanelRef = useRef<HTMLElement | null>(null);
-  const leftScrollRef = useRef<HTMLDivElement | null>(null);
 
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
@@ -976,13 +1027,13 @@ export default function WorkspacePage() {
         return base;
       }
       const extraOutline = buildGenericOutline(topic, effectiveIntent, targetSectionCount - base.length);
-      const extraSlides = buildGenericSlides(topic, extraOutline).map((slide, idx) => ({
+      const extraSlides = buildGenericSlides(topic, extraOutline, effectiveIntent).map((slide, idx) => ({
         ...slide,
         page: base.length + idx + 1,
       }));
       return [...base, ...extraSlides];
     }
-    return buildGenericSlides(topic, baseOutlineItems);
+    return buildGenericSlides(topic, baseOutlineItems, effectiveIntent);
   }, [effectiveIntent, baseOutlineItems, targetSectionCount, topic]);
 
   const basePosterDraft = useMemo(() => {
@@ -1095,7 +1146,15 @@ export default function WorkspacePage() {
   }, [configConfirmed, contextPrompt, effectiveIntent, topic]);
   const visualizationTypeHint = posterDraft?.visualType || visualizationRecommendation?.label || null;
 
-  const billingCost = effectiveIntent === "poster" ? 12 : 20;
+  const standardOutputCount =
+    effectiveIntent === "poster"
+      ? posterCount
+      : effectiveIntent === "ppt"
+        ? pptPageCount
+        : effectiveIntent === "video"
+          ? videoStoryboardCount
+          : 0;
+  const billingCost = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const canConfirmBilling = credits >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
 
@@ -1328,6 +1387,11 @@ export default function WorkspacePage() {
     if (effectiveIntent !== "poster") {
       setEditablePosterDraft(basePosterDraft);
       setEditablePosterPlanList(basePosterPlanList);
+      if (effectiveIntent === "ppt" || effectiveIntent === "video") {
+        const nextRecommendedStyle = pickSmartStyleByIntent(contextPrompt, entrySources, effectiveIntent);
+        setSelectedStyleId(nextRecommendedStyle.id);
+        setFlowStage("style");
+      }
       return;
     }
 
@@ -1348,6 +1412,8 @@ export default function WorkspacePage() {
           prompt: contextPrompt,
           posterCount,
           posterSizeLabel,
+          direction: effectiveIntent,
+          draftMode: DRAFT_MODE,
         }),
       });
       if (!response.ok) {
@@ -1446,25 +1512,32 @@ export default function WorkspacePage() {
     );
     await new Promise((resolve) => window.setTimeout(resolve, 560));
 
-    const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
     const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
-    const allProjects = getAdminProjects();
-    const ownerProjects = user ? allProjects.filter((project) => project.userId === user.id) : [];
-    const selectedProject = ownerProjects[0] ?? allProjects[0];
+    const ownerProjects = currentEmail ? getProjectsByUser(currentEmail) : [];
+    const selectedProject =
+      ownerProjects[0] ??
+      (currentEmail
+        ? ensureUserProjectByEmail({
+            email: currentEmail,
+            name: session?.user?.name ?? undefined,
+            title: `${topic || "Knowledge Topic"} · Workspace Draft`,
+            format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
+          })
+        : getAdminProjects()[0]);
 
     appendCreditRecord({
       type: "consume",
       description: `${selectedProject?.title ?? "生成项目"} · ${
         effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-      }`,
+      }（限时优惠：${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`,
       delta: -billingCost,
       userId: user?.id,
       userEmail: currentEmail || undefined,
       projectId: selectedProject?.id,
       projectTitle: selectedProject?.title,
-    });
+    }, currentEmail);
 
-    setCredits((prev) => Math.max(0, prev - billingCost));
+    setCreditVersion((prev) => prev + 1);
     setBillingConfirmed(true);
 
     if (effectiveIntent === "ppt" || effectiveIntent === "video") {
@@ -1473,7 +1546,7 @@ export default function WorkspacePage() {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
       pushAssistantMessage(
-        `账单已确认，已扣除 ${billingCost} 积分。分镜已开始生成，右侧已打开画布区域。`,
+        `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。分镜已开始生成，右侧已打开画布区域。`,
         "分镜生成",
       );
     } else {
@@ -1482,7 +1555,7 @@ export default function WorkspacePage() {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
       pushAssistantMessage(
-        `账单已确认，已扣除 ${billingCost} 积分。右侧已进入海报绘制页面，正在按顺序生成 ${posterCount} 张海报。`,
+        `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。右侧已进入海报绘制页面，正在按顺序生成 ${posterCount} 张海报。`,
         "海报生成",
       );
     }
@@ -1713,28 +1786,8 @@ export default function WorkspacePage() {
     });
   }, [hasCanvasPanel, isMobileViewport]);
 
-  useEffect(() => {
-    if (!leftScrollRef.current) {
-      return;
-    }
-    leftScrollRef.current.scrollTo({
-      top: leftScrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [
-    billingConfirmed,
-    missingHints.length,
-    posterSizeId,
-    showBillingConfirm,
-    showPosterSizeSelector,
-    showStyleStage,
-    shouldClarifyIntent,
-    thinkingState.active,
-    updates,
-  ]);
-
   return (
-    <div className="h-screen overflow-hidden bg-[#f7f7f8] text-zinc-900">
+    <div className="min-h-screen overflow-y-auto bg-[#f7f7f8] text-zinc-900">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -1761,35 +1814,30 @@ export default function WorkspacePage() {
         isComposingVideo={isComposingVideo}
       />
 
-      <main className="mx-auto mt-[56px] h-[calc(100vh-56px)] max-w-none px-2 sm:px-3">
+      <main className="mx-auto mt-[56px] max-w-none px-2 pb-3 pt-3 sm:px-3">
         <div
-          className={`grid gap-2 lg:h-full ${
+          className={`grid gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
           }`}
         >
           <section
-            className={`min-h-0 lg:h-full ${
+            className={`min-h-0 ${
               hasCanvasPanel ? "" : "lg:mx-auto lg:w-full lg:max-w-[980px]"
             } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
-            <div className="flex min-h-0 flex-col lg:h-full">
-              <div
-                ref={leftScrollRef}
-                className={`workspace-left-shell min-h-0 flex-1 overflow-y-auto lg:min-h-0 ${
-                  hasCanvasPanel ? "pr-1.5" : "pr-0"
-                } pt-4`}
-              >
-                {isMobileViewport && hasCanvasPanel ? (
-                  <div className="mb-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setMobileWorkspaceView("canvas")}
-                      className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
-                    >
-                      查看画布
-                    </button>
-                  </div>
-                ) : null}
+            <div className="flex min-h-0 flex-col">
+              {isMobileViewport && hasCanvasPanel ? (
+                <div className="mb-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setMobileWorkspaceView("canvas")}
+                    className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
+                  >
+                    查看画布
+                  </button>
+                </div>
+              ) : null}
+              <div className={hasCanvasPanel ? "pr-1.5 pt-4" : "pt-4"}>
                 <ChatPanel
                   userPrompt={entryPrompt}
                   entrySources={entrySources}
@@ -1848,6 +1896,9 @@ export default function WorkspacePage() {
                     totalCost: billingCost,
                     availableCredits: credits,
                     remainingCredits: Math.max(0, credits - billingCost),
+                    standardOutputCount,
+                    promoCreditsPerOutput: STANDARD_OUTPUT_PROMO_CREDITS,
+                    regularCreditsPerOutput: STANDARD_OUTPUT_REGULAR_CREDITS,
                   }}
                   styleOptions={styleOptions}
                   selectedStyleId={selectedStyleId}

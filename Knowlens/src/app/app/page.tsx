@@ -26,11 +26,11 @@ import {
   Zap,
 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
-import { getAdminProjects, getAdminUserByEmail } from "@/lib/admin";
+import { getProjectsByUser } from "@/lib/admin";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
-import { getSubscription } from "@/lib/billing";
+import { getCreditRecords, getSubscriptionByUser } from "@/lib/billing";
 import {
   getCaseMetrics,
   incrementCaseView,
@@ -185,6 +185,31 @@ function normalizeLegacySourceExcerpt(excerpt: string) {
   return excerpt;
 }
 
+const projectTitleEnMap: Record<string, string> = {
+  "火山喷发过程科普 PPT": "Volcanic Eruption Explainer PPT",
+  "潮汐原理可视化长图": "Tide Mechanism Visual Poster",
+  "DNA 复制流程演示": "DNA Replication Process",
+  "行星运动与万有引力可视化课程": "Planetary Motion & Gravity Course",
+  "细胞分裂全过程课堂 PPT": "Cell Division Classroom PPT",
+  "货币通胀机制图解短视频": "Inflation Mechanism Short Video",
+  "地震波传播与板块运动长图": "Seismic Waves & Plate Tectonics Poster",
+};
+
+function formatRecentProjectTitle(title: string, locale: "en" | "zh", index: number) {
+  if (locale !== "en") {
+    return title;
+  }
+  const mapped = projectTitleEnMap[title];
+  if (mapped) {
+    return mapped;
+  }
+  const hasCjk = /[\u3400-\u9fff]/.test(title);
+  if (hasCjk) {
+    return `Visual Knowledge Project ${index + 1}`;
+  }
+  return title;
+}
+
 const supportedUploadAccept = [
   "image/*",
   ".pdf",
@@ -223,6 +248,7 @@ const DEFAULT_COVER_FALLBACK = "/picture/text-to-poster.png";
 
 type ProgressiveCoverProps = {
   src: string;
+  fallbackSrc?: string;
   alt: string;
   className?: string;
   loading?: "lazy" | "eager";
@@ -230,12 +256,14 @@ type ProgressiveCoverProps = {
 
 function ProgressiveCover({
   src,
+  fallbackSrc,
   alt,
   className = "h-full w-full object-cover",
   loading = "lazy",
 }: ProgressiveCoverProps) {
-  const [imgSrc, setImgSrc] = useState(() => src);
+  const [imgSrc, setImgSrc] = useState(src);
   const [loaded, setLoaded] = useState(false);
+  const [attemptedFallback, setAttemptedFallback] = useState(false);
 
   return (
     <div className="relative h-full w-full">
@@ -251,6 +279,12 @@ function ProgressiveCover({
         decoding="async"
         onLoad={() => setLoaded(true)}
         onError={() => {
+          if (fallbackSrc && !attemptedFallback && imgSrc !== fallbackSrc) {
+            setImgSrc(fallbackSrc);
+            setAttemptedFallback(true);
+            setLoaded(false);
+            return;
+          }
           if (imgSrc !== DEFAULT_COVER_FALLBACK) {
             setImgSrc(DEFAULT_COVER_FALLBACK);
             setLoaded(false);
@@ -262,6 +296,10 @@ function ProgressiveCover({
       />
     </div>
   );
+}
+
+function toOptimizedCaseCover(path: string) {
+  return `/app-optimized${path}`;
 }
 
 function guessLinkKind(url: URL): SourceKind {
@@ -352,6 +390,7 @@ export default function Home() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { locale } = useLocale();
+  const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [textModel, setTextModel] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<"text" | null>(null);
   const [textMenuOpenUp, setTextMenuOpenUp] = useState(true);
@@ -362,10 +401,11 @@ export default function Home() {
   const [linkError, setLinkError] = useState("");
   const [modelPaywallOpen, setModelPaywallOpen] = useState(false);
   const [mediaUploadPaywallOpen, setMediaUploadPaywallOpen] = useState(false);
-  const [hasMembership] = useState(() => {
-    const subscription = getSubscription();
+  const hasMembership = useMemo(() => {
+    const subscription = getSubscriptionByUser(currentEmail);
     return !!subscription && (subscription.status === "active" || subscription.status === "canceling");
-  });
+  }, [currentEmail]);
+  const currentCredits = useMemo(() => getCreditRecords(currentEmail)[0]?.balance ?? 80, [currentEmail]);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");
@@ -658,7 +698,7 @@ export default function Home() {
   }
 
   function openFeaturedPreview(item: FeaturedCaseItem) {
-    incrementCaseView(item.id);
+    incrementCaseView(item.id, currentEmail);
     setMetricVersion((prev) => prev + 1);
     setPreviewZoom(1);
     setPreviewItem(item);
@@ -690,7 +730,7 @@ export default function Home() {
   }
 
   function handleToggleLike(item: FeaturedCaseItem) {
-    toggleCaseLike(item.id);
+    toggleCaseLike(item.id, currentEmail);
     setMetricVersion((prev) => prev + 1);
   }
 
@@ -701,28 +741,22 @@ export default function Home() {
   }));
 
   const resolvedRecentProjects = useMemo(() => {
-    const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
     if (!currentEmail) {
       return recentProjects;
     }
-    const currentUser = getAdminUserByEmail(currentEmail);
-    if (!currentUser) {
-      return [] as typeof recentProjects;
-    }
     const covers = recentProjects.map((item) => item.cover);
-    const ownedProjects = getAdminProjects()
-      .filter((item) => item.userId === currentUser.id)
+    const ownedProjects = getProjectsByUser(currentEmail)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
     return ownedProjects.slice(0, 8).map((project, index) => ({
       id: project.id,
-      title: project.title,
+      title: formatRecentProjectTitle(project.title, locale, index),
       updatedAt: `Updated ${project.updatedAt}`,
       cover: covers[index % covers.length] || recentProjects[0].cover,
       format: normalizeFormatLabel(project.format || "海报"),
       duration: project.duration,
     }));
-  }, [session?.user?.email]);
+  }, [currentEmail, locale]);
 
   const featuredFilteredItems = useMemo(
     () =>
@@ -773,7 +807,7 @@ export default function Home() {
             className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
           >
             <Zap size={14} className="text-zinc-500" />
-            <span className="font-medium text-zinc-900">80</span>
+            <span className="font-medium text-zinc-900">{currentCredits}</span>
             <span className="text-zinc-500">|</span>
             <span className="font-medium">Upgrade</span>
           </button>
@@ -787,7 +821,7 @@ export default function Home() {
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             <Zap size={15} className="text-zinc-500" />
-            <span className="font-medium text-zinc-900">80</span>
+            <span className="font-medium text-zinc-900">{currentCredits}</span>
             <span className="text-zinc-500">|</span>
             <span className="font-medium">Upgrade</span>
           </button>
@@ -1075,7 +1109,8 @@ export default function Home() {
                     <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-100">
                       <ProgressiveCover
                         key={project.cover}
-                        src={project.cover}
+                        src={toOptimizedCaseCover(project.cover)}
+                        fallbackSrc={project.cover}
                         alt={project.title}
                         className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
                       />
@@ -1118,7 +1153,7 @@ export default function Home() {
 
               <div className="columns-2 gap-4 [column-gap:1rem] md:columns-3 lg:columns-4">
                 {featuredVisibleItems.map((item) => {
-                    const metric = getCaseMetrics(item.id, item.views, item.likes);
+                    const metric = getCaseMetrics(item.id, item.views, item.likes, currentEmail);
                     return (
                   <article
                     key={item.id}
@@ -1137,7 +1172,8 @@ export default function Home() {
                       <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>
                         <ProgressiveCover
                           key={item.cover}
-                          src={item.cover}
+                          src={toOptimizedCaseCover(item.cover)}
+                          fallbackSrc={item.cover}
                           alt={item.title}
                           className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
                         />
@@ -1199,6 +1235,7 @@ export default function Home() {
         open={modelPaywallOpen}
         title="Premium model access required"
         description="This advanced model is available for members only. Upgrade your plan to unlock premium model quality."
+        showPromoBanner
         onClose={() => setModelPaywallOpen(false)}
         onConfirm={() => {
           setModelPaywallOpen(false);
@@ -1218,7 +1255,7 @@ export default function Home() {
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 {(() => {
-                  const metric = getCaseMetrics(previewItem.id, previewItem.views, previewItem.likes);
+                  const metric = getCaseMetrics(previewItem.id, previewItem.views, previewItem.likes, currentEmail);
                   return (
                     <button
                       type="button"
@@ -1304,6 +1341,7 @@ export default function Home() {
         open={previewPaywallOpen}
         title="Membership required for downloads"
         description="Image download is available to members only. Upgrade your plan to unlock high-quality downloads."
+        showPromoBanner
         onClose={() => setPreviewPaywallOpen(false)}
         onConfirm={() => {
           setPreviewPaywallOpen(false);
@@ -1316,6 +1354,7 @@ export default function Home() {
         open={mediaUploadPaywallOpen}
         title="Premium membership required for media files"
         description="Audio and video file processing requires a premium language model (GPT-5.5). Upgrade to continue with multimedia extraction."
+        showPromoBanner
         onClose={() => setMediaUploadPaywallOpen(false)}
         onConfirm={() => {
           setMediaUploadPaywallOpen(false);

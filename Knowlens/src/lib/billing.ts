@@ -27,6 +27,15 @@ export type CreditRecord = {
 const SUBSCRIPTION_KEY = "knowlens_subscription_v1";
 const CREDIT_RECORDS_KEY = "knowlens_credit_records_v1";
 
+function normalizeScope(email?: string | null) {
+  const value = (email ?? "").trim().toLowerCase();
+  return value || "guest";
+}
+
+function scopedKey(base: string, email?: string | null) {
+  return `${base}:${normalizeScope(email)}`;
+}
+
 function safeParse<T>(raw: string | null): T | null {
   if (!raw) {
     return null;
@@ -49,11 +58,38 @@ export function getSubscription(): SubscriptionSnapshot | null {
   return safeParse<SubscriptionSnapshot>(window.localStorage.getItem(SUBSCRIPTION_KEY));
 }
 
-export function saveSubscription(snapshot: SubscriptionSnapshot) {
+export function getSubscriptionByUser(email?: string | null): SubscriptionSnapshot | null {
+  if (!isClient()) {
+    return null;
+  }
+  if (!email) {
+    return null;
+  }
+
+  const scoped = safeParse<SubscriptionSnapshot>(
+    window.localStorage.getItem(scopedKey(SUBSCRIPTION_KEY, email)),
+  );
+  if (scoped) {
+    return scoped;
+  }
+
+  const legacy = safeParse<SubscriptionSnapshot>(window.localStorage.getItem(SUBSCRIPTION_KEY));
+  if (!legacy) {
+    return null;
+  }
+  window.localStorage.setItem(scopedKey(SUBSCRIPTION_KEY, email), JSON.stringify(legacy));
+  return legacy;
+}
+
+export function saveSubscription(snapshot: SubscriptionSnapshot, email?: string | null) {
   if (!isClient()) {
     return;
   }
-  window.localStorage.setItem(SUBSCRIPTION_KEY, JSON.stringify(snapshot));
+  if (!email) {
+    window.localStorage.setItem(SUBSCRIPTION_KEY, JSON.stringify(snapshot));
+    return;
+  }
+  window.localStorage.setItem(scopedKey(SUBSCRIPTION_KEY, email), JSON.stringify(snapshot));
 }
 
 function addMonths(base: Date, months: number) {
@@ -62,7 +98,12 @@ function addMonths(base: Date, months: number) {
   return next;
 }
 
-export function activateSubscription(planId: string, planName: string, cycle: BillingCycle) {
+export function activateSubscription(
+  planId: string,
+  planName: string,
+  cycle: BillingCycle,
+  email?: string | null,
+) {
   const now = new Date();
   const renewAt = cycle === "yearly" ? addMonths(now, 12) : addMonths(now, 1);
   const snapshot: SubscriptionSnapshot = {
@@ -73,12 +114,12 @@ export function activateSubscription(planId: string, planName: string, cycle: Bi
     startedAt: now.toISOString(),
     renewAt: renewAt.toISOString(),
   };
-  saveSubscription(snapshot);
+  saveSubscription(snapshot, email);
   return snapshot;
 }
 
-export function cancelSubscription() {
-  const current = getSubscription();
+export function cancelSubscription(email?: string | null) {
+  const current = getSubscriptionByUser(email);
   if (!current) {
     return null;
   }
@@ -87,69 +128,45 @@ export function cancelSubscription() {
     status: "canceling",
     canceledAt: new Date().toISOString(),
   };
-  saveSubscription(next);
+  saveSubscription(next, email);
   return next;
 }
 
-function seedCreditRecords() {
-  const now = Date.now();
-  const initialBalance = 80;
-  const records: CreditRecord[] = [
-    {
-      id: "seed-1",
-      createdAt: new Date(now - 1000 * 60 * 60 * 6).toISOString(),
-      type: "consume",
-      description: "火山喷发项目 · 分镜生成",
-      delta: -20,
-      balance: initialBalance,
-      userId: "u-admin",
-      userEmail: "chuanqingdai@gmail.com",
-      projectId: "p-admin-001",
-      projectTitle: "行星运动与万有引力可视化课程",
-    },
-    {
-      id: "seed-2",
-      createdAt: new Date(now - 1000 * 60 * 60 * 28).toISOString(),
-      type: "consume",
-      description: "潮汐原理项目 · 图片重绘",
-      delta: -12,
-      balance: 100,
-      userId: "u-001",
-      userEmail: "lin@example.com",
-      projectId: "p-002",
-      projectTitle: "潮汐原理可视化长图",
-    },
-    {
-      id: "seed-3",
-      createdAt: new Date(now - 1000 * 60 * 60 * 40).toISOString(),
-      type: "topup",
-      description: "会员积分到账",
-      delta: 120,
-      balance: 112,
-      userId: "u-admin",
-      userEmail: "chuanqingdai@gmail.com",
-    },
-  ];
-  window.localStorage.setItem(CREDIT_RECORDS_KEY, JSON.stringify(records));
-  return records;
-}
-
-export function getCreditRecords() {
+export function getCreditRecords(email?: string | null) {
   if (!isClient()) {
     return [] as CreditRecord[];
   }
-  const parsed = safeParse<CreditRecord[]>(window.localStorage.getItem(CREDIT_RECORDS_KEY));
+  const key = email ? scopedKey(CREDIT_RECORDS_KEY, email) : CREDIT_RECORDS_KEY;
+  const parsed = safeParse<CreditRecord[]>(window.localStorage.getItem(key));
   if (parsed && parsed.length) {
     return parsed;
   }
-  return seedCreditRecords();
+
+  if (!email) {
+    return [] as CreditRecord[];
+  }
+
+  const legacy = safeParse<CreditRecord[]>(window.localStorage.getItem(CREDIT_RECORDS_KEY));
+  if (!legacy?.length) {
+    return [] as CreditRecord[];
+  }
+  const normalizedEmail = normalizeScope(email);
+  const filtered = legacy.filter(
+    (item) => (item.userEmail ?? "").trim().toLowerCase() === normalizedEmail,
+  );
+  window.localStorage.setItem(key, JSON.stringify(filtered));
+  return filtered;
 }
 
-export function appendCreditRecord(input: Omit<CreditRecord, "id" | "createdAt" | "balance">) {
+export function appendCreditRecord(
+  input: Omit<CreditRecord, "id" | "createdAt" | "balance">,
+  email?: string | null,
+) {
   if (!isClient()) {
     return null;
   }
-  const existing = getCreditRecords();
+  const scopeEmail = input.userEmail ?? email;
+  const existing = getCreditRecords(scopeEmail);
   const latestBalance = existing[0]?.balance ?? 80;
   const nextBalance = latestBalance + input.delta;
   const nextRecord: CreditRecord = {
@@ -159,6 +176,7 @@ export function appendCreditRecord(input: Omit<CreditRecord, "id" | "createdAt" 
     ...input,
   };
   const nextRecords = [nextRecord, ...existing];
-  window.localStorage.setItem(CREDIT_RECORDS_KEY, JSON.stringify(nextRecords));
+  const key = scopeEmail ? scopedKey(CREDIT_RECORDS_KEY, scopeEmail) : CREDIT_RECORDS_KEY;
+  window.localStorage.setItem(key, JSON.stringify(nextRecords));
   return nextRecord;
 }

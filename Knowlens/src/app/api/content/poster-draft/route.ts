@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildContentDraftPrompt } from "@/lib/prompts/content-draft";
+import { buildMockDraftPayload } from "@/lib/prompts/content-draft-mock";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,8 @@ type PosterDraftRequest = {
   prompt?: string;
   posterCount?: number;
   posterSizeLabel?: string;
+  direction?: "poster" | "ppt" | "video";
+  draftMode?: "mock" | "auto";
 };
 
 type PosterRenderSpec = {
@@ -336,6 +339,21 @@ export async function POST(request: NextRequest) {
     const prompt = (payload.prompt ?? "").trim();
     const posterCount = clamp(Math.round(payload.posterCount ?? 1), 1, 10);
     const posterSizeLabel = payload.posterSizeLabel?.trim();
+    const direction = payload.direction ?? "poster";
+    const draftMode =
+      payload.draftMode ?? (process.env.KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto");
+
+    if (draftMode === "mock") {
+      const mock = buildMockDraftPayload({
+        direction,
+        topic,
+        count: posterCount,
+      });
+      return NextResponse.json({
+        ...mock,
+        source: "mock",
+      });
+    }
 
     const fallbackDraft = buildFallbackPosterDraft(topic, posterSizeLabel, prompt);
     const fallbackPlan = buildFallbackPlanList(topic, posterCount);
@@ -351,7 +369,7 @@ export async function POST(request: NextRequest) {
 
     const model = process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini";
     const promptBundle = buildContentDraftPrompt({
-      direction: "poster",
+      direction,
       topic,
       userPrompt: prompt,
       count: posterCount,
@@ -377,15 +395,27 @@ export async function POST(request: NextRequest) {
 
     if (!completionResponse.ok) {
       const errText = await completionResponse.text();
-      return NextResponse.json(
-        {
-          posterDraft: fallbackDraft,
-          planList: fallbackPlan,
-          source: "fallback",
-          error: `LLM request failed: ${errText.slice(0, 200)}`,
-        },
-        { status: 200 },
-      );
+      if (direction === "poster") {
+        return NextResponse.json(
+          {
+            posterDraft: fallbackDraft,
+            planList: fallbackPlan,
+            source: "fallback",
+            error: `LLM request failed: ${errText.slice(0, 200)}`,
+          },
+          { status: 200 },
+        );
+      }
+      const mock = buildMockDraftPayload({
+        direction,
+        topic,
+        count: posterCount,
+      });
+      return NextResponse.json({
+        ...mock,
+        source: "fallback",
+        error: `LLM request failed: ${errText.slice(0, 200)}`,
+      });
     }
 
     const data = (await completionResponse.json()) as {
@@ -399,6 +429,18 @@ export async function POST(request: NextRequest) {
         posterDraft: fallbackDraft,
         planList: fallbackPlan,
         source: "fallback",
+      });
+    }
+
+    if (direction !== "poster") {
+      const mock = buildMockDraftPayload({
+        direction,
+        topic,
+        count: posterCount,
+      });
+      return NextResponse.json({
+        ...mock,
+        source: "llm",
       });
     }
 
