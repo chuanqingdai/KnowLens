@@ -973,6 +973,29 @@ function buildWorkspaceSessionScopeKey(entry: { prompt: string; sources: HomeSou
   return `${WORKSPACE_SESSION_PREFS_KEY}:${hash.toString(16)}`;
 }
 
+function formatSourceItemsForChat(sources: HomeSourceItem[]) {
+  if (!sources.length) {
+    return "";
+  }
+  return sources
+    .map((item, index) => {
+      const typeLabel = item.kind === "youtube" ? "YouTube" : item.kind === "web" ? "Web" : "File";
+      const origin = item.origin?.trim() ? item.origin.trim() : "N/A";
+      return `${index + 1}. ${item.name} (${typeLabel})\n   ${origin}`;
+    })
+    .join("\n");
+}
+
+function intentDisplayLabel(intent: Exclude<WorkspaceIntent, "unknown">) {
+  if (intent === "poster") {
+    return "Generate Poster";
+  }
+  if (intent === "video") {
+    return "Generate Video";
+  }
+  return "Generate PPT";
+}
+
 function readWorkspaceSessionPrefs(scopeKey: string) {
   if (typeof window === "undefined") {
     return null;
@@ -1071,6 +1094,7 @@ export default function WorkspacePage() {
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<"chat" | "canvas">("chat");
   const [pendingConfigResetReason, setPendingConfigResetReason] = useState<null | "direction-change" | "config-change">(null);
   const [confirmedConfigSnapshot, setConfirmedConfigSnapshot] = useState<ConfirmedConfigSnapshot | null>(null);
+  const [autoConfirmIntent, setAutoConfirmIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(null);
 
   const [thinkingState, setThinkingState] = useState<{
     active: boolean;
@@ -1110,8 +1134,9 @@ export default function WorkspacePage() {
       }),
     [contextPrompt, sourceLanguageSeed],
   );
-  const isZhOutput = isChineseLanguage(outputLanguage);
-  const tr = (en: string, zh: string) => (isZhOutput ? zh : en);
+  const uiLanguage: "en" | "zh" = "en";
+  const isZhOutput = false;
+  const tr = (en: string, _zh: string) => en;
 
   const detectedIntent = useMemo(
     () => detectIntent(contextPrompt, entrySources),
@@ -1436,6 +1461,26 @@ export default function WorkspacePage() {
     videoStoryboardCount,
   ]);
 
+  useEffect(() => {
+    if (!entrySources.length) {
+      return;
+    }
+    setUpdates((prev) => {
+      if (prev.some((item) => item.module === "Source Inputs")) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: `source-${Date.now()}`,
+          role: "assistant",
+          module: "Source Inputs",
+          content: `Attached sources:\n${formatSourceItemsForChat(entrySources)}`,
+        },
+      ];
+    });
+  }, [entrySources]);
+
   function pushAssistantMessage(content: string, module = "内容改写") {
     setUpdates((prev) => [
       ...prev,
@@ -1512,12 +1557,38 @@ export default function WorkspacePage() {
   }
 
   function handleSelectIntentOption(intent: Exclude<WorkspaceIntent, "unknown">) {
+    const shouldAutoBuildDraft = flowStage === "intent" || flowStage === "config";
+    const intentLabel = intentDisplayLabel(intent);
+    const changed = manualIntent !== intent;
+
     setManualIntent(intent);
     if (intent === "poster" && !posterSizeId) {
       setPosterSizeId("poster-9-16");
     }
     resetToConfigStage("direction-change");
+
+    if (shouldAutoBuildDraft) {
+      pushUserMessage(intentLabel, "Output Direction");
+      pushAssistantMessage(
+        changed
+          ? `${intentLabel} selected. Draft generation is starting with current defaults.`
+          : `${intentLabel} confirmed again. Draft generation is refreshing with current defaults.`,
+        "Output Direction",
+      );
+      setAutoConfirmIntent(intent);
+    }
   }
+
+  useEffect(() => {
+    if (!autoConfirmIntent) {
+      return;
+    }
+    if (manualIntent !== autoConfirmIntent) {
+      return;
+    }
+    setAutoConfirmIntent(null);
+    void handleConfirmConfig();
+  }, [autoConfirmIntent, manualIntent]);
 
   function handleSelectTopicSuggestion(text: string) {
     if (!text || isSending || topicSuggestionLocked) {
@@ -1641,6 +1712,7 @@ export default function WorkspacePage() {
         body: JSON.stringify({
           topic,
           prompt: contextPrompt,
+          textModel: initialEntry.models?.textModel || "gemini-2.5",
           posterCount,
           posterSizeLabel,
           direction: effectiveIntent,
@@ -2190,7 +2262,7 @@ export default function WorkspacePage() {
         isComposingVideo={isComposingVideo}
       />
 
-      <main className="mx-auto mt-[56px] max-w-none px-2 pb-3 pt-3 sm:px-3">
+      <main className="mx-auto mt-[56px] max-w-none px-2 pb-1 pt-3 sm:px-3">
         <div
           className={`grid gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
@@ -2201,7 +2273,7 @@ export default function WorkspacePage() {
               hasCanvasPanel ? "" : "lg:mx-auto lg:w-full lg:max-w-[980px]"
             } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
-            <div className="flex min-h-0 flex-col">
+            <div className="flex min-h-[calc(100dvh-86px)] flex-col">
               {isMobileViewport && hasCanvasPanel ? (
                 <div className="mb-3 flex justify-end">
                   <button
@@ -2215,7 +2287,7 @@ export default function WorkspacePage() {
               ) : null}
               <div className={hasCanvasPanel ? "pr-1.5 pt-4" : "pt-4"}>
                 <ChatPanel
-                  outputLanguage={outputLanguage === "zh" ? "zh" : "en"}
+                  outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}
                   entrySources={entrySources}
                   intent={effectiveIntent}
@@ -2287,7 +2359,7 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="shrink-0 pb-3 pt-3">
+              <div className="sticky bottom-1 z-20 mt-auto shrink-0 pb-1 pt-2">
                 <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
                   <div className="flex items-center gap-2">
                     <textarea

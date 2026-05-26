@@ -52,8 +52,8 @@ input[type="reset"] {
 }
 
 @media (hover: hover) {
-  button:not(:disabled):hover,
-  [role="button"]:not([aria-disabled="true"]):hover,
+  button:not(:disabled):not([data-plain-interaction="true"]):hover,
+  [role="button"]:not([aria-disabled="true"]):not([data-plain-interaction="true"]):hover,
   input[type="button"]:not(:disabled):hover,
   input[type="submit"]:not(:disabled):hover,
   input[type="reset"]:not(:disabled):hover {
@@ -62,8 +62,8 @@ input[type="reset"] {
     filter: saturate(1.04);
   }
 
-  button:not(:disabled):active,
-  [role="button"]:not([aria-disabled="true"]):active,
+  button:not(:disabled):not([data-plain-interaction="true"]):active,
+  [role="button"]:not([aria-disabled="true"]):not([data-plain-interaction="true"]):active,
   input[type="button"]:not(:disabled):active,
   input[type="submit"]:not(:disabled):active,
   input[type="reset"]:not(:disabled):active {

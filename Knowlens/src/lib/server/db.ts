@@ -159,6 +159,28 @@ function createTables(db: DatabaseSync) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  const uploadJobColumns = [
+    "source_url TEXT",
+    "input_path TEXT",
+    "source_text TEXT",
+    "source_title TEXT",
+    "result_excerpt TEXT",
+    "result_text TEXT",
+    "result_kind TEXT",
+    "error_code TEXT",
+  ];
+
+  for (const columnDef of uploadJobColumns) {
+    try {
+      db.exec(`ALTER TABLE upload_jobs ADD COLUMN ${columnDef}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate column name/i.test(message)) {
+        throw error;
+      }
+    }
+  }
 }
 
 export function getDb() {

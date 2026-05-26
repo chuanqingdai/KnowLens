@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listUploadJobs, normalizeScope, updateUploadJob } from "@/lib/server/store";
-import { enqueueUpload, runUploadJob, validateUploadFile } from "@/lib/server/upload";
-import { rateLimitOrThrow } from "@/lib/server/rate-limit";
-import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
+import { writeFile } from "node:fs/promises";
+import { unlink } from "node:fs/promises";
+import path from "node:path";
+import { listUploadJobs, normalizeScope, updateUploadJob } from "../../../../lib/server/store";
+import {
+  buildUploadWorkerResult,
+  enqueueUpload,
+  runUploadJob,
+  validateUploadFile,
+} from "../../../../lib/server/upload";
+import { rateLimitOrThrow } from "../../../../lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "../../../../lib/server/rate-limit-config";
 
 export const runtime = "nodejs";
 
@@ -12,6 +20,9 @@ type UploadJobRequest = {
   mimeType?: string;
   fileSize?: number;
   sourceKind?: "file" | "web" | "youtube" | "podcast";
+  sourceUrl?: string;
+  sourceText?: string;
+  inputPath?: string;
 };
 
 function getScopeFromRequest(req: NextRequest, bodyUserEmail?: string) {
@@ -30,12 +41,33 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as UploadJobRequest;
+    const contentType = request.headers.get("content-type") ?? "";
+    let body: UploadJobRequest;
+    let uploadFile: File | null = null;
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      body = {
+        userEmail: String(formData.get("userEmail") ?? ""),
+        fileName: String(formData.get("fileName") ?? ""),
+        mimeType: String(formData.get("mimeType") ?? ""),
+        fileSize: Number(formData.get("fileSize") ?? 0),
+        sourceKind: (String(formData.get("sourceKind") ?? "file") as UploadJobRequest["sourceKind"]) ?? "file",
+        sourceUrl: String(formData.get("sourceUrl") ?? ""),
+        sourceText: String(formData.get("sourceText") ?? ""),
+        inputPath: String(formData.get("inputPath") ?? ""),
+      };
+      const file = formData.get("file");
+      uploadFile = file instanceof File ? file : null;
+    } else {
+      body = (await request.json()) as UploadJobRequest;
+    }
     const userEmail = (body.userEmail ?? "").trim().toLowerCase();
     const fileName = (body.fileName ?? "").trim();
     const mimeType = (body.mimeType ?? "").trim();
     const fileSize = Number(body.fileSize ?? 0);
     const sourceKind = body.sourceKind ?? "file";
+    const sourceUrl = (body.sourceUrl ?? "").trim();
+    const sourceText = (body.sourceText ?? "").trim();
 
     const scopeKey = getScopeFromRequest(request, userEmail);
     rateLimitOrThrow({
@@ -59,22 +91,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const tempInputPath =
+      uploadFile && sourceKind === "file"
+        ? path.join(
+            "/tmp",
+            `knowlens-upload-${Date.now()}-${fileName.replace(/[^a-z0-9.-]+/gi, "_").slice(0, 80) || "file"}`,
+          )
+        : body.inputPath?.trim() || undefined;
+    if (uploadFile && tempInputPath) {
+      await writeFile(tempInputPath, Buffer.from(await uploadFile.arrayBuffer()));
+    }
+
     const job = enqueueUpload({
       userScope: normalizeScope(userEmail),
       fileName,
       mimeType,
       fileSize,
       sourceKind,
+      sourceUrl: sourceUrl || undefined,
+      inputPath: tempInputPath,
+      sourceText: sourceText || undefined,
     });
 
     void runUploadJob(job.jobId, async () => {
-      // P0: placeholder async worker. Replace with real object storage upload.
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const storageKey = `uploads/${job.jobId}/${encodeURIComponent(fileName)}`;
-      const publicUrl = process.env.KNOWLENS_CDN_BASE_URL
-        ? `${process.env.KNOWLENS_CDN_BASE_URL.replace(/\/$/, "")}/${storageKey}`
-        : null;
-      return { storageKey, publicUrl: publicUrl ?? undefined };
+      try {
+        return await buildUploadWorkerResult({
+          jobId: job.jobId,
+          fileName,
+          mimeType,
+          fileSize,
+          sourceKind,
+          sourceUrl: sourceUrl || undefined,
+          inputPath: tempInputPath,
+          sourceText: sourceText || undefined,
+        });
+      } finally {
+        if (tempInputPath) {
+          await unlink(tempInputPath).catch(() => undefined);
+        }
+      }
     });
 
     return NextResponse.json({
@@ -107,6 +162,11 @@ export async function PATCH(request: NextRequest) {
       progress?: number;
       attempts?: number;
       errorMessage?: string | null;
+      errorCode?: string | null;
+      resultExcerpt?: string | null;
+      resultText?: string | null;
+      resultKind?: string | null;
+      sourceUrl?: string | null;
     };
     const jobId = (body.jobId ?? "").trim();
     if (!jobId) {
@@ -117,6 +177,11 @@ export async function PATCH(request: NextRequest) {
       progress: body.progress,
       attempts: body.attempts,
       errorMessage: body.errorMessage,
+      errorCode: body.errorCode,
+      resultExcerpt: body.resultExcerpt,
+      resultText: body.resultText,
+      resultKind: body.resultKind,
+      sourceUrl: body.sourceUrl,
     });
     if (!next) {
       return NextResponse.json({ error: "job not found" }, { status: 404 });

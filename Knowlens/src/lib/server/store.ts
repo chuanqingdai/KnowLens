@@ -13,6 +13,9 @@ type UploadJobInput = {
   mimeType: string;
   fileSize: number;
   sourceKind: "file" | "web" | "youtube" | "podcast";
+  sourceUrl?: string;
+  inputPath?: string;
+  sourceText?: string;
 };
 
 function nowIso() {
@@ -268,8 +271,8 @@ export function createUploadJob(input: UploadJobInput) {
   const { db } = getDb();
   const id = `upload-${randomUUID()}`;
   db.prepare(
-    `INSERT INTO upload_jobs (id, user_scope, file_name, mime_type, file_size, source_kind, status, progress, attempts, max_attempts, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 0, 3, ?, ?)`,
+    `INSERT INTO upload_jobs (id, user_scope, file_name, mime_type, file_size, source_kind, source_url, input_path, source_text, status, progress, attempts, max_attempts, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, 0, 3, ?, ?)`,
   ).run(
     id,
     input.userScope,
@@ -277,6 +280,9 @@ export function createUploadJob(input: UploadJobInput) {
     input.mimeType,
     input.fileSize,
     input.sourceKind,
+    input.sourceUrl ?? null,
+    input.inputPath ?? null,
+    input.sourceText ?? null,
     nowIso(),
     nowIso(),
   );
@@ -330,8 +336,13 @@ export function updateUploadJob(
     progress: number;
     attempts: number;
     errorMessage: string | null;
+    errorCode: string | null;
     storageKey: string | null;
     publicUrl: string | null;
+    resultExcerpt: string | null;
+    resultText: string | null;
+    resultKind: string | null;
+    sourceUrl: string | null;
   }>,
 ) {
   const { db } = getDb();
@@ -339,25 +350,37 @@ export function updateUploadJob(
   if (!current) {
     return null;
   }
+  const readValue = <T>(snakeKey: string, camelKey: string) =>
+    (current[snakeKey] as T | undefined) ?? (current[camelKey] as T | undefined);
   const next = {
-    status: patch.status ?? current.status,
-    progress: patch.progress ?? current.progress,
-    attempts: patch.attempts ?? current.attempts,
-    errorMessage: patch.errorMessage ?? current.errorMessage ?? null,
-    storageKey: patch.storageKey ?? current.storageKey ?? null,
-    publicUrl: patch.publicUrl ?? current.publicUrl ?? null,
+    status: patch.status ?? (current.status as string),
+    progress: patch.progress ?? (current.progress as number),
+    attempts: patch.attempts ?? (current.attempts as number),
+    errorMessage: patch.errorMessage ?? readValue<string>("error_message", "errorMessage") ?? null,
+    errorCode: patch.errorCode ?? readValue<string>("error_code", "errorCode") ?? null,
+    storageKey: patch.storageKey ?? readValue<string>("storage_key", "storageKey") ?? null,
+    publicUrl: patch.publicUrl ?? readValue<string>("public_url", "publicUrl") ?? null,
+    resultExcerpt: patch.resultExcerpt ?? readValue<string>("result_excerpt", "resultExcerpt") ?? null,
+    resultText: patch.resultText ?? readValue<string>("result_text", "resultText") ?? null,
+    resultKind: patch.resultKind ?? readValue<string>("result_kind", "resultKind") ?? null,
+    sourceUrl: patch.sourceUrl ?? readValue<string>("source_url", "sourceUrl") ?? null,
   };
   db.prepare(
     `UPDATE upload_jobs
-     SET status = ?, progress = ?, attempts = ?, error_message = ?, storage_key = ?, public_url = ?, updated_at = ?
+     SET status = ?, progress = ?, attempts = ?, error_message = ?, error_code = ?, storage_key = ?, public_url = ?, result_excerpt = ?, result_text = ?, result_kind = ?, source_url = ?, updated_at = ?
      WHERE id = ?`,
   ).run(
     next.status,
     next.progress,
     next.attempts,
     next.errorMessage,
+    next.errorCode,
     next.storageKey,
     next.publicUrl,
+    next.resultExcerpt,
+    next.resultText,
+    next.resultKind,
+    next.sourceUrl,
     nowIso(),
     jobId,
   );

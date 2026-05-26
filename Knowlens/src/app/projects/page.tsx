@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
-  { label: "首页", icon: HomeIcon, href: "/" },
-  { label: "我的项目", icon: FolderOpen, href: "/projects" },
-  { label: "个人主页", icon: UserCircle2, href: "/profile" },
+  { label: "Home", icon: HomeIcon, href: "/app" },
+  { label: "Projects", icon: FolderOpen, href: "/projects" },
+  { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
 const projectItems = [

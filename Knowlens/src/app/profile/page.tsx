@@ -5,15 +5,15 @@ import { useRouter } from "next/navigation";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
-  { label: "首页", icon: HomeIcon, href: "/" },
-  { label: "我的项目", icon: FolderOpen, href: "/projects" },
-  { label: "个人主页", icon: UserCircle2, href: "/profile" },
+  { label: "Home", icon: HomeIcon, href: "/app" },
+  { label: "Projects", icon: FolderOpen, href: "/projects" },
+  { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
 const quickStats = [
-  { label: "本月生成项目", value: "18" },
-  { label: "已导出内容", value: "42" },
-  { label: "账户积分", value: "80" },
+  { label: "Projects this month", value: "18" },
+  { label: "Exports completed", value: "42" },
+  { label: "Account credits", value: "80" },
 ];
 
 export default function ProfilePage() {
@@ -27,7 +27,7 @@ export default function ProfilePage() {
           <header className="mb-5">
             <div>
               <p className="text-sm text-zinc-500">KnowLens.ai</p>
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">个人主页</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Profile</h1>
             </div>
           </header>
 
@@ -39,7 +39,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="text-base font-semibold text-zinc-900">daichuanqing</p>
-                  <p className="text-sm text-zinc-500">科普内容创作者</p>
+                  <p className="text-sm text-zinc-500">Science content creator</p>
                 </div>
               </div>
               <button
@@ -75,7 +75,7 @@ export default function ProfilePage() {
                 <BadgeCheck size={15} />
                 Subscription Status
               </span>
-              <span className="text-xs text-zinc-500">查看</span>
+              <span className="text-xs text-zinc-500">View</span>
             </button>
             <button
               type="button"
@@ -86,7 +86,7 @@ export default function ProfilePage() {
                 <Zap size={15} />
                 Credit History
               </span>
-              <span className="text-xs text-zinc-500">设置</span>
+              <span className="text-xs text-zinc-500">Manage</span>
             </button>
           </section>
         </div>

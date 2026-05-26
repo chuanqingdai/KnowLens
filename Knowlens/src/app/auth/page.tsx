@@ -62,7 +62,10 @@ export default function AuthPage() {
     ? getAuthParams()
     : { authError: null as string | null, callbackUrl: "/app" };
   const canRenderGoogleButton = Boolean(oneTapClientId);
-  const showLocalBypass = mounted && isLocalNetworkHost() && process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true";
+  const showLocalBypass =
+    mounted &&
+    isLocalNetworkHost() &&
+    (process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true" || process.env.NODE_ENV !== "production");
 
   useEffect(() => {
     setMounted(true);

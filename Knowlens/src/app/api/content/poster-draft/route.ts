@@ -36,12 +36,215 @@ type PosterPlanItem = {
 type PosterDraftRequest = {
   topic?: string;
   prompt?: string;
+  textModel?: string;
   posterCount?: number;
   posterSizeLabel?: string;
   direction?: "poster" | "ppt" | "video";
   draftMode?: "mock" | "auto";
   outputLanguage?: OutputLanguage;
 };
+
+type GptsApiGenerateResponse = {
+  candidates?: Array<{
+    content?: {
+      role?: string;
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+    finishReason?: string;
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+  modelVersion?: string;
+  responseId?: string;
+};
+
+type OpenAICompatChatCompletionResponse = {
+  id?: string;
+  object?: string;
+  created?: number;
+  model?: string;
+  choices?: Array<{
+    index?: number;
+    message?: {
+      role?: string;
+      content?: string;
+    };
+    finish_reason?: string | null;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+};
+
+const FREE_MODEL_IDS = new Set(["gemini-2.5", "deepseek-v4"]);
+const PAID_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.4", "gemini-3.1-pro", "claude-sonnet-4.6"]);
+
+const GPTSAPI_MODEL_MAP: Record<string, string> = {
+  "gemini-2.5": process.env.GPTSAPI_MODEL_GEMINI_25 || "gemini-2.5-flash",
+  "deepseek-v4": process.env.GPTSAPI_MODEL_DEEPSEEK_V4 || "deepseek-v4",
+};
+
+const PAID_MODEL_MAP: Record<string, string> = {
+  "gpt-5.5": process.env.PAID_MODEL_GPT_55 || "gpt-5.5",
+  "gpt-5.4": process.env.PAID_MODEL_GPT_54 || "gpt-5.4",
+  "gemini-3.1-pro": process.env.PAID_MODEL_GEMINI_31_PRO || "gemini-3.1-pro",
+  "claude-sonnet-4.6": process.env.PAID_MODEL_CLAUDE_SONNET_46 || "claude-sonnet-4.6",
+};
+
+function isFreeTextModel(textModel?: string) {
+  if (!textModel) {
+    return false;
+  }
+  return FREE_MODEL_IDS.has(textModel);
+}
+
+function resolvePaidModel(textModel?: string) {
+  const normalized = (textModel || "").trim().toLowerCase();
+  if (normalized && PAID_MODEL_IDS.has(normalized)) {
+    return PAID_MODEL_MAP[normalized] || normalized;
+  }
+  return process.env.PAID_TEXT_MODEL_DEFAULT || process.env.OPENAI_TEXT_MODEL || "gpt-5.4";
+}
+
+function getGptsApiKeyForModel(textModel: string) {
+  if (textModel === "gemini-2.5") {
+    return (
+      process.env.GPTSAPI_GEMINI_API_KEY ||
+      process.env.GPTSAPI_FREE_API_KEY ||
+      process.env.GPTSAPI_API_KEY ||
+      ""
+    );
+  }
+  if (textModel === "deepseek-v4") {
+    return (
+      process.env.GPTSAPI_DEEPSEEK_API_KEY ||
+      process.env.GPTSAPI_FREE_API_KEY ||
+      process.env.GPTSAPI_API_KEY ||
+      ""
+    );
+  }
+  return process.env.GPTSAPI_API_KEY || "";
+}
+
+function getPaidChatCompletionsApiKey() {
+  return process.env.PAID_LLM_API_KEY || process.env.OPENAI_API_KEY || "";
+}
+
+function getPaidChatCompletionsUrl() {
+  return (
+    process.env.PAID_LLM_CHAT_COMPLETIONS_URL ||
+    process.env.OPENAI_COMPAT_CHAT_COMPLETIONS_URL ||
+    "https://api.openai.com/v1/chat/completions"
+  );
+}
+
+async function requestDraftFromGptsApi(input: {
+  textModel: string;
+  promptBundle: { systemPrompt: string; userPrompt: string };
+}) {
+  const providerModel = GPTSAPI_MODEL_MAP[input.textModel] || input.textModel;
+  const apiKey = getGptsApiKeyForModel(input.textModel);
+  if (!apiKey) {
+    return { ok: false as const, error: `Missing API key for model ${input.textModel}.` };
+  }
+
+  const requestBody = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `${input.promptBundle.systemPrompt}\n\n${input.promptBundle.userPrompt}`,
+          },
+        ],
+      },
+    ],
+  };
+
+  const response = await fetch(
+    `https://api.gptsapi.net/v1beta/models/${encodeURIComponent(providerModel)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    },
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return {
+      ok: false as const,
+      error: `Model request failed (${response.status}): ${errText.slice(0, 220)}`,
+    };
+  }
+
+  const data = (await response.json()) as GptsApiGenerateResponse;
+  const text =
+    data.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text?.trim() ?? "")
+      .filter(Boolean)
+      .join("\n") ?? "";
+  if (!text) {
+    return { ok: false as const, error: "Empty model response." };
+  }
+
+  return { ok: true as const, text, modelVersion: data.modelVersion ?? providerModel };
+}
+
+async function requestDraftFromPaidModels(input: {
+  textModel?: string;
+  promptBundle: { systemPrompt: string; userPrompt: string };
+}) {
+  const apiKey = getPaidChatCompletionsApiKey();
+  if (!apiKey) {
+    return { ok: false as const, error: "Missing paid model API key." };
+  }
+
+  const model = resolvePaidModel(input.textModel);
+  const endpoint = getPaidChatCompletionsUrl();
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.6,
+      messages: [
+        { role: "system", content: input.promptBundle.systemPrompt },
+        { role: "user", content: input.promptBundle.userPrompt },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return {
+      ok: false as const,
+      error: `Paid model request failed (${response.status}): ${errText.slice(0, 220)}`,
+    };
+  }
+
+  const data = (await response.json()) as OpenAICompatChatCompletionResponse;
+  const text = data.choices?.[0]?.message?.content?.trim() || "";
+  if (!text) {
+    return { ok: false as const, error: "Paid model returned empty content." };
+  }
+
+  return { ok: true as const, text, modelVersion: data.model ?? model };
+}
 
 type PosterRenderSpec = {
   version: "v1";
@@ -473,6 +676,7 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as PosterDraftRequest;
     const topic = (payload.topic ?? "知识主题").trim() || "知识主题";
     const prompt = (payload.prompt ?? "").trim();
+    const textModel = (payload.textModel ?? "").trim().toLowerCase();
     const posterCount = clamp(Math.round(payload.posterCount ?? 1), 1, 10);
     const posterSizeLabel = payload.posterSizeLabel?.trim();
     const direction = payload.direction ?? "poster";
@@ -499,17 +703,6 @@ export async function POST(request: NextRequest) {
 
     const fallbackDraft = buildFallbackPosterDraft(topic, posterSizeLabel, prompt, outputLanguage);
     const fallbackPlan = buildFallbackPlanListByLanguage(topic, posterCount, outputLanguage);
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json({
-        posterDraft: fallbackDraft,
-        planList: fallbackPlan,
-        source: "fallback",
-      });
-    }
-
-    const model = process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini";
     const promptBundle = buildContentDraftPrompt({
       direction,
       topic,
@@ -519,32 +712,71 @@ export async function POST(request: NextRequest) {
       outputLanguage,
     });
 
-    const completionResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.6,
-        messages: [
-          { role: "system", content: promptBundle.systemPrompt },
-          { role: "user", content: promptBundle.userPrompt },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
+    let content = "";
+    if (isFreeTextModel(textModel)) {
+      const freeResult = await requestDraftFromGptsApi({ textModel, promptBundle });
+      if (!freeResult.ok) {
+        if (direction === "poster") {
+          return NextResponse.json(
+            {
+              posterDraft: fallbackDraft,
+              planList: fallbackPlan,
+              source: "fallback",
+              error: freeResult.error,
+            },
+            { status: 200 },
+          );
+        }
+        const mock = buildMockDraftPayload({
+          direction,
+          topic,
+          count: posterCount,
+        });
+        return NextResponse.json({
+          ...mock,
+          outputLanguage,
+          source: "fallback",
+          error: freeResult.error,
+        });
+      }
+      content = freeResult.text;
+    } else {
+      const paidResult = await requestDraftFromPaidModels({ textModel, promptBundle });
+      if (!paidResult.ok) {
+        if (direction === "poster") {
+          return NextResponse.json(
+            {
+              posterDraft: fallbackDraft,
+              planList: fallbackPlan,
+              source: "fallback",
+              error: paidResult.error,
+            },
+            { status: 200 },
+          );
+        }
+        const mock = buildMockDraftPayload({
+          direction,
+          topic,
+          count: posterCount,
+        });
+        return NextResponse.json({
+          ...mock,
+          outputLanguage,
+          source: "fallback",
+          error: paidResult.error,
+        });
+      }
+      content = paidResult.text;
+    }
 
-    if (!completionResponse.ok) {
-      const errText = await completionResponse.text();
+    if (!content) {
       if (direction === "poster") {
         return NextResponse.json(
           {
             posterDraft: fallbackDraft,
             planList: fallbackPlan,
             source: "fallback",
-            error: `LLM request failed: ${errText.slice(0, 200)}`,
+            error: "Model response is empty.",
           },
           { status: 200 },
         );
@@ -558,14 +790,9 @@ export async function POST(request: NextRequest) {
         ...mock,
         outputLanguage,
         source: "fallback",
-        error: `LLM request failed: ${errText.slice(0, 200)}`,
+        error: "Model response is empty.",
       });
     }
-
-    const data = (await completionResponse.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content ?? "";
     const parsed = parseJsonContent(content);
 
     if (!parsed) {

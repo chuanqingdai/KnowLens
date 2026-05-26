@@ -10,6 +10,7 @@ type PaywallDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   showPromoBanner?: boolean;
+  compact?: boolean;
   onClose: () => void;
   onConfirm: () => void;
 };
@@ -21,6 +22,7 @@ export function PaywallDialog({
   confirmLabel = "Upgrade Now",
   cancelLabel = "Not now",
   showPromoBanner = false,
+  compact = false,
   onClose,
   onConfirm,
 }: PaywallDialogProps) {
@@ -50,7 +52,7 @@ export function PaywallDialog({
         </div>
         <h3 className="mt-3 text-lg font-semibold tracking-tight text-zinc-900">{title}</h3>
         <p className="mt-2 text-sm leading-6 text-zinc-600">{description}</p>
-        {showPromoBanner ? <PromoCountdownBanner variant="inline" className="mt-3" /> : null}
+        {showPromoBanner && !compact ? <PromoCountdownBanner variant="inline" className="mt-3" /> : null}
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"

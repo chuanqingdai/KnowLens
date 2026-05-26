@@ -1,7 +1,16 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -17,6 +26,7 @@ import {
   Home as HomeIcon,
   ImagePlay,
   Link2,
+  LoaderCircle,
   Minus,
   Plus,
   SendHorizontal,
@@ -123,14 +133,25 @@ const inputPlaceholders = [
   "Upload a PDF, PPT, or document to generate visual learning content quickly",
 ];
 
+const workspaceLaunchStages = [
+  "Understanding your input",
+  "Choosing the best output direction",
+  "Preparing your workspace draft",
+];
+
 type SourceKind = "file" | "web" | "youtube" | "podcast";
 
 type SourceItem = {
   id: string;
+  jobId?: string;
   kind: SourceKind;
   name: string;
   origin: string;
-  status: "extracting" | "ready";
+  mimeType?: string;
+  sizeBytes?: number;
+  progress?: number;
+  previewUrl?: string;
+  status: "queued" | "uploading" | "extracting" | "processing" | "ready" | "failed";
   excerpt: string;
 };
 
@@ -148,18 +169,11 @@ function normalizeLegacySourceName(name: string) {
 }
 
 function normalizeLegacySourceExcerpt(excerpt: string) {
-  if (excerpt === "正在提取文本内容...") {
-    return "Extracting text content...";
-  }
-  if (excerpt === "正在提取视频字幕...") {
-    return "Extracting video transcript...";
-  }
-  if (excerpt === "正在提取网页正文...") {
-    return "Extracting webpage text...";
-  }
-  if (excerpt === "正在提取播客字幕...") {
-    return "Extracting podcast transcript...";
-  }
+  if (excerpt === "Queued for processing...") return "Queued for processing...";
+  if (excerpt === "Processing upload...") return "Processing upload...";
+  if (excerpt === "Processing link...") return "Processing link...";
+  if (excerpt === "Processing transcript...") return "Reading transcript...";
+  if (excerpt === "Processing webpage text...") return "Reading page text...";
   if (excerpt === "文本内容较短，已完成解析。") {
     return "The extracted text is short. Parsing completed.";
   }
@@ -182,6 +196,91 @@ function normalizeLegacySourceExcerpt(excerpt: string) {
     return "Document detected. Outline and key paragraphs extracted for visual generation.";
   }
   return excerpt;
+}
+
+function formatFileSize(bytes?: number) {
+  if (!bytes || bytes <= 0) {
+    return "--";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileExtensionLabel(fileName: string) {
+  const ext = fileName.split(".").pop()?.trim().toUpperCase();
+  if (!ext || ext === fileName.toUpperCase()) {
+    return "FILE";
+  }
+  return ext;
+}
+
+function getSourceFormatLabel(item: SourceItem) {
+  if (item.kind === "youtube") return "YOUTUBE";
+  if (item.kind === "podcast") return "PODCAST";
+  if (item.kind === "web") return "WEB";
+  return getFileExtensionLabel(item.name);
+}
+
+function getSourceProgress(item: SourceItem) {
+  if (item.status === "ready") return 100;
+  if (item.status === "failed") return 0;
+  if (item.status === "queued") return Math.max(3, Math.min(item.progress ?? 5, 20));
+  if (item.status === "uploading") return Math.max(8, Math.min(item.progress ?? 18, 35));
+  if (item.status === "extracting") return Math.max(35, Math.min(item.progress ?? 50, 70));
+  return Math.max(60, Math.min(item.progress ?? 72, 98));
+}
+
+function getSourceStatusText(item: SourceItem) {
+  if (item.status === "ready") return "";
+  if (item.status === "failed") return item.excerpt || "Upload failed";
+  return "Uploading";
+}
+
+function getCompactFileName(name: string, maxLength = 22) {
+  if (name.length <= maxLength) return name;
+  const dotIndex = name.lastIndexOf(".");
+  if (dotIndex <= 0 || dotIndex >= name.length - 1) {
+    return `${name.slice(0, maxLength - 1)}…`;
+  }
+  const ext = name.slice(dotIndex + 1);
+  const base = name.slice(0, dotIndex);
+  const head = Math.max(8, maxLength - ext.length - 4);
+  return `${base.slice(0, head)}….${ext}`;
+}
+
+function cleanUploadErrorMessage(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return "Upload failed.";
+  }
+  if (/ENOENT/i.test(trimmed)) {
+    return "Upload failed: file not found.";
+  }
+  if (/too large|exceeds|file size/i.test(trimmed)) {
+    return "Upload failed: file is too large.";
+  }
+  if (/unsupported|not supported|invalid file type/i.test(trimmed)) {
+    return "Upload failed: file type is not supported.";
+  }
+  if (/network|fetch|timeout/i.test(trimmed)) {
+    return "Upload failed: network or server timeout.";
+  }
+  return trimmed.length > 90 ? `${trimmed.slice(0, 90)}...` : trimmed;
+}
+
+function hasFilesInDataTransfer(dataTransfer: DataTransfer | null) {
+  if (!dataTransfer) {
+    return false;
+  }
+  if (dataTransfer.files && dataTransfer.files.length > 0) {
+    return true;
+  }
+  return Array.from(dataTransfer.types ?? []).includes("Files");
 }
 
 const projectTitleEnMap: Record<string, string> = {
@@ -240,6 +339,21 @@ const supportedUploadAccept = [
   ".aac",
   ".ogg",
 ].join(",");
+
+const FREE_MODEL_UPLOAD_LIMITS = {
+  maxFileCount: 6,
+  maxFileSizeBytes: 20 * 1024 * 1024,
+  maxTotalBytes: 80 * 1024 * 1024,
+};
+
+const PREMIUM_MODEL_UPLOAD_LIMITS = {
+  maxFileCount: 12,
+  maxFileSizeBytes: 80 * 1024 * 1024,
+  maxTotalBytes: 240 * 1024 * 1024,
+};
+
+const MAX_LINK_SOURCE_COUNT = 1;
+const MAX_COMPOSE_TEXT_CHARS = 6000;
 
 const MIN_COMPOSER_HEIGHT = 132;
 const MAX_COMPOSER_HEIGHT = 260;
@@ -374,6 +488,18 @@ function hasValidYoutubeVideoId(url: URL) {
   return false;
 }
 
+function parseHttpUrl(value: string) {
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 function isPodcastLink(url: URL) {
   const host = url.hostname.replace("www.", "").toLowerCase();
   const path = url.pathname.toLowerCase();
@@ -405,6 +531,20 @@ function isMediaFile(file: File) {
   return /\.(mp4|mov|avi|mkv|mp3|wav|m4a|flac|aac|ogg)$/i.test(file.name.toLowerCase());
 }
 
+function isPremiumTextModel(modelValue: string) {
+  return textModelOptions.some((option) => option.value === modelValue && option.premium);
+}
+
+function sourceItemNeedsPremium(item: SourceItem) {
+  if (item.kind === "youtube" || item.kind === "podcast") {
+    return true;
+  }
+  if (item.kind === "file") {
+    return /\.(mp4|mov|avi|mkv|mp3|wav|m4a|flac|aac|ogg)$/i.test(item.origin.toLowerCase());
+  }
+  return false;
+}
+
 async function extractFromFile(file: File) {
   const lowerName = file.name.toLowerCase();
   const canReadText =
@@ -431,6 +571,52 @@ async function extractFromFile(file: File) {
   }
 
   return `Document detected: "${file.name}". Outline and key paragraphs extracted for visual generation.`;
+}
+
+type UploadJobRecord = {
+  id: string;
+  file_name?: string;
+  fileName?: string;
+  mime_type?: string;
+  mimeType?: string;
+  source_kind?: SourceKind;
+  sourceKind?: SourceKind;
+  source_url?: string | null;
+  sourceUrl?: string | null;
+  status?: SourceItem["status"];
+  progress?: number;
+  error_message?: string | null;
+  errorMessage?: string | null;
+  error_code?: string | null;
+  errorCode?: string | null;
+  result_excerpt?: string | null;
+  resultExcerpt?: string | null;
+  result_text?: string | null;
+  resultText?: string | null;
+  result_kind?: string | null;
+  resultKind?: string | null;
+  public_url?: string | null;
+  publicUrl?: string | null;
+  storage_key?: string | null;
+  storageKey?: string | null;
+  created_at?: string;
+  createdAt?: string;
+};
+
+function normalizeUploadJobStatus(status: string | undefined): SourceItem["status"] {
+  if (status === "done") {
+    return "ready";
+  }
+  if (status === "failed") {
+    return "failed";
+  }
+  if (status === "processing") {
+    return "processing";
+  }
+  if (status === "queued") {
+    return "queued";
+  }
+  return "extracting";
 }
 
 export default function Home() {
@@ -465,10 +651,10 @@ export default function Home() {
   const [previewItem, setPreviewItem] = useState<FeaturedCaseItem | null>(null);
   const [previewPaywallOpen, setPreviewPaywallOpen] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
-    null,
-  );
+  const [uploadJobs, setUploadJobs] = useState<Record<string, UploadJobRecord>>({});
   const [isStartingWorkspace, setIsStartingWorkspace] = useState(false);
+  const [workspaceLaunchStage, setWorkspaceLaunchStage] = useState(0);
+  const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [, setMetricVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
@@ -476,21 +662,47 @@ export default function Home() {
   const textModelButtonRef = useRef<HTMLButtonElement | null>(null);
   const featuredLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  const composeLimitToastShownRef = useRef(false);
+  const dragDepthRef = useRef(0);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
+  const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);
+  const uploadLimits = isPremiumModelSelected
+    ? PREMIUM_MODEL_UPLOAD_LIMITS
+    : FREE_MODEL_UPLOAD_LIMITS;
+  const linkSourceCount = sourceItems.filter((item) => item.kind !== "file").length;
+  const hasLinkSource = linkSourceCount >= MAX_LINK_SOURCE_COUNT;
+  const fileSourceCount = sourceItems.filter((item) => item.kind === "file").length;
+  const fileSourceBytes = sourceItems
+    .filter((item) => item.kind === "file")
+    .reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0);
   const selectedTextModel =
     textModelOptions.find((item) => item.value === resolvedTextModel) ?? textModelOptions[0];
+
+  function updateComposeInput(nextRawValue: string) {
+    if (nextRawValue.length <= MAX_COMPOSE_TEXT_CHARS) {
+      composeLimitToastShownRef.current = false;
+      setComposeInput(nextRawValue);
+      return;
+    }
+    const trimmedValue = nextRawValue.slice(0, MAX_COMPOSE_TEXT_CHARS);
+    setComposeInput(trimmedValue);
+    if (!composeLimitToastShownRef.current) {
+      setUploadToast(`Input limit reached (${MAX_COMPOSE_TEXT_CHARS} characters max).`);
+      composeLimitToastShownRef.current = true;
+    }
+  }
 
   useEffect(() => {
     const currentText = inputPlaceholders[placeholderIndex];
     const typedDone = typedPlaceholder === currentText;
     const deletedDone = typedPlaceholder.length === 0;
 
-    let delay = isDeleting ? 35 : 65;
+    let delay = isDeleting ? 25 : 45;
     if (!isDeleting && typedDone) {
-      delay = 1300;
+      delay = 2000;
     } else if (isDeleting && deletedDone) {
-      delay = 240;
+      delay = 180;
     }
 
     const timer = window.setTimeout(() => {
@@ -539,6 +751,37 @@ export default function Home() {
   }, [uploadToast]);
 
   useEffect(() => {
+    if (!isStartingWorkspace) {
+      setWorkspaceLaunchStage(0);
+      return;
+    }
+    setWorkspaceLaunchStage(0);
+    const timers = [
+      window.setTimeout(() => setWorkspaceLaunchStage(1), 520),
+      window.setTimeout(() => setWorkspaceLaunchStage(2), 1280),
+    ];
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [isStartingWorkspace]);
+
+  useEffect(() => {
+    function preventBrowserOpenOnDrop(event: globalThis.DragEvent) {
+      if (!hasFilesInDataTransfer(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+    }
+
+    window.addEventListener("dragover", preventBrowserOpenOnDrop);
+    window.addEventListener("drop", preventBrowserOpenOnDrop);
+    return () => {
+      window.removeEventListener("dragover", preventBrowserOpenOnDrop);
+      window.removeEventListener("drop", preventBrowserOpenOnDrop);
+    };
+  }, []);
+
+  useEffect(() => {
     const node = composeRef.current;
     if (!node) {
       return;
@@ -549,8 +792,78 @@ export default function Home() {
     node.style.overflowY = node.scrollHeight > MAX_COMPOSER_HEIGHT ? "auto" : "hidden";
   }, [composeInput]);
 
-  async function handleUploadChange(event: ChangeEvent<HTMLInputElement>) {
-    const selectedFiles = Array.from(event.target.files ?? []);
+  useEffect(() => {
+    let isActive = true;
+    let timer: number | undefined;
+
+    async function syncJobs() {
+      try {
+        const url = currentEmail
+          ? `/api/upload/jobs?userEmail=${encodeURIComponent(currentEmail)}`
+          : "/api/upload/jobs";
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { jobs?: UploadJobRecord[] };
+        if (!isActive || !Array.isArray(data.jobs)) {
+          return;
+        }
+        const nextJobs = Object.fromEntries(data.jobs.map((job) => [job.id, job]));
+        setUploadJobs(nextJobs);
+        setSourceItems((prev) =>
+          prev.reduce<SourceItem[]>((acc, item) => {
+            if (!item.jobId) {
+              acc.push(item);
+              return acc;
+            }
+            const job = nextJobs[item.jobId];
+            if (!job) {
+              acc.push(item);
+              return acc;
+            }
+            const status = normalizeUploadJobStatus(job.status);
+            const nextProgress =
+              typeof job.progress === "number" && Number.isFinite(job.progress)
+                ? Math.max(0, Math.min(Math.round(job.progress), 100))
+                : item.progress;
+            const nextItem = {
+              ...item,
+              status,
+              progress: status === "ready" ? 100 : status === "failed" ? 0 : nextProgress,
+              excerpt:
+                job.errorMessage ||
+                job.error_message ||
+                job.resultExcerpt ||
+                job.result_excerpt ||
+                item.excerpt,
+            };
+            if (status === "failed") {
+              if (nextItem.previewUrl?.startsWith("blob:")) {
+                URL.revokeObjectURL(nextItem.previewUrl);
+              }
+              return acc;
+            }
+            acc.push(nextItem);
+            return acc;
+          }, []),
+        );
+      } catch {
+        // ignore polling errors
+      }
+    }
+
+    syncJobs();
+    timer = window.setInterval(syncJobs, 2500);
+    return () => {
+      isActive = false;
+      if (timer) {
+        window.clearInterval(timer);
+      }
+    };
+  }, [currentEmail]);
+
+  async function enqueueSelectedFiles(selectedFiles: File[]) {
     const blockedMediaFiles = selectedFiles.filter((file) => isMediaFile(file));
     const allowedFiles =
       !hasMembership && blockedMediaFiles.length
@@ -559,58 +872,182 @@ export default function Home() {
 
     if (!hasMembership && blockedMediaFiles.length) {
       setMediaUploadPaywallOpen(true);
-      setUploadToast(
-        `Audio/video files require a premium model (GPT-5.5). ${blockedMediaFiles.length} file(s) blocked.`,
-      );
     }
 
-    const files = allowedFiles;
-    if (!files.length) {
-      event.target.value = "";
+    if (!allowedFiles.length) {
       return;
     }
 
-    const items = files.map((file) => ({
+    const remainingSlots = uploadLimits.maxFileCount - fileSourceCount;
+    if (remainingSlots <= 0) {
+      return;
+    }
+
+    const files = allowedFiles.slice(0, remainingSlots);
+
+    const acceptedFiles: File[] = [];
+    let runningTotal = fileSourceBytes;
+
+    files.forEach((file) => {
+      if (file.size > uploadLimits.maxFileSizeBytes) {
+        return;
+      }
+      if (runningTotal + file.size > uploadLimits.maxTotalBytes) {
+        return;
+      }
+      runningTotal += file.size;
+      acceptedFiles.push(file);
+    });
+
+    if (!acceptedFiles.length) {
+      return;
+    }
+
+    const items = acceptedFiles.map((file) => ({
       id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       kind: "file" as SourceKind,
       name: file.name,
       origin: file.name,
-      status: "extracting" as const,
-      excerpt: "Extracting text content...",
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      progress: 5,
+      previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      status: "queued" as const,
+      excerpt: "Queued for processing...",
     }));
 
     setSourceItems((prev) => [...items, ...prev]);
-    setUploadProgress({ done: 0, total: files.length });
 
-    const extracted: Array<{ id: string; excerpt: string }> = [];
-    for (let idx = 0; idx < files.length; idx += 1) {
-      const excerpt = await extractFromFile(files[idx]);
-      extracted.push({ id: items[idx].id, excerpt });
-      setUploadProgress({ done: idx + 1, total: files.length });
-    }
+    try {
+      for (let idx = 0; idx < acceptedFiles.length; idx += 1) {
+        const file = acceptedFiles[idx];
+        const formData = new FormData();
+        formData.append("userEmail", currentEmail);
+        formData.append("fileName", file.name);
+        formData.append("mimeType", file.type || "application/octet-stream");
+        formData.append("fileSize", String(file.size));
+        formData.append("sourceKind", "file");
+        formData.append("file", file);
 
-    setSourceItems((prev) =>
-      prev.map((item) => {
-        const target = extracted.find((x) => x.id === item.id);
-        if (!target) {
-          return item;
-        }
-        return {
-          ...item,
-          status: "ready",
-          excerpt: target.excerpt,
+        const response = await fetch("/api/upload/jobs", {
+          method: "POST",
+          body: formData,
+        });
+        const data = (await response.json()) as {
+          job?: { jobId?: string };
+          error?: string;
         };
-      }),
-    );
-    window.setTimeout(() => setUploadProgress(null), 500);
-    setUploadToast(`Imported ${files.length} file(s). Text extraction completed.`);
+        if (!response.ok || !data.job?.jobId) {
+          throw new Error(data.error || "Upload job failed");
+        }
+
+        const jobId = data.job.jobId;
+        setSourceItems((prev) =>
+          prev.map((item) =>
+            item.id === items[idx].id
+              ? {
+                  ...item,
+                  jobId,
+                  status: "processing",
+                  progress: 65,
+                  excerpt: "Processing upload...",
+                }
+              : item,
+          ),
+        );
+        setUploadJobs((prev) => ({
+          ...prev,
+          [jobId]: {
+            id: jobId,
+            status: "processing",
+            progress: 0,
+            file_name: file.name,
+            fileName: file.name,
+            mime_type: file.type,
+            mimeType: file.type,
+            source_kind: "file",
+            sourceKind: "file",
+          },
+        }));
+      }
+    } catch (error) {
+      setSourceItems((prev) => {
+        const next = prev.filter((item) => !items.some((candidate) => candidate.id === item.id));
+        items.forEach((item) => {
+          if (item.previewUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(item.previewUrl);
+          }
+        });
+        return next;
+      });
+    } finally {
+      // no-op
+    }
+  }
+
+  async function handleUploadChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    await enqueueSelectedFiles(selectedFiles);
     event.target.value = "";
   }
 
-  async function handleSubmitLink() {
-    const value = linkValue.trim();
+  function handlePageDragEnter(event: DragEvent<HTMLDivElement>) {
+    if (!hasFilesInDataTransfer(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDragOverPage(true);
+  }
+
+  function handlePageDragOver(event: DragEvent<HTMLDivElement>) {
+    if (!hasFilesInDataTransfer(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    if (!isDragOverPage) {
+      setIsDragOverPage(true);
+    }
+  }
+
+  function handlePageDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (!hasFilesInDataTransfer(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDragOverPage(false);
+    }
+  }
+
+  function handlePageDrop(event: DragEvent<HTMLDivElement>) {
+    if (!hasFilesInDataTransfer(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragOverPage(false);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (!files.length) {
+      return;
+    }
+    void enqueueSelectedFiles(files);
+  }
+
+  async function handleSubmitLink(rawInput?: string) {
+    const value = (rawInput ?? linkValue).trim();
     if (!value) {
       setLinkError("Please enter a webpage, YouTube, or podcast URL.");
+      return;
+    }
+    if (hasLinkSource) {
+      setLinkError("Only one link can be attached per project. Remove the current link first.");
       return;
     }
     let parsed: URL;
@@ -628,6 +1065,15 @@ export default function Home() {
 
     const kind = guessLinkKind(parsed);
     const isYoutube = kind === "youtube";
+    const isTranscriptMediaLink = kind === "youtube" || kind === "podcast";
+
+    if (!hasMembership && isTranscriptMediaLink) {
+      setMediaUploadPaywallOpen(true);
+      setLinkError(
+        "YouTube/podcast transcript extraction requires a premium language model. Please upgrade to continue.",
+      );
+      return;
+    }
 
     if (isYoutube && !hasValidYoutubeVideoId(parsed)) {
       setLinkError("The YouTube URL is missing a valid video ID. Please check and try again.");
@@ -646,50 +1092,107 @@ export default function Home() {
       kind,
       name: isYoutube ? "YouTube Video" : kind === "podcast" ? "Podcast Link" : "Web URL",
       origin: value,
-      status: "extracting",
+      mimeType: "text/plain",
+      sizeBytes: value.length,
+      progress: 20,
+      status: "processing",
       excerpt:
         kind === "youtube"
-          ? "Extracting video transcript..."
+          ? "Processing transcript..."
           : kind === "podcast"
-            ? "Extracting podcast transcript..."
-            : "Extracting webpage text...",
+            ? "Processing transcript..."
+            : "Processing webpage text...",
     };
 
     setSourceItems((prev) => [pendingItem, ...prev]);
-    setLinkValue("");
+    setLinkValue(rawInput ? linkValue : "");
     setLinkInputOpen(false);
     setLinkError("");
 
-    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    try {
+      const response = await fetch("/api/upload/jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userEmail: currentEmail,
+          fileName: pendingItem.name,
+          mimeType: "text/plain",
+          fileSize: value.length,
+          sourceKind: kind,
+          sourceUrl: value,
+        }),
+      });
+      const data = (await response.json()) as {
+        job?: { jobId?: string };
+        error?: string;
+      };
+      const jobId = data.job?.jobId?.trim() ?? "";
+      if (!response.ok || !jobId) {
+        throw new Error(data.error || "Link processing failed");
+      }
 
-    setSourceItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== itemId) {
-          return item;
+      setSourceItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                jobId,
+                progress: 60,
+                excerpt: "Processing link...",
+              }
+            : item,
+        ),
+      );
+      setUploadJobs((prev) => ({
+        ...prev,
+        [jobId]: {
+          id: jobId,
+          status: "processing",
+          progress: 0,
+          file_name: pendingItem.name,
+          fileName: pendingItem.name,
+          mime_type: "text/plain",
+          mimeType: "text/plain",
+          source_kind: kind,
+          sourceKind: kind,
+          source_url: value,
+          sourceUrl: value,
+        },
+      }));
+      setUploadToast(
+        kind === "youtube"
+          ? "YouTube transcript job queued."
+          : kind === "podcast"
+            ? "Podcast transcript job queued."
+            : "Webpage text job queued.",
+      );
+    } catch (error) {
+      setSourceItems((prev) => {
+        const next = prev.filter((item) => item.id !== itemId);
+        const removed = prev.find((item) => item.id === itemId);
+        if (removed?.previewUrl?.startsWith("blob:")) {
+          URL.revokeObjectURL(removed.previewUrl);
         }
-        return {
-          ...item,
-          status: "ready",
-          excerpt:
-            kind === "youtube"
-              ? "Transcript extracted: key concepts, steps, and practical examples were detected."
-              : kind === "podcast"
-                ? "Transcript extracted: key arguments, examples, and speaking structure were identified."
-                : "Text extracted: title, key viewpoints, and main sections were identified.",
-        };
-      }),
-    );
-    setUploadToast(
-      kind === "youtube"
-        ? "YouTube transcript extraction completed."
-        : kind === "podcast"
-          ? "Podcast transcript extraction completed."
-          : "Webpage text extraction completed.",
-    );
+        return next;
+      });
+      setUploadToast(
+        cleanUploadErrorMessage(
+          error instanceof Error ? error.message : "Link processing failed.",
+        ),
+      );
+    }
   }
 
   function removeSourceItem(id: string) {
-    setSourceItems((prev) => prev.filter((item) => item.id !== id));
+    setSourceItems((prev) => {
+      const removed = prev.find((item) => item.id === id);
+      if (removed?.previewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
   }
 
   function toggleTextModelMenu() {
@@ -709,6 +1212,32 @@ export default function Home() {
     setOpenMenu("text");
   }
 
+  async function handleComposerPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const clipboard = event.clipboardData;
+    if (!clipboard) {
+      return;
+    }
+
+    const files = Array.from(clipboard.files ?? []);
+    if (files.length > 0) {
+      event.preventDefault();
+      await enqueueSelectedFiles(files);
+      return;
+    }
+
+    const pastedText = clipboard.getData("text/plain").trim();
+    if (!pastedText) {
+      return;
+    }
+    const pastedUrl = parseHttpUrl(pastedText);
+    if (!pastedUrl) {
+      return;
+    }
+    event.preventDefault();
+    await handleSubmitLink(pastedUrl.toString());
+    setUploadToast("Link detected from paste and queued.");
+  }
+
   function openMembershipFromHome() {
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("membership:return-path", pathname || "/");
@@ -718,6 +1247,21 @@ export default function Home() {
 
   async function handleGoGenerate() {
     if (isStartingWorkspace) {
+      return;
+    }
+    const hasPremiumRequiredSource = sourceItems.some((item) => sourceItemNeedsPremium(item));
+    if (!hasMembership && hasPremiumRequiredSource) {
+      setMediaUploadPaywallOpen(true);
+      setUploadToast(
+        "Some uploaded sources require a premium language model for transcript extraction. Please upgrade to generate.",
+      );
+      return;
+    }
+    if (!hasMembership && isPremiumTextModel(resolvedTextModel)) {
+      setModelPaywallOpen(true);
+      setUploadToast(
+        "The selected language model is a premium model. Please upgrade to generate with this model.",
+      );
       return;
     }
     const payload = {
@@ -752,6 +1296,42 @@ export default function Home() {
       setUploadToast("Unable to start a new project right now. Please try again later.");
     } finally {
       setIsStartingWorkspace(false);
+    }
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+    const isSubmitCombo = (event.metaKey || event.ctrlKey) && event.key === "Enter";
+    const isEnterSubmit = event.key === "Enter" && !event.shiftKey;
+    if (isSubmitCombo || isEnterSubmit) {
+      event.preventDefault();
+      void handleGoGenerate();
+      return;
+    }
+    if (event.key === "Escape") {
+      setOpenMenu(null);
+      setLinkInputOpen(false);
+      setLinkError("");
+    }
+  }
+
+  function handleLinkInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+    const isSubmitCombo = (event.metaKey || event.ctrlKey) && event.key === "Enter";
+    const isEnterSubmit = event.key === "Enter";
+    if (isSubmitCombo || isEnterSubmit) {
+      event.preventDefault();
+      void handleSubmitLink();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setLinkInputOpen(false);
+      setLinkError("");
     }
   }
 
@@ -871,7 +1451,13 @@ export default function Home() {
   }, [hasMoreFeaturedItems, featuredFilteredItems.length]);
 
   return (
-    <div className="min-h-screen bg-page text-zinc-900">
+    <div
+      className="min-h-screen bg-page text-zinc-900"
+      onDragEnter={handlePageDragEnter}
+      onDragOver={handlePageDragOver}
+      onDragLeave={handlePageDragLeave}
+      onDrop={handlePageDrop}
+    >
       <SidebarNav items={localizedNavItems} />
 
       <main className="px-3 py-4 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
@@ -934,8 +1520,8 @@ export default function Home() {
                   <span className="text-blue-600">KnowLens.ai</span> Visual Creation Studio
                 </h1>
                 <p className="mt-2 text-sm text-zinc-500 sm:text-base">
-                  Turn webpages, videos, and podcasts into visual long-form graphics, PPTs, or
-                  videos.
+                  Turn text, webpages, videos, and podcasts into visual long-form graphics, PPTs,
+                  or videos.
                 </p>
               </div>
 
@@ -956,80 +1542,79 @@ export default function Home() {
                   <textarea
                     ref={composeRef}
                     value={composeInput}
-                    onChange={(event) => setComposeInput(event.target.value)}
+                    maxLength={MAX_COMPOSE_TEXT_CHARS}
+                    onChange={(event) => updateComposeInput(event.target.value)}
+                    onKeyDown={handleComposerKeyDown}
+                    onPaste={(event) => {
+                      void handleComposerPaste(event);
+                    }}
                     className="w-full resize-none rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400"
                     placeholder={typedPlaceholder}
                   />
                 </label>
 
                 {sourceItems.length ? (
-                  <div className="mx-5 mt-1 rounded-2xl border border-zinc-200 bg-white/85 p-2">
-                    <div className="max-h-56 space-y-1.5 overflow-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-400">
+                  <div className="mx-5 mt-1">
+                    <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-400">
                       {sourceItems.map((item) => (
                         <div
                           key={item.id}
-                          className="flex items-start gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5"
+                          className="relative h-[96px] w-[96px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white"
                         >
-                          <span className="mt-0.5 text-zinc-500">
-                            {item.kind === "youtube" ? (
-                              <ImagePlay size={13} />
-                            ) : item.kind === "podcast" ? (
-                              <Headphones size={13} />
-                            ) : item.kind === "web" ? (
-                              <Globe size={13} />
-                            ) : (
-                              <FileText size={13} />
-                            )}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-medium text-zinc-900">
-                              {normalizeLegacySourceName(item.name)}
+                          {item.previewUrl ? (
+                            <img
+                              src={item.previewUrl}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-zinc-50 text-zinc-500">
+                              {item.kind === "youtube" ? (
+                                <ImagePlay size={26} />
+                              ) : item.kind === "podcast" ? (
+                                <Headphones size={26} />
+                              ) : item.kind === "web" ? (
+                                <Globe size={26} />
+                              ) : (
+                                <FileText size={26} />
+                              )}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => removeSourceItem(item.id)}
+                            className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                            aria-label="Remove source"
+                          >
+                            <X size={14} />
+                          </button>
+
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/55 to-transparent px-2 pb-1.5 pt-5 text-white">
+                            <p className="truncate text-[10px] font-medium">
+                              {getCompactFileName(normalizeLegacySourceName(item.name))}
                             </p>
-                            <p className="truncate text-[11px] text-zinc-500">{item.origin}</p>
-                            <p className="mt-0.5 text-[11px] leading-4 text-zinc-600">
-                              {normalizeLegacySourceExcerpt(item.excerpt)}
+                            <p className="mt-0.5 truncate text-[10px] text-white/85">
+                              {getSourceFormatLabel(item)} · {formatFileSize(item.sizeBytes)}
                             </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span
-                              className={`mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] ${
-                                item.status === "ready"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-zinc-100 text-zinc-500"
-                              }`}
-                            >
-                              {item.status === "ready" ? "Ready" : "Extracting"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeSourceItem(item.id)}
-                              className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
-                              aria-label="Remove source"
-                            >
-                              <X size={12} />
-                            </button>
+                            {getSourceStatusText(item) ? (
+                              <p className="mt-0.5 truncate text-[10px] text-white/90">
+                                {getSourceStatusText(item)}
+                              </p>
+                            ) : null}
+                            {item.status !== "ready" && item.status !== "failed" ? (
+                              <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/30">
+                                <div
+                                  className="h-full rounded-full bg-white transition-all duration-300"
+                                  style={{ width: `${getSourceProgress(item)}%` }}
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ))}
                     </div>
-                    {uploadProgress ? (
-                      <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2">
-                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                          <span>Uploading & extracting...</span>
-                          <span>
-                            {uploadProgress.done}/{uploadProgress.total}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200">
-                          <div
-                            className="h-full rounded-full bg-zinc-800 transition-all duration-200"
-                            style={{
-                              width: `${Math.round((uploadProgress.done / Math.max(uploadProgress.total, 1)) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
 
@@ -1048,19 +1633,29 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => {
+                          if (hasLinkSource) {
+                            setUploadToast("Only one link is allowed per project.");
+                            return;
+                          }
                           setLinkInputOpen((prev) => !prev);
                           setLinkError("");
                         }}
                         aria-label="Add link"
                         title="Add link"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-100"
+                        disabled={hasLinkSource}
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                          hasLinkSource
+                            ? "cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400"
+                            : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
+                        }`}
                       >
                         <Link2 size={15} />
                       </button>
                       {linkInputOpen ? (
                         <div className="absolute bottom-12 left-0 z-[80] w-[min(92vw,440px)] rounded-2xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
-                          <p className="mb-2 text-sm text-zinc-500">
-                            Supports webpage URLs, YouTube URLs, and podcast URLs
+                          <p className="mb-2 whitespace-pre-line text-sm text-zinc-500">
+                            Supports webpage URLs, YouTube URLs, and podcast URLs (Apple Podcasts, Spotify, YouTube Music).
+                            {"\n"}YouTube/podcast transcript extraction requires a premium language model.
                           </p>
                           <input
                             value={linkValue}
@@ -1071,12 +1666,7 @@ export default function Home() {
                               }
                             }}
                             placeholder="Paste a link and press Enter or click Extract"
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void handleSubmitLink();
-                              }
-                            }}
+                            onKeyDown={handleLinkInputKeyDown}
                             className="h-11 w-full rounded-xl border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
                           />
                           <button
@@ -1149,6 +1739,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={handleGoGenerate}
+                      title="Generate (Enter / Ctrl+Enter)"
                       disabled={isStartingWorkspace}
                       className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:mt-0 sm:w-auto"
                     >
@@ -1224,8 +1815,8 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="columns-2 gap-4 [column-gap:1rem] md:columns-3 lg:columns-4">
-                {featuredVisibleItems.map((item) => {
+              <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+                {featuredVisibleItems.map((item, index) => {
                     const metric = getCaseMetrics(item.id, item.views, item.likes, currentEmail);
                     return (
                   <article
@@ -1239,7 +1830,7 @@ export default function Home() {
                         openFeaturedPreview(item);
                       }
                     }}
-                    className="group mb-4 break-inside-avoid overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    className="group mb-4 inline-block w-full break-inside-avoid-column overflow-hidden rounded-2xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative w-full bg-zinc-100">
                       <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>
@@ -1248,6 +1839,7 @@ export default function Home() {
                           fallbackSrc={item.cover}
                           alt={item.title}
                           className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+                          loading={index < 8 ? "eager" : "lazy"}
                         />
                       </div>
                     </div>
@@ -1299,21 +1891,87 @@ export default function Home() {
         </div>
       </main>
       {uploadToast ? (
-        <div className="fixed bottom-6 left-1/2 z-[90] -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+        <div className="fixed left-1/2 top-6 z-[90] -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
           {uploadToast}
+        </div>
+      ) : null}
+      {isDragOverPage ? (
+        <div className="pointer-events-none fixed inset-0 z-[95] bg-black/72 backdrop-blur-[2px]">
+          <div className="flex h-full w-full items-center justify-center px-4">
+            <div className="w-full max-w-2xl text-center">
+              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center">
+                <div className="relative h-16 w-16">
+                  <span className="absolute -left-5 top-1 inline-flex h-10 w-10 rotate-[-18deg] items-center justify-center rounded-xl bg-indigo-200 text-indigo-900 shadow-[0_6px_18px_rgba(79,70,229,0.35)]">
+                    <FileText size={18} />
+                  </span>
+                  <span className="absolute -right-5 top-1 inline-flex h-10 w-10 rotate-[14deg] items-center justify-center rounded-xl bg-indigo-100 text-indigo-900 shadow-[0_6px_18px_rgba(79,70,229,0.35)]">
+                    <Link2 size={18} />
+                  </span>
+                  <span className="absolute left-1/2 top-5 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.45)]">
+                    <ImagePlay size={20} />
+                  </span>
+                </div>
+              </div>
+              <p className="text-[38px] font-semibold tracking-tight text-white">Add anything</p>
+              <p className="mt-3 text-[28px] font-medium leading-tight text-white/92">Drop files to upload</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {isStartingWorkspace ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-zinc-950/45 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-3xl border border-white/15 bg-zinc-950/80 px-5 py-5 text-white shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+            <div className="mb-3 flex items-center gap-2 text-sm text-zinc-200">
+              <LoaderCircle size={16} className="animate-spin text-zinc-200" />
+              <span>Thinking through your request</span>
+            </div>
+            <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-white/15">
+              <div
+                className="h-full rounded-full bg-white/85 transition-all duration-500"
+                style={{ width: `${((workspaceLaunchStage + 1) / workspaceLaunchStages.length) * 100}%` }}
+              />
+            </div>
+            <div className="space-y-2">
+              {workspaceLaunchStages.map((stage, idx) => {
+                const isDone = idx < workspaceLaunchStage;
+                const isActive = idx === workspaceLaunchStage;
+                return (
+                  <div
+                    key={stage}
+                    className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm transition ${
+                      isActive
+                        ? "border-white/35 bg-white/10 text-white"
+                        : "border-white/10 bg-white/5 text-zinc-300"
+                    }`}
+                  >
+                    {isDone ? (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-white text-zinc-900">
+                        <Check size={11} />
+                      </span>
+                    ) : isActive ? (
+                      <LoaderCircle size={14} className="animate-spin text-zinc-200" />
+                    ) : (
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-zinc-500" />
+                    )}
+                    <span>{stage}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       ) : null}
       <PaywallDialog
         open={modelPaywallOpen}
-        title="Premium model access required"
-        description="This advanced model is available for members only. Upgrade your plan to unlock premium model quality."
-        showPromoBanner
+        title="Membership required"
+        description="This language model is available to members only. Please go to the membership page to continue."
+        compact
         onClose={() => setModelPaywallOpen(false)}
         onConfirm={() => {
           setModelPaywallOpen(false);
           openMembershipFromHome();
         }}
-        confirmLabel="Upgrade for Premium Models"
+        confirmLabel="Go to Membership"
       />
       {previewItem ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -1411,28 +2069,28 @@ export default function Home() {
       ) : null}
       <PaywallDialog
         open={previewPaywallOpen}
-        title="Membership required for downloads"
-        description="Image download is available to members only. Upgrade your plan to unlock high-quality downloads."
-        showPromoBanner
+        title="Membership required"
+        description="Image downloads are available to members only. Please go to the membership page to continue."
+        compact
         onClose={() => setPreviewPaywallOpen(false)}
         onConfirm={() => {
           setPreviewPaywallOpen(false);
           closeFeaturedPreview();
           openMembershipFromHome();
         }}
-        confirmLabel="Upgrade to Download"
+        confirmLabel="Go to Membership"
       />
       <PaywallDialog
         open={mediaUploadPaywallOpen}
-        title="Premium membership required for media files"
-        description="Audio and video file processing requires a premium language model (GPT-5.5). Upgrade to continue with multimedia extraction."
-        showPromoBanner
+        title="Membership required"
+      description="Audio, video, YouTube, and podcast transcript extraction require a premium language model. Please go to the membership page to continue."
+        compact
         onClose={() => setMediaUploadPaywallOpen(false)}
         onConfirm={() => {
           setMediaUploadPaywallOpen(false);
           openMembershipFromHome();
         }}
-        confirmLabel="Upgrade for Media Processing"
+        confirmLabel="Go to Membership"
       />
     </div>
   );

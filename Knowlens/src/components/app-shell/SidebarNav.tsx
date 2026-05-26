@@ -6,7 +6,6 @@ import Image from "next/image";
 import { MessageSquare, Shield, Sparkles, type LucideIcon } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { resolveRoleByEmail } from "@/lib/auth";
-import { useLocale } from "@/components/i18n/LocaleProvider";
 
 type NavItem = {
   label: string;
@@ -21,7 +20,6 @@ type SidebarNavProps = {
 export function SidebarNav({ items }: SidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useLocale();
   const { data: session } = useSession();
   const isAdmin = useMemo(() => {
     const email = session?.user?.email ?? "";
@@ -77,8 +75,8 @@ export function SidebarNav({ items }: SidebarNavProps) {
           <button
             type="button"
             onClick={() => router.push("/admin")}
-            aria-label={t("Admin", "管理后台")}
-            title={t("Admin", "管理后台")}
+            aria-label="Admin"
+            title="Admin"
             className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
               pathname.startsWith("/admin")
                 ? "bg-zinc-900 text-white"
@@ -88,7 +86,7 @@ export function SidebarNav({ items }: SidebarNavProps) {
             <Shield size={17} />
           </button>
           <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-zinc-900 px-2 py-1 text-[11px] text-white opacity-0 shadow-md transition group-hover:opacity-100">
-            {t("Admin", "管理后台")}
+            Admin
           </span>
         </div>
       ) : null}
@@ -97,8 +95,8 @@ export function SidebarNav({ items }: SidebarNavProps) {
         <div className="group relative">
           <button
             type="button"
-            aria-label={t("Feedback", "用户反馈")}
-            title={t("Feedback", "用户反馈")}
+            aria-label="Feedback"
+            title="Feedback"
             onClick={() => router.push("/feedback")}
             className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
               pathname.startsWith("/feedback")
@@ -109,14 +107,14 @@ export function SidebarNav({ items }: SidebarNavProps) {
             <MessageSquare size={17} />
           </button>
           <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-zinc-900 px-2 py-1 text-[11px] text-white opacity-0 shadow-md transition group-hover:opacity-100">
-            {t("Feedback", "用户反馈")}
+            Feedback
           </span>
         </div>
         <div className="group relative">
           <button
             type="button"
-            aria-label={t("Updates", "功能升级")}
-            title={t("Updates", "功能升级")}
+            aria-label="Updates"
+            title="Updates"
             onClick={() => router.push("/upgrades")}
             className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
               pathname.startsWith("/upgrades")
@@ -127,7 +125,7 @@ export function SidebarNav({ items }: SidebarNavProps) {
             <Sparkles size={17} />
           </button>
           <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-zinc-900 px-2 py-1 text-[11px] text-white opacity-0 shadow-md transition group-hover:opacity-100">
-            {t("Updates", "功能升级")}
+            Updates
           </span>
         </div>
       </div>

@@ -300,6 +300,7 @@ export function ChatPanel({
     isZh,
   ]);
   const showMainSummaryBlock = !showDirectionGuide && !showStyleStage && !showBillingConfirm;
+  const showPersistentDirectionSummary = !showDirectionGuide && Boolean(configConfirmed && selectedIntent);
 
   if (shouldUseEnglishUi) {
     return (
@@ -672,7 +673,7 @@ export function ChatPanel({
         </article>
       ) : null}
 
-      {configConfirmed && selectedIntent ? (
+      {showPersistentDirectionSummary ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
           <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · Output Direction</div>
           <p className="text-sm leading-6 text-zinc-700">Output direction confirmed for the current session:</p>

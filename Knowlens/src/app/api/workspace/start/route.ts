@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       payload: {
-        prompt: safeTrim(payload.prompt, 4000),
+        prompt: safeTrim(payload.prompt, 6000),
         textModel: safeTrim(payload.textModel, 40),
         imageModel: safeTrim(payload.imageModel, 40),
         sources: normalizedSources,
@@ -121,4 +121,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

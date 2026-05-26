@@ -4,7 +4,7 @@ import { FolderOpen, Home as HomeIcon, Sparkles, UserCircle2 } from "lucide-reac
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
-  { label: "Home", icon: HomeIcon, href: "/" },
+  { label: "Home", icon: HomeIcon, href: "/app" },
   { label: "My Projects", icon: FolderOpen, href: "/projects" },
   { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];

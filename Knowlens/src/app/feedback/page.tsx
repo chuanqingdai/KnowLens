@@ -24,7 +24,7 @@ import {
 import { resolveRoleByEmail } from "@/lib/auth";
 
 const navItems = [
-  { label: "Home", icon: HomeIcon, href: "/" },
+  { label: "Home", icon: HomeIcon, href: "/app" },
   { label: "My Projects", icon: FolderOpen, href: "/projects" },
   { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];

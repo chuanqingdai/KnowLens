@@ -633,7 +633,8 @@ export default function MembershipPage() {
                   <button
                     type="button"
                     onClick={() => setOpenFaq((prev) => (prev === idx ? -1 : idx))}
-                    className="flex w-full items-center justify-between gap-3 text-left"
+                    data-plain-interaction="true"
+                    className="flex w-full items-center justify-between gap-3 text-left transition hover:text-zinc-950"
                   >
                     <p className="text-sm font-medium text-zinc-900">{item.q}</p>
                     <ChevronDown
@@ -688,7 +689,7 @@ export default function MembershipPage() {
       ) : null}
 
       {toast ? (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+        <div className="fixed left-1/2 top-6 z-50 -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
           {toast}
         </div>
       ) : null}
