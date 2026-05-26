@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
+import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 
 export const runtime = "nodejs";
 
@@ -15,6 +17,13 @@ function getClient() {
 
 export async function POST(request: NextRequest) {
   try {
+    rateLimitOrThrow({
+      scopeKey: `onetap:${request.headers.get("x-forwarded-for") ?? "unknown"}`,
+      endpoint: "auth-google-onetap-verify",
+      limit: RATE_LIMIT_CONFIG.authGoogleOneTapVerify.limit,
+      windowMs: RATE_LIMIT_CONFIG.authGoogleOneTapVerify.windowMs,
+    });
+
     const body = (await request.json()) as { credential?: string };
     const credential = (body.credential ?? "").trim();
     const audience = (process.env.GOOGLE_CLIENT_ID ?? "").trim();
@@ -36,6 +45,13 @@ export async function POST(request: NextRequest) {
       sub: payload.sub,
     });
   } catch (error) {
+    const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
+    if (retryAfter) {
+      return NextResponse.json(
+        { ok: false, error: "Too many verification attempts. Please retry later." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
     const message = error instanceof Error ? error.message : "Invalid Google credential.";
     return NextResponse.json({ ok: false, error: message }, { status: 401 });
   }

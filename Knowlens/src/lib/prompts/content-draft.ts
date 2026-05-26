@@ -1,4 +1,6 @@
 export type DraftDirection = "poster" | "ppt" | "video";
+import type { OutputLanguage } from "@/lib/language";
+import { isChineseLanguage } from "@/lib/language";
 
 export type ContentDraftPromptInput = {
   direction: DraftDirection;
@@ -6,6 +8,7 @@ export type ContentDraftPromptInput = {
   userPrompt: string;
   count: number;
   ratioOrSize?: string;
+  outputLanguage?: OutputLanguage;
 };
 
 export type VisualizationType =
@@ -350,6 +353,32 @@ function pickVisualizationType(topic: string, userPrompt: string, direction: Dra
 }
 
 function buildSharedSystemPrompt() {
+  return buildSharedSystemPromptByLanguage("zh");
+}
+
+function buildSharedSystemPromptByLanguage(outputLanguage: OutputLanguage) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return [
+      `You are a knowledge-visualization drafting assistant. Output JSON only in ${outputLanguage}.`,
+      "Quality rules:",
+      "1) Accurate: preserve key concepts, causality, and sequence.",
+      "2) Specific: every paragraph must map to drawable visual elements.",
+      "3) Focused: control element count and keep only key facts per page/frame.",
+      "4) Consistent: maintain stable terminology and narrative perspective.",
+      "5) Production-ready: output can directly enter design/layout/storyboard.",
+      "Directional quality rules:",
+      "Poster: denser but clearly layered (headline/explainer/conclusion).",
+      "PPT: one slide, one main point; concise body and optional short support note.",
+      "Video: short, fast, clear per frame; avoid tiny on-screen text.",
+      "Image prompt rules:",
+      "1) Subject + scene + action + composition must be explicit.",
+      "2) Include visual type hints (timeline/comparison/flow/map/etc.).",
+      "3) Keep 3-5 core visual elements and avoid crowded composition.",
+      "4) Avoid requiring complex text layout inside generated image.",
+      "Hard constraints:",
+      "No abstract writing instructions. No meta-writing guidance. Keep it directly drawable.",
+    ].join("\n");
+  }
   return [
     "你是知识可视化内容生成助手。输出必须为中文 JSON。",
     ...QUALITY_DEFINITION,
@@ -367,7 +396,44 @@ function buildPosterPrompt(
   ratioOrSize: string,
   recommendedType: VisualizationType,
   recommendedReason: string,
+  outputLanguage: OutputLanguage,
 ) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return [
+      "Direction: Poster",
+      `Topic: ${topic}`,
+      `User request: ${userPrompt}`,
+      `Poster count: ${count}`,
+      `Size: ${ratioOrSize}`,
+      `Recommended visualization type: ${recommendedType}`,
+      `Recommendation reason: ${recommendedReason}`,
+      ...[
+        "Poster quality standards:",
+        "1) Higher information density is allowed, but layers must be clear.",
+        "2) Keep each point as one readable sentence.",
+        "3) Keep a complete causal chain with 3-5 key nodes.",
+        "4) Suitable for static reading with concise detail.",
+      ],
+      "Output schema (strict):",
+      "{",
+      '  "contentMeta": { "visualizationType": "...", "visualizationReason": "...", "consistencyNotes": ["..."] },',
+      '  "posterDraft": { "headline": "...", "subtitle": "...", "body": "...", "points": ["...","...","..."], "visualType": "...", "layoutSuggestion": "...", "visualElements": ["..."], "cta": "..." },',
+      '  "planList": [',
+      '    { "index": 1, "title": "...", "focus": "...", "visualType": "...", "imagePrompt": "..." }',
+      "  ],",
+      '  "legacyCompat": { "headline": "...", "subtitle": "...", "body": "...", "points": ["..."], "visualType": "...", "layoutSuggestion": "...", "visualElements": ["..."], "cta": "..." }',
+      "}",
+      "Constraints:",
+      "1) body: 3-4 sentences, concrete and drawable.",
+      "2) points: 5-6 lines, one sentence each.",
+      "3) planList length must equal poster count.",
+      "4) imagePrompt must be directly usable for GPT Image 2.",
+      "5) No writing-process language or abstract filler.",
+      "6) visualType must be explicit (causal flow/comparison/timeline/etc.).",
+      "7) layoutSuggestion must be one actionable layout sentence.",
+      "8) visualElements must contain 4-6 drawable elements.",
+    ].join("\n");
+  }
   return [
     "方向：海报",
     `主题：${topic}`,
@@ -407,7 +473,41 @@ function buildPptPrompt(
   ratioOrSize: string,
   recommendedType: VisualizationType,
   recommendedReason: string,
+  outputLanguage: OutputLanguage,
 ) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return [
+      "Direction: PPT",
+      `Topic: ${topic}`,
+      `User request: ${userPrompt}`,
+      `Slide count: ${count}`,
+      `Ratio: ${ratioOrSize}`,
+      `Recommended visualization type: ${recommendedType}`,
+      `Recommendation reason: ${recommendedReason}`,
+      ...[
+        "PPT quality standards:",
+        "1) One slide, one point.",
+        "2) Keep body concise and avoid paragraph blocks.",
+        "3) Optional short support note is allowed.",
+        "4) Keep clear progression across slides.",
+      ],
+      "Output schema (strict):",
+      "{",
+      '  "contentMeta": { "visualizationType": "...", "visualizationReason": "...", "consistencyNotes": ["..."] },',
+      '  "outlineItems": ["..."],',
+      '  "slideDrafts": [',
+      '    { "page": 1, "title": "...", "mainPoint": "...", "body": "...", "supportNote": "...", "visual": "...", "imagePrompt": "..." }',
+      "  ]",
+      "}",
+      "Constraints:",
+      "1) outlineItems and slideDrafts length must equal slide count.",
+      "2) Every slide must have a one-sentence mainPoint.",
+      "3) body should be 1-2 sentences and concrete.",
+      "4) supportNote should be optional and <=1 sentence.",
+      "5) visual should specify chart/diagram type and key elements.",
+      "6) imagePrompt must be GPT Image 2 ready.",
+    ].join("\n");
+  }
   return [
     "方向：PPT",
     `主题：${topic}`,
@@ -442,7 +542,40 @@ function buildVideoPrompt(
   ratioOrSize: string,
   recommendedType: VisualizationType,
   recommendedReason: string,
+  outputLanguage: OutputLanguage,
 ) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return [
+      "Direction: Video Storyboard",
+      `Topic: ${topic}`,
+      `User request: ${userPrompt}`,
+      `Storyboard frame count: ${count}`,
+      `Ratio: ${ratioOrSize}`,
+      `Recommended visualization type: ${recommendedType}`,
+      `Recommendation reason: ${recommendedReason}`,
+      ...[
+        "Video storyboard quality standards:",
+        "1) Keep each frame short and direct for 6-10s pacing.",
+        "2) Narration should be direct and easy for TTS.",
+        "3) Avoid tiny on-screen text.",
+        "4) Keep continuity across frames.",
+      ],
+      "Output schema (strict):",
+      "{",
+      '  "contentMeta": { "visualizationType": "...", "visualizationReason": "...", "consistencyNotes": ["..."] },',
+      '  "outlineItems": ["..."],',
+      '  "storyboardDrafts": [',
+      '    { "index": 1, "title": "...", "durationSec": 8, "narration": "...", "visual": "...", "onScreenText": "...", "imagePrompt": "..." }',
+      "  ]",
+      "}",
+      "Constraints:",
+      "1) outlineItems and storyboardDrafts length must equal frame count.",
+      "2) durationSec default 6-10 seconds.",
+      "3) narration should be one short sentence.",
+      "4) onScreenText should be empty by default; if needed, keep very short.",
+      "5) visual and imagePrompt must clearly define subject, scene, composition, and action.",
+    ].join("\n");
+  }
   return [
     "方向：视频分镜",
     `主题：${topic}`,
@@ -508,8 +641,9 @@ export function buildContentDraftPrompt(input: ContentDraftPromptInput): Content
   const userPrompt = (input.userPrompt || "").trim() || "无";
   const count = Math.max(1, Math.round(input.count || 1));
   const ratioOrSize = (input.ratioOrSize || "未指定").trim();
+  const outputLanguage = input.outputLanguage ?? "en";
   const picked = pickVisualizationType(topic, userPrompt, input.direction);
-  const systemPrompt = buildSharedSystemPrompt();
+  const systemPrompt = buildSharedSystemPromptByLanguage(outputLanguage);
 
   if (input.direction === "poster") {
     return {
@@ -521,6 +655,7 @@ export function buildContentDraftPrompt(input: ContentDraftPromptInput): Content
         ratioOrSize,
         picked.type,
         picked.reason,
+        outputLanguage,
       ),
       recommendedVisualizationType: picked.type,
       recommendedVisualizationReason: picked.reason,
@@ -537,6 +672,7 @@ export function buildContentDraftPrompt(input: ContentDraftPromptInput): Content
         ratioOrSize,
         picked.type,
         picked.reason,
+        outputLanguage,
       ),
       recommendedVisualizationType: picked.type,
       recommendedVisualizationReason: picked.reason,
@@ -552,6 +688,7 @@ export function buildContentDraftPrompt(input: ContentDraftPromptInput): Content
       ratioOrSize,
       picked.type,
       picked.reason,
+      outputLanguage,
     ),
     recommendedVisualizationType: picked.type,
     recommendedVisualizationReason: picked.reason,

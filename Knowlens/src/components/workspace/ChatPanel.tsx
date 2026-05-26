@@ -48,6 +48,7 @@ type IntentOption = {
 type StyleOption = {
   id: string;
   name: string;
+  englishName?: string;
   fit: string;
   palette: string[];
   coverImage?: string;
@@ -77,7 +78,16 @@ function StyleCover({ style }: { style: StyleOption }) {
   );
 }
 
+function DraftContentCard({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-3 py-3">{children}</div>;
+}
+
 type ChatPanelProps = {
+  outputLanguage?: "en" | "zh";
   userPrompt: string;
   entrySources: SourceItem[];
   intent: WorkspaceIntent;
@@ -149,6 +159,7 @@ type ChatPanelProps = {
 };
 
 export function ChatPanel({
+  outputLanguage = "en",
   userPrompt,
   entrySources,
   intent,
@@ -206,8 +217,12 @@ export function ChatPanel({
   visualizationTypeHint,
   thinkingState,
 }: ChatPanelProps) {
+  const isZh = outputLanguage === "zh";
+  const shouldUseEnglishUi = !isZh;
+  const t = (en: string, zh: string) => (isZh ? zh : en);
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
+  const styleDisplayName = (style: StyleOption) => (isZh ? style.name : style.englishName ?? style.name);
   const [introPhase, setIntroPhase] = useState<"analyzing" | "planning" | "ask">("analyzing");
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -246,24 +261,32 @@ export function ChatPanel({
   const recommendedLabel = useMemo(() => {
     const uiIntent = selectedIntent ?? recommendedIntent;
     const option = intentOptions.find((item) => item.id === uiIntent);
-    return option?.label ?? "生成PPT";
-  }, [intentOptions, recommendedIntent, selectedIntent]);
+    return option?.label ?? t("Generate PPT", "生成PPT");
+  }, [intentOptions, recommendedIntent, selectedIntent, isZh]);
   const configSummaryText = useMemo(() => {
     if (!configConfirmed) {
       return "";
     }
     if (selectedIntent === "poster") {
-      return `已确认：${posterCount} 张，${
-        posterSizeOptions.find((item) => item.id === selectedPosterSize)?.label ?? selectedPosterSize ?? "9:16 竖版"
-      }。`;
+      return isZh
+        ? `已确认：${posterCount} 张，${
+            posterSizeOptions.find((item) => item.id === selectedPosterSize)?.label ?? selectedPosterSize ?? "9:16 竖版"
+          }。`
+        : `Confirmed: ${posterCount} poster(s), ${
+            posterSizeOptions.find((item) => item.id === selectedPosterSize)?.label ?? selectedPosterSize ?? "9:16 Portrait"
+          }.`;
     }
     if (selectedIntent === "video") {
-      return `已确认：${videoStoryboardCount} 个分镜（约 ${videoStoryboardCount * 10} 秒），${videoRatio} 比例。`;
+      return isZh
+        ? `已确认：${videoStoryboardCount} 个分镜（约 ${videoStoryboardCount * 10} 秒），${videoRatio} 比例。`
+        : `Confirmed: ${videoStoryboardCount} frame(s) (~${videoStoryboardCount * 10}s), ratio ${videoRatio}.`;
     }
     if (selectedIntent === "ppt") {
-      return `已确认：${pptPageCount} 页，${pptRatio} 比例。`;
+      return isZh
+        ? `已确认：${pptPageCount} 页，${pptRatio} 比例。`
+        : `Confirmed: ${pptPageCount} slide(s), ratio ${pptRatio}.`;
     }
-    return "已确认当前配置。";
+    return t("Current configuration confirmed.", "已确认当前配置。");
   }, [
     configConfirmed,
     posterCount,
@@ -274,8 +297,346 @@ export function ChatPanel({
     selectedPosterSize,
     videoRatio,
     videoStoryboardCount,
+    isZh,
   ]);
   const showMainSummaryBlock = !showDirectionGuide && !showStyleStage && !showBillingConfirm;
+
+  if (shouldUseEnglishUi) {
+    return (
+      <section className="space-y-5 px-1 py-4">
+        {userPrompt ? (
+          <article className="ml-auto w-fit max-w-[78%] rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white">
+            {userPrompt}
+          </article>
+        ) : null}
+
+        <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · Workflow</div>
+          <p className="text-sm leading-6 text-zinc-700">{analysisText}</p>
+          {summaryText ? <p className="mt-2 text-xs text-zinc-500">{summaryText}</p> : null}
+        </article>
+
+        {showDirectionGuide ? (
+          <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              {intentOptions.map((option) => {
+                const active = selectedIntent === option.id;
+                return (
+                  <button
+                    key={`intent-en-${option.id}`}
+                    type="button"
+                    onClick={() => onSelectIntentOption(option.id)}
+                    className={`rounded-xl border px-3 py-2 text-left transition ${
+                      active
+                        ? "border-zinc-900 bg-zinc-900 text-white"
+                        : "border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <p className="text-sm font-medium">{option.label}</p>
+                    <p className={`mt-1 text-xs ${active ? "text-zinc-200" : "text-zinc-500"}`}>{option.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedIntent === "poster" ? (
+              <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+                <p className="text-sm font-medium text-zinc-900">Poster Options</p>
+                <p className="mt-2 text-xs text-zinc-500">Poster Count</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((count) => (
+                    <button
+                      key={`poster-count-en-${count}`}
+                      type="button"
+                      onClick={() => onPosterCountChange(count)}
+                      className={`rounded-lg border px-2.5 py-1 text-xs ${
+                        posterCount === count
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 bg-white text-zinc-700"
+                      }`}
+                    >
+                      {count} posters
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-zinc-500">Size</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {posterSizeOptions.map((size) => {
+                    const active = selectedPosterSize === size.id;
+                    return (
+                      <button
+                        key={`poster-size-en-${size.id}`}
+                        type="button"
+                        onClick={() => onSelectPosterSize(size.id)}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${
+                          active
+                            ? "border-zinc-900 bg-zinc-900 text-white"
+                            : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                        }`}
+                      >
+                        <p className="text-sm font-medium">{size.label}</p>
+                        <p className={`mt-1 text-xs ${active ? "text-zinc-200" : "text-zinc-500"}`}>{size.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
+                  <button
+                    type="button"
+                    onClick={onConfirmConfig}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {selectedIntent === "ppt" ? (
+              <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+                <p className="text-sm font-medium text-zinc-900">PPT Options</p>
+                <p className="mt-2 text-xs text-zinc-500">PPT Slides</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[8, 10, 12].map((count) => (
+                    <button
+                      key={`ppt-count-en-${count}`}
+                      type="button"
+                      onClick={() => onPptPageCountChange(count)}
+                      className={`rounded-lg border px-2.5 py-1 text-xs ${
+                        pptPageCount === count
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 bg-white text-zinc-700"
+                      }`}
+                    >
+                      {count} slides
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">Aspect Ratio</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {([
+                    { id: "16:9", title: "16:9 Widescreen", desc: "Best for projectors and modern large displays." },
+                    { id: "4:3", title: "4:3 Classic", desc: "Best for classroom decks and legacy displays." },
+                  ] as const).map((ratio) => {
+                    const active = pptRatio === ratio.id;
+                    return (
+                      <button
+                        key={`ppt-ratio-en-${ratio.id}`}
+                        type="button"
+                        onClick={() => onPptRatioChange(ratio.id)}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${
+                          active
+                            ? "border-zinc-900 bg-zinc-900 text-white"
+                            : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                        }`}
+                      >
+                        <p className="text-sm font-medium">{ratio.title}</p>
+                        <p className={`mt-1 text-xs ${active ? "text-zinc-200" : "text-zinc-500"}`}>{ratio.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
+                  <button
+                    type="button"
+                    onClick={onConfirmConfig}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {selectedIntent === "video" ? (
+              <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+                <p className="text-sm font-medium text-zinc-900">Video Options</p>
+                <p className="mt-2 text-xs text-zinc-500">Storyboard Frames</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[3, 4, 5, 6, 8, 10].map((count) => (
+                    <button
+                      key={`video-count-en-${count}`}
+                      type="button"
+                      onClick={() => onVideoStoryboardCountChange(count)}
+                      className={`rounded-lg border px-2.5 py-1 text-xs ${
+                        videoStoryboardCount === count
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 bg-white text-zinc-700"
+                      }`}
+                    >
+                      {count} frames
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">Estimated duration: ~{videoStoryboardCount * 10}s</p>
+                <p className="mt-2 text-xs text-zinc-500">Video Ratio</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {([
+                    { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
+                    { id: "9:16", title: "9:16 Portrait", desc: "Best for short-video and full-screen mobile playback." },
+                  ] as const).map((ratio) => {
+                    const active = videoRatio === ratio.id;
+                    return (
+                      <button
+                        key={`video-ratio-en-${ratio.id}`}
+                        type="button"
+                        onClick={() => onVideoRatioChange(ratio.id)}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${
+                          active
+                            ? "border-zinc-900 bg-zinc-900 text-white"
+                            : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                        }`}
+                      >
+                        <p className="text-sm font-medium">{ratio.title}</p>
+                        <p className={`mt-1 text-xs ${active ? "text-zinc-200" : "text-zinc-500"}`}>{ratio.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
+                  <button
+                    type="button"
+                    onClick={onConfirmConfig}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </article>
+        ) : null}
+
+        {showStyleStage ? (
+          <article className="max-w-[95%] px-1 py-1">
+            <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
+            <p className="mt-2 text-sm text-zinc-600">{selectedStyle.fit}</p>
+            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+              {styleOptions.map((style) => (
+                <button
+                  key={`style-en-${style.id}`}
+                  type="button"
+                  ref={(node) => {
+                    styleButtonRefs.current[style.id] = node;
+                  }}
+                  onClick={() => onSelectStyle(style.id)}
+                  className={`relative rounded-2xl border p-2 text-left transition ${
+                    style.id === selectedStyleId
+                      ? "translate-y-[-1px] border-zinc-900 bg-white shadow-[0_10px_22px_rgba(24,24,27,0.24)] ring-2 ring-zinc-900/25"
+                      : "border-zinc-200 bg-white opacity-85 hover:opacity-100 hover:bg-zinc-50"
+                  }`}
+                >
+                  {style.id === selectedStyleId ? (
+                    <span className="absolute right-3 top-3 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-white">
+                      <Check size={12} />
+                    </span>
+                  ) : null}
+                  <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl bg-zinc-100">
+                    <StyleCover style={style} />
+                  </div>
+                  <p className={`mt-2 text-xs font-medium ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
+                    {styleDisplayName(style)}
+                  </p>
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-3 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-zinc-600">
+                  Current style:
+                  <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">
+                    {styleDisplayName(selectedStyle)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={isPlanningStyleStep}
+                  onClick={onStyleNext}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                >
+                  {isPlanningStyleStep ? (
+                    <>
+                      <LoaderCircle size={14} className="animate-spin" />
+                      Thinking...
+                    </>
+                  ) : (
+                    "Next"
+                  )}
+                </button>
+              </div>
+            </div>
+          </article>
+        ) : null}
+
+        {showBillingConfirm ? (
+          <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+            <h3 className="text-sm font-semibold text-zinc-900">
+              {intent === "poster" ? "Poster Generation Confirmation" : "Content Generation Confirmation"}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-zinc-700">
+              Usage estimation is ready. Confirm to start generation and deduct credits.
+            </p>
+            <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200">
+              <div className="grid grid-cols-[92px_minmax(0,1fr)] text-sm">
+                <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Style</p>
+                <p className="border-b border-zinc-200 px-3 py-2 text-zinc-800">{billingSummary.styleName}</p>
+                <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Cost</p>
+                <p className="border-b border-zinc-200 px-3 py-2 font-semibold text-zinc-900">{billingSummary.totalCost} credits</p>
+                <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Formula</p>
+                <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
+                  {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
+                  <span className="ml-1 text-zinc-500">(regular {billingSummary.regularCreditsPerOutput})</span>
+                </p>
+                <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Balance</p>
+                <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">{billingSummary.availableCredits} credits</p>
+                <p className="border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">After deduction</p>
+                <p className="px-3 py-2 text-zinc-700">{billingSummary.remainingCredits} credits</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className={`text-sm ${canConfirmBilling ? "text-zinc-600" : "font-medium text-red-600"}`}>
+                {canConfirmBilling
+                  ? `Limited-time pricing applies: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
+                  : "Insufficient credits. Please upgrade before confirming."}
+              </p>
+              <button
+                type="button"
+                disabled={isPlanningBillingStep || !canConfirmBilling}
+                onClick={onConfirmBilling}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+              >
+                {isPlanningBillingStep ? (
+                  <>
+                    <LoaderCircle size={14} className="animate-spin" />
+                    Thinking...
+                  </>
+                ) : billingConfirmed ? (
+                  "Confirmed, generating..."
+                ) : !canConfirmBilling ? (
+                  "Insufficient credits"
+                ) : (
+                  "Confirm and Generate"
+                )}
+              </button>
+            </div>
+          </article>
+        ) : null}
+
+        {thinkingState.active ? (
+          <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+            <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · {thinkingState.module}</div>
+            <div className="flex items-center gap-2 text-sm text-zinc-700">
+              <LoaderCircle size={14} className="animate-spin text-zinc-500" />
+              {thinkingState.text}
+            </div>
+          </article>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-5 px-1 py-4">
@@ -287,8 +648,8 @@ export function ChatPanel({
 
       {topicSuggestionLocked && lockedTopicSuggestion ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · 主题选择</div>
-          <p className="text-sm leading-6 text-zinc-700">你选择了主题，已锁定为当前会话输入：</p>
+          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · Topic Selection</div>
+          <p className="text-sm leading-6 text-zinc-700">Topic selected and locked for this session:</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {topicSuggestions.map((item) => {
               const active = item === lockedTopicSuggestion;
@@ -313,8 +674,8 @@ export function ChatPanel({
 
       {configConfirmed && selectedIntent ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · 生成方向</div>
-          <p className="text-sm leading-6 text-zinc-700">你已确认生成方向，当前会话按该方向继续：</p>
+          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · Output Direction</div>
+          <p className="text-sm leading-6 text-zinc-700">Output direction confirmed for the current session:</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             {intentOptions.map((option) => {
               const active = option.id === selectedIntent;
@@ -338,7 +699,7 @@ export function ChatPanel({
 
           {selectedIntent === "ppt" ? (
             <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <p className="text-xs font-medium text-zinc-500">PPT页数</p>
+              <p className="text-xs font-medium text-zinc-500">PPT Slides</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[8, 10, 12].map((count) => (
                   <button
@@ -351,15 +712,15 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-500"
                     }`}
                   >
-                    {count} 页
+                    {count} slides
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-xs font-medium text-zinc-500">比例</p>
+              <p className="mt-3 text-xs font-medium text-zinc-500">Aspect Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {([
-                  { id: "16:9", title: "16:9 宽屏", desc: "适合投影、演示与现代大屏展示" },
-                  { id: "4:3", title: "4:3 经典", desc: "适合课堂课件与传统显示设备" },
+                  { id: "16:9", title: "16:9 Widescreen", desc: "Best for projectors and modern large displays." },
+                  { id: "4:3", title: "4:3 Classic", desc: "Best for classroom decks and legacy displays." },
                 ] as const).map((ratio) => {
                   const active = pptRatio === ratio.id;
                   return (
@@ -384,7 +745,7 @@ export function ChatPanel({
 
           {selectedIntent === "video" ? (
             <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <p className="text-xs font-medium text-zinc-500">分镜数量</p>
+              <p className="text-xs font-medium text-zinc-500">Storyboard Frames</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[3, 4, 5, 6, 8, 10].map((count) => (
                   <button
@@ -397,15 +758,15 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-500"
                     }`}
                   >
-                    {count} 个分镜
+                    {count} frames
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-xs font-medium text-zinc-500">比例</p>
+              <p className="mt-3 text-xs font-medium text-zinc-500">Aspect Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {([
-                  { id: "16:9", title: "16:9 横版", desc: "适合横屏讲解、B站与网页播放器" },
-                  { id: "9:16", title: "9:16 竖版", desc: "适合短视频平台与手机全屏播放" },
+                  { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
+                  { id: "9:16", title: "9:16 Portrait", desc: "Best for short-video and full-screen mobile playback." },
                 ] as const).map((ratio) => {
                   const active = videoRatio === ratio.id;
                   return (
@@ -430,7 +791,7 @@ export function ChatPanel({
 
           {selectedIntent === "poster" ? (
             <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <p className="text-xs font-medium text-zinc-500">海报张数</p>
+              <p className="text-xs font-medium text-zinc-500">Poster Count</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((count) => (
                   <button
@@ -443,11 +804,11 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-500"
                     }`}
                   >
-                    {count} 张
+                    {count} posters
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-xs font-medium text-zinc-500">尺寸</p>
+              <p className="mt-3 text-xs font-medium text-zinc-500">Size</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {posterSizeOptions.map((size) => {
                   const active = selectedPosterSize === size.id;
@@ -472,18 +833,18 @@ export function ChatPanel({
           ) : null}
 
           <p className="mt-2 text-sm text-zinc-700">{configSummaryText}</p>
-          <p className="mt-1 text-xs text-zinc-500">如需变更，请重新开启一轮配置。</p>
+          <p className="mt-1 text-xs text-zinc-500">To change settings, start a new configuration round.</p>
         </article>
       ) : null}
 
       {!!entrySources.length && !showDirectionGuide ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-          <h3 className="text-sm font-semibold text-zinc-900">已识别输入素材</h3>
+          <h3 className="text-sm font-semibold text-zinc-900">Recognized Source Inputs</h3>
           <div className="mt-2 space-y-1.5">
             {entrySources.map((item) => (
               <div key={item.id} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
                 <p className="truncate text-xs font-medium text-zinc-900">
-                  {item.name} · {item.kind === "youtube" ? "YouTube" : item.kind === "web" ? "网页" : "文件"}
+                  {item.name} · {item.kind === "youtube" ? "YouTube" : item.kind === "web" ? "Web" : "File"}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-zinc-500">{item.origin}</p>
                 <p className="mt-1 text-xs leading-5 text-zinc-700">{item.excerpt}</p>
@@ -501,8 +862,8 @@ export function ChatPanel({
               <div className="flex items-center gap-2 text-sm text-zinc-700">
                 <LoaderCircle size={14} className="animate-spin text-zinc-500" />
                 {introPhase === "analyzing"
-                  ? "正在理解你的主题和输入内容..."
-                  : "正在规划最合适的生成路径..."}
+                  ? "Understanding your topic and input content..."
+                  : "Planning the best generation path..."}
               </div>
             </div>
           ) : (
@@ -513,7 +874,7 @@ export function ChatPanel({
               {!showWeakPromptSuggestions ? (
                 <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600">
                   <Sparkles size={12} className="text-zinc-500" />
-                  推荐先选：{recommendedLabel}
+                  Recommended first choice: {recommendedLabel}
                 </div>
               ) : null}
               {!showWeakPromptSuggestions ? (
@@ -543,8 +904,8 @@ export function ChatPanel({
 
               {showWeakPromptSuggestions ? (
                 <div className="mt-3 px-0.5 py-1">
-                  <p className="text-sm font-medium text-zinc-900">试试这些主题</p>
-                  <p className="mt-1 text-xs text-zinc-500">先选一个你感兴趣的内容，我会继续引导下一步。</p>
+                  <p className="text-sm font-medium text-zinc-900">Try These Topics</p>
+                  <p className="mt-1 text-xs text-zinc-500">Pick one to continue with guided next steps.</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {topicSuggestions.map((item) => (
                       <button
@@ -568,7 +929,7 @@ export function ChatPanel({
                         onClick={onConfirmTopicSuggestion}
                         className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                       >
-                        下一步
+                        Next
                       </button>
                     </div>
                   ) : null}
@@ -577,8 +938,8 @@ export function ChatPanel({
 
               {!showWeakPromptSuggestions && selectedIntent === "ppt" ? (
                 <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                  <p className="text-sm font-medium text-zinc-900">PPT 生成选项</p>
-                  <p className="mt-2 text-xs text-zinc-500">PPT页数</p>
+                  <p className="text-sm font-medium text-zinc-900">PPT Options</p>
+                  <p className="mt-2 text-xs text-zinc-500">PPT Slides</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {[8, 10, 12].map((count) => (
                       <button
@@ -591,15 +952,15 @@ export function ChatPanel({
                             : "border-zinc-300 bg-white text-zinc-700"
                         }`}
                       >
-                        {count} 页
+                        {count} slides
                       </button>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-zinc-500">比例</p>
+                  <p className="mt-2 text-xs text-zinc-500">Aspect Ratio</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {([
-                      { id: "16:9", title: "16:9 宽屏", desc: "适合投影、演示与现代大屏展示" },
-                      { id: "4:3", title: "4:3 经典", desc: "适合课堂课件与传统显示设备" },
+                      { id: "16:9", title: "16:9 Widescreen", desc: "Best for projectors and modern large displays." },
+                      { id: "4:3", title: "4:3 Classic", desc: "Best for classroom decks and legacy displays." },
                     ] as const).map((ratio) => {
                       const active = pptRatio === ratio.id;
                       return (
@@ -622,13 +983,13 @@ export function ChatPanel({
                     })}
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">先确认配置，再进入下一步</p>
+                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
                     <button
                       type="button"
                       onClick={onConfirmConfig}
                       className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                     >
-                      下一步
+                      Next
                     </button>
                   </div>
                 </div>
@@ -636,8 +997,8 @@ export function ChatPanel({
 
               {!showWeakPromptSuggestions && selectedIntent === "video" ? (
                 <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                  <p className="text-sm font-medium text-zinc-900">视频生成选项</p>
-                  <p className="mt-2 text-xs text-zinc-500">分镜数量</p>
+                  <p className="text-sm font-medium text-zinc-900">Video Options</p>
+                  <p className="mt-2 text-xs text-zinc-500">Storyboard Frames</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {[3, 4, 5, 6, 8, 10].map((count) => (
                       <button
@@ -650,18 +1011,18 @@ export function ChatPanel({
                             : "border-zinc-300 bg-white text-zinc-700"
                         }`}
                       >
-                        {count} 个分镜
+                        {count} frames
                       </button>
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">
-                    预计时长：约 {videoStoryboardCount * 10} 秒（每个分镜按 10 秒计算）
+                    Estimated duration: ~{videoStoryboardCount * 10}s (10s per frame)
                   </p>
-                  <p className="mt-2 text-xs text-zinc-500">视频比例</p>
+                  <p className="mt-2 text-xs text-zinc-500">Video Ratio</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {([
-                      { id: "16:9", title: "16:9 横版", desc: "适合横屏讲解、B站与网页播放器" },
-                      { id: "9:16", title: "9:16 竖版", desc: "适合短视频平台与手机全屏播放" },
+                      { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
+                      { id: "9:16", title: "9:16 Portrait", desc: "Best for short-video and full-screen mobile playback." },
                     ] as const).map((ratio) => {
                       const active = videoRatio === ratio.id;
                       return (
@@ -684,13 +1045,13 @@ export function ChatPanel({
                     })}
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">先确认配置，再进入下一步</p>
+                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
                     <button
                       type="button"
                       onClick={onConfirmConfig}
                       className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                     >
-                      下一步
+                      Next
                     </button>
                   </div>
                 </div>
@@ -698,7 +1059,7 @@ export function ChatPanel({
 
               {!showWeakPromptSuggestions && selectedIntent === "poster" ? (
                 <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                  <p className="text-sm font-medium text-zinc-900">海报生成选项</p>
+                  <p className="text-sm font-medium text-zinc-900">Poster Options</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {Array.from({ length: 10 }, (_, i) => i + 1).map((count) => (
                       <button
@@ -711,11 +1072,11 @@ export function ChatPanel({
                             : "border-zinc-300 bg-white text-zinc-700"
                         }`}
                       >
-                        {count} 张
+                        {count} posters
                       </button>
                     ))}
                   </div>
-                  <p className="mt-3 text-sm font-medium text-zinc-900">请选择海报尺寸</p>
+                  <p className="mt-3 text-sm font-medium text-zinc-900">Choose Poster Size</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {posterSizeOptions.map((size) => {
                       const active = selectedPosterSize === size.id;
@@ -739,13 +1100,13 @@ export function ChatPanel({
                     })}
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">先确认配置，再进入下一步</p>
+                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
                     <button
                       type="button"
                       onClick={onConfirmConfig}
                       className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                     >
-                      下一步
+                      Next
                     </button>
                   </div>
                 </div>
@@ -757,15 +1118,15 @@ export function ChatPanel({
         <article className="max-w-[95%] rounded-2xl bg-transparent p-1">
           {!configConfirmed ? (
             <>
-              <h3 className="text-sm font-semibold text-zinc-900">我先帮你确认需求</h3>
+              <h3 className="text-sm font-semibold text-zinc-900">Let’s Confirm Your Request</h3>
               <p className="mt-2 text-sm leading-6 text-zinc-700">{summaryText}</p>
             </>
           ) : null}
 
           {selectedIntent === "ppt" && !configConfirmed ? (
             <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <p className="text-sm font-medium text-zinc-900">PPT 生成选项</p>
-              <p className="mt-2 text-xs font-medium text-zinc-500">PPT页数</p>
+              <p className="text-sm font-medium text-zinc-900">PPT Options</p>
+              <p className="mt-2 text-xs font-medium text-zinc-500">PPT Slides</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[8, 10, 12].map((count) => (
                   <button
@@ -778,15 +1139,15 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-700"
                     }`}
                   >
-                    {count} 页
+                    {count} slides
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-xs font-medium text-zinc-500">比例</p>
+              <p className="mt-2 text-xs font-medium text-zinc-500">Aspect Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {([
-                  { id: "16:9", title: "16:9 宽屏", desc: "适合投影、演示与现代大屏展示" },
-                  { id: "4:3", title: "4:3 经典", desc: "适合课堂课件与传统显示设备" },
+                  { id: "16:9", title: "16:9 Widescreen", desc: "Best for projectors and modern large displays." },
+                  { id: "4:3", title: "4:3 Classic", desc: "Best for classroom decks and legacy displays." },
                 ] as const).map((ratio) => {
                   const active = pptRatio === ratio.id;
                   return (
@@ -809,13 +1170,13 @@ export function ChatPanel({
                 })}
               </div>
               <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-zinc-500">先确认配置，再进入下一步</p>
+                <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
                 <button
                   type="button"
                   onClick={onConfirmConfig}
                   className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                 >
-                  下一步
+                  Next
                 </button>
               </div>
             </div>
@@ -823,8 +1184,8 @@ export function ChatPanel({
 
           {selectedIntent === "video" && !configConfirmed ? (
             <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <p className="text-sm font-medium text-zinc-900">视频生成选项</p>
-              <p className="mt-2 text-xs font-medium text-zinc-500">分镜数量</p>
+              <p className="text-sm font-medium text-zinc-900">Video Options</p>
+              <p className="mt-2 text-xs font-medium text-zinc-500">Storyboard Frames</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[3, 4, 5, 6, 8, 10].map((count) => (
                   <button
@@ -837,18 +1198,18 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-700"
                     }`}
                   >
-                    {count} 个分镜
+                    {count} frames
                   </button>
                 ))}
               </div>
               <p className="mt-2 text-xs text-zinc-500">
-                预计时长：约 {videoStoryboardCount * 10} 秒（每个分镜按 10 秒计算）
+                Estimated duration: ~{videoStoryboardCount * 10}s (10s per frame)
               </p>
-              <p className="mt-2 text-xs font-medium text-zinc-500">视频比例</p>
+              <p className="mt-2 text-xs font-medium text-zinc-500">Video Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {([
-                  { id: "16:9", title: "16:9 横版", desc: "适合横屏讲解、B站与网页播放器" },
-                  { id: "9:16", title: "9:16 竖版", desc: "适合短视频平台与手机全屏播放" },
+                  { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
+                  { id: "9:16", title: "9:16 Portrait", desc: "Best for short-video and full-screen mobile playback." },
                 ] as const).map((ratio) => {
                   const active = videoRatio === ratio.id;
                   return (
@@ -871,13 +1232,13 @@ export function ChatPanel({
                 })}
               </div>
               <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-zinc-500">先确认配置，再进入下一步</p>
+                <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
                 <button
                   type="button"
                   onClick={onConfirmConfig}
                   className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                 >
-                  下一步
+                  Next
                 </button>
               </div>
             </div>
@@ -885,7 +1246,7 @@ export function ChatPanel({
 
           {!!missingHints.length && !configConfirmed ? (
             <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-2.5">
-              <p className="text-xs font-medium text-zinc-800">为了更快给你高质量结果，我还需要：</p>
+              <p className="text-xs font-medium text-zinc-800">To generate high-quality output faster, I still need:</p>
               <ul className="mt-1 space-y-1 text-xs text-zinc-600">
                 {missingHints.map((hint) => (
                   <li key={hint}>- {hint}</li>
@@ -896,7 +1257,7 @@ export function ChatPanel({
 
           {selectedIntent === "poster" && !configConfirmed ? (
             <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <p className="text-sm font-medium text-zinc-900">海报生成选项</p>
+              <p className="text-sm font-medium text-zinc-900">Poster Options</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((count) => (
                   <button
@@ -909,11 +1270,11 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-700"
                     }`}
                   >
-                    {count} 张
+                    {count} posters
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-sm font-medium text-zinc-900">请选择海报尺寸</p>
+              <p className="mt-3 text-sm font-medium text-zinc-900">Choose Poster Size</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {posterSizeOptions.map((size) => {
                   const active = selectedPosterSize === size.id;
@@ -937,21 +1298,21 @@ export function ChatPanel({
                 })}
               </div>
               <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-zinc-500">先确认配置，再进入下一步</p>
+                <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
                 <button
                   type="button"
                   onClick={onConfirmConfig}
                   className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                 >
-                  下一步
+                  Next
                 </button>
               </div>
             </div>
           ) : null}
 
           {intent === "poster" && posterDraft ? (
-            <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-3 py-3">
-              <h4 className="text-sm font-semibold text-zinc-900">海报文案草稿</h4>
+            <DraftContentCard>
+              <h4 className="text-sm font-semibold text-zinc-900">Poster Draft</h4>
               <p className="mt-2 text-lg font-semibold leading-7 text-zinc-900">{posterDraft.headline}</p>
               <p className="mt-1 text-sm text-zinc-600">{posterDraft.subtitle}</p>
               <p className="mt-3 text-sm leading-6 text-zinc-700">{posterDraft.body}</p>
@@ -961,14 +1322,14 @@ export function ChatPanel({
                 ))}
               </ul>
               {visualizationTypeHint ? (
-                <p className="mt-3 text-xs text-zinc-500">建议绘制类型：{visualizationTypeHint}</p>
+                <p className="mt-3 text-xs text-zinc-500">Suggested visual type: {visualizationTypeHint}</p>
               ) : null}
               {posterDraft.layoutSuggestion ? (
-                <p className="mt-1 text-xs text-zinc-500">建议版式：{posterDraft.layoutSuggestion}</p>
+                <p className="mt-1 text-xs text-zinc-500">Suggested layout: {posterDraft.layoutSuggestion}</p>
               ) : null}
               {posterDraft.visualElements?.length ? (
                 <p className="mt-1 text-xs text-zinc-500">
-                  画面元素：{posterDraft.visualElements.join(" / ")}
+                  Visual elements: {posterDraft.visualElements.join(" / ")}
                 </p>
               ) : null}
               <div className="mt-4 flex justify-end">
@@ -981,20 +1342,20 @@ export function ChatPanel({
                   {isPlanningNextStep ? (
                     <>
                       <LoaderCircle size={14} className="animate-spin" />
-                      思考中...
+                      Thinking...
                     </>
                   ) : (
-                    "下一步"
+                    "Next"
                   )}
                 </button>
               </div>
-            </div>
+            </DraftContentCard>
           ) : null}
 
           {(intent === "ppt" || intent === "video") ? (
-            <div className="mt-4 border-t border-zinc-200/80 pt-4">
+            <DraftContentCard>
               <h4 className="text-sm font-semibold text-zinc-900">
-                {intent === "video" ? "视频分镜大纲" : "内容大纲"}
+                {intent === "video" ? "Video Storyboard Outline" : "Content Outline"}
               </h4>
               <ol className="mt-2 space-y-1 text-sm leading-6 text-zinc-700">
                 {outlineItems.map((item, index) => (
@@ -1007,51 +1368,41 @@ export function ChatPanel({
               {!!slideDrafts.length ? (
                 <div className="mt-4 border-t border-zinc-200/80 pt-4">
                   <h4 className="text-sm font-semibold text-zinc-900">
-                    {intent === "video" ? "分镜脚本草稿" : "页面文案草稿"}
+                    {intent === "video" ? "Storyboard Script Draft" : "Slide Copy Draft"}
                   </h4>
                   <div className="mt-2">
                     {slideDrafts.map((slide) => (
                       <section key={slide.page} className="border-b border-zinc-200/70 py-3 last:border-b-0">
                         <p className="text-sm font-semibold text-zinc-900">
-                          第{slide.page}页：{slide.title}
+                          Slide {slide.page}: {slide.title}
                         </p>
-                        <p className="mt-1 text-sm leading-6 text-zinc-700">{slide.body}</p>
-                        <p className="mt-1 text-sm text-zinc-500">视觉建议：{slide.visual}</p>
+                        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-zinc-700">{slide.body}</p>
+                        <p className="mt-1 text-sm text-zinc-500">Visual direction: {slide.visual}</p>
                       </section>
                     ))}
                   </div>
                 </div>
               ) : null}
-            </div>
-          ) : null}
-
-          {!shouldClarifyIntent && intent !== "poster" ? (
-            <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-3 py-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-zinc-600">
-                  当前阶段：
-                  <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">
-                    需求理解已完成
-                  </span>
-                </div>
+              <div className="mt-4 flex justify-end">
                 <button
                   type="button"
                   disabled={isPlanningNextStep || !canProceed}
                   onClick={onConfirm}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
                 >
                   {isPlanningNextStep ? (
                     <>
                       <LoaderCircle size={14} className="animate-spin" />
-                      思考中...
+                      Thinking...
                     </>
                   ) : (
-                    "下一步"
+                    "Next"
                   )}
                 </button>
               </div>
-            </div>
+            </DraftContentCard>
           ) : null}
+
         </article>
       ) : null}
 
@@ -1059,7 +1410,7 @@ export function ChatPanel({
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-3 py-3">
           {intent === "poster" && posterDraft ? (
             <>
-              <h4 className="text-sm font-semibold text-zinc-900">海报文案草稿</h4>
+              <h4 className="text-sm font-semibold text-zinc-900">Poster Draft</h4>
               <p className="mt-2 text-lg font-semibold leading-7 text-zinc-900">{posterDraft.headline}</p>
               <p className="mt-1 text-sm text-zinc-600">{posterDraft.subtitle}</p>
               <p className="mt-3 text-sm leading-6 text-zinc-700">{posterDraft.body}</p>
@@ -1069,22 +1420,22 @@ export function ChatPanel({
                 ))}
               </ul>
               {visualizationTypeHint ? (
-                <p className="mt-3 text-xs text-zinc-500">建议绘制类型：{visualizationTypeHint}</p>
+                <p className="mt-3 text-xs text-zinc-500">Suggested visual type: {visualizationTypeHint}</p>
               ) : null}
               {posterDraft.layoutSuggestion ? (
-                <p className="mt-1 text-xs text-zinc-500">建议版式：{posterDraft.layoutSuggestion}</p>
+                <p className="mt-1 text-xs text-zinc-500">Suggested layout: {posterDraft.layoutSuggestion}</p>
               ) : null}
               {posterDraft.visualElements?.length ? (
-                <p className="mt-1 text-xs text-zinc-500">画面元素：{posterDraft.visualElements.join(" / ")}</p>
+                <p className="mt-1 text-xs text-zinc-500">Visual elements: {posterDraft.visualElements.join(" / ")}</p>
               ) : null}
-              <p className="mt-3 text-xs text-zinc-500">草稿已保留，后续将继续基于此内容生成。</p>
+              <p className="mt-3 text-xs text-zinc-500">Draft saved. Later generation will continue from this draft.</p>
             </>
           ) : null}
 
           {(intent === "ppt" || intent === "video") && outlineItems.length ? (
             <>
               <h4 className="text-sm font-semibold text-zinc-900">
-                {intent === "video" ? "视频分镜大纲草稿" : "内容大纲草稿"}
+                {intent === "video" ? "Video Storyboard Outline Draft" : "Content Outline Draft"}
               </h4>
               <ol className="mt-3 space-y-2 text-sm leading-6 text-zinc-700">
                 {outlineItems.map((item, index) => (
@@ -1094,8 +1445,8 @@ export function ChatPanel({
                     </p>
                     <p className="mt-1 text-xs leading-5 text-zinc-500">
                       {intent === "video"
-                        ? "这一段会继续扩写成镜头动作、画面主体、字幕重点和口播提示。"
-                        : "这一段会继续扩写成页面正文、分点说明和视觉重点。"}
+                        ? "This section will be expanded into camera action, main visual subject, text emphasis, and narration guidance."
+                        : "This section will be expanded into slide copy, key bullets, and visual emphasis."}
                     </p>
                   </li>
                 ))}
@@ -1104,7 +1455,7 @@ export function ChatPanel({
               {!!slideDrafts.length ? (
                 <div className="mt-4">
                   <h4 className="text-sm font-semibold text-zinc-900">
-                    {intent === "video" ? "分镜脚本草稿" : "页面文案草稿"}
+                    {intent === "video" ? "Storyboard Script Draft" : "Slide Copy Draft"}
                   </h4>
                   <div className="mt-3 space-y-2">
                     {slideDrafts.map((slide) => (
@@ -1113,16 +1464,16 @@ export function ChatPanel({
                         className="rounded-xl border border-zinc-200 bg-white px-3 py-3"
                       >
                         <p className="text-sm font-semibold text-zinc-900">
-                          第{slide.page}页：{slide.title}
+                          Slide {slide.page}: {slide.title}
                         </p>
-                        <p className="mt-2 text-sm leading-6 text-zinc-700">{slide.body}</p>
-                        <p className="mt-2 text-sm text-zinc-500">视觉建议：{slide.visual}</p>
+                        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-zinc-700">{slide.body}</p>
+                        <p className="mt-2 text-sm text-zinc-500">Visual direction: {slide.visual}</p>
                       </section>
                     ))}
                   </div>
                 </div>
               ) : null}
-              <p className="mt-3 text-xs text-zinc-500">草稿已保留，后续将继续基于此内容生成。</p>
+              <p className="mt-3 text-xs text-zinc-500">Draft saved. Later generation will continue from this draft.</p>
             </>
           ) : null}
         </article>
@@ -1136,7 +1487,7 @@ export function ChatPanel({
           }`}
         >
           <div className={`mb-1 text-[11px] ${update.role === "user" ? "text-zinc-300" : "text-zinc-500"}`}>
-            {update.role === "user" ? "你" : "KnowLens.ai"} · {update.module}
+            {update.role === "user" ? "You" : "KnowLens.ai"} · {update.module}
           </div>
           <p className="leading-6">{update.content}</p>
         </article>
@@ -1144,7 +1495,7 @@ export function ChatPanel({
 
       {styleConfirmed ? (
         <article className="max-w-[95%] px-1 py-1">
-          <h3 className="text-sm font-semibold text-zinc-900">风格推荐</h3>
+          <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
           <p className="mt-2 text-sm text-zinc-600">{selectedStyle.fit}</p>
 
           <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
@@ -1170,24 +1521,24 @@ export function ChatPanel({
                     <StyleCover style={style} />
                   </div>
                   <p className={`mt-2 text-xs font-medium ${active ? "text-zinc-950" : "text-zinc-500"}`}>
-                    {style.name}
+                    {styleDisplayName(style)}
                   </p>
                 </button>
               );
             })}
           </div>
           <div className="mt-3 text-sm text-zinc-600">
-            当前风格：
-            <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">{selectedStyle.name}</span>
+            Current style:
+            <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">{styleDisplayName(selectedStyle)}</span>
           </div>
         </article>
       ) : null}
 
       {showStyleStage ? (
         <article className="max-w-[95%] px-1 py-1">
-          <h3 className="text-sm font-semibold text-zinc-900">风格推荐</h3>
+          <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
           <p className="mt-2 text-sm leading-6 text-zinc-700">
-            推荐你先确定演示风格，这会直接影响页面构图、信息密度和视觉节奏。
+            Please confirm style first. It directly affects composition, information density, and visual pacing.
           </p>
 
           <p className="mt-3 text-sm text-zinc-600">{selectedStyle.fit}</p>
@@ -1216,7 +1567,7 @@ export function ChatPanel({
                   <StyleCover style={style} />
                 </div>
                 <p className={`mt-2 text-xs font-medium ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
-                  {style.name}
+                  {styleDisplayName(style)}
                 </p>
               </button>
             ))}
@@ -1225,9 +1576,9 @@ export function ChatPanel({
           <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-3 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-zinc-600">
-                当前风格：
+                Current style:
                 <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">
-                  {selectedStyle.name}
+                  {styleDisplayName(selectedStyle)}
                 </span>
               </div>
               <button
@@ -1239,10 +1590,10 @@ export function ChatPanel({
                 {isPlanningStyleStep ? (
                   <>
                     <LoaderCircle size={14} className="animate-spin" />
-                    思考中...
+                    Thinking...
                   </>
                 ) : (
-                  "下一步"
+                  "Next"
                 )}
               </button>
             </div>
@@ -1253,41 +1604,41 @@ export function ChatPanel({
       {showBillingConfirm ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
           <h3 className="text-sm font-semibold text-zinc-900">
-            {intent === "poster" ? "海报生成确认" : "内容生成确认"}
+            {intent === "poster" ? "Poster Generation Confirmation" : "Content Generation Confirmation"}
           </h3>
           <p className="mt-2 text-sm leading-6 text-zinc-700">
-            已根据当前主题和风格完成用量估算。确认后将开始生成分镜并扣除对应积分。
+            Usage estimation is ready based on current topic and style. Confirm to start generation and deduct credits.
           </p>
 
           <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200">
             <div className="grid grid-cols-[92px_minmax(0,1fr)] text-sm">
-              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">风格</p>
+              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Style</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-800">{billingSummary.styleName}</p>
-              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">本次消耗</p>
+              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Cost</p>
               <p className="border-b border-zinc-200 px-3 py-2 font-semibold text-zinc-900">
-                {billingSummary.totalCost} 积分
+                {billingSummary.totalCost} credits
               </p>
-              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">计算方式</p>
+              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Formula</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
-                {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} 积分
+                {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
                 <span className="ml-1 text-zinc-500">
-                  （原价 {billingSummary.regularCreditsPerOutput}）
+                  (regular {billingSummary.regularCreditsPerOutput})
                 </span>
               </p>
-              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">当前余额</p>
+              <p className="border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">Balance</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
-                {billingSummary.availableCredits} 积分
+                {billingSummary.availableCredits} credits
               </p>
-              <p className="border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">扣费后</p>
-              <p className="px-3 py-2 text-zinc-700">{billingSummary.remainingCredits} 积分</p>
+              <p className="border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-zinc-500">After deduction</p>
+              <p className="px-3 py-2 text-zinc-700">{billingSummary.remainingCredits} credits</p>
             </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className={`text-sm ${canConfirmBilling ? "text-zinc-600" : "font-medium text-red-600"}`}>
               {canConfirmBilling
-                ? `确认后将按限时优惠价 ${billingSummary.promoCreditsPerOutput} 积分 / 标准输出扣费（原价 ${billingSummary.regularCreditsPerOutput}）。`
-                : "当前积分不足，请先升级后再确认账单。"}
+                ? `On confirmation, limited-time pricing applies: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
+                : "Insufficient credits. Please upgrade before confirming."}
             </p>
             <button
               type="button"
@@ -1298,14 +1649,14 @@ export function ChatPanel({
               {isPlanningBillingStep ? (
                 <>
                   <LoaderCircle size={14} className="animate-spin" />
-                  思考中...
+                  Thinking...
                 </>
               ) : billingConfirmed ? (
-                "已确认，生成中..."
+                "Confirmed, generating..."
               ) : !canConfirmBilling ? (
-                "积分不足"
+                "Insufficient credits"
               ) : (
-                "确认账单并生成"
+                "Confirm and Generate"
               )}
             </button>
           </div>

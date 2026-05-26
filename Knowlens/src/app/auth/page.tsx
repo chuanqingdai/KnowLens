@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
@@ -18,7 +18,14 @@ function GoogleMark() {
 
 export default function AuthPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [gisReady, setGisReady] = useState(false);
+  const [gisRendered, setGisRendered] = useState(false);
+  const [localErrorCode, setLocalErrorCode] = useState<string | null>(null);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const { t } = useLocale();
+  const oneTapClientId =
+    process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const getAuthParams = () => {
     if (typeof window === "undefined") {
       return { authError: null as string | null, callbackUrl: "/app" };
@@ -30,51 +37,178 @@ export default function AuthPage() {
     }
     return { authError: params.get("error"), callbackUrl: "/app" };
   };
-  const { authError, callbackUrl } = getAuthParams();
+  const { authError, callbackUrl } = mounted
+    ? getAuthParams()
+    : { authError: null as string | null, callbackUrl: "/app" };
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !oneTapClientId) {
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      setGisReady(true);
+      return;
+    }
+    const scriptId = "knowlens-google-gsi-auth";
+    if (document.getElementById(scriptId)) {
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGisReady(true);
+    document.head.appendChild(script);
+  }, [mounted, oneTapClientId]);
+
+  useEffect(() => {
+    if (!mounted || !gisReady || !oneTapClientId || gisRendered || !googleButtonRef.current) {
+      return;
+    }
+    const id = window.google?.accounts?.id;
+    if (!id) {
+      return;
+    }
+    id.initialize({
+      client_id: oneTapClientId,
+      context: "signin",
+      auto_select: false,
+      cancel_on_tap_outside: true,
+      callback: async (response) => {
+        const credential = response?.credential?.trim();
+        if (!credential) {
+          return;
+        }
+        setIsGoogleLoading(true);
+        try {
+          await signIn("google-onetap", {
+            credential,
+            callbackUrl,
+          });
+        } finally {
+          setIsGoogleLoading(false);
+        }
+      },
+    });
+    id.renderButton?.(googleButtonRef.current, {
+      type: "standard",
+      theme: "outline",
+      size: "large",
+      text: "continue_with",
+      shape: "rectangular",
+      width: 360,
+      locale: "en",
+    });
+    setGisRendered(true);
+  }, [callbackUrl, gisReady, gisRendered, mounted, oneTapClientId]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+    if (authError) {
+      setIsGoogleLoading(false);
+    }
+    if (authError || localErrorCode) {
+      setLocalErrorCode(null);
+    }
+  }, [authError, localErrorCode, mounted]);
+
+  const activeError = authError || localErrorCode;
+  const authErrorNotice = (() => {
+    if (!activeError) {
+      return null;
+    }
+    if (activeError === "OAuthSignin" || activeError === "AUTH-GOOGLE-LOCAL-001") {
+      return t(
+        "Google login couldn't start because the current network could not reach Google in time. Please try another network or turn off VPN/proxy.",
+        "Google 登录无法启动，因为当前网络无法及时连接 Google。请切换网络或关闭 VPN/代理后重试。",
+      );
+    }
+    if (activeError === "OAuthCallback") {
+      return t(
+        "Google login failed during the final callback step. Please check the redirect URL and try again.",
+        "Google 登录在最后回调步骤失败。请检查回调地址后再试。",
+      );
+    }
+    return t(
+      "Google login failed. Please try again.",
+      "Google 登录失败，请重试。",
+    );
+  })();
+
+  const authErrorCode = (() => {
+    if (!activeError) {
+      return null;
+    }
+    if (activeError === "OAuthSignin" || activeError === "AUTH-GOOGLE-LOCAL-001") {
+      return "AUTH-GOOGLE-001";
+    }
+    if (activeError === "OAuthCallback") {
+      return "AUTH-GOOGLE-002";
+    }
+    return `AUTH-GENERIC-${String(activeError).slice(0, 12).toUpperCase()}`;
+  })();
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f7f8] px-4">
-      <section className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <p className="text-sm text-zinc-500">{t("Sign in to KnowLens.ai", "KnowLens.ai 登录")}</p>
-        <h1 className="mt-1 text-2xl font-semibold text-zinc-900">
-          {t("Sign in with Google", "使用 Google 登录")}
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-[#f6f7f9] px-4">
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundColor: "#f6f7f9",
+          backgroundImage:
+            "linear-gradient(rgba(24,24,27,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.035) 1px, transparent 1px), linear-gradient(rgba(24,24,27,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.055) 1px, transparent 1px), radial-gradient(circle at 16% 18%, rgba(59,130,246,0.08), transparent 42%), radial-gradient(circle at 84% 26%, rgba(20,184,166,0.07), transparent 38%), radial-gradient(circle at 60% 74%, rgba(236,72,153,0.05), transparent 36%)",
+          backgroundSize: "24px 24px, 24px 24px, 120px 120px, 120px 120px, auto, auto, auto",
+          backgroundPosition: "0 0, 0 0, -1px -1px, -1px -1px, 0 0, 0 0, 0 0",
+        }}
+      />
+      <section className="relative z-10 w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <p className="text-xs font-medium uppercase tracking-[0.08em] text-zinc-500">
+          {t("KnowLens.ai", "KnowLens.ai")}
+        </p>
+        <h1 className="mt-2 text-[34px] font-semibold leading-[1.12] tracking-tight text-zinc-900">
+          {t("Continue with Google", "使用 Google 继续")}
         </h1>
-        <p className="mt-2 text-sm text-zinc-600">
+        <p className="mt-3 text-sm leading-6 text-zinc-600">
           {t(
-            "Use your Google account to continue. You will return to the page you were viewing.",
-            "使用 Google 登录后即可继续访问项目与工作台内容，登录后会自动回到你刚刚访问的页面。",
+            "Sign in once to access your KnowLens.ai workspace, projects, and credits.",
+            "登录一次即可访问 KnowLens.ai 的工作台、项目与积分。",
           )}
         </p>
 
-        <button
-          type="button"
-          onClick={() => {
-            setIsGoogleLoading(true);
-            void signIn("google", { callbackUrl });
-          }}
-          disabled={isGoogleLoading}
-          className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+        <div
+          ref={googleButtonRef}
+          className={`mt-5 flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white ${
+            gisRendered ? "p-1.5" : "p-0"
+          }`}
         >
-          {isGoogleLoading ? <Loader2 size={15} className="animate-spin text-zinc-500" /> : <GoogleMark />}
-          <span>
-            {isGoogleLoading
-              ? t("Connecting...", "正在连接 Google...")
-              : t("Continue with Google", "使用 Google 一键登录")}
-          </span>
-        </button>
+          {!gisRendered ? (
+            <span className="text-xs text-zinc-500">
+              {t("Loading Google sign-in...", "正在加载 Google 登录组件...")}
+            </span>
+          ) : null}
+        </div>
 
-        {authError ? (
+        {authErrorNotice && authErrorCode ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
-            {t(
-              `Sign-in failed (${authError}). Please try again. If the issue continues, check Google login settings and callback URL.`,
-              `登录未完成（${authError}）。通常是网络超时或 Google OAuth 配置问题，请重试；若连续失败请检查回调地址与网络。`,
-            )}
+            <p className="text-xs leading-5 text-red-700">{authErrorNotice}</p>
+            <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+              {t(`Error code: ${authErrorCode}`, `错误码：${authErrorCode}`)}
+            </p>
           </div>
         ) : null}
 
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs text-zinc-600">
+        <div className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs text-zinc-600">
           <ShieldCheck size={13} />
-          {t("After sign-in, you will return to your previous page.", "登录后自动回到你刚才访问的页面")}
+          {t(
+            "You will return to your previous page after sign-in.",
+            "登录后将自动返回你刚才的页面。",
+          )}
         </div>
       </section>
     </main>

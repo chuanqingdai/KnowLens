@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
   BadgeCheck,
@@ -163,6 +163,44 @@ function formatUsd(value: number) {
   return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }
 
+const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
+
+type PendingCheckout = {
+  planId: string;
+  cycle: BillingCycle;
+  startedAt: string;
+  sessionId?: string;
+};
+
+function readPendingCheckout() {
+  if (typeof window === "undefined") {
+    return null as PendingCheckout | null;
+  }
+  const raw = window.sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+  if (!raw) {
+    return null as PendingCheckout | null;
+  }
+  try {
+    return JSON.parse(raw) as PendingCheckout;
+  } catch {
+    return null as PendingCheckout | null;
+  }
+}
+
+function savePendingCheckout(input: PendingCheckout) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(input));
+}
+
+function clearPendingCheckout() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+}
+
 export default function MembershipPage() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -171,6 +209,9 @@ export default function MembershipPage() {
   const [openFaq, setOpenFaq] = useState(0);
   const [isPaying, setIsPaying] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [pendingFinalizeSessionId, setPendingFinalizeSessionId] = useState<string | null>(null);
+  const [pendingCheckoutMeta, setPendingCheckoutMeta] = useState<PendingCheckout | null>(null);
+  const processedSessionRef = useRef<string | null>(null);
   const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
   const [refreshVersion, setRefreshVersion] = useState(0);
   const subscription = useMemo<SubscriptionSnapshot | null>(() => {
@@ -196,40 +237,114 @@ export default function MembershipPage() {
     window.history.replaceState(null, "", returnPath);
   }, [returnPath]);
 
+  const finalizeCheckoutSession = useCallback(
+    async (sessionId: string) => {
+      setFinalizing(true);
+      try {
+        const response = await fetch("/api/billing/finalize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          duplicate?: boolean;
+          reason?: string;
+          error?: string;
+          message?: string;
+        };
+
+        if (response.ok && data.ok) {
+          clearPendingCheckout();
+          setPendingCheckoutMeta(null);
+          setPendingFinalizeSessionId(null);
+          setRefreshVersion((prev) => prev + 1);
+          setToast(
+            data.duplicate
+              ? "Payment already verified earlier. Credits were not added twice."
+              : "Payment verified. Membership and credits are now active.",
+          );
+          router.replace(returnPath);
+          return;
+        }
+
+        if (data.reason === "canceled_or_incomplete") {
+          clearPendingCheckout();
+          setPendingCheckoutMeta(null);
+          setPendingFinalizeSessionId(null);
+          setToast("Checkout was canceled or not completed. No charge and no credits were added.");
+          router.replace(returnPath);
+          return;
+        }
+
+        if (data.reason === "payment_failed_or_unpaid") {
+          clearPendingCheckout();
+          setPendingCheckoutMeta(null);
+          setPendingFinalizeSessionId(null);
+          setToast("Payment failed. No credits were added. Please try another payment method.");
+          router.replace(returnPath);
+          return;
+        }
+
+        throw new Error(data.error || data.message || "Payment verification failed.");
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Network interrupted while verifying payment. No credits were added.";
+        setPendingFinalizeSessionId(sessionId);
+        setToast(`${message} You can retry verification.`);
+      } finally {
+        setFinalizing(false);
+      }
+    },
+    [returnPath, router],
+  );
+
   useEffect(() => {
     if (typeof window === "undefined" || finalizing) {
       return;
     }
+    setPendingCheckoutMeta(readPendingCheckout());
     const params = new URLSearchParams(window.location.search);
     const checkoutStatus = params.get("checkout");
     const sessionId = params.get("session_id");
-    if (checkoutStatus !== "success" || !sessionId) {
+
+    if (checkoutStatus === "cancel") {
+      clearPendingCheckout();
+      setPendingCheckoutMeta(null);
+      setPendingFinalizeSessionId(null);
+      setToast("Checkout was canceled. No charge and no credits were added.");
+      router.replace(returnPath);
       return;
     }
-    setFinalizing(true);
-    fetch("/api/billing/finalize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    })
-      .then(async (res) => {
-        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Payment verification failed.");
-        }
-        setRefreshVersion((prev) => prev + 1);
-        setToast("Payment verified. Membership and credits are now active.");
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : "Payment verification failed.";
-        setToast(message);
-      })
-      .finally(() => {
-        setFinalizing(false);
-        const next = returnPath || "/";
-        router.replace(next);
+
+    if (checkoutStatus !== "success" || !sessionId) {
+      const pending = readPendingCheckout();
+      if (pending?.sessionId) {
+        setPendingFinalizeSessionId(pending.sessionId);
+      }
+      return;
+    }
+
+    if (processedSessionRef.current === sessionId) {
+      return;
+    }
+    processedSessionRef.current = sessionId;
+
+    const pending = readPendingCheckout();
+    if (pending) {
+      savePendingCheckout({
+        ...pending,
+        sessionId,
       });
-  }, [finalizing, returnPath, router]);
+      setPendingCheckoutMeta({
+        ...pending,
+        sessionId,
+      });
+    }
+    void finalizeCheckoutSession(sessionId);
+  }, [finalizeCheckoutSession, finalizing, returnPath, router]);
 
   const plansWithCyclePrice = useMemo(() => {
     return plans.map((plan) => {
@@ -259,6 +374,16 @@ export default function MembershipPage() {
     }
     setIsPaying(true);
     try {
+      savePendingCheckout({
+        planId: plan.id,
+        cycle: billingCycle,
+        startedAt: new Date().toISOString(),
+      });
+      setPendingCheckoutMeta({
+        planId: plan.id,
+        cycle: billingCycle,
+        startedAt: new Date().toISOString(),
+      });
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -282,6 +407,8 @@ export default function MembershipPage() {
         window.location.replace(data.checkoutUrl);
       }
     } catch (error) {
+      clearPendingCheckout();
+      setPendingCheckoutMeta(null);
       const message = error instanceof Error ? error.message : "Checkout failed.";
       const normalized = message.toLowerCase();
       if (
@@ -445,7 +572,7 @@ export default function MembershipPage() {
             </article>
           ))}
             </section>
-            <p className="mt-3 text-xs leading-5 text-amber-600">
+            <p className="mt-3 text-xs leading-5 text-amber-800">
               * GPT-image2 limited-time 70% off offer. Availability windows may change.
             </p>
 
@@ -527,6 +654,38 @@ export default function MembershipPage() {
           </div>
         </div>
       </div>
+
+      {pendingFinalizeSessionId ? (
+        <div className="fixed bottom-20 left-1/2 z-50 w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+          <p className="font-medium">Payment verification is pending</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">
+            {pendingCheckoutMeta
+              ? `Plan ${pendingCheckoutMeta.planId} (${pendingCheckoutMeta.cycle}) was started, but verification did not complete yet.`
+              : "A checkout session returned, but verification did not complete yet."}
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void finalizeCheckoutSession(pendingFinalizeSessionId)}
+              disabled={finalizing}
+              className="inline-flex h-8 items-center rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {finalizing ? "Verifying..." : "Retry verification"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearPendingCheckout();
+                setPendingCheckoutMeta(null);
+                setPendingFinalizeSessionId(null);
+              }}
+              className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {toast ? (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">

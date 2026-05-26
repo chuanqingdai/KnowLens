@@ -390,3 +390,97 @@ export function recordBillingFulfillment(input: {
     nowIso(),
   );
 }
+
+export function applyBillingFulfillmentAtomic(input: {
+  sessionId: string;
+  userEmail: string;
+  planId: string;
+  planName: string;
+  cycle: "monthly" | "yearly";
+  monthlyCredits: number;
+  startedAt: string;
+  renewAt: string;
+}) {
+  const { db } = getDb();
+  const normalizedEmail = normalizeScope(input.userEmail);
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const existing = db
+      .prepare("SELECT session_id as sessionId FROM billing_fulfillments WHERE session_id = ? LIMIT 1")
+      .get(input.sessionId) as { sessionId?: string } | undefined;
+    if (existing?.sessionId) {
+      db.exec("COMMIT");
+      return { applied: false as const };
+    }
+
+    const userExisting = db.prepare("SELECT id FROM users WHERE email = ?").get(normalizedEmail) as
+      | { id?: string }
+      | undefined;
+    const userId = userExisting?.id ?? `u-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO users (id, email, name, role, created_at, updated_at)
+       VALUES (?, ?, ?, 'user', ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         updated_at = excluded.updated_at`,
+    ).run(
+      userId,
+      normalizedEmail,
+      normalizedEmail.split("@")[0] || "User",
+      nowIso(),
+      nowIso(),
+    );
+
+    const subscriptionId = `sub-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, null, ?, ?)`,
+    ).run(
+      subscriptionId,
+      userId,
+      input.planId,
+      input.planName,
+      input.cycle,
+      input.startedAt,
+      input.renewAt,
+      nowIso(),
+      nowIso(),
+    );
+
+    const balanceRows = db
+      .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .all(normalizedEmail) as Array<{ balance?: number }>;
+    const previousBalance = balanceRows[0]?.balance ?? 80;
+    const nextBalance = previousBalance + input.monthlyCredits;
+    const creditRecordId = `record-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+       VALUES (?, ?, 'topup', ?, ?, ?, ?, ?, null, null)`,
+    ).run(
+      creditRecordId,
+      nowIso(),
+      `${input.planName} ${input.cycle} purchase credited`,
+      input.monthlyCredits,
+      nextBalance,
+      userId,
+      normalizedEmail,
+    );
+
+    db.prepare(
+      `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      input.sessionId,
+      normalizedEmail,
+      input.planId,
+      input.cycle,
+      nowIso(),
+    );
+
+    db.exec("COMMIT");
+    return { applied: true as const };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}

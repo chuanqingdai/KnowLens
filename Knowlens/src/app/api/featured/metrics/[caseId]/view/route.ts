@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 import { normalizeScope } from "@/lib/server/store";
 import { getDb } from "@/lib/server/db";
 
@@ -20,8 +21,8 @@ export async function POST(
     rateLimitOrThrow({
       scopeKey: userScope === "guest" ? `ip:${request.headers.get("x-forwarded-for") ?? "unknown"}` : `user:${userScope}`,
       endpoint: "featured-view",
-      limit: 120,
-      windowMs: 60_000,
+      limit: RATE_LIMIT_CONFIG.featuredView.limit,
+      windowMs: RATE_LIMIT_CONFIG.featuredView.windowMs,
     });
     const { db } = getDb();
     db.prepare(

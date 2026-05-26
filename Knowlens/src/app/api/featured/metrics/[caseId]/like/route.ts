@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeScope, toggleCaseLikeDb } from "@/lib/server/store";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 
 export const runtime = "nodejs";
 
@@ -19,8 +20,8 @@ export async function POST(
     rateLimitOrThrow({
       scopeKey: userScope === "guest" ? `ip:${request.headers.get("x-forwarded-for") ?? "unknown"}` : `user:${userScope}`,
       endpoint: "featured-like",
-      limit: 60,
-      windowMs: 60_000,
+      limit: RATE_LIMIT_CONFIG.featuredLike.limit,
+      windowMs: RATE_LIMIT_CONFIG.featuredLike.windowMs,
     });
     const next = toggleCaseLikeDb(caseId, userScope);
     return NextResponse.json({ ok: true, liked: next.liked, likesDelta: next.likesDelta });
@@ -39,4 +40,3 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

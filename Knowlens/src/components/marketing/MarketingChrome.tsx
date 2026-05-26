@@ -36,6 +36,18 @@ declare global {
               getDismissedReason?: () => string;
             }) => void,
           ) => void;
+          renderButton?: (
+            parent: HTMLElement,
+            options: {
+              type?: "standard" | "icon";
+              theme?: "outline" | "filled_blue" | "filled_black";
+              size?: "large" | "medium" | "small";
+              text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+              shape?: "rectangular" | "pill" | "circle" | "square";
+              width?: string | number;
+              locale?: string;
+            },
+          ) => void;
           cancel: () => void;
         };
       };
@@ -268,6 +280,9 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
             </Link>
             <Link href="/terms" className="hover:text-zinc-900">
               {t("Terms", "使用条款")}
+            </Link>
+            <Link href="/payment-terms" className="hover:text-zinc-900">
+              {t("Payment Terms", "支付条款")}
             </Link>
             <Link href="/contact" className="hover:text-zinc-900">
               {t("Contact", "联系我们")}

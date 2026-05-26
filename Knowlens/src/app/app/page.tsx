@@ -29,7 +29,6 @@ import { SidebarNav } from "@/components/app-shell/SidebarNav";
 import { getProjectsByUser } from "@/lib/admin";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
-import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { getCreditRecords, getSubscriptionByUser } from "@/lib/billing";
 import {
   getCaseMetrics,
@@ -245,6 +244,7 @@ const supportedUploadAccept = [
 const MIN_COMPOSER_HEIGHT = 132;
 const MAX_COMPOSER_HEIGHT = 260;
 const DEFAULT_COVER_FALLBACK = "/picture/text-to-poster.png";
+const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 
 type ProgressiveCoverProps = {
   src: string;
@@ -264,6 +264,14 @@ function ProgressiveCover({
   const [imgSrc, setImgSrc] = useState(src);
   const [loaded, setLoaded] = useState(false);
   const [attemptedFallback, setAttemptedFallback] = useState(false);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [imgSrc]);
 
   return (
     <div className="relative h-full w-full">
@@ -277,18 +285,47 @@ function ProgressiveCover({
         alt={alt}
         loading={loading}
         decoding="async"
+        ref={imageRef}
         onLoad={() => setLoaded(true)}
         onError={() => {
           if (fallbackSrc && !attemptedFallback && imgSrc !== fallbackSrc) {
+            if (ENABLE_IMAGE_DEBUG) {
+              console.error("[ImageDebug][app] optimized cover failed, fallback enabled", {
+                src,
+                fallbackSrc,
+                currentSrc: imgSrc,
+                alt,
+                page: typeof window !== "undefined" ? window.location.pathname : "",
+              });
+            }
             setImgSrc(fallbackSrc);
             setAttemptedFallback(true);
             setLoaded(false);
             return;
           }
           if (imgSrc !== DEFAULT_COVER_FALLBACK) {
+            if (ENABLE_IMAGE_DEBUG) {
+              console.error("[ImageDebug][app] fallback cover failed, use default cover", {
+                src,
+                fallbackSrc,
+                currentSrc: imgSrc,
+                defaultFallback: DEFAULT_COVER_FALLBACK,
+                alt,
+                page: typeof window !== "undefined" ? window.location.pathname : "",
+              });
+            }
             setImgSrc(DEFAULT_COVER_FALLBACK);
             setLoaded(false);
             return;
+          }
+          if (ENABLE_IMAGE_DEBUG) {
+            console.error("[ImageDebug][app] default cover failed", {
+              src,
+              fallbackSrc,
+              currentSrc: imgSrc,
+              alt,
+              page: typeof window !== "undefined" ? window.location.pathname : "",
+            });
           }
           setLoaded(true);
         }}
@@ -420,6 +457,7 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
+  const [isStartingWorkspace, setIsStartingWorkspace] = useState(false);
   const [, setMetricVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
@@ -667,17 +705,43 @@ export default function Home() {
     router.push("/membership");
   }
 
-  function handleGoGenerate() {
+  async function handleGoGenerate() {
+    if (isStartingWorkspace) {
+      return;
+    }
     const payload = {
       prompt: composeInput.trim(),
       textModel: resolvedTextModel,
       imageModel: "gpt-image2",
       sources: sourceItems,
     };
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("knowlens-home-draft", JSON.stringify(payload));
+    setIsStartingWorkspace(true);
+    try {
+      const response = await fetch("/api/workspace/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        payload?: typeof payload;
+        error?: string;
+      };
+      if (!response.ok || !data?.ok || !data.payload) {
+        setUploadToast(data?.error || "Unable to start a new project right now. Please try again later.");
+        return;
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("knowlens-home-draft", JSON.stringify(data.payload));
+      }
+      router.push("/workspace");
+    } catch {
+      setUploadToast("Unable to start a new project right now. Please try again later.");
+    } finally {
+      setIsStartingWorkspace(false);
     }
-    router.push("/workspace");
   }
 
   function handleFeaturedDownload() {
@@ -811,7 +875,6 @@ export default function Home() {
             <span className="text-zinc-500">|</span>
             <span className="font-medium">Upgrade</span>
           </button>
-          <LocaleSwitch />
           <UserMenu />
         </div>
         <div className="fixed right-6 top-6 z-50 hidden items-center gap-3 md:flex">
@@ -825,7 +888,6 @@ export default function Home() {
             <span className="text-zinc-500">|</span>
             <span className="font-medium">Upgrade</span>
           </button>
-          <LocaleSwitch />
           <UserMenu />
         </div>
 
@@ -1076,10 +1138,11 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={handleGoGenerate}
-                      className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 sm:ml-auto sm:mt-0 sm:w-auto"
+                      disabled={isStartingWorkspace}
+                      className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:mt-0 sm:w-auto"
                     >
                       <SendHorizontal size={15} />
-                      Generate
+                      {isStartingWorkspace ? "Starting..." : "Generate"}
                     </button>
                   </div>
                 </div>

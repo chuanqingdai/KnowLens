@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 import {
   getStripePaymentLink,
   getStripePriceId,
@@ -52,8 +53,8 @@ export async function POST(request: NextRequest) {
     rateLimitOrThrow({
       scopeKey: `user:${email}`,
       endpoint: "billing-checkout",
-      limit: 10,
-      windowMs: 10 * 60_000,
+      limit: RATE_LIMIT_CONFIG.billingCheckout.limit,
+      windowMs: RATE_LIMIT_CONFIG.billingCheckout.windowMs,
     });
 
     const body = (await request.json()) as {

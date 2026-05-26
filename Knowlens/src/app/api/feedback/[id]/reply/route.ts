@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { replyFeedbackDb } from "@/lib/server/store";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 
 export const runtime = "nodejs";
 
@@ -18,8 +19,8 @@ export async function POST(
     rateLimitOrThrow({
       scopeKey: `reply:${request.headers.get("x-forwarded-for") ?? "unknown"}`,
       endpoint: "feedback-reply",
-      limit: 20,
-      windowMs: 10 * 60_000,
+      limit: RATE_LIMIT_CONFIG.feedbackReply.limit,
+      windowMs: RATE_LIMIT_CONFIG.feedbackReply.windowMs,
     });
     const reply = (body.reply ?? "").trim();
     if (!reply) {
@@ -46,4 +47,3 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

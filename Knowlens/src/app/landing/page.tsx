@@ -3,37 +3,39 @@
 
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 
-const heroImage = "/picture/knowlens-hero.png";
+const heroImage = "/picture/hero picture.png";
+const LANDING_ASSET_VERSION = "20260526b";
+const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 
 const previewWideCases = [
   {
     id: "w-1",
-    titleEn: "How Vaccines Train the Immune System",
-    titleZh: "疫苗如何训练免疫系统",
-    cover: "/en-picture/0f5851a2-0325-48f8-a520-9fe5679ce303.png",
-    keywordsEn: "vaccines, immune system, biology, education, infographic",
-    keywordsZh: "疫苗, 免疫系统, 生物, 教育, 信息图",
+    titleEn: "Featured Visual Case 01",
+    titleZh: "精选案例 01",
+    cover: "/en-picture/c2b3c799-28c9-4267-a18e-fe3145449df7.png",
+    keywordsEn: "knowledge visual, education, infographic, featured case",
+    keywordsZh: "知识可视化, 教育, 信息图, 精选案例",
   },
   {
     id: "w-2",
-    titleEn: "How a Black Hole Bends Light",
-    titleZh: "黑洞如何扭曲光线",
-    cover: "/en-picture/2f12cc0f-cca8-4ecd-83ea-25f1c5966e8b.png",
-    keywordsEn: "black hole, space, physics, astronomy, infographic",
-    keywordsZh: "黑洞, 宇宙, 物理, 天文, 信息图",
+    titleEn: "Featured Visual Case 02",
+    titleZh: "精选案例 02",
+    cover: "/en-picture/ce307920-892e-46eb-a193-fe228d4b9c31.png",
+    keywordsEn: "knowledge visual, education, infographic, featured case",
+    keywordsZh: "知识可视化, 教育, 信息图, 精选案例",
   },
   {
     id: "w-3",
-    titleEn: "How Diversification Reduces Risk",
-    titleZh: "分散投资如何降低风险",
-    cover: "/en-picture/214f0573-c509-494c-8647-f7c94b79fb8a.png",
-    keywordsEn: "diversification, risk, finance, economics, infographic",
-    keywordsZh: "分散投资, 风险, 金融, 经济, 信息图",
+    titleEn: "Featured Visual Case 03",
+    titleZh: "精选案例 03",
+    cover: "/en-picture/17e1c7f5-b04e-4e54-88af-787c79d1e8e3.png",
+    keywordsEn: "knowledge visual, education, infographic, featured case",
+    keywordsZh: "知识可视化, 教育, 信息图, 精选案例",
   },
   {
     id: "w-4",
@@ -464,9 +466,25 @@ type ProgressiveImageProps = {
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
   skeletonClassName?: string;
   title?: string;
 };
+
+function normalizeAssetPath(assetPath: string) {
+  if (!assetPath.startsWith("/")) {
+    return assetPath;
+  }
+  return assetPath
+    .split("/")
+    .map((segment, index) => (index === 0 ? segment : encodeURIComponent(segment)))
+    .join("/");
+}
+
+function withAssetVersion(assetPath: string) {
+  const sep = assetPath.includes("?") ? "&" : "?";
+  return `${assetPath}${sep}v=${LANDING_ASSET_VERSION}`;
+}
 
 function ProgressiveImage({
   src,
@@ -474,6 +492,7 @@ function ProgressiveImage({
   alt,
   className = "",
   loading = "lazy",
+  fetchPriority = "auto",
   skeletonClassName = "",
   title,
 }: ProgressiveImageProps) {
@@ -481,6 +500,21 @@ function ProgressiveImage({
   const [failed, setFailed] = useState(false);
   const [usingFallback, setUsingFallback] = useState(false);
   const actualSrc = usingFallback && fallbackSrc ? fallbackSrc : src;
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+    setUsingFallback(false);
+  }, [src, fallbackSrc]);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+      setFailed(false);
+    }
+  }, [actualSrc]);
 
   return (
     <div className="relative h-full w-full">
@@ -495,7 +529,9 @@ function ProgressiveImage({
         alt={alt}
         title={title}
         data-keywords={title}
+        ref={imageRef}
         loading={loading}
+        fetchPriority={fetchPriority}
         decoding="async"
         onLoad={() => {
           setLoaded(true);
@@ -503,9 +539,27 @@ function ProgressiveImage({
         }}
         onError={() => {
           if (fallbackSrc && !usingFallback) {
+            if (ENABLE_IMAGE_DEBUG) {
+              console.error("[ImageDebug][landing] optimized load failed, fallback enabled", {
+                src,
+                fallbackSrc,
+                currentSrc: actualSrc,
+                page: typeof window !== "undefined" ? window.location.pathname : "",
+                title,
+              });
+            }
             setUsingFallback(true);
             setLoaded(false);
             return;
+          }
+          if (ENABLE_IMAGE_DEBUG) {
+            console.error("[ImageDebug][landing] image load failed", {
+              src,
+              fallbackSrc,
+              currentSrc: actualSrc,
+              page: typeof window !== "undefined" ? window.location.pathname : "",
+              title,
+            });
           }
           setFailed(true);
           setLoaded(false);
@@ -536,11 +590,26 @@ function AspectSkeleton({
 
 export default function LandingPage() {
   const { t, locale } = useLocale();
-  const toOptimized = (imagePath: string) => `/landing-optimized${imagePath}`;
+  const toOptimized = (imagePath: string) =>
+    withAssetVersion(normalizeAssetPath(`/landing-optimized${imagePath}`));
+  const toOriginal = (imagePath: string) =>
+    withAssetVersion(normalizeAssetPath(imagePath));
   const previewWideLoop = [...previewWideCases, ...previewWideCases];
   const previewTallLoop = [...previewTallCases, ...previewTallCases];
   const [activeFlowId, setActiveFlowId] = useState(DEFAULT_CAPABILITY_FLOW_ID);
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("yearly");
+  const [activeFlowPreviewSrc, setActiveFlowPreviewSrc] = useState(() =>
+    toOptimized(
+      capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID)?.previewImage ??
+        capabilityFlows[0].previewImage,
+    ),
+  );
+  const [activeFlowPreviewFallbackSrc, setActiveFlowPreviewFallbackSrc] = useState(() =>
+    toOriginal(
+      capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID)?.previewImage ??
+        capabilityFlows[0].previewImage,
+    ),
+  );
   const activeFlow =
     capabilityFlows.find((flow) => flow.id === activeFlowId) ??
     capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID) ??
@@ -550,9 +619,33 @@ export default function LandingPage() {
     if (typeof window === "undefined") {
       return;
     }
+    const nextOptimizedSrc = withAssetVersion(
+      normalizeAssetPath(`/landing-optimized${activeFlow.previewImage}`),
+    );
+    const nextRawSrc = withAssetVersion(normalizeAssetPath(activeFlow.previewImage));
+    if (
+      activeFlowPreviewSrc === nextOptimizedSrc &&
+      activeFlowPreviewFallbackSrc === nextRawSrc
+    ) {
+      return;
+    }
+
     const activePreview = new Image();
-    activePreview.src = toOptimized(activeFlow.previewImage);
-  }, [activeFlow.previewImage]);
+    activePreview.decoding = "async";
+    activePreview.src = nextOptimizedSrc;
+    activePreview.onload = () => {
+      setActiveFlowPreviewSrc(nextOptimizedSrc);
+      setActiveFlowPreviewFallbackSrc(nextRawSrc);
+    };
+    activePreview.onerror = () => {
+      setActiveFlowPreviewSrc(nextRawSrc);
+      setActiveFlowPreviewFallbackSrc(nextRawSrc);
+    };
+  }, [
+    activeFlow.previewImage,
+    activeFlowPreviewFallbackSrc,
+    activeFlowPreviewSrc,
+  ]);
   const softwareAppSchema = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -608,7 +701,7 @@ export default function LandingPage() {
   };
 
   return (
-    <MarketingChrome showLocaleSwitch>
+    <MarketingChrome>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppSchema) }}
@@ -628,15 +721,15 @@ export default function LandingPage() {
             <h2 className="mt-4 text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[46px]">
               {locale === "en" ? (
                 <>
-                  Start Creating Visual
+                  Turn Knowledge
                   <br />
-                  Knowledge with AI
+                  into Visual Content
                 </>
               ) : (
                 <>
-                  开始使用 AI
+                  将知识转化为
                   <br />
-                  创作知识可视化内容
+                  可视化内容
                 </>
               )}
             </h2>
@@ -662,10 +755,11 @@ export default function LandingPage() {
               <AspectSkeleton ratioClassName="aspect-square">
                 <ProgressiveImage
                   src={toOptimized(heroImage)}
-                  fallbackSrc={heroImage}
+                  fallbackSrc={toOriginal(heroImage)}
                   alt="KnowLens Hero"
                   className="absolute inset-0 h-full w-full object-cover"
                   loading="eager"
+                  fetchPriority="high"
                 />
               </AspectSkeleton>
             </div>
@@ -710,11 +804,12 @@ export default function LandingPage() {
                 <div className="relative overflow-hidden rounded-xl bg-zinc-100">
                   <AspectSkeleton ratioClassName="aspect-[16/9]">
                     <ProgressiveImage
-                      src={toOptimized(activeFlow.previewImage)}
-                      fallbackSrc={activeFlow.previewImage}
+                      src={activeFlowPreviewSrc}
+                      fallbackSrc={activeFlowPreviewFallbackSrc}
                       alt={t(`${activeFlow.tabEn} visual example`, `${activeFlow.tabZh} 案例示意`)}
                       className="absolute inset-0 h-full w-full object-contain"
-                      loading="lazy"
+                      loading="eager"
+                      fetchPriority="high"
                       skeletonClassName="bg-zinc-200"
                     />
                   </AspectSkeleton>
@@ -749,11 +844,12 @@ export default function LandingPage() {
                     <div className="aspect-video overflow-hidden rounded-xl bg-zinc-100">
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
-                        fallbackSrc={item.cover}
+                        fallbackSrc={toOriginal(item.cover)}
                         alt={t(item.titleEn, item.titleZh)}
                         title={t(item.titleEn, item.titleZh)}
                         className="h-full w-full object-cover"
-                        loading="lazy"
+                        loading={index < previewWideCases.length ? "eager" : "lazy"}
+                        fetchPriority={index < previewWideCases.length ? "high" : "low"}
                         skeletonClassName="bg-zinc-200"
                       />
                     </div>
@@ -773,11 +869,12 @@ export default function LandingPage() {
                     <div className="aspect-[9/16] overflow-hidden rounded-xl bg-zinc-100">
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
-                        fallbackSrc={item.cover}
+                        fallbackSrc={toOriginal(item.cover)}
                         alt={t(item.titleEn, item.titleZh)}
                         title={t(item.titleEn, item.titleZh)}
                         className="h-full w-full object-cover"
-                        loading="lazy"
+                        loading={index < previewTallCases.length ? "eager" : "lazy"}
+                        fetchPriority={index < previewTallCases.length ? "high" : "low"}
                         skeletonClassName="bg-zinc-200"
                       />
                     </div>
@@ -1005,7 +1102,7 @@ export default function LandingPage() {
                 </article>
               ))}
             </div>
-            <p className="mt-3 text-xs leading-5 text-amber-600">
+            <p className="mt-3 text-xs leading-5 text-amber-800">
               * GPT-image2 limited-time 70% off offer. Availability windows may change.
             </p>
           </div>

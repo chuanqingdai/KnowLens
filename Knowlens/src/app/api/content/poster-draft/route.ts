@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { buildContentDraftPrompt } from "@/lib/prompts/content-draft";
 import { buildMockDraftPayload } from "@/lib/prompts/content-draft-mock";
+import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
+import { incrementAndCheckUsageLimit, getUsageCounter } from "@/lib/server/guard";
+import { nextAuthOptions } from "@/lib/nextAuth";
+import {
+  getLanguageTag,
+  isChineseLanguage,
+  resolveOutputLanguage,
+  type OutputLanguage,
+} from "@/lib/language";
 
 export const runtime = "nodejs";
 
@@ -29,11 +40,12 @@ type PosterDraftRequest = {
   posterSizeLabel?: string;
   direction?: "poster" | "ppt" | "video";
   draftMode?: "mock" | "auto";
+  outputLanguage?: OutputLanguage;
 };
 
 type PosterRenderSpec = {
   version: "v1";
-  language: "zh-CN";
+  language: string;
   layoutTemplate: "three-column-causal-infographic";
   ratio: string;
   title: string;
@@ -84,7 +96,30 @@ function buildFallbackPosterDraft(
   topic: string,
   sizeLabel: string | undefined,
   prompt: string,
+  outputLanguage: OutputLanguage,
 ): PosterDraft {
+  if (!isChineseLanguage(outputLanguage)) {
+    const vivid = /vivid|engaging|story|playful/i.test(prompt);
+    const formal = /professional|formal|rigorous|academic/i.test(prompt);
+    const subtitle = vivid ? "More vivid tone" : formal ? "Professional tone" : "Clear explainer tone";
+    return {
+      headline: `${topic}: key mechanism and real-world impact`,
+      subtitle,
+      body: `${topic} directly affects day-to-day decisions and tradeoffs. With the same budget, people usually get fewer resources and must rebalance speed, price, and risk.`,
+      points: [
+        `${topic} usually starts from upstream variables and then propagates to end-user outcomes.`,
+        "As costs rise, people often shift from flexible spending to essential spending.",
+        "When income growth lags behind cost growth, real purchasing power declines.",
+        "Tracking one core indicator over multiple periods helps validate whether the trend is persistent.",
+      ],
+      cta: "Save this visual for a 1-minute review.",
+      size: sizeLabel,
+      visualType: "Causal flow diagram",
+      layoutSuggestion: "Headline on top, mechanism flow in the center, and key takeaway at the bottom.",
+      visualElements: ["upstream drivers", "transmission arrows", "outcome comparison", "action takeaway"],
+    };
+  }
+
   if (/洋流|海流/.test(topic)) {
     return {
       headline: "洋流循环如何影响全球气候？",
@@ -143,6 +178,30 @@ function buildFallbackPosterDraft(
 }
 
 function buildFallbackPlanList(topic: string, count: number): PosterPlanItem[] {
+  return buildFallbackPlanListByLanguage(topic, count, "zh");
+}
+
+function buildFallbackPlanListByLanguage(topic: string, count: number, outputLanguage: OutputLanguage): PosterPlanItem[] {
+  if (!isChineseLanguage(outputLanguage)) {
+    const seed = [
+      { title: `${topic} · Core question`, focus: "Frame the key question in one sentence." },
+      { title: `${topic} · Mechanism`, focus: "Explain the mechanism with a concrete causal chain." },
+      { title: `${topic} · Conclusion and use case`, focus: "Summarize key takeaway and practical relevance." },
+      { title: `${topic} · Quick review`, focus: "Condense the topic into high-signal recap points." },
+      { title: `${topic} · Real-world case`, focus: "Add one realistic scenario to improve retention." },
+      { title: `${topic} · Common misconceptions`, focus: "Clarify misconceptions and correct framing." },
+      { title: `${topic} · Visual summary`, focus: "Compress key insights into one visual summary." },
+      { title: `${topic} · Further exploration`, focus: "Suggest extension questions for deeper learning." },
+      { title: `${topic} · Comparison angle`, focus: "Use contrast to highlight critical differences." },
+      { title: `${topic} · Final recap`, focus: "Complete a one-screen recap of the full topic." },
+    ];
+    const list = Array.from({ length: count }, (_, idx) => seed[idx % seed.length]);
+    return list.map((item, idx) => ({
+      index: idx + 1,
+      title: item.title,
+      focus: item.focus,
+    }));
+  }
   const seed = [
     { title: `${topic} · 核心问题`, focus: "用一句话提出问题并建立兴趣" },
     { title: `${topic} · 关键机制`, focus: "拆解机制过程，突出因果关系" },
@@ -202,6 +261,17 @@ function parseJsonContent(content: string) {
 }
 
 function enforcePosterSpecificity(draft: PosterDraft, topic: string): PosterDraft {
+  return enforcePosterSpecificityByLanguage(draft, topic, "zh");
+}
+
+function enforcePosterSpecificityByLanguage(
+  draft: PosterDraft,
+  topic: string,
+  outputLanguage: OutputLanguage,
+): PosterDraft {
+  if (!isChineseLanguage(outputLanguage)) {
+    return draft;
+  }
   const genericPointPatterns = [/关键变量/, /变化结果/, /行动建议/, /机制链路/, /补充指标/, /可执行/];
   const hasGenericPoint = draft.points.some((point) => genericPointPatterns.some((rule) => rule.test(point)));
   if (!hasGenericPoint) {
@@ -236,8 +306,9 @@ function buildPosterRenderSpec(params: {
   topic: string;
   sizeLabel?: string;
   draft: PosterDraft;
+  outputLanguage: OutputLanguage;
 }): PosterRenderSpec {
-  const { topic, sizeLabel, draft } = params;
+  const { topic, sizeLabel, draft, outputLanguage } = params;
   const chainItems =
     draft.points.length >= 4
       ? draft.points.slice(0, 4).map((item) => cleanSentence(item))
@@ -250,7 +321,7 @@ function buildPosterRenderSpec(params: {
 
   return {
     version: "v1",
-    language: "zh-CN",
+    language: getLanguageTag(outputLanguage),
     layoutTemplate: "three-column-causal-infographic",
     ratio: sizeLabel || "9:16",
     title: draft.headline,
@@ -299,7 +370,7 @@ function buildPosterRenderSpec(params: {
 
 function buildInternalModelPrompt(spec: PosterRenderSpec) {
   return [
-    "You are generating one Chinese knowledge infographic poster.",
+    "You are generating one knowledge infographic poster.",
     `Topic: ${spec.topic}`,
     `Title: ${spec.title}`,
     `Subtitle: ${spec.subtitle}`,
@@ -332,14 +403,84 @@ function hasAbstractPosterDraft(posterDraft: PosterDraft) {
   return abstractBody || templateBody || abstractPoint;
 }
 
+function getRequestScope(req: NextRequest, email: string) {
+  const forwardedFor = req.headers.get("x-forwarded-for") ?? "";
+  const ip = forwardedFor.split(",")[0]?.trim() || "unknown";
+  return email ? `user:${email}` : `ip:${ip}`;
+}
+
+function ensureSafeOrigin(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  if (!origin) {
+    return true;
+  }
+  return origin === req.nextUrl.origin;
+}
+
+function parseIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const value = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    if (!ensureSafeOrigin(request)) {
+      return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
+    }
+
+    const session = await getServerSession(nextAuthOptions);
+    const email = session?.user?.email?.trim().toLowerCase();
+    if (!email) {
+      return NextResponse.json({ error: "Please sign in before generating draft content." }, { status: 401 });
+    }
+
+    const scopeKey = getRequestScope(request, email);
+    rateLimitOrThrow({
+      scopeKey: `poster-draft:${scopeKey}`,
+      endpoint: "content-poster-draft",
+      limit: RATE_LIMIT_CONFIG.contentPosterDraft.limit,
+      windowMs: RATE_LIMIT_CONFIG.contentPosterDraft.windowMs,
+    });
+
+    const dailyChatOnlyLimit = parseIntEnv("ABUSE_GUARD_DAILY_CHAT_ONLY_LIMIT", 120);
+    const todayDraftCount = incrementAndCheckUsageLimit({
+      scopeKey,
+      metricKey: "workspace:draft_request",
+      limit: Math.max(dailyChatOnlyLimit, 10_000),
+    }).current;
+    const todayGenerationCount = getUsageCounter({
+      scopeKey,
+      metricKey: "workspace:generation_confirmed",
+    });
+    const unconvertedRequests = Math.max(0, todayDraftCount - todayGenerationCount);
+    if (unconvertedRequests > dailyChatOnlyLimit) {
+      return NextResponse.json(
+        {
+          error:
+            "Daily draft attempts exceeded before generation confirmation. Please complete generation or retry tomorrow.",
+        },
+        { status: 429 },
+      );
+    }
+
     const payload = (await request.json()) as PosterDraftRequest;
     const topic = (payload.topic ?? "知识主题").trim() || "知识主题";
     const prompt = (payload.prompt ?? "").trim();
     const posterCount = clamp(Math.round(payload.posterCount ?? 1), 1, 10);
     const posterSizeLabel = payload.posterSizeLabel?.trim();
     const direction = payload.direction ?? "poster";
+    const outputLanguage = resolveOutputLanguage({
+      userPrompt: prompt,
+      sourceText: topic,
+      fallback: payload.outputLanguage ?? "en",
+    });
     const draftMode =
       payload.draftMode ?? (process.env.KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto");
 
@@ -351,12 +492,13 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({
         ...mock,
+        outputLanguage,
         source: "mock",
       });
     }
 
-    const fallbackDraft = buildFallbackPosterDraft(topic, posterSizeLabel, prompt);
-    const fallbackPlan = buildFallbackPlanList(topic, posterCount);
+    const fallbackDraft = buildFallbackPosterDraft(topic, posterSizeLabel, prompt, outputLanguage);
+    const fallbackPlan = buildFallbackPlanListByLanguage(topic, posterCount, outputLanguage);
     const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
@@ -374,6 +516,7 @@ export async function POST(request: NextRequest) {
       userPrompt: prompt,
       count: posterCount,
       ratioOrSize: posterSizeLabel,
+      outputLanguage,
     });
 
     const completionResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -413,6 +556,7 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({
         ...mock,
+        outputLanguage,
         source: "fallback",
         error: `LLM request failed: ${errText.slice(0, 200)}`,
       });
@@ -428,6 +572,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         posterDraft: fallbackDraft,
         planList: fallbackPlan,
+        outputLanguage,
         source: "fallback",
       });
     }
@@ -440,6 +585,7 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({
         ...mock,
+        outputLanguage,
         source: "llm",
       });
     }
@@ -468,15 +614,17 @@ export async function POST(request: NextRequest) {
       posterDraft.points = fallbackDraft.points;
     }
 
-    const specificPosterDraft = enforcePosterSpecificity(posterDraft, topic);
+    const specificPosterDraft = enforcePosterSpecificityByLanguage(posterDraft, topic, outputLanguage);
 
     const compactBody = specificPosterDraft.body
-      .split(/[。！？]/)
+      .split(/[。！？.!?]/)
       .map((part) => part.trim())
       .filter(Boolean)
       .slice(0, 3)
-      .join("。");
-    specificPosterDraft.body = compactBody ? `${compactBody}。` : fallbackDraft.body;
+      .join(isChineseLanguage(outputLanguage) ? "。" : ". ");
+    specificPosterDraft.body = compactBody
+      ? `${compactBody}${isChineseLanguage(outputLanguage) ? "。" : "."}`
+      : fallbackDraft.body;
     specificPosterDraft.points = (specificPosterDraft.points.length ? specificPosterDraft.points : fallbackDraft.points)
       .slice(0, 5)
       .map((point) => point.trim())
@@ -495,6 +643,7 @@ export async function POST(request: NextRequest) {
       topic,
       sizeLabel: posterSizeLabel,
       draft: specificPosterDraft,
+      outputLanguage,
     });
     const internalModelPrompt = buildInternalModelPrompt(renderSpec);
 
@@ -511,16 +660,23 @@ export async function POST(request: NextRequest) {
           })
         : fallbackPlan;
 
+    void renderSpec;
+    void internalModelPrompt;
+
     return NextResponse.json({
       posterDraft: specificPosterDraft,
       planList,
+      outputLanguage,
       source: "llm",
-      _internal: {
-        renderSpec,
-        modelPrompt: internalModelPrompt,
-      },
     });
   } catch (error) {
+    const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
+    if (retryAfter) {
+      return NextResponse.json(
+        { error: "Too many draft requests. Please retry later." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

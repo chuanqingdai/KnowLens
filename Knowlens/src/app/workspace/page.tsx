@@ -29,6 +29,11 @@ import {
   getProjectsByUser,
 } from "@/lib/admin";
 import { getVisualizationRecommendation } from "@/lib/prompts/content-draft";
+import {
+  isChineseLanguage,
+  resolveOutputLanguage,
+  type OutputLanguage,
+} from "@/lib/language";
 
 type HomeSourceKind = "file" | "web" | "youtube";
 type HomeSourceItem = {
@@ -100,6 +105,10 @@ type ConfirmedConfigSnapshot = {
   pptRatio: "16:9" | "4:3";
   videoStoryboardCount: number;
   videoRatio: "16:9" | "9:16";
+};
+
+type LanguageAwareContext = {
+  outputLanguage: OutputLanguage;
 };
 
 const HOME_DRAFT_KEY = "knowlens-home-draft";
@@ -301,20 +310,20 @@ const styleOptions = [
 ] as StyleOption[];
 
 const intentOptions: { id: "ppt" | "video" | "poster"; label: string; desc: string }[] = [
-  { id: "poster", label: "生成海报", desc: "用于一图讲清、社媒传播" },
-  { id: "video", label: "生成视频", desc: "用于口播、短视频传播" },
-  { id: "ppt", label: "生成 PPT", desc: "用于课堂讲解、汇报展示" },
+  { id: "poster", label: "Generate Poster", desc: "Best for one-page visual explainers and social sharing." },
+  { id: "video", label: "Generate Video", desc: "Best for narration-based short-form content." },
+  { id: "ppt", label: "Generate PPT", desc: "Best for teaching, workshops, and presentations." },
 ];
 
 const posterSizeOptions = [
-  { id: "poster-9-16", label: "9:16 竖版", desc: "适合短视频封面和手机全屏" },
-  { id: "poster-9-21", label: "9:21 超长竖版", desc: "适合更长内容与连续图解" },
-  { id: "poster-2-3", label: "2:3 长竖版", desc: "适合图文步骤和知识长图" },
-  { id: "poster-4-5", label: "4:5 竖版", desc: "适合社交平台信息流" },
-  { id: "poster-3-4", label: "3:4 竖版", desc: "兼顾阅读和视觉信息密度" },
-  { id: "poster-1-1", label: "1:1 方图", desc: "适合卡片化展示" },
-  { id: "poster-16-9", label: "16:9 横版", desc: "适合横向讲解与封面展示" },
-  { id: "poster-a4", label: "A4 竖版", desc: "适合打印与课堂张贴" },
+  { id: "poster-9-16", label: "9:16 Portrait", desc: "Great for mobile-first vertical delivery." },
+  { id: "poster-9-21", label: "9:21 Long Portrait", desc: "Great for long-form visual breakdowns." },
+  { id: "poster-2-3", label: "2:3 Portrait", desc: "Great for step-by-step learning visuals." },
+  { id: "poster-4-5", label: "4:5 Portrait", desc: "Great for social feed distribution." },
+  { id: "poster-3-4", label: "3:4 Portrait", desc: "Balances readability and information density." },
+  { id: "poster-1-1", label: "1:1 Square", desc: "Great for card-based publishing." },
+  { id: "poster-16-9", label: "16:9 Landscape", desc: "Great for horizontal explainers and covers." },
+  { id: "poster-a4", label: "A4 Portrait", desc: "Great for print and classroom posting." },
 ];
 
 function clamp(value: number, min: number, max: number) {
@@ -421,13 +430,13 @@ function inferRecommendedIntent(
   return "ppt";
 }
 
-function extractTopic(prompt: string, sources: HomeSourceItem[]) {
+function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage: OutputLanguage) {
   const trimmed = prompt.trim();
   if (trimmed) {
     const cleaned = trimmed
-      .replace(/^(请|帮我|麻烦|我想|需要)?(生成|制作|做|创建)?/g, "")
-      .replace(/(一个|一份|一套|一个关于)/g, "")
-      .replace(/(的)?(ppt|视频|海报|长图).*/i, "")
+      .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
+      .replace(/(a|an|one|一个|一份|一套|一个关于)/gi, "")
+      .replace(/(的)?(ppt|slides?|video|poster|infographic|长图|视频|海报).*/i, "")
       .replace(/[，。；,.]/g, " ")
       .trim();
     if (cleaned.length >= 2) {
@@ -439,7 +448,7 @@ function extractTopic(prompt: string, sources: HomeSourceItem[]) {
   if (source) {
     return source.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 26);
   }
-  return "知识主题";
+  return isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic";
 }
 
 function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
@@ -467,12 +476,12 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
   return weakPatterns.some((pattern) => pattern.test(text));
 }
 
-function topicHintText(value: string) {
-  return value.trim() || "知识主题";
+function topicHintText(value: string, outputLanguage: OutputLanguage) {
+  return value.trim() || (isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic");
 }
 
 function extractPageCount(prompt: string) {
-  const match = prompt.match(/(\d+)\s*页/);
+  const match = prompt.match(/(\d+)\s*(页|pages?|slides?)/i);
   if (!match) {
     return null;
   }
@@ -485,7 +494,7 @@ function extractPageCount(prompt: string) {
 
 function extractVideoStoryboardCount(prompt: string) {
   const text = normalizeText(prompt);
-  const storyboardMatch = text.match(/(\d+)\s*个?分镜/);
+  const storyboardMatch = text.match(/(\d+)\s*(个?分镜|frames?|scenes?)/i);
   if (storyboardMatch) {
     const value = Number(storyboardMatch[1]);
     if (Number.isFinite(value) && value > 0) {
@@ -504,10 +513,10 @@ function extractVideoStoryboardCount(prompt: string) {
 
 function extractPosterSize(prompt: string) {
   const text = normalizeText(prompt);
-  if (text.includes("9:21") || text.includes("超长竖版")) {
+  if (text.includes("9:21") || text.includes("超长竖版") || text.includes("longportrait")) {
     return "poster-9-21";
   }
-  if (text.includes("9:16") || text.includes("竖版") || text.includes("手机全屏")) {
+  if (text.includes("9:16") || text.includes("竖版") || text.includes("手机全屏") || text.includes("portrait")) {
     return "poster-9-16";
   }
   if (text.includes("2:3")) {
@@ -519,10 +528,10 @@ function extractPosterSize(prompt: string) {
   if (text.includes("3:4")) {
     return "poster-3-4";
   }
-  if (text.includes("1:1") || text.includes("方图")) {
+  if (text.includes("1:1") || text.includes("方图") || text.includes("square")) {
     return "poster-1-1";
   }
-  if (text.includes("16:9") || text.includes("横版")) {
+  if (text.includes("16:9") || text.includes("横版") || text.includes("landscape")) {
     return "poster-16-9";
   }
   if (text.includes("a4")) {
@@ -531,43 +540,105 @@ function extractPosterSize(prompt: string) {
   return null;
 }
 
-function buildMissingHints(intent: WorkspaceIntent, prompt: string, posterSizeId: string | null) {
+function buildMissingHints(
+  intent: WorkspaceIntent,
+  prompt: string,
+  posterSizeId: string | null,
+  outputLanguage: OutputLanguage,
+) {
   const hints: string[] = [];
   const text = normalizeText(prompt);
-  const hasStyle = containsAny(text, ["风格", "语气", "视觉", "简洁", "生动", "专业", "图解"]);
+  const isZh = isChineseLanguage(outputLanguage);
+  const hasStyle = containsAny(text, [
+    "风格",
+    "语气",
+    "视觉",
+    "简洁",
+    "生动",
+    "专业",
+    "图解",
+    "style",
+    "tone",
+    "visual",
+    "clean",
+    "professional",
+  ]);
 
   if (intent === "unknown") {
-    hints.push("你想生成哪种内容：PPT、视频，还是海报");
+    hints.push(
+      isZh ? "你想生成哪种内容：PPT、视频，还是海报" : "Choose an output type: PPT, video, or poster.",
+    );
     return hints;
   }
   if (intent === "ppt") {
     if (!extractPageCount(prompt)) {
-      hints.push("建议补充页数（例如：10页）");
+      hints.push(isZh ? "建议补充页数（例如：10页）" : "Add slide count (e.g. 10 slides).");
     }
     if (!hasStyle) {
-      hints.push("建议补充风格偏好（例如：图解化、简洁）");
+      hints.push(isZh ? "建议补充风格偏好（例如：图解化、简洁）" : "Add a style preference (e.g. clean, explanatory).");
     }
   }
   if (intent === "video") {
-    if (!containsAny(text, ["分镜", "秒", "时长"])) {
-      hints.push("建议补充分镜数量（按每个分镜 10 秒估算）");
+    if (!containsAny(text, ["分镜", "秒", "时长", "frame", "scene", "seconds"])) {
+      hints.push(
+        isZh ? "建议补充分镜数量（按每个分镜 10 秒估算）" : "Add storyboard count (estimated at ~10 seconds per frame).",
+      );
     }
-    if (!containsAny(text, ["口播", "旁白", "配音", "节奏"])) {
-      hints.push("建议补充口播或节奏偏好");
+    if (!containsAny(text, ["口播", "旁白", "配音", "节奏", "narration", "voiceover", "pace"])) {
+      hints.push(isZh ? "建议补充口播或节奏偏好" : "Add narration or pacing preference.");
     }
   }
   if (intent === "poster") {
     if (!posterSizeId) {
-      hints.push("请选择海报尺寸（9:16 / 4:5 / 1:1 / A4）");
+      hints.push(isZh ? "请选择海报尺寸（9:16 / 4:5 / 1:1 / A4）" : "Choose poster size (9:16 / 4:5 / 1:1 / A4).");
     }
     if (!hasStyle) {
-      hints.push("建议补充文案风格（例如：专业、简洁、生动）");
+      hints.push(isZh ? "建议补充文案风格（例如：专业、简洁、生动）" : "Add content tone (e.g. professional, concise, vivid).");
     }
   }
   return hints;
 }
 
-function buildGenericOutline(topic: string, intent: WorkspaceIntent, count: number) {
+function buildGenericOutline(topic: string, intent: WorkspaceIntent, count: number, outputLanguage: OutputLanguage) {
+  if (!isChineseLanguage(outputLanguage)) {
+    const pptSeed = [
+      `${topic}: core question and learning objective`,
+      `${topic}: practical context and use cases`,
+      `${topic}: key concepts to understand first`,
+      `${topic}: mechanism path from trigger to outcome`,
+      `${topic}: critical variables and transmission path`,
+      `${topic}: major types and contrasts`,
+      `${topic}: one explainable real-world case`,
+      `${topic}: impact at personal, industry, and system levels`,
+      `${topic}: common misconceptions and corrections`,
+      `${topic}: summary and next actions`,
+    ];
+    const videoSeed = [
+      `${topic}: opening hook and tension`,
+      `${topic}: context scene that viewers can relate to`,
+      `${topic}: mechanism breakdown part 1`,
+      `${topic}: mechanism breakdown part 2`,
+      `${topic}: before vs after contrast`,
+      `${topic}: real-world case frame`,
+      `${topic}: concise conclusion`,
+      `${topic}: actionable next step`,
+    ];
+    const defaultSeed = [
+      `What is ${topic}?`,
+      `Context and background of ${topic}`,
+      `Core mechanism of ${topic}`,
+      `Impact and application of ${topic}`,
+    ];
+    const seed = intent === "video" ? videoSeed : intent === "ppt" ? pptSeed : defaultSeed;
+    if (count <= seed.length) {
+      return seed.slice(0, count);
+    }
+    const extra = Array.from(
+      { length: count - seed.length },
+      (_, idx) => `${topic}: advanced extension ${idx + 1}`,
+    );
+    return [...seed, ...extra];
+  }
   const pptSeed = [
     `${topic}的核心问题与学习目标`,
     `${topic}在现实中的典型场景`,
@@ -604,21 +675,60 @@ function buildGenericOutline(topic: string, intent: WorkspaceIntent, count: numb
   return [...seed, ...extra];
 }
 
-function buildGenericSlides(topic: string, outline: string[], intent: WorkspaceIntent) {
+function buildGenericSlides(
+  topic: string,
+  outline: string[],
+  intent: WorkspaceIntent,
+  outputLanguage: OutputLanguage,
+) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return outline.map((title, index) => {
+      if (intent === "video") {
+        return {
+          page: index + 1,
+          title,
+          body: [
+            `Narration objective: explain "${title}" within ~10 seconds and keep one clear conclusion.`,
+            "Narration order: start from an observable scene, then explain the mechanism, then close with one practical takeaway.",
+            "On-screen text rule: keep captions to one short line (ideally <= 8 words) to avoid tiny text and preserve readability.",
+          ].join("\n"),
+          visual: `Visual direction: centered main subject + one directional cue (arrow/contrast); frame ${index + 1} should focus on one change only, with high-contrast labels.`,
+        };
+      }
+      return {
+        page: index + 1,
+        title,
+        body: [
+          `Core explanation: define "${title}" in one precise sentence and anchor it in a real context.`,
+          "Mechanism breakdown: explain why it happens, which variable changes first, and how the effect propagates.",
+          "Practical example: provide one concrete scenario and end with one learner-facing takeaway.",
+        ].join("\n"),
+        visual: `Layout suggestion: title + 3 key bullets + 1 supporting diagram; slide ${index + 1} should keep one dominant conclusion and avoid text overload.`,
+      };
+    });
+  }
   return outline.map((title, index) => {
     if (intent === "video") {
       return {
         page: index + 1,
         title,
-        body: `镜头目标：用 10 秒讲清“${title}”。口播要点：先说现象，再点出原因，最后落在一个可执行判断；字幕控制为 1 句关键词，避免小字堆叠。`,
-        visual: `画面建议：主体居中 + 单一箭头或对比元素；第 ${index + 1} 镜头聚焦一个核心变化，减少装饰信息。`,
+        body: [
+          `口播目标：在约 10 秒内讲清“${title}”，并落到一个明确结论。`,
+          "口播顺序：先说可观察现象，再解释机制，再给一个可执行判断。",
+          "字幕规则：每镜头只保留 1 行关键词（建议 8 字以内），避免小字堆叠影响观看。",
+        ].join("\n"),
+        visual: `画面建议：主体居中 + 单一箭头或对比元素；第 ${index + 1} 镜头只突出一个关键变化，标签高对比、少装饰。`,
       };
     }
     return {
       page: index + 1,
       title,
-      body: `本页目标：围绕“${title}”给出可直接讲解的内容。讲解顺序：先定义/现象，再解释机制，最后给一个生活化例子；正文保持 3-4 句，确保能直接用于页面绘制。`,
-      visual: `版式建议：标题 + 3 要点 + 1 个示意图；第 ${index + 1} 页突出单一结论，避免信息分散。`,
+      body: [
+        `讲解目标：围绕“${title}”先给定义或现象，让读者在 5 秒内进入主题。`,
+        "机制说明：解释关键变量如何变化、为何会导致当前结果，并指出容易混淆的点。",
+        "应用收束：给一个生活化或行业化案例，最后用一句话总结本页核心结论。",
+      ].join("\n"),
+      visual: `版式建议：标题 + 3 要点 + 1 个示意图；第 ${index + 1} 页突出单一结论，避免信息分散与文本堆叠。`,
     };
   });
 }
@@ -631,38 +741,33 @@ function makePptDensitySlides(slides: SlideDraft[]) {
 }
 
 function makeVideoDensitySlides(slides: SlideDraft[]) {
-  return slides.map((slide) => {
-    const conciseBody = slide.body
-      .replace(/\s+/g, "")
-      .split(/[。！？]/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .slice(0, 2)
-      .join("。");
-    return {
-      ...slide,
-      body: conciseBody ? `${conciseBody}。` : slide.body,
-      visual: slide.visual.replace(/，/g, "、"),
-    };
-  });
+  return slides.map((slide) => ({
+    ...slide,
+    body: slide.body.trim(),
+    visual: slide.visual.replace(/，/g, "、"),
+  }));
 }
 
-function parseContentEditCommand(input: string): ParsedContentEditCommand {
+function parseContentEditCommand(input: string, outputLanguage: OutputLanguage): ParsedContentEditCommand {
   const raw = input.trim();
   const normalized = normalizeText(raw);
-  const slideMatch = raw.match(/第\s*(\d+)\s*(页|段|个分镜)/);
-  const posterMatch = raw.match(/第\s*(\d+)\s*张/);
+  const isZh = isChineseLanguage(outputLanguage);
+  const slideMatch = raw.match(/(?:第\s*)?(\d+)\s*(页|段|个分镜|slide|slides|frame|frames|scene|scenes)/i);
+  const posterMatch = raw.match(/(?:第\s*)?(\d+)\s*(张|poster|posters)/i);
   const target: ParsedContentEditCommand["target"] = slideMatch
     ? { kind: "slide", index: Number(slideMatch[1]) - 1 }
     : posterMatch
       ? { kind: "poster", index: Number(posterMatch[1]) - 1 }
       : { kind: "all" };
 
-  if (containsAny(normalized, ["缩短", "简化", "精简", "短一点"])) {
+  if (containsAny(normalized, ["缩短", "简化", "精简", "短一点", "shorten", "concise", "trim"])) {
     return { target, action: "shorten", payload: raw };
   }
-  if (containsAny(normalized, ["更生动", "趣味", "案例", "口语化"])) {
+  if (containsAny(normalized, ["更生动", "趣味", "案例", "口语化", "vivid", "engaging", "add case"])) {
     return { target, action: "enhance", payload: raw };
+  }
+  if (!isZh && containsAny(normalized, ["rewrite", "update", "expand", "polish"])) {
+    return { target, action: "append", payload: raw };
   }
   return { target, action: "append", payload: raw };
 }
@@ -671,7 +776,29 @@ function buildPosterDraft(
   topic: string,
   sizeLabel: string | undefined,
   prompt: string,
+  outputLanguage: OutputLanguage,
 ): PosterDraft {
+  if (!isChineseLanguage(outputLanguage)) {
+    const vivid = /vivid|engaging|story|playful/i.test(prompt);
+    const formal = /professional|rigorous|formal|academic/i.test(prompt);
+    const tone = vivid ? "More vivid" : formal ? "More professional" : "Clear and concise";
+    return {
+      headline: `${topic}: key mechanism and practical impact`,
+      subtitle: tone,
+      body: `${topic} can directly influence real-world decisions and tradeoffs. A practical explanation usually starts from observable signals, then shows the mechanism path and downstream impact.`,
+      points: [
+        `Start with one observable phenomenon related to ${topic}.`,
+        "Explain the mechanism with a short causal chain and one key variable.",
+        "Add a realistic case to improve understanding and retention.",
+        "Close with one actionable takeaway for the audience.",
+      ],
+      cta: "Save this visual for a quick review.",
+      size: sizeLabel,
+      visualType: "Causal flow diagram",
+      layoutSuggestion: "Headline on top, mechanism chain in the center, takeaway at the bottom.",
+      visualElements: ["observable signal", "causal arrows", "key variable marker", "practical takeaway"],
+    };
+  }
   if (/洋流|海流/.test(topic)) {
     return {
       headline: "洋流循环如何影响全球气候？",
@@ -729,7 +856,17 @@ function buildPosterDraft(
   };
 }
 
-function hasAbstractPosterDraft(draft: PosterDraft) {
+function hasAbstractPosterDraft(draft: PosterDraft, outputLanguage: OutputLanguage) {
+  if (!isChineseLanguage(outputLanguage)) {
+    const body = draft.body.replace(/\s+/g, "").toLowerCase();
+    const abstractBody = /write|draft|first|then|finally|structure|expand|supplement|suggest/.test(body);
+    const abstractPoint = draft.points.some((point) =>
+      /write|draft|first|then|finally|structure|expand|supplement|suggest/.test(
+        point.replace(/\s+/g, "").toLowerCase(),
+      ),
+    );
+    return abstractBody || abstractPoint;
+  }
   const body = draft.body.replace(/\s+/g, "");
   const abstractBody =
     /问题引入|机制解释|关键结论|写作结构|用一句话|拆解原理|建议补充|展开|可感知场景|先给一个可观察现象/.test(
@@ -960,6 +1097,21 @@ export default function WorkspacePage() {
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
   const entrySources = initialEntry.sources;
+  const sourceLanguageSeed = useMemo(
+    () => entrySources.map((item) => `${item.name} ${item.excerpt}`).join("\n"),
+    [entrySources],
+  );
+  const outputLanguage = useMemo(
+    () =>
+      resolveOutputLanguage({
+        userPrompt: contextPrompt,
+        sourceText: sourceLanguageSeed,
+        fallback: "en",
+      }),
+    [contextPrompt, sourceLanguageSeed],
+  );
+  const isZhOutput = isChineseLanguage(outputLanguage);
+  const tr = (en: string, zh: string) => (isZhOutput ? zh : en);
 
   const detectedIntent = useMemo(
     () => detectIntent(contextPrompt, entrySources),
@@ -977,14 +1129,17 @@ export default function WorkspacePage() {
     [contextPrompt, entrySources],
   );
   const effectiveIntent: WorkspaceIntent = manualIntent ?? detectedIntent.intent;
-  const topic = useMemo(() => extractTopic(contextPrompt, entrySources), [contextPrompt, entrySources]);
+  const topic = useMemo(
+    () => extractTopic(contextPrompt, entrySources, outputLanguage),
+    [contextPrompt, entrySources, outputLanguage],
+  );
   const posterSizeLabel = useMemo(
     () => posterSizeOptions.find((item) => item.id === posterSizeId)?.label,
     [posterSizeId],
   );
   const missingHints = useMemo(
-    () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId),
-    [effectiveIntent, contextPrompt, posterSizeId],
+    () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId, outputLanguage),
+    [effectiveIntent, contextPrompt, posterSizeId, outputLanguage],
   );
   const shouldClarifyIntent = weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58;
   const waitingTopicSuggestionConfirm = weakPrompt;
@@ -1009,13 +1164,18 @@ export default function WorkspacePage() {
       if (targetSectionCount <= volcanoOutlineItems.length) {
         return volcanoOutlineItems.slice(0, targetSectionCount);
       }
-      const extra = buildGenericOutline(topic, effectiveIntent, targetSectionCount - volcanoOutlineItems.length).map(
+      const extra = buildGenericOutline(
+        topic,
+        effectiveIntent,
+        targetSectionCount - volcanoOutlineItems.length,
+        outputLanguage,
+      ).map(
         (item, idx) => `${volcanoOutlineItems.length + idx + 1}. ${item}`,
       );
       return [...volcanoOutlineItems, ...extra.map((item) => item.replace(/^\d+\.\s*/, ""))];
     }
-    return buildGenericOutline(topic, effectiveIntent, targetSectionCount);
-  }, [effectiveIntent, targetSectionCount, topic]);
+    return buildGenericOutline(topic, effectiveIntent, targetSectionCount, outputLanguage);
+  }, [effectiveIntent, outputLanguage, targetSectionCount, topic]);
 
   const baseSlideDrafts = useMemo(() => {
     if (effectiveIntent !== "ppt" && effectiveIntent !== "video") {
@@ -1026,90 +1186,127 @@ export default function WorkspacePage() {
       if (base.length >= targetSectionCount) {
         return base;
       }
-      const extraOutline = buildGenericOutline(topic, effectiveIntent, targetSectionCount - base.length);
-      const extraSlides = buildGenericSlides(topic, extraOutline, effectiveIntent).map((slide, idx) => ({
+      const extraOutline = buildGenericOutline(topic, effectiveIntent, targetSectionCount - base.length, outputLanguage);
+      const extraSlides = buildGenericSlides(topic, extraOutline, effectiveIntent, outputLanguage).map((slide, idx) => ({
         ...slide,
         page: base.length + idx + 1,
       }));
       return [...base, ...extraSlides];
     }
-    return buildGenericSlides(topic, baseOutlineItems, effectiveIntent);
-  }, [effectiveIntent, baseOutlineItems, targetSectionCount, topic]);
+    return buildGenericSlides(topic, baseOutlineItems, effectiveIntent, outputLanguage);
+  }, [effectiveIntent, baseOutlineItems, outputLanguage, targetSectionCount, topic]);
 
   const basePosterDraft = useMemo(() => {
     if (effectiveIntent !== "poster" || showPosterSizeSelector) {
       return null;
     }
-    return buildPosterDraft(topic, posterSizeLabel, contextPrompt);
-  }, [contextPrompt, effectiveIntent, posterSizeLabel, showPosterSizeSelector, topic]);
+    return buildPosterDraft(topic, posterSizeLabel, contextPrompt, outputLanguage);
+  }, [contextPrompt, effectiveIntent, outputLanguage, posterSizeLabel, showPosterSizeSelector, topic]);
 
   const summaryText = useMemo(() => {
     if (!contextPrompt && !entrySources.length) {
-      return "你还没有传入素材。可以直接输入主题，或返回首页上传文件、网页链接、YouTube 链接。";
+      return tr(
+        "No source content yet. Enter a topic directly, or go back to Home and upload files, webpages, or YouTube links.",
+        "你还没有传入素材。可以直接输入主题，或返回首页上传文件、网页链接、YouTube 链接。",
+      );
     }
-    const sourcePart = entrySources.length ? `我收到了 ${entrySources.length} 条素材。` : "当前是纯文本输入。";
+    const sourcePart = entrySources.length
+      ? tr(`I received ${entrySources.length} source item(s). `, `我收到了 ${entrySources.length} 条素材。`)
+      : tr("Current input is text-only. ", "当前是纯文本输入。");
     const intentPart = shouldClarifyIntent
-      ? "你的需求还不够完整，我先和你确认一下生成方向。"
-      : `我已识别你的目标方向，并完成基础配置。`;
+      ? tr("Your request is still incomplete. I need to confirm the output direction first.", "你的需求还不够完整，我先和你确认一下生成方向。")
+      : tr("I recognized your output direction and prepared the base configuration.", "我已识别你的目标方向，并完成基础配置。");
     if (manualIntent === "ppt") {
-      return `${sourcePart}${intentPart} 默认按 ${pptPageCount} 页、${pptRatio} 比例生成。`;
+      return isZhOutput
+        ? `${sourcePart}${intentPart} 默认按 ${pptPageCount} 页、${pptRatio} 比例生成。`
+        : `${sourcePart}${intentPart} Default: ${pptPageCount} slides at ${pptRatio}.`;
     }
     if (manualIntent === "video") {
-      return `${sourcePart}${intentPart} 默认按 ${videoStoryboardCount} 个分镜（约 ${
-        videoStoryboardCount * 10
-      } 秒）、${videoRatio} 比例生成。`;
+      return isZhOutput
+        ? `${sourcePart}${intentPart} 默认按 ${videoStoryboardCount} 个分镜（约 ${
+            videoStoryboardCount * 10
+          } 秒）、${videoRatio} 比例生成。`
+        : `${sourcePart}${intentPart} Default: ${videoStoryboardCount} storyboard frames (~${
+            videoStoryboardCount * 10
+          }s) at ${videoRatio}.`;
     }
     if (manualIntent === "poster") {
-      const sizeLabel = posterSizeOptions.find((item) => item.id === posterSizeId)?.label ?? "未选尺寸";
-      return `${sourcePart}${intentPart} 默认生成 ${posterCount} 张，尺寸 ${sizeLabel}。`;
+      const sizeLabel = posterSizeOptions.find((item) => item.id === posterSizeId)?.label ?? tr("Size not selected", "未选尺寸");
+      return isZhOutput
+        ? `${sourcePart}${intentPart} 默认生成 ${posterCount} 张，尺寸 ${sizeLabel}。`
+        : `${sourcePart}${intentPart} Default: ${posterCount} poster(s), size ${sizeLabel}.`;
     }
     return `${sourcePart}${intentPart}`;
   }, [
     contextPrompt,
     entrySources.length,
+    isZhOutput,
     manualIntent,
     posterCount,
     posterSizeId,
     pptPageCount,
     pptRatio,
     shouldClarifyIntent,
+    tr,
     videoStoryboardCount,
     videoRatio,
   ]);
 
   const analysisText = useMemo(() => {
     if (weakPrompt) {
-      return "我还没有收到可用于生成的明确主题。你可以告诉我想讲解什么知识点，或先选择生成方向，我会给你一版可直接继续的草稿。";
+      return tr(
+        "I still need a clear topic before generation. Tell me what you want to explain, or choose an output direction first.",
+        "我还没有收到可用于生成的明确主题。你可以告诉我想讲解什么知识点，或先选择生成方向，我会给你一版可直接继续的草稿。",
+      );
     }
     if (!contextPrompt && !entrySources.length) {
-      return "我还没有收到明确需求。你可以先选择生成方向，我会引导你补齐配置并开始生成。";
+      return tr(
+        "I have not received a clear request yet. Choose an output direction first and I will guide the configuration.",
+        "我还没有收到明确需求。你可以先选择生成方向，我会引导你补齐配置并开始生成。",
+      );
     }
-    return `我已理解主题“${topicHintText(topic)}”。接下来请选择生成方向并确认配置，我会据此生成对应的结构化内容。`;
-  }, [contextPrompt, entrySources.length, topic, weakPrompt]);
+    return tr(
+      `I understood the topic "${topicHintText(topic, outputLanguage)}". Next, choose output direction and confirm configuration to generate structured content.`,
+      `我已理解主题“${topicHintText(topic, outputLanguage)}”。接下来请选择生成方向并确认配置，我会据此生成对应的结构化内容。`,
+    );
+  }, [contextPrompt, entrySources.length, outputLanguage, topic, tr, weakPrompt]);
 
   const basePosterPlanList = useMemo(() => {
     if (effectiveIntent !== "poster" || !basePosterDraft || !configConfirmed) {
       return [] as PosterPlanItem[];
     }
-    const base = [
-      { title: `${topic} · 核心问题`, focus: "用一句话提出问题并建立兴趣" },
-      { title: `${topic} · 关键机制`, focus: "拆解机制过程，突出因果关系" },
-      { title: `${topic} · 结论与应用`, focus: "总结重点并给出应用场景" },
-      { title: `${topic} · 复习速记`, focus: "高密度关键词速查版" },
-      { title: `${topic} · 关键案例`, focus: "增加真实场景案例，提高理解与记忆" },
-      { title: `${topic} · 误区澄清`, focus: "澄清常见误解，避免概念混淆" },
-      { title: `${topic} · 图解总结`, focus: "将重点压缩成可视化结论" },
-      { title: `${topic} · 延展阅读`, focus: "补充延伸问题与探索方向" },
-      { title: `${topic} · 对比视角`, focus: "通过对比强化关键差异" },
-      { title: `${topic} · 快速复盘`, focus: "用一屏完成核心要点复习" },
-    ];
+    const base = isZhOutput
+      ? [
+          { title: `${topic} · 核心问题`, focus: "用一句话提出问题并建立兴趣" },
+          { title: `${topic} · 关键机制`, focus: "拆解机制过程，突出因果关系" },
+          { title: `${topic} · 结论与应用`, focus: "总结重点并给出应用场景" },
+          { title: `${topic} · 复习速记`, focus: "高密度关键词速查版" },
+          { title: `${topic} · 关键案例`, focus: "增加真实场景案例，提高理解与记忆" },
+          { title: `${topic} · 误区澄清`, focus: "澄清常见误解，避免概念混淆" },
+          { title: `${topic} · 图解总结`, focus: "将重点压缩成可视化结论" },
+          { title: `${topic} · 延展阅读`, focus: "补充延伸问题与探索方向" },
+          { title: `${topic} · 对比视角`, focus: "通过对比强化关键差异" },
+          { title: `${topic} · 快速复盘`, focus: "用一屏完成核心要点复习" },
+        ]
+      : [
+          { title: `${topic} · Core question`, focus: "Frame the central question in one line." },
+          { title: `${topic} · Key mechanism`, focus: "Explain the mechanism with clear causality." },
+          { title: `${topic} · Conclusion and use case`, focus: "Summarize takeaway and practical use." },
+          { title: `${topic} · Quick review`, focus: "Provide a high-density recap version." },
+          { title: `${topic} · Real-world case`, focus: "Add one realistic case to improve retention." },
+          { title: `${topic} · Misconceptions`, focus: "Clarify common misconceptions and correct framing." },
+          { title: `${topic} · Visual summary`, focus: "Compress key insights into visual conclusions." },
+          { title: `${topic} · Extended reading`, focus: "Add extension questions and exploration paths." },
+          { title: `${topic} · Comparison view`, focus: "Use contrast to reinforce critical differences." },
+          { title: `${topic} · Final recap`, focus: "Finish with a one-screen complete review." },
+        ];
     const list = Array.from({ length: posterCount }, (_, idx) => base[idx % base.length]);
     return list.map((item, idx) => ({
       index: idx + 1,
       title: item.title,
       focus: item.focus,
     }));
-  }, [basePosterDraft, configConfirmed, effectiveIntent, posterCount, topic]);
+  }, [basePosterDraft, configConfirmed, effectiveIntent, isZhOutput, posterCount, topic]);
 
   const [editableOutlineItems, setEditableOutlineItems] = useState<string[]>([]);
   const [editableSlideDrafts, setEditableSlideDrafts] = useState<SlideDraft[]>([]);
@@ -1129,8 +1326,8 @@ export default function WorkspacePage() {
   }, [effectiveIntent, slideDrafts]);
   const posterDraftRaw = editablePosterDraft ?? basePosterDraft;
   const posterDraft =
-    posterDraftRaw && hasAbstractPosterDraft(posterDraftRaw)
-      ? buildPosterDraft(topic, posterSizeLabel, contextPrompt)
+    posterDraftRaw && hasAbstractPosterDraft(posterDraftRaw, outputLanguage)
+      ? buildPosterDraft(topic, posterSizeLabel, contextPrompt, outputLanguage)
       : posterDraftRaw;
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
@@ -1158,23 +1355,56 @@ export default function WorkspacePage() {
   const canConfirmBilling = credits >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
 
-  const stageLabel = shouldClarifyIntent ? "需求理解中" : "内容规划中";
-  const projectTitle = `${topicHintText(topic)} · 用户意图总结`;
+  const stageLabel = useMemo(() => {
+    if (flowStage === "intent" || flowStage === "config") {
+      return tr("Step 2/7 · Direction", "第 2/7 步 · 生成方向");
+    }
+    if (flowStage === "content") {
+      return tr("Step 3/7 · Draft Content", "第 3/7 步 · 文稿");
+    }
+    if (flowStage === "style") {
+      return tr("Step 4/7 · Style", "第 4/7 步 · 风格");
+    }
+    if (flowStage === "billing") {
+      return tr("Step 5/7 · Billing", "第 5/7 步 · 账单");
+    }
+    if (flowStage === "generate") {
+      return tr("Step 6/7 · Generate & Download", "第 6/7 步 · 生成与下载");
+    }
+    return tr("Step 1/7 · Input", "第 1/7 步 · 输入");
+  }, [flowStage, tr]);
+  const projectTitle = isZhOutput
+    ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
+    : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
   const topicSuggestions = useMemo(() => {
-    const mixedSuggestions = [
-      "黑洞为什么连光都逃不出去？",
-      "工业革命为什么改变了世界？",
-      "通货膨胀为什么会影响日常生活？",
-      "洋流循环是如何影响全球气候的？",
-    ];
-    const paidSuggestions = [
-      "黑洞是怎么形成的？",
-      "郑和下西洋背后的航海技术是什么？",
-      "供需关系为什么会影响价格？",
-      "板块运动为什么会引发地震和火山？",
-    ];
+    const mixedSuggestions = isZhOutput
+      ? [
+          "黑洞为什么连光都逃不出去？",
+          "工业革命为什么改变了世界？",
+          "通货膨胀为什么会影响日常生活？",
+          "洋流循环是如何影响全球气候的？",
+        ]
+      : [
+          "Why can’t light escape from a black hole?",
+          "Why did the Industrial Revolution change the world?",
+          "Why does inflation affect everyday life?",
+          "How does ocean circulation influence global climate?",
+        ];
+    const paidSuggestions = isZhOutput
+      ? [
+          "黑洞是怎么形成的？",
+          "郑和下西洋背后的航海技术是什么？",
+          "供需关系为什么会影响价格？",
+          "板块运动为什么会引发地震和火山？",
+        ]
+      : [
+          "How are black holes formed?",
+          "What navigation technologies powered Zheng He's voyages?",
+          "Why does supply and demand influence prices?",
+          "How does plate motion trigger earthquakes and volcanoes?",
+        ];
     return isFreeUser ? mixedSuggestions : paidSuggestions;
-  }, [isFreeUser]);
+  }, [isFreeUser, isZhOutput]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1261,7 +1491,10 @@ export default function WorkspacePage() {
     setEditableSlideDrafts([]);
     setEditablePosterDraft(null);
     setEditablePosterPlanList([]);
-    pushAssistantMessage("已回到配置阶段，请重新确认配置后继续生成。", "需求确认");
+    pushAssistantMessage(
+      tr("Returned to configuration stage. Please reconfirm before continuing.", "已回到配置阶段，请重新确认配置后继续生成。"),
+      tr("Requirement Check", "需求确认"),
+    );
   }
 
   function cancelResetToConfigStage() {
@@ -1387,11 +1620,6 @@ export default function WorkspacePage() {
     if (effectiveIntent !== "poster") {
       setEditablePosterDraft(basePosterDraft);
       setEditablePosterPlanList(basePosterPlanList);
-      if (effectiveIntent === "ppt" || effectiveIntent === "video") {
-        const nextRecommendedStyle = pickSmartStyleByIntent(contextPrompt, entrySources, effectiveIntent);
-        setSelectedStyleId(nextRecommendedStyle.id);
-        setFlowStage("style");
-      }
       return;
     }
 
@@ -1399,7 +1627,10 @@ export default function WorkspacePage() {
     posterDraftRequestRef.current = requestId;
     setEditablePosterDraft(null);
     setEditablePosterPlanList([]);
-    startThinking("海报文案草稿", "正在调用语言模型生成海报文案草稿...");
+    startThinking(
+      tr("Poster Draft", "海报文案草稿"),
+      tr("Generating poster draft with the language model...", "正在调用语言模型生成海报文案草稿..."),
+    );
 
     try {
       const response = await fetch("/api/content/poster-draft", {
@@ -1413,6 +1644,7 @@ export default function WorkspacePage() {
           posterCount,
           posterSizeLabel,
           direction: effectiveIntent,
+          outputLanguage,
           draftMode: DRAFT_MODE,
         }),
       });
@@ -1453,22 +1685,31 @@ export default function WorkspacePage() {
       return;
     }
     if (showPosterSizeSelector) {
-      pushAssistantMessage("海报方向还缺少尺寸，请先选择一个尺寸后再继续。", "需求确认");
+      pushAssistantMessage(
+        tr("Poster size is still missing. Please choose a size first.", "海报方向还缺少尺寸，请先选择一个尺寸后再继续。"),
+        tr("Requirement Check", "需求确认"),
+      );
       return;
     }
     if (!configConfirmed) {
-      pushAssistantMessage("请先确认当前配置，再进入下一步。", "需求确认");
+      pushAssistantMessage(
+        tr("Please confirm the current configuration before continuing.", "请先确认当前配置，再进入下一步。"),
+        tr("Requirement Check", "需求确认"),
+      );
       return;
     }
     const hasDraftReady =
       effectiveIntent === "poster" ? Boolean(posterDraft) : outlineItems.length > 0 || slideDrafts.length > 0;
     if (!hasDraftReady) {
-      pushAssistantMessage("草稿内容尚未准备完成，请稍后再试。", "内容生成");
+      pushAssistantMessage(
+        tr("Draft content is not ready yet. Please try again shortly.", "草稿内容尚未准备完成，请稍后再试。"),
+        tr("Content Generation", "内容生成"),
+      );
       return;
     }
 
     setIsPlanningNextStep(true);
-    startThinking("风格推荐", "正在理解目标并匹配最合适的风格...");
+    startThinking(tr("Style Matching", "风格推荐"), tr("Matching the best style for your target...", "正在理解目标并匹配最合适的风格..."));
     await new Promise((resolve) => window.setTimeout(resolve, 480));
     if (effectiveIntent === "poster" || effectiveIntent === "ppt" || effectiveIntent === "video") {
       const nextRecommendedStyle = pickSmartStyleByIntent(contextPrompt, entrySources, effectiveIntent);
@@ -1484,7 +1725,7 @@ export default function WorkspacePage() {
       return;
     }
     setIsPlanningStyleStep(true);
-    startThinking("账单确认", "正在计算生成成本与积分消耗...");
+    startThinking(tr("Billing Check", "账单确认"), tr("Calculating generation cost and credit usage...", "正在计算生成成本与积分消耗..."));
     await new Promise((resolve) => window.setTimeout(resolve, 420));
     setFlowStage("billing");
     setBillingConfirmed(false);
@@ -1495,8 +1736,10 @@ export default function WorkspacePage() {
   async function handleConfirmBilling() {
     if (credits < billingCost) {
       pushAssistantMessage(
-        `当前积分不足（余额 ${credits}，需要 ${billingCost}），请先升级后再继续。`,
-        "账单确认",
+        isZhOutput
+          ? `当前积分不足（余额 ${credits}，需要 ${billingCost}），请先升级后再继续。`
+          : `Insufficient credits (balance: ${credits}, required: ${billingCost}). Please upgrade first.`,
+        tr("Billing Check", "账单确认"),
       );
       return;
     }
@@ -1505,10 +1748,10 @@ export default function WorkspacePage() {
     }
     setIsPlanningBillingStep(true);
     startThinking(
-      effectiveIntent === "poster" ? "海报生成" : "分镜生成",
+      effectiveIntent === "poster" ? tr("Poster Generation", "海报生成") : tr("Storyboard Generation", "分镜生成"),
       effectiveIntent === "poster"
-        ? "正在生成海报结构与文案..."
-        : "正在创建分镜结构，并同步画面与音轨字段...",
+        ? tr("Generating poster structure and draft text...", "正在生成海报结构与文案...")
+        : tr("Generating storyboard structure and syncing visual/audio fields...", "正在创建分镜结构，并同步画面与音轨字段..."),
     );
     await new Promise((resolve) => window.setTimeout(resolve, 560));
 
@@ -1520,16 +1763,20 @@ export default function WorkspacePage() {
         ? ensureUserProjectByEmail({
             email: currentEmail,
             name: session?.user?.name ?? undefined,
-            title: `${topic || "Knowledge Topic"} · Workspace Draft`,
+            title: `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
             format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
           })
         : getAdminProjects()[0]);
 
     appendCreditRecord({
       type: "consume",
-      description: `${selectedProject?.title ?? "生成项目"} · ${
-        effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-      }（限时优惠：${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`,
+      description: isZhOutput
+        ? `${selectedProject?.title ?? "生成项目"} · ${
+            effectiveIntent === "poster" ? "海报生成" : "分镜生成"
+          }（限时优惠：${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+        : `${selectedProject?.title ?? "Generation Project"} · ${
+            effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
+          } (Limited-time: ${STANDARD_OUTPUT_PROMO_CREDITS} credits per standard output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
       delta: -billingCost,
       userId: user?.id,
       userEmail: currentEmail || undefined,
@@ -1539,6 +1786,16 @@ export default function WorkspacePage() {
 
     setCreditVersion((prev) => prev + 1);
     setBillingConfirmed(true);
+    void fetch("/api/workspace/generation-confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        intent: effectiveIntent,
+        outputs: standardOutputCount,
+      }),
+    }).catch(() => null);
 
     if (effectiveIntent === "ppt" || effectiveIntent === "video") {
       setFlowStage("generate");
@@ -1546,8 +1803,10 @@ export default function WorkspacePage() {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
       pushAssistantMessage(
-        `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。分镜已开始生成，右侧已打开画布区域。`,
-        "分镜生成",
+        isZhOutput
+          ? `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。分镜已开始生成，右侧已打开画布区域。`
+          : `Billing confirmed. ${billingCost} credits deducted at limited-time pricing (${STANDARD_OUTPUT_PROMO_CREDITS} per standard output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS}). Storyboard generation has started on the right canvas.`,
+        tr("Storyboard Generation", "分镜生成"),
       );
     } else {
       setFlowStage("generate");
@@ -1555,8 +1814,10 @@ export default function WorkspacePage() {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
       pushAssistantMessage(
-        `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。右侧已进入海报绘制页面，正在按顺序生成 ${posterCount} 张海报。`,
-        "海报生成",
+        isZhOutput
+          ? `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。右侧已进入海报绘制页面，正在按顺序生成 ${posterCount} 张海报。`
+          : `Billing confirmed. ${billingCost} credits deducted at limited-time pricing (${STANDARD_OUTPUT_PROMO_CREDITS} per standard output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS}). Poster rendering has started on the right canvas for ${posterCount} poster(s).`,
+        tr("Poster Generation", "海报生成"),
       );
     }
     stopThinking();
@@ -1569,6 +1830,36 @@ export default function WorkspacePage() {
       source?: "manual" | "suggestion";
     },
   ) {
+    try {
+      const guardResponse = await fetch("/api/workspace/chat-guard", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!guardResponse.ok) {
+        const data = (await guardResponse.json()) as { error?: string };
+        pushAssistantMessage(
+          data?.error ||
+            tr(
+              "Too many chat requests right now. Please retry shortly.",
+              "当前对话请求过于频繁，请稍后再试。",
+            ),
+          tr("Request Guard", "请求保护"),
+        );
+        return;
+      }
+    } catch {
+      pushAssistantMessage(
+        tr(
+          "Request guard is unavailable. Please retry shortly.",
+          "请求保护暂时不可用，请稍后再试。",
+        ),
+        tr("Request Guard", "请求保护"),
+      );
+      return;
+    }
+
     const value = (raw ?? chatInput).trim();
     if (!value || isSending) {
       return;
@@ -1577,22 +1868,63 @@ export default function WorkspacePage() {
     setIsSending(true);
     setChatInput("");
     if (inputSource === "manual") {
-      pushUserMessage(value, "对话输入");
+      pushUserMessage(value, tr("User Input", "对话输入"));
     }
-    startThinking("需求理解", "正在理解你的补充需求...");
+    startThinking(tr("Request Understanding", "需求理解"), tr("Understanding your additional instructions...", "正在理解你的补充需求..."));
     await new Promise((resolve) => window.setTimeout(resolve, 280));
 
     const normalized = normalizeText(value);
-    const hasDirectionHint = containsAny(normalized, ["海报", "视频", "ppt", "课件", "分镜", "长图"]);
-    const isConfigCommand = containsAny(normalized, ["9:16", "16:9", "4:3", "页", "张", "尺寸", "比例"]);
-    const isEditCommand = containsAny(normalized, ["改第", "重写", "缩短", "更生动", "补充"]);
+    const hasDirectionHint = containsAny(normalized, [
+      "海报",
+      "视频",
+      "ppt",
+      "课件",
+      "分镜",
+      "长图",
+      "poster",
+      "video",
+      "slide",
+      "slides",
+      "storyboard",
+      "infographic",
+    ]);
+    const isConfigCommand = containsAny(normalized, [
+      "9:16",
+      "16:9",
+      "4:3",
+      "页",
+      "张",
+      "尺寸",
+      "比例",
+      "size",
+      "ratio",
+      "pages",
+      "slides",
+      "frames",
+    ]);
+    const isEditCommand = containsAny(normalized, [
+      "改第",
+      "重写",
+      "缩短",
+      "更生动",
+      "补充",
+      "rewrite",
+      "shorten",
+      "concise",
+      "enhance",
+      "update",
+      "polish",
+    ]);
     const likelyTopicText = !hasDirectionHint && !isConfigCommand && !isEditCommand;
 
     if (likelyTopicText && (flowStage === "intent" || flowStage === "config" || shouldClarifyIntent)) {
       setTopicContextPrompt(value);
     }
 
-    if (value.trim().length >= 6 || containsAny(normalized, ["天文", "经济", "历史", "地理", "火山", "气候", "物理"])) {
+    if (
+      value.trim().length >= 6 ||
+      containsAny(normalized, ["天文", "经济", "历史", "地理", "火山", "气候", "物理", "science", "history", "climate", "physics"])
+    ) {
       setWeakPromptResolved(true);
     }
 
@@ -1603,44 +1935,65 @@ export default function WorkspacePage() {
         return;
       }
       pushAssistantMessage(
-        "我先帮你确认生成方向。你可以直接回复：生成海报、生成视频，或生成PPT；也可以先告诉我具体主题。",
-        "需求确认",
+        tr(
+          "I can help confirm output direction first. Reply with: generate poster, generate video, or generate PPT. You can also share a concrete topic first.",
+          "我先帮你确认生成方向。你可以直接回复：生成海报、生成视频，或生成PPT；也可以先告诉我具体主题。",
+        ),
+        tr("Requirement Check", "需求确认"),
       );
       stopThinking();
       setIsSending(false);
       return;
     }
-    if (containsAny(normalized, ["ppt", "课件", "幻灯"])) {
+    if (containsAny(normalized, ["ppt", "课件", "幻灯", "slides", "slide deck"])) {
       if (manualIntent !== "ppt") {
         setManualIntent("ppt");
         resetToConfigStage("direction-change");
-        pushAssistantMessage("已切换到 PPT 方向。请先确认页数和比例，我再继续生成内容。", "需求确认");
+        pushAssistantMessage(
+          tr("Switched to PPT mode. Confirm slide count and ratio to continue.", "已切换到 PPT 方向。请先确认页数和比例，我再继续生成内容。"),
+          tr("Requirement Check", "需求确认"),
+        );
       } else {
-        pushAssistantMessage("当前已是 PPT 方向。你可以调整页数和比例后点击下一步。", "需求确认");
+        pushAssistantMessage(
+          tr("Already in PPT mode. Adjust slide count/ratio and continue.", "当前已是 PPT 方向。你可以调整页数和比例后点击下一步。"),
+          tr("Requirement Check", "需求确认"),
+        );
       }
       stopThinking();
       setIsSending(false);
       return;
     }
-    if (containsAny(normalized, ["视频", "口播", "分镜"])) {
+    if (containsAny(normalized, ["视频", "口播", "分镜", "video", "storyboard", "voiceover"])) {
       if (manualIntent !== "video") {
         setManualIntent("video");
         resetToConfigStage("direction-change");
-        pushAssistantMessage("已切换到视频方向。请先确认分镜数量和比例，我再继续生成内容。", "需求确认");
+        pushAssistantMessage(
+          tr("Switched to video mode. Confirm storyboard count and ratio to continue.", "已切换到视频方向。请先确认分镜数量和比例，我再继续生成内容。"),
+          tr("Requirement Check", "需求确认"),
+        );
       } else {
-        pushAssistantMessage("当前已是视频方向。你可以调整分镜数量和比例后点击下一步。", "需求确认");
+        pushAssistantMessage(
+          tr("Already in video mode. Adjust frame count/ratio and continue.", "当前已是视频方向。你可以调整分镜数量和比例后点击下一步。"),
+          tr("Requirement Check", "需求确认"),
+        );
       }
       stopThinking();
       setIsSending(false);
       return;
     }
-    if (containsAny(normalized, ["海报", "长图", "poster"])) {
+    if (containsAny(normalized, ["海报", "长图", "poster", "infographic"])) {
       if (manualIntent !== "poster") {
         setManualIntent("poster");
         resetToConfigStage("direction-change");
-        pushAssistantMessage("已切换到海报方向。请先确认张数和尺寸，我再继续生成内容。", "需求确认");
+        pushAssistantMessage(
+          tr("Switched to poster mode. Confirm poster count and size to continue.", "已切换到海报方向。请先确认张数和尺寸，我再继续生成内容。"),
+          tr("Requirement Check", "需求确认"),
+        );
       } else {
-        pushAssistantMessage("当前已是海报方向。你可以调整张数和尺寸后点击下一步。", "需求确认");
+        pushAssistantMessage(
+          tr("Already in poster mode. Adjust count/size and continue.", "当前已是海报方向。你可以调整张数和尺寸后点击下一步。"),
+          tr("Requirement Check", "需求确认"),
+        );
       }
       stopThinking();
       setIsSending(false);
@@ -1648,47 +2001,64 @@ export default function WorkspacePage() {
     }
 
     if (isConfigCommand && (manualIntent === "poster" || manualIntent === "video" || manualIntent === "ppt")) {
-      pushAssistantMessage("我已记录你的配置意图。请在下方配置区直接调整后点击“下一步”，这样会更准确。", "需求确认");
+      pushAssistantMessage(
+        tr(
+          "Configuration intent noted. Please update settings below and click Next for best accuracy.",
+          "我已记录你的配置意图。请在下方配置区直接调整后点击“下一步”，这样会更准确。",
+        ),
+        tr("Requirement Check", "需求确认"),
+      );
       stopThinking();
       setIsSending(false);
       return;
     }
 
     if (shouldClarifyIntent) {
-      pushAssistantMessage("我还不能确定你要生成的类型。请直接回复：PPT、视频或海报。", "需求确认");
+      pushAssistantMessage(
+        tr("I still cannot determine the output type. Please reply with PPT, video, or poster.", "我还不能确定你要生成的类型。请直接回复：PPT、视频或海报。"),
+        tr("Requirement Check", "需求确认"),
+      );
       stopThinking();
       setIsSending(false);
       return;
     }
 
-    const cmd = parseContentEditCommand(value);
+    const cmd = parseContentEditCommand(value, outputLanguage);
     if (effectiveIntent === "poster") {
       if (cmd.target.kind === "poster" && cmd.target.index >= 0 && cmd.target.index < editablePosterPlanList.length) {
         const next = [...editablePosterPlanList];
         const focusPatch =
           cmd.action === "shorten"
-            ? "已压缩为更短文案"
+            ? tr("shortened", "已压缩为更短文案")
             : cmd.action === "enhance"
-              ? "已增强案例感与表达张力"
-              : "已按补充要求调整";
+              ? tr("enhanced with stronger example framing", "已增强案例感与表达张力")
+              : tr("updated based on your extra requirement", "已按补充要求调整");
         next[cmd.target.index] = {
           ...next[cmd.target.index],
-          focus: `${next[cmd.target.index].focus}（${focusPatch}）`,
+          focus: isZhOutput
+            ? `${next[cmd.target.index].focus}（${focusPatch}）`
+            : `${next[cmd.target.index].focus} (${focusPatch})`,
         };
         setEditablePosterPlanList(next);
-        pushAssistantMessage(`已更新第 ${cmd.target.index + 1} 张海报内容。`, "内容改写");
+        pushAssistantMessage(
+          tr(`Updated poster ${cmd.target.index + 1}.`, `已更新第 ${cmd.target.index + 1} 张海报内容。`),
+          tr("Content Edit", "内容改写"),
+        );
       } else if (editablePosterDraft) {
         const bodyPatch =
           cmd.action === "shorten"
             ? `${editablePosterDraft.body.slice(0, 80)}...`
             : cmd.action === "enhance"
-              ? `${editablePosterDraft.body}\n\n补充：加入一个真实场景案例和更生动表达。`
-              : `${editablePosterDraft.body}\n\n补充：${cmd.payload}`;
+              ? `${editablePosterDraft.body}\n\n${tr("Add a realistic case and make the tone more vivid.", "补充：加入一个真实场景案例和更生动表达。")}`
+              : `${editablePosterDraft.body}\n\n${tr("Additional requirement:", "补充：")}${cmd.payload}`;
         setEditablePosterDraft({
           ...editablePosterDraft,
           body: bodyPatch,
         });
-        pushAssistantMessage("已更新海报文案草稿。", "海报生成");
+        pushAssistantMessage(
+          tr("Poster draft updated.", "已更新海报文案草稿。"),
+          tr("Poster Generation", "海报生成"),
+        );
       }
       stopThinking();
       setIsSending(false);
@@ -1710,11 +2080,14 @@ export default function WorkspacePage() {
                 ? `${current.body.slice(0, 62)}...`
                 : current.body
               : cmd.action === "enhance"
-                ? `${current.body} 同时加入一个贴近生活的类比示例。`
-                : `${current.body}\n补充要求：${cmd.payload}`,
+                ? `${current.body} ${tr("Also add one relatable real-life analogy.", "同时加入一个贴近生活的类比示例。")}`
+                : `${current.body}\n${tr("Additional requirement:", "补充要求：")}${cmd.payload}`,
         };
         setEditableSlideDrafts(next);
-        pushAssistantMessage(`已更新第 ${index + 1} 页内容。`, "内容改写");
+        pushAssistantMessage(
+          tr(`Updated slide ${index + 1}.`, `已更新第 ${index + 1} 页内容。`),
+          tr("Content Edit", "内容改写"),
+        );
         return true;
       };
 
@@ -1734,17 +2107,17 @@ export default function WorkspacePage() {
                   ? `${slide.body.slice(0, 62)}...`
                   : slide.body
                 : cmd.action === "enhance"
-                  ? `${slide.body} 同时加入一个贴近生活的类比示例。`
-                  : `${slide.body}\n补充要求：${cmd.payload}`,
+                  ? `${slide.body} ${tr("Also add one relatable real-life analogy.", "同时加入一个贴近生活的类比示例。")}`
+                  : `${slide.body}\n${tr("Additional requirement:", "补充要求：")}${cmd.payload}`,
           })),
         );
         pushAssistantMessage(
           cmd.action === "shorten"
-            ? "已将全部页文案压缩为更短表达。"
+            ? tr("All slide copy has been shortened.", "已将全部页文案压缩为更短表达。")
             : cmd.action === "enhance"
-              ? "已将全部页文案调整为更生动表达。"
-              : "已将你的补充要求应用到全部页面。",
-          "内容改写",
+              ? tr("All slide copy has been adjusted to a more vivid tone.", "已将全部页文案调整为更生动表达。")
+              : tr("Your additional requirement has been applied to all slides.", "已将你的补充要求应用到全部页面。"),
+          tr("Content Edit", "内容改写"),
         );
         stopThinking();
         setIsSending(false);
@@ -1753,8 +2126,11 @@ export default function WorkspacePage() {
     }
 
     pushAssistantMessage(
-      "已记录你的补充。你可以继续指定“改第几页 + 怎么改”，我会按页精确调整。",
-      "内容改写",
+      tr(
+        'Noted. You can continue with "edit slide X + instruction", and I will apply it precisely.',
+        "已记录你的补充。你可以继续指定“改第几页 + 怎么改”，我会按页精确调整。",
+      ),
+      tr("Content Edit", "内容改写"),
     );
     stopThinking();
     setIsSending(false);
@@ -1833,12 +2209,13 @@ export default function WorkspacePage() {
                     onClick={() => setMobileWorkspaceView("canvas")}
                     className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
                   >
-                    查看画布
+                    {tr("Open Canvas", "查看画布")}
                   </button>
                 </div>
               ) : null}
               <div className={hasCanvasPanel ? "pr-1.5 pt-4" : "pt-4"}>
                 <ChatPanel
+                  outputLanguage={outputLanguage === "zh" ? "zh" : "en"}
                   userPrompt={entryPrompt}
                   entrySources={entrySources}
                   intent={effectiveIntent}
@@ -1923,14 +2300,14 @@ export default function WorkspacePage() {
                         }
                       }}
                       className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
-                      placeholder="继续补充需求"
+                      placeholder={tr("Add more instructions", "继续补充需求")}
                     />
                     <button
                       type="button"
                       disabled={!chatInput.trim() || isSending}
                       onClick={() => void handleSendInput()}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-                      aria-label="发送"
+                      aria-label={tr("Send", "发送")}
                     >
                       {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
                     </button>
@@ -1953,7 +2330,7 @@ export default function WorkspacePage() {
                     className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white/95 px-2.5 text-xs text-zinc-700 shadow-sm"
                   >
                     <ArrowLeft size={12} />
-                    返回对话
+                    {tr("Back to Chat", "返回对话")}
                   </button>
                 </div>
               ) : null}
@@ -1985,7 +2362,7 @@ export default function WorkspacePage() {
                     className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white/95 px-2.5 text-xs text-zinc-700 shadow-sm"
                   >
                     <ArrowLeft size={12} />
-                    返回对话
+                    {tr("Back to Chat", "返回对话")}
                   </button>
                 </div>
               ) : null}
@@ -2006,23 +2383,40 @@ export default function WorkspacePage() {
       {pendingConfigResetReason ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 px-4">
           <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-zinc-900">确认重置配置</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">
+              {tr("Confirm Reset", "确认重置配置")}
+            </h3>
             <p className="mt-2 text-sm leading-6 text-zinc-700">
               {pendingConfigResetReason === "direction-change"
-                ? "你正在切换生成方向，当前已确认的内容将失效并重新进入配置阶段。是否继续？"
-                : "你正在修改关键配置（页数/分镜/尺寸/比例），当前内容将按新配置重生成。是否继续？"}
+                ? tr(
+                    "You are switching output direction. Confirmed content will be reset and you will return to configuration stage. Continue?",
+                    "你正在切换生成方向，当前已确认的内容将失效并重新进入配置阶段。是否继续？",
+                  )
+                : tr(
+                    "You are changing key configuration (pages/frames/size/ratio). Existing content will be regenerated from the new config. Continue?",
+                    "你正在修改关键配置（页数/分镜/尺寸/比例），当前内容将按新配置重生成。是否继续？",
+                  )}
             </p>
             {confirmedConfigSnapshot ? (
               <p className="mt-2 text-xs text-zinc-500">
-                当前配置：
+                {tr("Current config:", "当前配置：")}
                 {confirmedConfigSnapshot.intent === "poster"
-                  ? `${confirmedConfigSnapshot.posterCount} 张 / ${
-                      posterSizeOptions.find((item) => item.id === confirmedConfigSnapshot.posterSizeId)?.label ??
-                      confirmedConfigSnapshot.posterSizeId
-                    }`
+                  ? isZhOutput
+                    ? `${confirmedConfigSnapshot.posterCount} 张 / ${
+                        posterSizeOptions.find((item) => item.id === confirmedConfigSnapshot.posterSizeId)?.label ??
+                        confirmedConfigSnapshot.posterSizeId
+                      }`
+                    : `${confirmedConfigSnapshot.posterCount} posters / ${
+                        posterSizeOptions.find((item) => item.id === confirmedConfigSnapshot.posterSizeId)?.label ??
+                        confirmedConfigSnapshot.posterSizeId
+                      }`
                   : confirmedConfigSnapshot.intent === "video"
-                    ? `${confirmedConfigSnapshot.videoStoryboardCount} 分镜 / ${confirmedConfigSnapshot.videoRatio}`
-                    : `${confirmedConfigSnapshot.pptPageCount} 页 / ${confirmedConfigSnapshot.pptRatio}`}
+                    ? isZhOutput
+                      ? `${confirmedConfigSnapshot.videoStoryboardCount} 分镜 / ${confirmedConfigSnapshot.videoRatio}`
+                      : `${confirmedConfigSnapshot.videoStoryboardCount} frames / ${confirmedConfigSnapshot.videoRatio}`
+                    : isZhOutput
+                      ? `${confirmedConfigSnapshot.pptPageCount} 页 / ${confirmedConfigSnapshot.pptRatio}`
+                      : `${confirmedConfigSnapshot.pptPageCount} slides / ${confirmedConfigSnapshot.pptRatio}`}
               </p>
             ) : null}
             <div className="mt-4 flex items-center justify-end gap-2">
@@ -2031,14 +2425,14 @@ export default function WorkspacePage() {
                 onClick={cancelResetToConfigStage}
                 className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-100"
               >
-                取消
+                {tr("Cancel", "取消")}
               </button>
               <button
                 type="button"
                 onClick={confirmResetToConfigStage}
                 className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
               >
-                继续
+                {tr("Continue", "继续")}
               </button>
             </div>
           </div>

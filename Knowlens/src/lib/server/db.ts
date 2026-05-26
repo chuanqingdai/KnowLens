@@ -138,6 +138,18 @@ function createTables(db: DatabaseSync) {
       PRIMARY KEY (scope_key, endpoint, window_start)
     );
 
+    CREATE TABLE IF NOT EXISTS usage_counters (
+      scope_key TEXT NOT NULL,
+      metric_key TEXT NOT NULL,
+      bucket TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (scope_key, metric_key, bucket)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_usage_counters_scope_bucket
+      ON usage_counters(scope_key, bucket);
+
     CREATE TABLE IF NOT EXISTS billing_fulfillments (
       session_id TEXT PRIMARY KEY,
       user_email TEXT NOT NULL,

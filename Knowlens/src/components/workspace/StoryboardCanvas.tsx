@@ -372,6 +372,9 @@ export function StoryboardCanvas({
   });
   const [composeProgress, setComposeProgress] = useState(0);
   const [composedVideoUrl, setComposedVideoUrl] = useState<string | null>(null);
+  const [composedVideoFilename, setComposedVideoFilename] = useState(
+    "knowlens-compose-preview.webm",
+  );
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composeMeta, setComposeMeta] = useState<ComposeMeta | null>(null);
   const [isExportingPpt, setIsExportingPpt] = useState(false);
@@ -1170,6 +1173,7 @@ export function StoryboardCanvas({
     setComposeError(null);
     setComposeProgress(0);
     setComposedVideoUrl(null);
+    setComposedVideoFilename("knowlens-compose-preview.webm");
     setComposeStatus("running");
     setComposeSteps({
       prepare: "waiting",
@@ -1344,12 +1348,48 @@ export function StoryboardCanvas({
       videoStream.getTracks().forEach((track) => track.stop());
       composedStream.getTracks().forEach((track) => track.stop());
 
+      setComposeProgress(97);
+      let finalBlob = blob;
+      let finalFilename = "knowlens-compose-preview.webm";
+      let finalFormat = blob.type || mimeType;
+      try {
+        const formData = new FormData();
+        formData.append(
+          "video",
+          new File([blob], "knowlens-compose-preview.webm", { type: mimeType }),
+        );
+        const transcodeResponse = await fetch("/api/export/video", {
+          method: "POST",
+          body: formData,
+        });
+        if (transcodeResponse.ok) {
+          const exportedBlob = await transcodeResponse.blob();
+          if (exportedBlob.size > 0) {
+            finalBlob = exportedBlob;
+            finalFilename = "knowlens-compose-preview.mp4";
+            finalFormat = exportedBlob.type || "video/mp4";
+          }
+        }
+      } catch {
+        // 若服务端外部组件不可用，回退保留浏览器本地合成文件
+      }
+
       if (composedVideoUrlRef.current) {
         URL.revokeObjectURL(composedVideoUrlRef.current);
       }
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(finalBlob);
       composedVideoUrlRef.current = url;
       setComposedVideoUrl(url);
+      setComposedVideoFilename(finalFilename);
+      setComposeMeta((prev) =>
+        prev
+          ? {
+              ...prev,
+              format: finalFormat,
+              estimatedSizeMB: Number((finalBlob.size / (1024 * 1024)).toFixed(1)),
+            }
+          : prev,
+      );
       setComposeProgress(100);
       setComposeSteps((prev) => ({ ...prev, finalize: "done" }));
       setComposeStatus("success");
@@ -2520,7 +2560,7 @@ export function StoryboardCanvas({
                 <div className="mt-3 flex justify-end">
                   <a
                     href={composedVideoUrl}
-                    download="knowlens-compose-preview.webm"
+                    download={composedVideoFilename}
                     className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
                   >
                     <Download size={13} />

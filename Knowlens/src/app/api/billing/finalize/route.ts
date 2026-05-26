@@ -4,10 +4,8 @@ import { nextAuthOptions } from "@/lib/nextAuth";
 import { getStripeServerClient } from "@/lib/server/stripe";
 import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 import {
-  appendCreditRecordDb,
+  applyBillingFulfillmentAtomic,
   hasBillingFulfillment,
-  recordBillingFulfillment,
-  saveSubscriptionDb,
 } from "@/lib/server/store";
 
 export const runtime = "nodejs";
@@ -46,11 +44,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (checkout.status !== "complete" || checkout.payment_status !== "paid") {
+      const normalized =
+        checkout.status === "expired" || checkout.status === "open"
+          ? "canceled_or_incomplete"
+          : checkout.payment_status === "unpaid" || checkout.payment_status === "no_payment_required"
+            ? "payment_failed_or_unpaid"
+            : "pending";
       return NextResponse.json({
         ok: false,
+        reason: normalized,
         status: checkout.status,
         paymentStatus: checkout.payment_status,
-        message: "Payment is not completed yet.",
+        message: "Payment is not completed or not paid.",
       });
     }
 
@@ -76,29 +81,34 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const startedAt = new Date().toISOString();
-    const renewAt = (cycle === "yearly" ? addMonths(new Date(), 12) : addMonths(new Date(), 1)).toISOString();
-    saveSubscriptionDb({
+    const now = new Date();
+    const startedAt = now.toISOString();
+    const renewAt = (cycle === "yearly" ? addMonths(now, 12) : addMonths(now, 1)).toISOString();
+
+    const result = applyBillingFulfillmentAtomic({
+      sessionId,
       userEmail: email,
       planId: plan.id,
       planName: plan.name,
       cycle,
-      status: "active",
       startedAt,
       renewAt,
+      monthlyCredits: plan.monthlyCredits,
     });
-    appendCreditRecordDb({
-      type: "topup",
-      description: `${plan.name} ${cycle} purchase credited`,
-      delta: plan.monthlyCredits,
-      userEmail: email,
-    });
-    recordBillingFulfillment({
-      sessionId,
-      userEmail: email,
-      planId: plan.id,
-      cycle,
-    });
+
+    if (!result.applied) {
+      return NextResponse.json({
+        ok: true,
+        plan: {
+          id: plan.id,
+          name: plan.name,
+        },
+        cycle,
+        checkoutMode: checkout.mode,
+        credited: false,
+        duplicate: true,
+      });
+    }
 
     return NextResponse.json({
       ok: true,

@@ -1,11 +1,17 @@
 import { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { resolveRoleByEmail } from "@/lib/auth";
 import { upsertUser } from "@/lib/server/store";
 import { OAuth2Client } from "google-auth-library";
+import https from "node:https";
+import crypto from "node:crypto";
 
 let oneTapClient: OAuth2Client | null = null;
+const googleHttpsAgent = new https.Agent({
+  keepAlive: true,
+  family: 4,
+});
 
 function getOneTapClient() {
   if (oneTapClient) {
@@ -15,13 +21,59 @@ function getOneTapClient() {
   return oneTapClient;
 }
 
+function decodeJwtPayload(token: string) {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+  try {
+    const payloadRaw = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payloadRaw.padEnd(payloadRaw.length + ((4 - (payloadRaw.length % 4)) % 4), "=");
+    const decoded = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(decoded) as {
+      sub?: string;
+      email?: string;
+      name?: string;
+      picture?: string;
+      aud?: string;
+      exp?: number;
+      email_verified?: boolean | string;
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const nextAuthOptions: NextAuthOptions = {
+  debug: process.env.NODE_ENV !== "production",
+  logger: {
+    error(code, ...message) {
+      console.error("[next-auth][logger][error]", code, ...message);
+    },
+    warn(code, ...message) {
+      console.warn("[next-auth][logger][warn]", code, ...message);
+    },
+    debug(code, ...message) {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[next-auth][logger][debug]", code, ...message);
+      }
+    },
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      authorization: {
+        params: {
+          prompt: "consent",
+          scope: "openid email profile",
+        },
+      },
+      checks: process.env.NEXTAUTH_RELAX_OAUTH_CHECKS_LOCAL === "true" ? ["none"] : ["pkce", "state"],
       httpOptions: {
-        timeout: 15000,
+        timeout: 30000,
+        // Prefer IPv4 for flaky local DNS/network paths to Google OAuth endpoints.
+        agent: googleHttpsAgent,
       },
     }),
     CredentialsProvider({
@@ -39,6 +91,9 @@ export const nextAuthOptions: NextAuthOptions = {
         if (!audience) {
           return null;
         }
+        const allowUnsafeLocalFallback =
+          process.env.NEXTAUTH_ONE_TAP_UNSAFE_LOCAL_FALLBACK === "true" &&
+          process.env.NODE_ENV !== "production";
         try {
           const ticket = await getOneTapClient().verifyIdToken({
             idToken,
@@ -55,8 +110,33 @@ export const nextAuthOptions: NextAuthOptions = {
             name: payload?.name?.trim() || email.split("@")[0] || "User",
             image: payload?.picture,
           };
-        } catch {
-          return null;
+        } catch (error) {
+          if (!allowUnsafeLocalFallback) {
+            return null;
+          }
+          const payload = decodeJwtPayload(idToken);
+          if (!payload?.email || !payload?.aud || payload.aud !== audience) {
+            return null;
+          }
+          const now = Math.floor(Date.now() / 1000);
+          if (!payload.exp || payload.exp <= now) {
+            return null;
+          }
+          const emailVerified =
+            payload.email_verified === true || payload.email_verified === "true";
+          if (!emailVerified) {
+            return null;
+          }
+          console.warn("[next-auth][one-tap][unsafe-local-fallback] token accepted without remote signature check", {
+            reason: error instanceof Error ? error.message : "unknown",
+            tokenHash: crypto.createHash("sha256").update(idToken).digest("hex").slice(0, 12),
+          });
+          return {
+            id: payload.sub ?? payload.email,
+            email: payload.email.trim().toLowerCase(),
+            name: payload.name?.trim() || payload.email.split("@")[0] || "User",
+            image: payload.picture,
+          };
         }
       },
     }),

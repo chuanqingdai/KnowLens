@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listUploadJobs, normalizeScope, updateUploadJob } from "@/lib/server/store";
 import { enqueueUpload, runUploadJob, validateUploadFile } from "@/lib/server/upload";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 
 export const runtime = "nodejs";
 
@@ -40,8 +41,8 @@ export async function POST(request: NextRequest) {
     rateLimitOrThrow({
       scopeKey,
       endpoint: "upload-job-create",
-      limit: 30,
-      windowMs: 60_000,
+      limit: RATE_LIMIT_CONFIG.uploadJobCreate.limit,
+      windowMs: RATE_LIMIT_CONFIG.uploadJobCreate.windowMs,
     });
 
     const valid = validateUploadFile({
@@ -126,4 +127,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

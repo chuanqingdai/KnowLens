@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertFeedbackDb, listFeedbackDb, normalizeScope } from "@/lib/server/store";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
+import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 
 export const runtime = "nodejs";
 
@@ -25,8 +26,8 @@ export async function POST(request: NextRequest) {
     rateLimitOrThrow({
       scopeKey: email ? `user:${email}` : `ip:${request.headers.get("x-forwarded-for") ?? "unknown"}`,
       endpoint: "feedback-create",
-      limit: 8,
-      windowMs: 10 * 60_000,
+      limit: RATE_LIMIT_CONFIG.feedbackCreate.limit,
+      windowMs: RATE_LIMIT_CONFIG.feedbackCreate.windowMs,
     });
 
     const detail = (body.detail ?? "").trim();
@@ -60,4 +61,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
