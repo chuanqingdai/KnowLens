@@ -18,14 +18,15 @@ function getDbFilePath() {
   if (process.env.KNOWLENS_DB_PATH?.trim()) {
     return process.env.KNOWLENS_DB_PATH.trim();
   }
+  if (process.env.VERCEL === "1") {
+    return path.join("/tmp", "knowlens.sqlite");
+  }
   return path.join(ensureDataDir(), "knowlens.sqlite");
 }
 
 function createTables(db: DatabaseSync) {
+  db.exec("PRAGMA foreign_keys = ON;");
   db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = NORMAL;
-
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,

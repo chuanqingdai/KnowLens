@@ -25,6 +25,87 @@ body {
     "Microsoft YaHei", sans-serif;
 }
 
+/* Unified interactive behavior for clickable controls. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+a[href],
+summary {
+  cursor: pointer;
+}
+
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+@media (hover: hover) {
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover,
+  input[type="button"]:not(:disabled):hover,
+  input[type="submit"]:not(:disabled):hover,
+  input[type="reset"]:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(24, 24, 27, 0.1);
+    filter: saturate(1.04);
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  input[type="button"]:not(:disabled):active,
+  input[type="submit"]:not(:disabled):active,
+  input[type="reset"]:not(:disabled):active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 3px 8px rgba(24, 24, 27, 0.08);
+  }
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+input[type="button"]:focus-visible,
+input[type="submit"]:focus-visible,
+input[type="reset"]:focus-visible,
+a[href]:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.35);
+  outline-offset: 2px;
+}
+
+button:disabled,
+input[type="button"]:disabled,
+input[type="submit"]:disabled,
+input[type="reset"]:disabled {
+  cursor: not-allowed;
+}
+
+/* Stronger image affordance for clickable cards/covers. */
+@media (hover: hover) {
+  [role="button"] img,
+  [role="button"] picture,
+  [role="button"] video {
+    transition: transform 0.28s ease, filter 0.28s ease;
+    transform-origin: center center;
+  }
+
+  [role="button"]:hover img,
+  [role="button"]:hover picture,
+  [role="button"]:hover video {
+    transform: scale(1.025);
+    filter: saturate(1.06) contrast(1.02);
+  }
+}
+
 .workspace-canvas-shell {
   scrollbar-width: thin;
   scrollbar-color: #a1a1aa transparent;

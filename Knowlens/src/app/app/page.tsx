@@ -245,6 +245,7 @@ const MIN_COMPOSER_HEIGHT = 132;
 const MAX_COMPOSER_HEIGHT = 260;
 const DEFAULT_COVER_FALLBACK = "/picture/text-to-poster.png";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
+const loadedImageCache = new Set<string>();
 
 type ProgressiveCoverProps = {
   src: string;
@@ -262,13 +263,20 @@ function ProgressiveCover({
   loading = "lazy",
 }: ProgressiveCoverProps) {
   const [imgSrc, setImgSrc] = useState(src);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => loadedImageCache.has(src));
   const [attemptedFallback, setAttemptedFallback] = useState(false);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
+    setImgSrc(src);
+    setAttemptedFallback(false);
+    setLoaded(loadedImageCache.has(src));
+  }, [src]);
+
+  useEffect(() => {
     const img = imageRef.current;
     if (img?.complete && img.naturalWidth > 0) {
+      loadedImageCache.add(imgSrc);
       setLoaded(true);
     }
   }, [imgSrc]);
@@ -286,7 +294,10 @@ function ProgressiveCover({
         loading={loading}
         decoding="async"
         ref={imageRef}
-        onLoad={() => setLoaded(true)}
+        onLoad={() => {
+          loadedImageCache.add(imgSrc);
+          setLoaded(true);
+        }}
         onError={() => {
           if (fallbackSrc && !attemptedFallback && imgSrc !== fallbackSrc) {
             if (ENABLE_IMAGE_DEBUG) {
@@ -1171,7 +1182,6 @@ export default function Home() {
                   >
                     <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-100">
                       <ProgressiveCover
-                        key={project.cover}
                         src={toOptimizedCaseCover(project.cover)}
                         fallbackSrc={project.cover}
                         alt={project.title}
@@ -1234,7 +1244,6 @@ export default function Home() {
                     <div className="relative w-full bg-zinc-100">
                       <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>
                         <ProgressiveCover
-                          key={item.cover}
                           src={toOptimizedCaseCover(item.cover)}
                           fallbackSrc={item.cover}
                           alt={item.title}
