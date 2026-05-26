@@ -5,6 +5,26 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 
+function isLocalNetworkHost() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const host = window.location.hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    return true;
+  }
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+  return false;
+}
+
 function GoogleMark() {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className="h-4 w-4 shrink-0" fill="none">
@@ -18,6 +38,7 @@ function GoogleMark() {
 
 export default function AuthPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isLocalLoginLoading, setIsLocalLoginLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [gisReady, setGisReady] = useState(false);
   const [gisRendered, setGisRendered] = useState(false);
@@ -40,6 +61,8 @@ export default function AuthPage() {
   const { authError, callbackUrl } = mounted
     ? getAuthParams()
     : { authError: null as string | null, callbackUrl: "/app" };
+  const canRenderGoogleButton = Boolean(oneTapClientId);
+  const showLocalBypass = mounted && isLocalNetworkHost() && process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true";
 
   useEffect(() => {
     setMounted(true);
@@ -113,6 +136,7 @@ export default function AuthPage() {
     }
     if (authError) {
       setIsGoogleLoading(false);
+      setIsLocalLoginLoading(false);
     }
     if (authError || localErrorCode) {
       setLocalErrorCode(null);
@@ -187,12 +211,61 @@ export default function AuthPage() {
             gisRendered ? "p-1.5" : "p-0"
           }`}
         >
-          {!gisRendered ? (
+          {!gisRendered && canRenderGoogleButton ? (
             <span className="text-xs text-zinc-500">
               {t("Loading Google sign-in...", "正在加载 Google 登录组件...")}
             </span>
           ) : null}
+          {!gisRendered && !canRenderGoogleButton ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsGoogleLoading(true);
+                void signIn("google", { callbackUrl }).catch(() => {
+                  setIsGoogleLoading(false);
+                });
+              }}
+              disabled={isGoogleLoading}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isGoogleLoading ? <Loader2 size={15} className="animate-spin text-zinc-500" /> : <GoogleMark />}
+              <span>
+                {isGoogleLoading
+                  ? t("Connecting...", "正在连接 Google...")
+                  : t("Continue with Google", "继续使用 Google 登录")}
+              </span>
+            </button>
+          ) : null}
         </div>
+
+        {showLocalBypass ? (
+          <button
+            type="button"
+            onClick={() => {
+              setIsLocalLoginLoading(true);
+              void signIn("dev-login", {
+                email: "local@knowlens.ai",
+                name: "Local Tester",
+                callbackUrl,
+              }).catch(() => {
+                setIsLocalLoginLoading(false);
+              });
+            }}
+            disabled={isLocalLoginLoading}
+            className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isLocalLoginLoading ? (
+              <Loader2 size={15} className="animate-spin text-zinc-500" />
+            ) : (
+              <ShieldCheck size={15} className="text-zinc-500" />
+            )}
+            <span>
+              {isLocalLoginLoading
+                ? t("Connecting...", "正在连接...")
+                : t("Skip sign-in for local testing", "本地测试跳过登录")}
+            </span>
+          </button>
+        ) : null}
 
         {authErrorNotice && authErrorCode ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
