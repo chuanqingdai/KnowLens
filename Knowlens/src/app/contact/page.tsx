@@ -36,10 +36,10 @@ export default function ContactPage() {
                 include the page URL, time, and steps to reproduce so I can investigate faster.
               </p>
               <a
-                href="mailto:hello@knowlens.ai"
+                href="mailto:support@knowlens.ai"
                 className="mt-3 inline-flex text-sm font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4"
               >
-                hello@knowlens.ai
+                support@knowlens.ai
               </a>
             </article>
 

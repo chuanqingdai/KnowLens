@@ -44,6 +44,26 @@ type PosterDraftRequest = {
   outputLanguage?: OutputLanguage;
 };
 
+type PptSlideDraft = {
+  page?: number;
+  title?: string;
+  mainPoint?: string;
+  body?: string;
+  supportNote?: string;
+  visual?: string;
+  imagePrompt?: string;
+};
+
+type VideoStoryboardDraft = {
+  index?: number;
+  title?: string;
+  durationSec?: number;
+  narration?: string;
+  visual?: string;
+  onScreenText?: string;
+  imagePrompt?: string;
+};
+
 type GptsApiGenerateResponse = {
   candidates?: Array<{
     content?: {
@@ -457,10 +477,107 @@ function parseJsonContent(content: string) {
         visualElements?: string[];
       };
       planList?: Array<{ title?: string; focus?: string }>;
+      outlineItems?: string[];
+      slideDrafts?: PptSlideDraft[];
+      storyboardDrafts?: VideoStoryboardDraft[];
     };
   } catch {
     return null;
   }
+}
+
+function normalizeTextItem(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOutlineItems(raw: unknown, count: number, topic: string) {
+  const list = Array.isArray(raw)
+    ? raw.map((item) => normalizeTextItem(item)).filter(Boolean)
+    : [];
+  if (list.length >= count) {
+    return list.slice(0, count);
+  }
+  const filled = [...list];
+  for (let i = list.length; i < count; i += 1) {
+    filled.push(`${topic} · Section ${i + 1}`);
+  }
+  return filled;
+}
+
+function normalizeSlideDrafts(raw: unknown, outlineItems: string[], count: number) {
+  const list = Array.isArray(raw) ? raw : [];
+  const drafts = list
+    .map((item, idx) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const row = item as PptSlideDraft;
+      const title = normalizeTextItem(row.title) || outlineItems[idx] || `Slide ${idx + 1}`;
+      const body = normalizeTextItem(row.body);
+      const support = normalizeTextItem(row.supportNote);
+      const visual = normalizeTextItem(row.visual);
+      return {
+        page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
+        title,
+        body: [body, support].filter(Boolean).join("\n"),
+        visual,
+      };
+    })
+    .filter((item): item is { page: number; title: string; body: string; visual: string } => Boolean(item));
+
+  if (drafts.length >= count) {
+    return drafts.slice(0, count);
+  }
+  return outlineItems.slice(0, count).map((title, idx) => {
+    const existing = drafts[idx];
+    if (existing) {
+      return existing;
+    }
+    return {
+      page: idx + 1,
+      title,
+      body: "",
+      visual: "",
+    };
+  });
+}
+
+function normalizeStoryboardDrafts(raw: unknown, outlineItems: string[], count: number) {
+  const list = Array.isArray(raw) ? raw : [];
+  const drafts = list
+    .map((item, idx) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const row = item as VideoStoryboardDraft;
+      const title = normalizeTextItem(row.title) || outlineItems[idx] || `Frame ${idx + 1}`;
+      const narration = normalizeTextItem(row.narration);
+      const onScreenText = normalizeTextItem(row.onScreenText);
+      const visual = normalizeTextItem(row.visual);
+      return {
+        index: Number.isFinite(row.index) ? Number(row.index) : idx + 1,
+        title,
+        narration: [narration, onScreenText].filter(Boolean).join("\n"),
+        visual,
+      };
+    })
+    .filter((item): item is { index: number; title: string; narration: string; visual: string } => Boolean(item));
+
+  if (drafts.length >= count) {
+    return drafts.slice(0, count);
+  }
+  return outlineItems.slice(0, count).map((title, idx) => {
+    const existing = drafts[idx];
+    if (existing) {
+      return existing;
+    }
+    return {
+      index: idx + 1,
+      title,
+      narration: "",
+      visual: "",
+    };
+  });
 }
 
 function enforcePosterSpecificity(draft: PosterDraft, topic: string): PosterDraft {
@@ -677,9 +794,13 @@ export async function POST(request: NextRequest) {
     const topic = (payload.topic ?? "知识主题").trim() || "知识主题";
     const prompt = (payload.prompt ?? "").trim();
     const textModel = (payload.textModel ?? "").trim().toLowerCase();
-    const posterCount = clamp(Math.round(payload.posterCount ?? 1), 1, 10);
-    const posterSizeLabel = payload.posterSizeLabel?.trim();
     const direction = payload.direction ?? "poster";
+    const outputCount = clamp(
+      Math.round(payload.posterCount ?? (direction === "poster" ? 1 : 6)),
+      direction === "poster" ? 1 : 6,
+      direction === "poster" ? 10 : 24,
+    );
+    const posterSizeLabel = payload.posterSizeLabel?.trim();
     const outputLanguage = resolveOutputLanguage({
       userPrompt: prompt,
       sourceText: topic,
@@ -688,11 +809,11 @@ export async function POST(request: NextRequest) {
     const draftMode =
       payload.draftMode ?? (process.env.KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto");
 
-    if (draftMode === "mock") {
+    if (draftMode === "mock" && direction === "poster") {
       const mock = buildMockDraftPayload({
         direction,
         topic,
-        count: posterCount,
+        count: outputCount,
       });
       return NextResponse.json({
         ...mock,
@@ -702,12 +823,12 @@ export async function POST(request: NextRequest) {
     }
 
     const fallbackDraft = buildFallbackPosterDraft(topic, posterSizeLabel, prompt, outputLanguage);
-    const fallbackPlan = buildFallbackPlanListByLanguage(topic, posterCount, outputLanguage);
+    const fallbackPlan = buildFallbackPlanListByLanguage(topic, outputCount, outputLanguage);
     const promptBundle = buildContentDraftPrompt({
       direction,
       topic,
       userPrompt: prompt,
-      count: posterCount,
+      count: outputCount,
       ratioOrSize: posterSizeLabel,
       outputLanguage,
     });
@@ -727,17 +848,7 @@ export async function POST(request: NextRequest) {
             { status: 200 },
           );
         }
-        const mock = buildMockDraftPayload({
-          direction,
-          topic,
-          count: posterCount,
-        });
-        return NextResponse.json({
-          ...mock,
-          outputLanguage,
-          source: "fallback",
-          error: freeResult.error,
-        });
+        return NextResponse.json({ error: freeResult.error }, { status: 502 });
       }
       content = freeResult.text;
     } else {
@@ -754,17 +865,7 @@ export async function POST(request: NextRequest) {
             { status: 200 },
           );
         }
-        const mock = buildMockDraftPayload({
-          direction,
-          topic,
-          count: posterCount,
-        });
-        return NextResponse.json({
-          ...mock,
-          outputLanguage,
-          source: "fallback",
-          error: paidResult.error,
-        });
+        return NextResponse.json({ error: paidResult.error }, { status: 502 });
       }
       content = paidResult.text;
     }
@@ -781,21 +882,14 @@ export async function POST(request: NextRequest) {
           { status: 200 },
         );
       }
-      const mock = buildMockDraftPayload({
-        direction,
-        topic,
-        count: posterCount,
-      });
-      return NextResponse.json({
-        ...mock,
-        outputLanguage,
-        source: "fallback",
-        error: "Model response is empty.",
-      });
+      return NextResponse.json({ error: "Model response is empty." }, { status: 502 });
     }
     const parsed = parseJsonContent(content);
 
     if (!parsed) {
+      if (direction !== "poster") {
+        return NextResponse.json({ error: "Model response is not valid JSON." }, { status: 502 });
+      }
       return NextResponse.json({
         posterDraft: fallbackDraft,
         planList: fallbackPlan,
@@ -805,13 +899,22 @@ export async function POST(request: NextRequest) {
     }
 
     if (direction !== "poster") {
-      const mock = buildMockDraftPayload({
-        direction,
-        topic,
-        count: posterCount,
-      });
+      const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic);
+      if (direction === "ppt") {
+        const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount);
+        return NextResponse.json({
+          direction,
+          outlineItems,
+          slideDrafts,
+          outputLanguage,
+          source: "llm",
+        });
+      }
+      const storyboardDrafts = normalizeStoryboardDrafts(parsed.storyboardDrafts, outlineItems, outputCount);
       return NextResponse.json({
-        ...mock,
+        direction,
+        outlineItems,
+        storyboardDrafts,
         outputLanguage,
         source: "llm",
       });
@@ -876,7 +979,7 @@ export async function POST(request: NextRequest) {
 
     const planList: PosterPlanItem[] =
       Array.isArray(parsed.planList) && parsed.planList.length
-        ? Array.from({ length: posterCount }, (_, idx) => {
+        ? Array.from({ length: outputCount }, (_, idx) => {
             const item = parsed.planList?.[idx] ?? parsed.planList?.[parsed.planList.length - 1];
             const fallback = fallbackPlan[idx];
             return {

@@ -133,12 +133,6 @@ const inputPlaceholders = [
   "Upload a PDF, PPT, or document to generate visual learning content quickly",
 ];
 
-const workspaceLaunchStages = [
-  "Understanding your input",
-  "Choosing the best output direction",
-  "Preparing your workspace draft",
-];
-
 type SourceKind = "file" | "web" | "youtube" | "podcast";
 
 type SourceItem = {
@@ -653,7 +647,6 @@ export default function Home() {
   const [previewZoom, setPreviewZoom] = useState(1);
   const [uploadJobs, setUploadJobs] = useState<Record<string, UploadJobRecord>>({});
   const [isStartingWorkspace, setIsStartingWorkspace] = useState(false);
-  const [workspaceLaunchStage, setWorkspaceLaunchStage] = useState(0);
   const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [, setMetricVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -749,21 +742,6 @@ export default function Home() {
     const timer = window.setTimeout(() => setUploadToast(null), 2200);
     return () => window.clearTimeout(timer);
   }, [uploadToast]);
-
-  useEffect(() => {
-    if (!isStartingWorkspace) {
-      setWorkspaceLaunchStage(0);
-      return;
-    }
-    setWorkspaceLaunchStage(0);
-    const timers = [
-      window.setTimeout(() => setWorkspaceLaunchStage(1), 520),
-      window.setTimeout(() => setWorkspaceLaunchStage(2), 1280),
-    ];
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [isStartingWorkspace]);
 
   useEffect(() => {
     function preventBrowserOpenOnDrop(event: globalThis.DragEvent) {
@@ -1914,49 +1892,6 @@ export default function Home() {
               </div>
               <p className="text-[38px] font-semibold tracking-tight text-white">Add anything</p>
               <p className="mt-3 text-[28px] font-medium leading-tight text-white/92">Drop files to upload</p>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {isStartingWorkspace ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-zinc-950/45 px-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-md rounded-3xl border border-white/15 bg-zinc-950/80 px-5 py-5 text-white shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
-            <div className="mb-3 flex items-center gap-2 text-sm text-zinc-200">
-              <LoaderCircle size={16} className="animate-spin text-zinc-200" />
-              <span>Thinking through your request</span>
-            </div>
-            <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-white/15">
-              <div
-                className="h-full rounded-full bg-white/85 transition-all duration-500"
-                style={{ width: `${((workspaceLaunchStage + 1) / workspaceLaunchStages.length) * 100}%` }}
-              />
-            </div>
-            <div className="space-y-2">
-              {workspaceLaunchStages.map((stage, idx) => {
-                const isDone = idx < workspaceLaunchStage;
-                const isActive = idx === workspaceLaunchStage;
-                return (
-                  <div
-                    key={stage}
-                    className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm transition ${
-                      isActive
-                        ? "border-white/35 bg-white/10 text-white"
-                        : "border-white/10 bg-white/5 text-zinc-300"
-                    }`}
-                  >
-                    {isDone ? (
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-white text-zinc-900">
-                        <Check size={11} />
-                      </span>
-                    ) : isActive ? (
-                      <LoaderCircle size={14} className="animate-spin text-zinc-200" />
-                    ) : (
-                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-zinc-500" />
-                    )}
-                    <span>{stage}</span>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>

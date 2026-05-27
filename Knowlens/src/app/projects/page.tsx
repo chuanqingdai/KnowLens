@@ -1,7 +1,6 @@
 "use client";
 
-import { CirclePlus, FolderOpen, Home as HomeIcon, Plus, UserCircle2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { FolderOpen, Home as HomeIcon, UserCircle2 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
@@ -13,42 +12,40 @@ const navItems = [
 const projectItems = [
   {
     id: "proj-1",
-    title: "火山喷发过程科普 PPT",
-    updatedAt: "今天 15:24",
-    status: "进行中",
+    title: "Volcanic Eruption Explainer PPT",
+    updatedAt: "Today 15:24",
+    status: "In Progress",
     cover: "/picture/39f7e57c-2e46-4e53-8ba6-756b22ef6437.png",
     format: "PPT",
   },
   {
     id: "proj-2",
-    title: "潮汐原理可视化长图",
-    updatedAt: "昨天 21:08",
-    status: "已完成",
+    title: "Tide Mechanism Visual Poster",
+    updatedAt: "Yesterday 21:08",
+    status: "Completed",
     cover: "/picture/176e6527-21ef-4528-a0fc-91c879a00b4c.png",
-    format: "海报",
+    format: "Poster",
   },
   {
     id: "proj-3",
-    title: "黑洞形成机制短视频",
-    updatedAt: "5 月 18 日",
-    status: "已完成",
+    title: "Black Hole Formation Short Video",
+    updatedAt: "May 18",
+    status: "Completed",
     cover: "/picture/eab2accf-e36a-45a2-89bb-0faa73e518e6.png",
-    format: "视频",
+    format: "Video",
     duration: "01:35",
   },
   {
     id: "proj-4",
-    title: "免疫机制课堂演示",
-    updatedAt: "5 月 16 日",
-    status: "已完成",
+    title: "Immune Mechanism Classroom Deck",
+    updatedAt: "May 16",
+    status: "Completed",
     cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png",
     format: "PPT",
   },
 ];
 
 export default function ProjectsPage() {
-  const router = useRouter();
-
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
       <SidebarNav items={navItems} />
@@ -57,16 +54,8 @@ export default function ProjectsPage() {
           <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm text-zinc-500">KnowLens.ai</p>
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">我的项目</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Projects</h1>
             </div>
-            <button
-              type="button"
-              onClick={() => router.push("/workspace")}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-zinc-900 px-3.5 text-sm font-medium text-white hover:bg-zinc-700"
-            >
-              <Plus size={14} />
-              新建项目
-            </button>
           </header>
 
           <section>
@@ -76,25 +65,10 @@ export default function ProjectsPage() {
                 type="button"
                 className="text-sm text-zinc-500 transition hover:text-zinc-800"
               >
-                查看全部
+                View all
               </button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => router.push("/workspace")}
-                className="rounded-2xl border border-dashed border-zinc-300 bg-white p-2 text-left transition hover:border-zinc-400 hover:text-zinc-600"
-              >
-                <div className="aspect-video w-full rounded-xl bg-zinc-100 text-zinc-400">
-                  <div className="flex h-full items-center justify-center">
-                    <CirclePlus size={30} />
-                  </div>
-                </div>
-                <p className="px-1 pb-1 pt-3 text-lg font-medium leading-none text-zinc-900">
-                  New Project
-                </p>
-              </button>
-
               {projectItems.map((item) => (
                 <article
                   key={item.id}
@@ -107,7 +81,7 @@ export default function ProjectsPage() {
                     <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
                       {item.format}
                     </span>
-                    {item.format === "视频" && item.duration ? (
+                    {item.format === "Video" && item.duration ? (
                       <span className="absolute right-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
                         {item.duration}
                       </span>
@@ -119,7 +93,7 @@ export default function ProjectsPage() {
                       <p className="text-sm text-zinc-500">{item.updatedAt}</p>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
-                          item.status === "进行中"
+                          item.status === "In Progress"
                             ? "bg-zinc-900 text-white"
                             : "bg-zinc-100 text-zinc-600"
                         }`}

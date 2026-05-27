@@ -35,14 +35,23 @@ import {
   type OutputLanguage,
 } from "@/lib/language";
 
-type HomeSourceKind = "file" | "web" | "youtube";
+type HomeSourceKind = "file" | "web" | "youtube" | "podcast";
 type HomeSourceItem = {
   id: string;
   kind: HomeSourceKind;
   name: string;
   origin: string;
-  status: "extracting" | "ready";
+  status:
+    | "queued"
+    | "uploading"
+    | "extracting"
+    | "processing"
+    | "ready"
+    | "failed";
   excerpt: string;
+  errorMessage?: string | null;
+  errorCode?: string | null;
+  progress?: number;
 };
 type HomeDraftPayload = {
   prompt?: string;
@@ -111,10 +120,23 @@ type LanguageAwareContext = {
   outputLanguage: OutputLanguage;
 };
 
+type ImageGenerationTask = {
+  index: number;
+  outputType: "poster" | "ppt" | "video";
+  aspectRatio: string;
+  styleId: string;
+  styleName: string;
+  stylePrompt: string;
+  contentTitle: string;
+  contentBody: string;
+  visualHint: string;
+  composedPrompt: string;
+};
+
 const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
-const DRAFT_MODE = process.env.NEXT_PUBLIC_KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto";
+const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {
@@ -133,7 +155,7 @@ type StyleOption = {
 const styleCoverFileById: Record<string, string> = {
   "clean-science-infographic": "Clean Science Infographic Style.png",
   "premium-editorial-infographic": "Premium Editorial Infographic Style.png",
-  "youtube-science-thumbnail": "YouTube Science Thumbnail Style.png",
+  "youtube-science-thumbnail": "Hero Science Cover Style.png",
   "minimal-line-art": "Minimal Line Art Style.png",
   "hand-drawn-explainer": "Hand-drawn Explainer Style.png",
   "cute-3d-educational": "Cute 3D Educational Style.png",
@@ -147,7 +169,7 @@ const styleCoverFileById: Record<string, string> = {
 
 function styleCoverById(styleId: string) {
   const filename = styleCoverFileById[styleId] ?? styleCoverFileById["clean-science-infographic"];
-  return `/style/${encodeURIComponent(filename)}`;
+  return `/style/${encodeURIComponent(filename)}?v=20260527b`;
 }
 
 const styleOptions = [
@@ -155,9 +177,9 @@ const styleOptions = [
     id: "clean-science-infographic",
     name: "简洁科普信息图风",
     englishName: "Clean Science Infographic",
-    fit: "结构清晰、可读性高，适合机制讲解和通用科普。",
+    fit: "Clear structure and high readability, ideal for mechanism explainers and general science topics.",
     prompt:
-      "clean science infographic style, modern educational design, minimal labels, clear visual hierarchy, soft gradients, high readability, balanced composition",
+      "Clean scientific infographic aesthetic, bright neutral canvas, disciplined visual hierarchy, precise spacing system, restrained color contrast, crisp line quality, subtle depth separation, modular composition, high legibility, modern editorial clarity, polished professional finish.",
     suitableTopics: "通用科普、自然科学、物理、地理、人体、机制解释",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["科普", "自然", "物理", "地理", "人体", "机制", "原理", "解释"],
@@ -168,9 +190,9 @@ const styleOptions = [
     id: "premium-editorial-infographic",
     name: "高级报告信息图风",
     englishName: "Premium Editorial Infographic",
-    fit: "更像专业报告与杂志版式，适合商业与趋势分析。",
+    fit: "Professional report and magazine layout feel, ideal for business and trend analysis.",
     prompt:
-      "premium editorial infographic style, professional magazine layout feeling, elegant typography, refined spacing, restrained colors, polished data presentation",
+      "Premium editorial information design, refined composition rhythm, elegant proportional balance, sophisticated typography tone, restrained luxury palette, soft micro-contrast, subtle shadow layering, high-end publication quality, minimalist but information-dense structure, calm professional visual authority.",
     suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
@@ -180,10 +202,10 @@ const styleOptions = [
   {
     id: "youtube-science-thumbnail",
     name: "大主体科普封面风",
-    englishName: "YouTube Science Thumbnail Style",
-    fit: "冲击力强，适合热点知识和强视觉传播。",
+    englishName: "Hero Science Cover Style",
+    fit: "High-impact visual style, ideal for trending topics and attention-grabbing distribution.",
     prompt:
-      "bold YouTube science thumbnail style, strong central visual, high contrast, cinematic lighting, eye-catching, dramatic but clean, minimal large text",
+      "Hero-cover visual direction, high-impact focal emphasis, cinematic contrast control, dramatic but clean tonal separation, bold negative space strategy, premium depth rendering, concise headline-safe layout zone, striking first-screen presence, polished contemporary finish.",
     suitableTopics: "宇宙、AI、深海、灾难、人体、科技热点",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
@@ -194,9 +216,9 @@ const styleOptions = [
     id: "minimal-line-art",
     name: "极简线稿风",
     englishName: "Minimal Line Art",
-    fit: "线条克制、留白多，适合基础概念与结构说明。",
+    fit: "Minimal linework with generous whitespace, ideal for core concepts and structural explanations.",
     prompt:
-      "minimal line art style, thin clean lines, geometric simplicity, strong whitespace, elegant outline drawing, few colors, precise and calm",
+      "Minimal line-art system, ultra-clean monochrome discipline, fine contour precision, generous negative space, low-noise layout, subtle tonal hierarchy, technical calmness, lightweight visual density, balanced geometric rhythm, understated professional clarity.",
     suitableTopics: "基础概念、产品说明、AI原理、简单科学机制",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["基础", "概念", "产品", "ai原理", "机制", "结构", "说明"],
@@ -207,9 +229,9 @@ const styleOptions = [
     id: "hand-drawn-explainer",
     name: "手绘教学风",
     englishName: "Hand-drawn Explainer Style",
-    fit: "亲和力强，适合儿童和入门向知识讲解。",
+    fit: "Friendly and approachable, ideal for kids and beginner-friendly educational content.",
     prompt:
-      "hand-drawn explainer style, simple sketch lines, soft color fills, friendly educational tone, clear shapes, natural imperfect linework",
+      "Hand-drawn explainer aesthetic, organic stroke character, soft texture feel, approachable visual tone, loose-but-structured composition rhythm, warm contrast profile, lightweight annotation style, humanized educational polish, clean readability with relaxed visual energy.",
     suitableTopics: "儿童科普、生活常识、健康知识、基础物理、心理学",
     carrierPriority: ["video", "ppt", "poster"],
     topicKeywords: ["儿童", "生活常识", "健康", "基础物理", "心理", "入门", "低龄"],
@@ -220,9 +242,9 @@ const styleOptions = [
     id: "cute-3d-educational",
     name: "3D 可爱教育风",
     englishName: "Cute 3D Educational Style",
-    fit: "形体圆润、学习氛围轻松，适合低龄健康与动物题材。",
+    fit: "Rounded forms and playful tone, ideal for early-age health and animal education topics.",
     prompt:
-      "cute 3D educational style, rounded shapes, soft lighting, friendly objects, playful but clean, bright colors, approachable learning visual",
+      "Soft 3D educational direction, rounded form language, gentle global illumination, warm pastel tonal environment, smooth material response, playful yet orderly composition, high-fidelity render polish, accessible emotional tone, clean and friendly visual communication.",
     suitableTopics: "儿童科普、动物、人体健康、营养、低龄教育",
     carrierPriority: ["video", "poster", "ppt"],
     topicKeywords: ["儿童", "动物", "人体健康", "营养", "低龄", "亲子", "启蒙"],
@@ -233,9 +255,9 @@ const styleOptions = [
     id: "3d-isometric-tech",
     name: "3D 等距科技风",
     englishName: "3D Isometric Tech Style",
-    fit: "空间结构清晰，适合系统、城市、数据基础设施主题。",
+    fit: "Strong spatial clarity, ideal for systems, cities, and data infrastructure narratives.",
     prompt:
-      "3D isometric technology style, modular objects, soft shadows, clean perspective, futuristic but minimal, organized spatial design",
+      "Isometric technology visualization style, precise spatial layering, clean modular geometry, structured depth mapping, cool futuristic palette control, luminous accent restraint, high-detail but organized composition, professional product-grade rendering, systematic visual logic.",
     suitableTopics: "AI系统、数据中心、芯片、城市系统、互联网、能源",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["ai系统", "数据中心", "芯片", "城市系统", "互联网", "能源", "架构", "模块"],
@@ -246,9 +268,9 @@ const styleOptions = [
     id: "dark-premium-tech",
     name: "黑金高端科技风",
     englishName: "Dark Premium Tech Style",
-    fit: "高对比、强质感，适合金融科技与未来科技表达。",
+    fit: "High-contrast and premium texture, ideal for fintech and future-tech storytelling.",
     prompt:
-      "dark premium tech style, black background, subtle glow, gold or blue highlights, futuristic interface feeling, sleek and high-end",
+      "Dark premium tech visual language, deep low-key tonal base, controlled high-contrast highlights, sleek reflective finish, cinematic shadow sculpting, luxury-grade color accents, sharp edge definition, futuristic interface atmosphere, dramatic yet disciplined composition.",
     suitableTopics: "AI、芯片、金融科技、机器人、数据、未来科技",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["ai", "芯片", "金融科技", "机器人", "数据", "未来科技", "前沿"],
@@ -259,9 +281,9 @@ const styleOptions = [
     id: "technical-blueprint",
     name: "科技蓝图风",
     englishName: "Technical Blueprint Style",
-    fit: "工程感强，适合航天、机械、结构类知识。",
+    fit: "Engineering-driven blueprint aesthetic, ideal for aerospace, mechanical, and structural topics.",
     prompt:
-      "technical blueprint style, dark blue grid background, precise schematic lines, engineering drawing aesthetic, clean technical annotations",
+      "Technical blueprint aesthetic, engineered grid discipline, precision drafting linework, schematic layout logic, measurement-style visual cadence, cool monochromatic technical palette, clean annotation rhythm, industrial presentation rigor, high-clarity structural communication.",
     suitableTopics: "航空航天、机械、潜艇、机器人、军事科技、工程结构",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["航天", "机械", "潜艇", "机器人", "军事", "工程", "结构", "蓝图"],
@@ -272,9 +294,9 @@ const styleOptions = [
     id: "medical-educational-illustration",
     name: "医学科普插画风",
     englishName: "Medical Educational Illustration",
-    fit: "专业但不压迫，适合人体与疾病机制科普。",
+    fit: "Professional yet accessible, ideal for anatomy and disease-mechanism explainers.",
     prompt:
-      "clean medical educational illustration style, soft clinical colors, simplified anatomy, professional healthcare visual, accurate but not overly realistic",
+      "Clinical educational illustration style, sterile clean tonal environment, precise form definition, soft realistic shading, trusted professional visual tone, balanced informational clarity, restrained medical palette accents, calm and accurate presentation quality.",
     suitableTopics: "心血管、人体器官、代谢、疾病机制、营养健康",
     carrierPriority: ["ppt", "video", "poster"],
     topicKeywords: ["心血管", "器官", "代谢", "疾病", "营养", "医学", "健康", "人体"],
@@ -285,9 +307,9 @@ const styleOptions = [
     id: "cinematic-science-illustration",
     name: "电影级科普视觉风",
     englishName: "Cinematic Science Illustration",
-    fit: "氛围感和沉浸感强，适合宇宙、灾难、史前等大题材。",
+    fit: "Immersive cinematic atmosphere, ideal for space, disaster, and large-scale science themes.",
     prompt:
-      "cinematic science illustration style, dramatic lighting, realistic atmosphere, strong depth, epic scale, visually immersive but educational",
+      "Cinematic scientific illustration direction, high-detail realism, atmospheric depth grading, dramatic light shaping, premium documentary-like finish, controlled dynamic range, elegant contrast transitions, immersive but clean composition, visually powerful professional polish.",
     suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
@@ -298,9 +320,9 @@ const styleOptions = [
     id: "premium-sketchnote-science",
     name: "精致手账科普风",
     englishName: "Premium Sketchnote Science Style",
-    fit: "像高质量知识手账与学习卡，适合视觉化笔记表达。",
+    fit: "Refined sketchnote feel, ideal for visual notes, learning cards, and structured study content.",
     prompt:
-      "premium sketchnote science style, refined hand-drawn lines, soft color blocks, sticker-like mini icons, subtle paper texture, highlighted key phrases, elegant educational note layout, high readability",
+      "Premium sketchnote aesthetic, refined sketch texture, controlled spontaneity, structured note-like layout rhythm, tasteful accent coloration, handcrafted but polished finish, balanced density, friendly professional tone, clear visual sequencing, elegant educational character.",
     suitableTopics: "心理学、健康、生活科学、儿童科普、学习方法、认知科学、经济学入门",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["心理学", "健康", "生活科学", "儿童科普", "学习方法", "认知科学", "经济学", "入门"],
@@ -314,6 +336,8 @@ const intentOptions: { id: "ppt" | "video" | "poster"; label: string; desc: stri
   { id: "video", label: "Generate Video", desc: "Best for narration-based short-form content." },
   { id: "ppt", label: "Generate PPT", desc: "Best for teaching, workshops, and presentations." },
 ];
+
+const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 
 const posterSizeOptions = [
   { id: "poster-9-16", label: "9:16 Portrait", desc: "Great for mobile-first vertical delivery." },
@@ -459,7 +483,7 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
   if (!text) {
     return true;
   }
-  if (text.length <= 3) {
+  if (text.length <= 2) {
     return true;
   }
   const weakPatterns = [
@@ -473,7 +497,17 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
     /^测试\b/,
     /^开始\b/,
   ];
-  return weakPatterns.some((pattern) => pattern.test(text));
+  if (weakPatterns.some((pattern) => pattern.test(text))) {
+    return true;
+  }
+  const tokenCount = text
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+  if (tokenCount <= 2 && text.length < 20) {
+    return true;
+  }
+  return false;
 }
 
 function topicHintText(value: string, outputLanguage: OutputLanguage) {
@@ -489,7 +523,7 @@ function extractPageCount(prompt: string) {
   if (!Number.isFinite(value) || value <= 0) {
     return null;
   }
-  return value;
+  return clamp(Math.round(value), 6, 24);
 }
 
 function extractVideoStoryboardCount(prompt: string) {
@@ -498,14 +532,14 @@ function extractVideoStoryboardCount(prompt: string) {
   if (storyboardMatch) {
     const value = Number(storyboardMatch[1]);
     if (Number.isFinite(value) && value > 0) {
-      return clamp(Math.round(value), 1, 20);
+      return clamp(Math.round(value), 6, 24);
     }
   }
   const durationMatch = text.match(/(\d+)\s*秒/);
   if (durationMatch) {
     const seconds = Number(durationMatch[1]);
     if (Number.isFinite(seconds) && seconds > 0) {
-      return clamp(Math.max(1, Math.round(seconds / 10)), 1, 20);
+      return clamp(Math.max(1, Math.round(seconds / 10)), 6, 24);
     }
   }
   return null;
@@ -946,9 +980,32 @@ function readHomeDraftPayload() {
 
   try {
     const payload = JSON.parse(raw) as HomeDraftPayload;
+    const normalizedSources: HomeSourceItem[] = Array.isArray(payload.sources)
+      ? payload.sources
+          .filter((item): item is HomeSourceItem => Boolean(item && typeof item === "object"))
+          .map((item, idx): HomeSourceItem => {
+            const normalizedKind: HomeSourceKind =
+              item.kind === "youtube" || item.kind === "web" || item.kind === "podcast"
+                ? item.kind
+                : "file";
+            return {
+              id: (item.id || `source-${idx}`).toString(),
+              kind: normalizedKind,
+              name: (item.name || "Untitled Source").toString(),
+              origin: (item.origin || "").toString(),
+              status: item.status,
+              excerpt: (item.excerpt || "").toString(),
+              errorMessage: item.errorMessage ?? null,
+              errorCode: item.errorCode ?? null,
+              progress: typeof item.progress === "number" ? item.progress : undefined,
+            };
+          })
+          .filter((item) => item.status === "ready")
+          .slice(0, 6)
+      : [];
     const next = {
       prompt: (payload.prompt ?? "").trim(),
-      sources: Array.isArray(payload.sources) ? payload.sources.slice(0, 6) : [],
+      sources: normalizedSources,
       models:
         payload.textModel || payload.imageModel
           ? {
@@ -979,21 +1036,18 @@ function formatSourceItemsForChat(sources: HomeSourceItem[]) {
   }
   return sources
     .map((item, index) => {
-      const typeLabel = item.kind === "youtube" ? "YouTube" : item.kind === "web" ? "Web" : "File";
+      const typeLabel =
+        item.kind === "youtube"
+          ? "YouTube"
+          : item.kind === "podcast"
+            ? "Podcast"
+            : item.kind === "web"
+              ? "Web"
+              : "File";
       const origin = item.origin?.trim() ? item.origin.trim() : "N/A";
       return `${index + 1}. ${item.name} (${typeLabel})\n   ${origin}`;
     })
     .join("\n");
-}
-
-function intentDisplayLabel(intent: Exclude<WorkspaceIntent, "unknown">) {
-  if (intent === "poster") {
-    return "Generate Poster";
-  }
-  if (intent === "video") {
-    return "Generate Video";
-  }
-  return "Generate PPT";
 }
 
 function readWorkspaceSessionPrefs(scopeKey: string) {
@@ -1009,6 +1063,66 @@ function readWorkspaceSessionPrefs(scopeKey: string) {
   } catch {
     return null;
   }
+}
+
+function buildWorkspaceChatHistoryStorageKey(scopeKey: string) {
+  return `${WORKSPACE_CHAT_HISTORY_KEY}:${scopeKey}`;
+}
+
+function normalizeChatHistory(raw: unknown): ChatTurn[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => {
+      const turn = item as Partial<ChatTurn>;
+      const role = turn.role === "assistant" ? "assistant" : "user";
+      const module = typeof turn.module === "string" ? turn.module.slice(0, 120) : "Workspace";
+      const content = typeof turn.content === "string" ? turn.content.slice(0, 8000) : "";
+      return {
+        id: typeof turn.id === "string" && turn.id ? turn.id : `restored-${index}`,
+        role,
+        module,
+        content,
+      } satisfies ChatTurn;
+    })
+    .filter((turn) => turn.content.trim().length > 0);
+}
+
+function readWorkspaceChatHistory(scopeKey: string) {
+  if (typeof window === "undefined") {
+    return [] as ChatTurn[];
+  }
+  const key = buildWorkspaceChatHistoryStorageKey(scopeKey);
+  const raw = window.sessionStorage.getItem(key) || window.localStorage.getItem(key);
+  if (!raw) {
+    return [] as ChatTurn[];
+  }
+  try {
+    return normalizeChatHistory(JSON.parse(raw)).slice(-160);
+  } catch {
+    return [] as ChatTurn[];
+  }
+}
+
+function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const key = buildWorkspaceChatHistoryStorageKey(scopeKey);
+  const payload = JSON.stringify(
+    updates
+      .slice(-160)
+      .map((item) => ({
+        id: item.id,
+        role: item.role,
+        module: item.module,
+        content: item.content,
+      })),
+  );
+  window.sessionStorage.setItem(key, payload);
+  window.localStorage.setItem(key, payload);
 }
 
 export default function WorkspacePage() {
@@ -1032,12 +1146,15 @@ export default function WorkspacePage() {
   }, [currentEmail]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [updates, setUpdates] = useState<ChatTurn[]>([]);
+  const [updates, setUpdates] = useState<ChatTurn[]>(() =>
+    readWorkspaceChatHistory(sessionPrefsScopeKey),
+  );
   const [chatInput, setChatInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [selectedTopicSuggestion, setSelectedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLocked, setTopicSuggestionLocked] = useState(false);
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
+  const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
 
   const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(
     sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster"
@@ -1051,7 +1168,7 @@ export default function WorkspacePage() {
     clamp(sessionPrefs?.posterCount ?? 1, 1, 10),
   );
   const [pptPageCount, setPptPageCount] = useState(() =>
-    clamp(sessionPrefs?.pptPageCount ?? extractPageCount(initialEntry.prompt) ?? 10, 1, 30),
+    clamp(sessionPrefs?.pptPageCount ?? extractPageCount(initialEntry.prompt) ?? 10, 6, 24),
   );
   const [pptRatio, setPptRatio] = useState<"16:9" | "4:3">(() => {
     if (sessionPrefs?.pptRatio === "16:9" || sessionPrefs?.pptRatio === "4:3") {
@@ -1064,7 +1181,7 @@ export default function WorkspacePage() {
     return "16:9";
   });
   const [videoStoryboardCount, setVideoStoryboardCount] = useState<number>(() => {
-    return clamp(sessionPrefs?.videoStoryboardCount ?? extractVideoStoryboardCount(initialEntry.prompt) ?? 6, 1, 20);
+    return clamp(sessionPrefs?.videoStoryboardCount ?? extractVideoStoryboardCount(initialEntry.prompt) ?? 6, 6, 24);
   });
   const [videoRatio, setVideoRatio] = useState<"16:9" | "9:16">(() => {
     if (sessionPrefs?.videoRatio === "16:9" || sessionPrefs?.videoRatio === "9:16") {
@@ -1092,9 +1209,7 @@ export default function WorkspacePage() {
   const [configConfirmed, setConfigConfirmed] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<"chat" | "canvas">("chat");
-  const [pendingConfigResetReason, setPendingConfigResetReason] = useState<null | "direction-change" | "config-change">(null);
   const [confirmedConfigSnapshot, setConfirmedConfigSnapshot] = useState<ConfirmedConfigSnapshot | null>(null);
-  const [autoConfirmIntent, setAutoConfirmIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(null);
 
   const [thinkingState, setThinkingState] = useState<{
     active: boolean;
@@ -1376,7 +1491,136 @@ export default function WorkspacePage() {
         : effectiveIntent === "video"
           ? videoStoryboardCount
           : 0;
-  const billingCost = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
+  const draftOutputCharCount = useMemo(() => {
+    if (effectiveIntent === "poster" && posterDraft) {
+      const posterText = [
+        posterDraft.headline,
+        posterDraft.subtitle,
+        posterDraft.body,
+        posterDraft.points.join(" "),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return posterText.length;
+    }
+    if (effectiveIntent === "ppt" || effectiveIntent === "video") {
+      const outlineText = outlineItems.join(" ");
+      const slidesText = densityAdjustedSlideDrafts
+        .map((slide) => `${slide.title} ${slide.body} ${slide.visual}`)
+        .join(" ");
+      return `${outlineText} ${slidesText}`.trim().length;
+    }
+    return 0;
+  }, [densityAdjustedSlideDrafts, effectiveIntent, outlineItems, posterDraft]);
+  const outputTokenEstimate = Math.max(1, Math.ceil(draftOutputCharCount / 4));
+  const languageModelCredits = Math.max(1, Math.ceil(outputTokenEstimate / 1000));
+  const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
+  const billingCost = languageModelCredits + imageModelCredits;
+  const imageGenerationTasks = useMemo(() => {
+    const styleName = selectedStyle.englishName ?? selectedStyle.name;
+    const stylePrompt = selectedStyle.prompt.trim();
+    const posterPlanList = editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList;
+
+    const createComposedPrompt = (task: Omit<ImageGenerationTask, "composedPrompt">) =>
+      [
+        `Style prompt: ${task.stylePrompt}`,
+        `Output type: ${task.outputType}`,
+        `Aspect ratio: ${task.aspectRatio}`,
+        `Title: ${task.contentTitle}`,
+        "Content:",
+        task.contentBody,
+        `Visual hint: ${task.visualHint}`,
+      ].join("\n");
+
+    if (effectiveIntent === "poster" && posterDraft) {
+      const aspectRatio = posterSizeLabel || "9:16";
+      return Array.from({ length: Math.max(1, posterCount) }, (_, idx) => {
+        const plan = posterPlanList[idx];
+        const contentTitle = posterCount === 1
+          ? posterDraft.headline
+          : `${plan?.title || posterDraft.headline} (${idx + 1}/${posterCount})`;
+        const contentBody = [
+          posterDraft.subtitle,
+          posterDraft.body,
+          plan?.focus ? `Focus: ${plan.focus}` : "",
+          posterDraft.points.length ? `Key points: ${posterDraft.points.join(" | ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const visualHint = [
+          posterDraft.visualType || "",
+          posterDraft.layoutSuggestion || "",
+          posterDraft.visualElements?.join(", ") || "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const baseTask: Omit<ImageGenerationTask, "composedPrompt"> = {
+          index: idx + 1,
+          outputType: "poster",
+          aspectRatio,
+          styleId: selectedStyle.id,
+          styleName,
+          stylePrompt,
+          contentTitle,
+          contentBody,
+          visualHint,
+        };
+        return {
+          ...baseTask,
+          composedPrompt: createComposedPrompt(baseTask),
+        } satisfies ImageGenerationTask;
+      });
+    }
+
+    if (effectiveIntent === "ppt" || effectiveIntent === "video") {
+      const requestedCount = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
+      const aspectRatio = effectiveIntent === "ppt" ? pptRatio : videoRatio;
+      return Array.from({ length: Math.max(1, requestedCount) }, (_, idx) => {
+        const slide = densityAdjustedSlideDrafts[idx];
+        const contentTitle =
+          slide?.title?.trim() ||
+          outlineItems[idx]?.trim() ||
+          `${effectiveIntent === "ppt" ? "Slide" : "Frame"} ${idx + 1}`;
+        const contentBody = slide?.body?.trim() || outlineItems[idx]?.trim() || contextPrompt;
+        const visualHint = slide?.visual?.trim() || "";
+        const baseTask: Omit<ImageGenerationTask, "composedPrompt"> = {
+          index: idx + 1,
+          outputType: effectiveIntent === "ppt" ? "ppt" : "video",
+          aspectRatio,
+          styleId: selectedStyle.id,
+          styleName,
+          stylePrompt,
+          contentTitle,
+          contentBody,
+          visualHint,
+        };
+        return {
+          ...baseTask,
+          composedPrompt: createComposedPrompt(baseTask),
+        } satisfies ImageGenerationTask;
+      });
+    }
+
+    return [] as ImageGenerationTask[];
+  }, [
+    basePosterPlanList,
+    contextPrompt,
+    densityAdjustedSlideDrafts,
+    editablePosterPlanList,
+    effectiveIntent,
+    outlineItems,
+    posterCount,
+    posterDraft,
+    posterSizeLabel,
+    pptPageCount,
+    pptRatio,
+    selectedStyle.englishName,
+    selectedStyle.id,
+    selectedStyle.name,
+    selectedStyle.prompt,
+    videoRatio,
+    videoStoryboardCount,
+  ]);
   const canConfirmBilling = credits >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
 
@@ -1402,6 +1646,16 @@ export default function WorkspacePage() {
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
   const topicSuggestions = useMemo(() => {
+    const baseTopic = topicHintText(topic, outputLanguage);
+    if (!isZhOutput) {
+      const adaptiveSuggestions = [
+        `Generate a one-page poster that explains ${baseTopic} for beginners.`,
+        `Create a 6-frame short-video storyboard about how ${baseTopic} works.`,
+        `Build a 10-slide PPT lesson on ${baseTopic} with clear key points.`,
+        `Compare causes, impacts, and real-life examples of ${baseTopic}.`,
+      ];
+      return adaptiveSuggestions;
+    }
     const mixedSuggestions = isZhOutput
       ? [
           "黑洞为什么连光都逃不出去？",
@@ -1429,7 +1683,7 @@ export default function WorkspacePage() {
           "How does plate motion trigger earthquakes and volcanoes?",
         ];
     return isFreeUser ? mixedSuggestions : paidSuggestions;
-  }, [isFreeUser, isZhOutput]);
+  }, [isFreeUser, isZhOutput, outputLanguage, topic]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1481,6 +1735,10 @@ export default function WorkspacePage() {
     });
   }, [entrySources]);
 
+  useEffect(() => {
+    writeWorkspaceChatHistory(sessionPrefsScopeKey, updates);
+  }, [sessionPrefsScopeKey, updates]);
+
   function pushAssistantMessage(content: string, module = "内容改写") {
     setUpdates((prev) => [
       ...prev,
@@ -1513,11 +1771,7 @@ export default function WorkspacePage() {
     setThinkingState({ active: false, module: "", text: "" });
   }
 
-  function resetToConfigStage(reason: "direction-change" | "config-change") {
-    if (flowStage === "content" || flowStage === "style" || flowStage === "billing" || flowStage === "generate") {
-      setPendingConfigResetReason(reason);
-      return;
-    }
+  function resetToConfigStage(_reason: "direction-change" | "config-change") {
     setConfigConfirmed(false);
     setFlowStage("config");
     setBillingConfirmed(false);
@@ -1525,70 +1779,16 @@ export default function WorkspacePage() {
     setEditableSlideDrafts([]);
     setEditablePosterDraft(null);
     setEditablePosterPlanList([]);
-  }
-
-  function confirmResetToConfigStage() {
-    setPendingConfigResetReason(null);
-    setConfigConfirmed(false);
-    setFlowStage("config");
-    setBillingConfirmed(false);
-    setEditableOutlineItems([]);
-    setEditableSlideDrafts([]);
-    setEditablePosterDraft(null);
-    setEditablePosterPlanList([]);
-    pushAssistantMessage(
-      tr("Returned to configuration stage. Please reconfirm before continuing.", "已回到配置阶段，请重新确认配置后继续生成。"),
-      tr("Requirement Check", "需求确认"),
-    );
-  }
-
-  function cancelResetToConfigStage() {
-    if (confirmedConfigSnapshot) {
-      setManualIntent(confirmedConfigSnapshot.intent);
-      setPosterCount(confirmedConfigSnapshot.posterCount);
-      setPosterSizeId(confirmedConfigSnapshot.posterSizeId);
-      setPptPageCount(confirmedConfigSnapshot.pptPageCount);
-      setPptRatio(confirmedConfigSnapshot.pptRatio);
-      setVideoStoryboardCount(confirmedConfigSnapshot.videoStoryboardCount);
-      setVideoRatio(confirmedConfigSnapshot.videoRatio);
-      setConfigConfirmed(true);
-    }
-    setPendingConfigResetReason(null);
+    setConfirmedConfigSnapshot(null);
   }
 
   function handleSelectIntentOption(intent: Exclude<WorkspaceIntent, "unknown">) {
-    const shouldAutoBuildDraft = flowStage === "intent" || flowStage === "config";
-    const intentLabel = intentDisplayLabel(intent);
-    const changed = manualIntent !== intent;
-
     setManualIntent(intent);
     if (intent === "poster" && !posterSizeId) {
       setPosterSizeId("poster-9-16");
     }
     resetToConfigStage("direction-change");
-
-    if (shouldAutoBuildDraft) {
-      pushUserMessage(intentLabel, "Output Direction");
-      pushAssistantMessage(
-        changed
-          ? `${intentLabel} selected. Draft generation is starting with current defaults.`
-          : `${intentLabel} confirmed again. Draft generation is refreshing with current defaults.`,
-        "Output Direction",
-      );
-      setAutoConfirmIntent(intent);
-    }
   }
-
-  useEffect(() => {
-    if (!autoConfirmIntent) {
-      return;
-    }
-    if (manualIntent !== autoConfirmIntent) {
-      return;
-    }
-    setAutoConfirmIntent(null);
-    void handleConfirmConfig();
-  }, [autoConfirmIntent, manualIntent]);
 
   function handleSelectTopicSuggestion(text: string) {
     if (!text || isSending || topicSuggestionLocked) {
@@ -1603,6 +1803,7 @@ export default function WorkspacePage() {
     }
     const text = selectedTopicSuggestion;
     setTopicSuggestionLocked(true);
+    setTopicSuggestionLockReason("selected");
     setLockedTopicSuggestion(text);
     setSelectedTopicSuggestion(null);
     setTopicContextPrompt(text);
@@ -1685,12 +1886,108 @@ export default function WorkspacePage() {
         videoRatio,
       });
     }
-    setEditableOutlineItems(baseOutlineItems);
-    setEditableSlideDrafts(baseSlideDrafts);
+    startThinking(
+      effectiveIntent === "poster"
+        ? tr("Poster Draft", "海报文案草稿")
+        : effectiveIntent === "ppt"
+          ? tr("PPT Draft", "PPT 文稿草稿")
+          : tr("Video Draft", "视频分镜草稿"),
+      effectiveIntent === "poster"
+        ? tr("Generating poster draft with the language model...", "正在调用语言模型生成海报文案草稿...")
+        : effectiveIntent === "ppt"
+          ? tr("Generating PPT draft with the language model...", "正在调用语言模型生成 PPT 文稿草稿...")
+          : tr("Generating video storyboard draft with the language model...", "正在调用语言模型生成视频分镜草稿..."),
+    );
+    const thinkingStartedAt = Date.now();
+    const ensureThinkingVisible = async () => {
+      const minVisibleMs = 1000;
+      const elapsed = Date.now() - thinkingStartedAt;
+      const remaining = minVisibleMs - elapsed;
+      if (remaining > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remaining));
+      }
+      stopThinking();
+    };
 
     if (effectiveIntent !== "poster") {
+      setEditableOutlineItems([]);
+      setEditableSlideDrafts([]);
       setEditablePosterDraft(basePosterDraft);
       setEditablePosterPlanList(basePosterPlanList);
+      try {
+        const count = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
+        const ratioOrSize = effectiveIntent === "ppt" ? pptRatio : videoRatio;
+        const response = await fetch("/api/content/poster-draft", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            topic,
+            prompt: contextPrompt,
+            textModel: initialEntry.models?.textModel || "gemini-2.5",
+            posterCount: count,
+            posterSizeLabel: ratioOrSize,
+            direction: effectiveIntent,
+            outputLanguage,
+            draftMode: "auto",
+          }),
+        });
+        if (!response.ok) {
+          let errorMessage = `content draft request failed: ${response.status}`;
+          try {
+            const errData = (await response.json()) as { error?: string };
+            if (errData?.error) {
+              errorMessage = errData.error;
+            }
+          } catch {
+            // ignore json parse error
+          }
+          throw new Error(errorMessage);
+        }
+        const data = (await response.json()) as {
+          outlineItems?: string[];
+          slideDrafts?: SlideDraft[];
+          storyboardDrafts?: Array<{
+            index: number;
+            title: string;
+            narration?: string;
+            visual?: string;
+          }>;
+        };
+        const nextOutline = Array.isArray(data.outlineItems) && data.outlineItems.length
+          ? data.outlineItems.map((item) => String(item || "").trim()).filter(Boolean)
+          : baseOutlineItems;
+        let nextSlides: SlideDraft[] = [];
+        if (effectiveIntent === "ppt" && Array.isArray(data.slideDrafts) && data.slideDrafts.length) {
+          nextSlides = data.slideDrafts.map((item, idx) => ({
+            page: Number.isFinite(item.page) ? item.page : idx + 1,
+            title: item.title?.trim() || nextOutline[idx] || `Slide ${idx + 1}`,
+            body: item.body?.trim() || "",
+            visual: item.visual?.trim() || "",
+          }));
+        } else if (
+          effectiveIntent === "video" &&
+          Array.isArray(data.storyboardDrafts) &&
+          data.storyboardDrafts.length
+        ) {
+          nextSlides = data.storyboardDrafts.map((item, idx) => ({
+            page: Number.isFinite(item.index) ? item.index : idx + 1,
+            title: item.title?.trim() || nextOutline[idx] || `Frame ${idx + 1}`,
+            body: item.narration?.trim() || "",
+            visual: item.visual?.trim() || "",
+          }));
+        }
+        setEditableOutlineItems(nextOutline.length ? nextOutline : baseOutlineItems);
+        setEditableSlideDrafts(nextSlides.length ? nextSlides : baseSlideDrafts);
+      } catch (error) {
+        setEditableOutlineItems(baseOutlineItems);
+        setEditableSlideDrafts(baseSlideDrafts);
+        const message = error instanceof Error ? error.message : "Draft request failed.";
+        pushAssistantMessage(`Draft generation fallback applied. Reason: ${message}`, "Draft Generation");
+      } finally {
+        await ensureThinkingVisible();
+      }
       return;
     }
 
@@ -1717,11 +2014,20 @@ export default function WorkspacePage() {
           posterSizeLabel,
           direction: effectiveIntent,
           outputLanguage,
-          draftMode: DRAFT_MODE,
+          draftMode: "auto",
         }),
       });
       if (!response.ok) {
-        throw new Error(`poster draft request failed: ${response.status}`);
+        let errorMessage = `poster draft request failed: ${response.status}`;
+        try {
+          const errData = (await response.json()) as { error?: string };
+          if (errData?.error) {
+            errorMessage = errData.error;
+          }
+        } catch {
+          // ignore json parse error
+        }
+        throw new Error(errorMessage);
       }
       const data = (await response.json()) as {
         posterDraft?: PosterDraft;
@@ -1739,15 +2045,17 @@ export default function WorkspacePage() {
       setEditablePosterPlanList(
         Array.isArray(data.planList) && data.planList.length ? data.planList : basePosterPlanList,
       );
-    } catch {
+    } catch (error) {
       if (posterDraftRequestRef.current !== requestId) {
         return;
       }
       setEditablePosterDraft(basePosterDraft);
       setEditablePosterPlanList(basePosterPlanList);
+      const message = error instanceof Error ? error.message : "Draft request failed.";
+      pushAssistantMessage(`Draft generation fallback applied. Reason: ${message}`, "Draft Generation");
     } finally {
       if (posterDraftRequestRef.current === requestId) {
-        stopThinking();
+        await ensureThinkingVisible();
       }
     }
   }
@@ -1809,7 +2117,7 @@ export default function WorkspacePage() {
     if (credits < billingCost) {
       pushAssistantMessage(
         isZhOutput
-          ? `当前积分不足（余额 ${credits}，需要 ${billingCost}），请先升级后再继续。`
+          ? `当前积分不足（余额 ${credits}，需要 ${billingCost}）。请先升级后再继续。`
           : `Insufficient credits (balance: ${credits}, required: ${billingCost}). Please upgrade first.`,
         tr("Billing Check", "账单确认"),
       );
@@ -1845,10 +2153,10 @@ export default function WorkspacePage() {
       description: isZhOutput
         ? `${selectedProject?.title ?? "生成项目"} · ${
             effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-          }（限时优惠：${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+          }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
         : `${selectedProject?.title ?? "Generation Project"} · ${
             effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
-          } (Limited-time: ${STANDARD_OUTPUT_PROMO_CREDITS} credits per standard output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+          } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
       delta: -billingCost,
       userId: user?.id,
       userEmail: currentEmail || undefined,
@@ -1866,6 +2174,14 @@ export default function WorkspacePage() {
       body: JSON.stringify({
         intent: effectiveIntent,
         outputs: standardOutputCount,
+        style: {
+          id: selectedStyle.id,
+          name: selectedStyle.englishName ?? selectedStyle.name,
+          prompt: selectedStyle.prompt,
+        },
+        ratio: effectiveIntent === "poster" ? posterSizeLabel || "9:16" : effectiveIntent === "ppt" ? pptRatio : videoRatio,
+        imageModel: initialEntry.models?.imageModel || "gpt-image-2",
+        tasks: imageGenerationTasks,
       }),
     }).catch(() => null);
 
@@ -1874,23 +2190,11 @@ export default function WorkspacePage() {
       requestAnimationFrame(() => {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
-      pushAssistantMessage(
-        isZhOutput
-          ? `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。分镜已开始生成，右侧已打开画布区域。`
-          : `Billing confirmed. ${billingCost} credits deducted at limited-time pricing (${STANDARD_OUTPUT_PROMO_CREDITS} per standard output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS}). Storyboard generation has started on the right canvas.`,
-        tr("Storyboard Generation", "分镜生成"),
-      );
     } else {
       setFlowStage("generate");
       requestAnimationFrame(() => {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
-      pushAssistantMessage(
-        isZhOutput
-          ? `账单已确认，已按限时优惠价（${STANDARD_OUTPUT_PROMO_CREDITS} 积分/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）扣除 ${billingCost} 积分。右侧已进入海报绘制页面，正在按顺序生成 ${posterCount} 张海报。`
-          : `Billing confirmed. ${billingCost} credits deducted at limited-time pricing (${STANDARD_OUTPUT_PROMO_CREDITS} per standard output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS}). Poster rendering has started on the right canvas for ${posterCount} poster(s).`,
-        tr("Poster Generation", "海报生成"),
-      );
     }
     stopThinking();
     setIsPlanningBillingStep(false);
@@ -1937,6 +2241,12 @@ export default function WorkspacePage() {
       return;
     }
     const inputSource = options?.source ?? "manual";
+    if (inputSource === "manual" && waitingTopicSuggestionConfirm && !topicSuggestionLocked) {
+      setTopicSuggestionLocked(true);
+      setTopicSuggestionLockReason("manual_retry");
+      setLockedTopicSuggestion(null);
+      setSelectedTopicSuggestion(null);
+    }
     setIsSending(true);
     setChatInput("");
     if (inputSource === "manual") {
@@ -2235,7 +2545,7 @@ export default function WorkspacePage() {
   }, [hasCanvasPanel, isMobileViewport]);
 
   return (
-    <div className="min-h-screen overflow-y-auto bg-[#f7f7f8] text-zinc-900">
+    <div className="min-h-screen overflow-y-auto bg-[#f7f7f8] text-zinc-800">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -2285,7 +2595,7 @@ export default function WorkspacePage() {
                   </button>
                 </div>
               ) : null}
-              <div className={hasCanvasPanel ? "pr-1.5 pt-4" : "pt-4"}>
+              <div className={hasCanvasPanel ? "pr-1.5 pb-36 pt-4" : "pb-36 pt-4"}>
                 <ChatPanel
                   outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}
@@ -2300,6 +2610,7 @@ export default function WorkspacePage() {
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
                   lockedTopicSuggestion={lockedTopicSuggestion}
+                  topicSuggestionLockReason={topicSuggestionLockReason}
                   onApplyTopicSuggestion={(text) => {
                     handleSelectTopicSuggestion(text);
                   }}
@@ -2341,10 +2652,11 @@ export default function WorkspacePage() {
                   billingConfirmed={billingConfirmed}
                   canConfirmBilling={canConfirmBilling}
                   billingSummary={{
-                    styleName: selectedStyle.name,
+                    styleName: selectedStyle.englishName ?? selectedStyle.name,
+                    languageModelCredits,
+                    imageModelCredits,
                     totalCost: billingCost,
-                    availableCredits: credits,
-                    remainingCredits: Math.max(0, credits - billingCost),
+                    outputTokenEstimate,
                     standardOutputCount,
                     promoCreditsPerOutput: STANDARD_OUTPUT_PROMO_CREDITS,
                     regularCreditsPerOutput: STANDARD_OUTPUT_REGULAR_CREDITS,
@@ -2359,30 +2671,40 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="sticky bottom-1 z-20 mt-auto shrink-0 pb-1 pt-2">
-                <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
-                  <div className="flex items-center gap-2">
-                    <textarea
-                      value={chatInput}
-                      onChange={(event) => setChatInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          void handleSendInput();
-                        }
-                      }}
-                      className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
-                      placeholder={tr("Add more instructions", "继续补充需求")}
-                    />
-                    <button
-                      type="button"
-                      disabled={!chatInput.trim() || isSending}
-                      onClick={() => void handleSendInput()}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-                      aria-label={tr("Send", "发送")}
-                    >
-                      {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
-                    </button>
+              <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-2 sm:px-3">
+                <div
+                  className={`mx-auto ${
+                    hasCanvasPanel
+                      ? "max-w-none lg:grid lg:grid-cols-[416px_minmax(0,1fr)] lg:gap-2"
+                      : "max-w-[980px]"
+                  }`}
+                >
+                  <div className={hasCanvasPanel ? "lg:col-start-1" : ""}>
+                    <div className="pointer-events-auto rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
+                      <div className="flex items-center gap-2">
+                        <textarea
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              void handleSendInput();
+                            }
+                          }}
+                          className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
+                          placeholder={tr("Add more instructions", "继续补充需求")}
+                        />
+                        <button
+                          type="button"
+                          disabled={!chatInput.trim() || isSending}
+                          onClick={() => void handleSendInput()}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                          aria-label={tr("Send", "发送")}
+                        >
+                          {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2392,7 +2714,7 @@ export default function WorkspacePage() {
           {showStoryboard && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-[62vh] overflow-hidden sm:h-[66vh] lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-[calc(100dvh-72px)] overflow-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">
@@ -2424,7 +2746,7 @@ export default function WorkspacePage() {
           {showPosterCanvas && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-[62vh] overflow-hidden sm:h-[66vh] lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-[calc(100dvh-72px)] overflow-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">
@@ -2452,64 +2774,6 @@ export default function WorkspacePage() {
         </div>
       </main>
 
-      {pendingConfigResetReason ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-zinc-900">
-              {tr("Confirm Reset", "确认重置配置")}
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-700">
-              {pendingConfigResetReason === "direction-change"
-                ? tr(
-                    "You are switching output direction. Confirmed content will be reset and you will return to configuration stage. Continue?",
-                    "你正在切换生成方向，当前已确认的内容将失效并重新进入配置阶段。是否继续？",
-                  )
-                : tr(
-                    "You are changing key configuration (pages/frames/size/ratio). Existing content will be regenerated from the new config. Continue?",
-                    "你正在修改关键配置（页数/分镜/尺寸/比例），当前内容将按新配置重生成。是否继续？",
-                  )}
-            </p>
-            {confirmedConfigSnapshot ? (
-              <p className="mt-2 text-xs text-zinc-500">
-                {tr("Current config:", "当前配置：")}
-                {confirmedConfigSnapshot.intent === "poster"
-                  ? isZhOutput
-                    ? `${confirmedConfigSnapshot.posterCount} 张 / ${
-                        posterSizeOptions.find((item) => item.id === confirmedConfigSnapshot.posterSizeId)?.label ??
-                        confirmedConfigSnapshot.posterSizeId
-                      }`
-                    : `${confirmedConfigSnapshot.posterCount} posters / ${
-                        posterSizeOptions.find((item) => item.id === confirmedConfigSnapshot.posterSizeId)?.label ??
-                        confirmedConfigSnapshot.posterSizeId
-                      }`
-                  : confirmedConfigSnapshot.intent === "video"
-                    ? isZhOutput
-                      ? `${confirmedConfigSnapshot.videoStoryboardCount} 分镜 / ${confirmedConfigSnapshot.videoRatio}`
-                      : `${confirmedConfigSnapshot.videoStoryboardCount} frames / ${confirmedConfigSnapshot.videoRatio}`
-                    : isZhOutput
-                      ? `${confirmedConfigSnapshot.pptPageCount} 页 / ${confirmedConfigSnapshot.pptRatio}`
-                      : `${confirmedConfigSnapshot.pptPageCount} slides / ${confirmedConfigSnapshot.pptRatio}`}
-              </p>
-            ) : null}
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelResetToConfigStage}
-                className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-100"
-              >
-                {tr("Cancel", "取消")}
-              </button>
-              <button
-                type="button"
-                onClick={confirmResetToConfigStage}
-                className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-              >
-                {tr("Continue", "继续")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

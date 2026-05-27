@@ -22,18 +22,18 @@ type TopBarProps = {
 
 function getSaveStateLabel(saveState: SaveState) {
   if (saveState === "saving") {
-    return "保存中...";
+    return "Saving...";
   }
   if (saveState === "error") {
-    return "保存失败";
+    return "Save failed";
   }
-  return "已保存";
+  return "Saved";
 }
 
 export function TopBar({
   credits,
-  title = "内容生成工作台",
-  stageLabel = "内容草稿中",
+  title = "Content Workspace",
+  stageLabel = "Draft in progress",
   saveState = "saved",
   hasUnsavedChanges = false,
   canvasMode = "free",
@@ -49,14 +49,14 @@ export function TopBar({
   const isPrimaryBusy = showPptAction ? isExportingPpt : isComposingVideo;
   const primaryActionLabel = showPptAction
     ? isExportingPpt
-      ? "下载PPT中..."
-      : "下载PPT"
+      ? "Exporting PPT..."
+      : "Export PPT"
     : isComposingVideo
-      ? "合成中..."
-      : "合成视频";
+      ? "Composing..."
+      : "Compose Video";
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 h-14 border-b border-zinc-200 bg-white/95 backdrop-blur">
+    <header className="fixed inset-x-0 top-0 z-50 h-14 border-b border-zinc-200 bg-white/95 text-zinc-800 backdrop-blur">
       <div className="flex h-full w-full items-center gap-3 px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <button
@@ -64,22 +64,22 @@ export function TopBar({
             onClick={() => {
               if (
                 hasUnsavedChanges &&
-                !window.confirm("当前有未保存的修改，确定返回功能主页吗？")
+                !window.confirm("You have unsaved changes. Return to Home?")
               ) {
                 return;
               }
               router.push("/app");
             }}
             className="inline-flex h-8 w-8 items-center justify-center text-zinc-700 hover:text-zinc-900"
-            aria-label="返回"
+            aria-label="Back"
           >
             <ArrowLeft size={16} />
           </button>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-zinc-900">
+            <p className="truncate text-[15px] font-semibold leading-5 text-zinc-800">
               {title}
             </p>
-            <p className="mt-0.5 text-xs text-zinc-500">{stageLabel}</p>
+            <p className="mt-0.5 text-[12px] text-zinc-500">{stageLabel}</p>
           </div>
         </div>
 
@@ -114,9 +114,9 @@ export function TopBar({
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             <Zap size={15} className="text-zinc-500" />
-            <span className="font-medium text-zinc-900">{credits}</span>
+            <span className="font-medium text-zinc-800">{credits}</span>
             <span className="text-zinc-500">|</span>
-            <span className="font-medium">升级</span>
+            <span className="font-medium">Upgrade</span>
           </button>
           <UserMenu />
         </div>
