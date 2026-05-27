@@ -96,8 +96,9 @@ export async function POST(request: NextRequest) {
     if (!isStripeServerConfigured()) {
       return NextResponse.json(
         {
+          code: "STRIPE_ENV_MISSING",
           error:
-            "Stripe checkout is not configured yet. Please add a valid STRIPE_SECRET_KEY, or configure Stripe Payment Links as fallback.",
+            "Stripe checkout is not configured yet. Please set STRIPE_SECRET_KEY (or STRIPE_API_KEY) in server environment variables, or configure Stripe Payment Links as fallback.",
         },
         { status: 503 },
       );
@@ -183,6 +184,11 @@ export async function POST(request: NextRequest) {
         fallback_reason: "missing_recurring_price_id",
       },
       payment_method_types: ["card", "alipay", "wechat_pay"],
+      payment_method_options: {
+        wechat_pay: {
+          client: "web",
+        },
+      },
       allow_promotion_codes: true,
     });
 
@@ -206,8 +212,9 @@ export async function POST(request: NextRequest) {
     if (normalized.includes("invalid api key") || normalized.includes("stripeauthenticationerror")) {
       return NextResponse.json(
         {
+          code: "STRIPE_ENV_INVALID",
           error:
-            "Stripe checkout is not configured correctly. Please verify STRIPE_SECRET_KEY in deployment settings.",
+            "Stripe checkout is not configured correctly. Please verify STRIPE_SECRET_KEY (or STRIPE_API_KEY) in deployment settings.",
         },
         { status: 503 },
       );

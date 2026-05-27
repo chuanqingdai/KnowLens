@@ -65,7 +65,6 @@ export const nextAuthOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       authorization: {
         params: {
-          prompt: "consent",
           scope: "openid email profile",
         },
       },
@@ -165,6 +164,8 @@ export const nextAuthOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
+    maxAge: 90 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
   pages: {
     signIn: "/auth",

@@ -147,6 +147,7 @@ type SourceItem = {
   previewUrl?: string;
   status: "queued" | "uploading" | "extracting" | "processing" | "ready" | "failed";
   excerpt: string;
+  contentText?: string;
 };
 
 function normalizeLegacySourceName(name: string) {
@@ -392,8 +393,8 @@ function ProgressiveCover({
   return (
     <div className="relative h-full w-full">
       <div
-        className={`absolute inset-0 bg-zinc-200 transition-opacity ${
-          loaded ? "opacity-0" : "animate-pulse opacity-100"
+        className={`absolute inset-0 transition-opacity ${
+          loaded ? "opacity-0" : "skeleton-shimmer opacity-100"
         }`}
       />
       <img
@@ -616,7 +617,7 @@ function normalizeUploadJobStatus(status: string | undefined): SourceItem["statu
 export default function Home() {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const { locale } = useLocale();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [textModel, setTextModel] = useState<string | null>(null);
@@ -645,6 +646,7 @@ export default function Home() {
   const [previewItem, setPreviewItem] = useState<FeaturedCaseItem | null>(null);
   const [previewPaywallOpen, setPreviewPaywallOpen] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewImageLoaded, setPreviewImageLoaded] = useState(false);
   const [uploadJobs, setUploadJobs] = useState<Record<string, UploadJobRecord>>({});
   const [isStartingWorkspace, setIsStartingWorkspace] = useState(false);
   const [isDragOverPage, setIsDragOverPage] = useState(false);
@@ -801,6 +803,8 @@ export default function Home() {
               return acc;
             }
             const status = normalizeUploadJobStatus(job.status);
+            const resultText = String(job.resultText || job.result_text || "").trim();
+            const resultExcerpt = String(job.resultExcerpt || job.result_excerpt || "").trim();
             const nextProgress =
               typeof job.progress === "number" && Number.isFinite(job.progress)
                 ? Math.max(0, Math.min(Math.round(job.progress), 100))
@@ -812,9 +816,10 @@ export default function Home() {
               excerpt:
                 job.errorMessage ||
                 job.error_message ||
-                job.resultExcerpt ||
-                job.result_excerpt ||
+                resultExcerpt ||
+                (resultText ? `${resultText.slice(0, 180)}${resultText.length > 180 ? "..." : ""}` : "") ||
                 item.excerpt,
+              contentText: resultText || item.contentText,
             };
             if (status === "failed") {
               if (nextItem.previewUrl?.startsWith("blob:")) {
@@ -1227,6 +1232,14 @@ export default function Home() {
     if (isStartingWorkspace) {
       return;
     }
+    if (sessionStatus === "loading") {
+      setUploadToast("Checking your account. Please try again in a second.");
+      return;
+    }
+    if (!currentEmail) {
+      router.push("/auth?callbackUrl=%2Fapp");
+      return;
+    }
     const hasPremiumRequiredSource = sourceItems.some((item) => sourceItemNeedsPremium(item));
     if (!hasMembership && hasPremiumRequiredSource) {
       setMediaUploadPaywallOpen(true);
@@ -1242,11 +1255,17 @@ export default function Home() {
       );
       return;
     }
+    const pendingSources = sourceItems.filter((item) => item.status !== "ready" && item.status !== "failed");
+    if (pendingSources.length > 0) {
+      setUploadToast("Your files are still being extracted. Please wait a moment and try Generate again.");
+      return;
+    }
+    const readySources = sourceItems.filter((item) => item.status === "ready");
     const payload = {
       prompt: composeInput.trim(),
       textModel: resolvedTextModel,
       imageModel: "gpt-image2",
-      sources: sourceItems,
+      sources: readySources,
     };
     setIsStartingWorkspace(true);
     try {
@@ -1263,6 +1282,11 @@ export default function Home() {
         error?: string;
       };
       if (!response.ok || !data?.ok || !data.payload) {
+        if (response.status >= 500 && typeof window !== "undefined") {
+          sessionStorage.setItem("knowlens-home-draft", JSON.stringify(payload));
+          router.push("/workspace");
+          return;
+        }
         setUploadToast(data?.error || "Unable to start a new project right now. Please try again later.");
         return;
       }
@@ -1271,7 +1295,10 @@ export default function Home() {
       }
       router.push("/workspace");
     } catch {
-      setUploadToast("Unable to start a new project right now. Please try again later.");
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("knowlens-home-draft", JSON.stringify(payload));
+      }
+      router.push("/workspace");
     } finally {
       setIsStartingWorkspace(false);
     }
@@ -1334,11 +1361,13 @@ export default function Home() {
     incrementCaseView(item.id, currentEmail);
     setMetricVersion((prev) => prev + 1);
     setPreviewZoom(1);
+    setPreviewImageLoaded(false);
     setPreviewItem(item);
   }
 
   function closeFeaturedPreview() {
     setPreviewZoom(1);
+    setPreviewImageLoaded(false);
     setPreviewItem(null);
   }
 
@@ -1494,13 +1523,10 @@ export default function Home() {
 
             <section className="relative z-20 mx-auto flex min-h-[48vh] w-full max-w-3xl flex-col justify-center sm:min-h-[56vh]">
               <div className="mb-6 flex flex-col items-center text-center">
-                <h1 className="text-[30px] font-semibold tracking-tight text-zinc-900 sm:text-4xl">
-                  <span className="text-blue-600">KnowLens.ai</span> Visual Creation Studio
+                <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
+                <h1 className="mt-1 whitespace-nowrap text-[clamp(1.65rem,4.15vw,2.55rem)] font-semibold leading-[1.12] tracking-tight text-zinc-900">
+                  AI Infographic Generator for Learning
                 </h1>
-                <p className="mt-2 text-sm text-zinc-500 sm:text-base">
-                  Turn text, webpages, videos, and podcasts into visual long-form graphics, PPTs,
-                  or videos.
-                </p>
               </div>
 
               <div
@@ -1747,9 +1773,9 @@ export default function Home() {
                 {resolvedRecentProjects.map((project) => (
                   <article
                     key={project.id}
-                    className="group rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                    className="group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
                   >
-                    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-100">
+                    <div className="relative aspect-video w-full overflow-hidden bg-zinc-100">
                       <ProgressiveCover
                         src={toOptimizedCaseCover(project.cover)}
                         fallbackSrc={project.cover}
@@ -1760,7 +1786,7 @@ export default function Home() {
                         {normalizeFormatLabel(project.format)}
                       </span>
                     </div>
-                    <div className="px-1 pb-1 pt-3">
+                    <div className="px-3 pb-3 pt-2.5">
                       <p className="text-[15px] font-medium leading-6 text-zinc-900">
                         {project.title}
                       </p>
@@ -1808,7 +1834,7 @@ export default function Home() {
                         openFeaturedPreview(item);
                       }
                     }}
-                    className="group mb-4 inline-block w-full break-inside-avoid-column overflow-hidden rounded-2xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    className="group mb-4 inline-block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative w-full bg-zinc-100">
                       <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>
@@ -1975,19 +2001,24 @@ export default function Home() {
                 <X size={16} />
               </button>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-white/15 bg-black/40 shadow-[0_30px_70px_rgba(0,0,0,0.5)]">
+            <div className="overflow-hidden rounded-xl border border-white/15 bg-black/40 shadow-[0_30px_70px_rgba(0,0,0,0.5)]">
               <div
                 ref={previewScrollRef}
-                className={`max-h-[88vh] bg-zinc-950/45 p-1 sm:p-1.5 ${
+                className={`max-h-[88vh] bg-zinc-950/45 ${
                   previewZoom > 1
                     ? "overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                     : "overflow-hidden"
                 }`}
               >
+                {!previewImageLoaded ? (
+                  <div className="skeleton-shimmer mx-auto h-[72vh] w-full max-w-[520px] rounded-lg" />
+                ) : null}
                 <img
                   src={previewItem.cover}
                   alt={previewItem.title}
-                  className="mx-auto h-auto rounded-xl object-contain"
+                  className={`mx-auto h-auto rounded-lg object-contain transition-opacity duration-300 ${
+                    previewImageLoaded ? "opacity-100" : "opacity-0"
+                  }`}
                   style={
                     previewZoom <= 1
                       ? { maxWidth: "100%", maxHeight: "86vh" }
@@ -1996,6 +2027,8 @@ export default function Home() {
                   draggable={false}
                   onContextMenu={(event) => event.preventDefault()}
                   onDragStart={(event) => event.preventDefault()}
+                  onLoad={() => setPreviewImageLoaded(true)}
+                  onError={() => setPreviewImageLoaded(true)}
                 />
               </div>
             </div>

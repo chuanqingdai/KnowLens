@@ -39,6 +39,17 @@ type StoryboardCanvasProps = {
   canvasModeExternal?: CanvasMode;
   onExportingPptChange?: (value: boolean) => void;
   onComposingVideoChange?: (value: boolean) => void;
+  generationTaskStateByIndex?: Record<
+    number,
+    {
+      status: "queued" | "generating" | "retrying" | "success" | "failed";
+      attempts: number;
+      maxAttempts: number;
+      imageUrl?: string;
+      error?: string;
+    }
+  >;
+  onRetryGenerationTask?: (index: number) => void;
   onModeActionRegister?: (actions: {
     exportPpt: () => void;
     downloadVideo: () => void;
@@ -310,6 +321,8 @@ export function StoryboardCanvas({
   canvasModeExternal,
   onExportingPptChange,
   onComposingVideoChange,
+  generationTaskStateByIndex,
+  onRetryGenerationTask,
   onModeActionRegister,
 }: StoryboardCanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
@@ -322,6 +335,8 @@ export function StoryboardCanvas({
   const lastSavedSnapshotRef = useRef(initialPack.snapshot);
   const saveTimerRef = useRef<number | null>(null);
   const previewPauseRef = useRef(false);
+  const hasAutoFocusedFirstSlideRef = useRef(false);
+  const hasCenteredFirstSlideRef = useRef(false);
   const copiedSlideRef = useRef<null | {
     slide: SlideItem;
     tts: string;
@@ -414,11 +429,17 @@ export function StoryboardCanvas({
 
 
   useEffect(() => {
-    if (canvasMode !== "ppt" || selectedSlideId || !slides.length) {
+    hasAutoFocusedFirstSlideRef.current = false;
+    hasCenteredFirstSlideRef.current = false;
+  }, [slides.length, slides[0]?.id]);
+
+  useEffect(() => {
+    if (selectedSlideId || !slides.length || hasAutoFocusedFirstSlideRef.current) {
       return;
     }
+    hasAutoFocusedFirstSlideRef.current = true;
     setSelectedSlideId(slides[0].id);
-  }, [canvasMode, selectedSlideId, slides]);
+  }, [selectedSlideId, slides]);
   const composeLoadingHint = useMemo(() => {
     if (composeSteps.prepare === "running") {
       return "正在准备渲染环境和输出参数";
@@ -531,6 +552,18 @@ export function StoryboardCanvas({
     },
     [slides],
   );
+
+  useEffect(() => {
+    if (!slides.length || !selectedSlideId || !reactFlowRef.current) {
+      return;
+    }
+    const firstId = slides[0].id;
+    if (selectedSlideId !== firstId || hasCenteredFirstSlideRef.current) {
+      return;
+    }
+    hasCenteredFirstSlideRef.current = true;
+    void focusSlide(firstId, "image", 0.96);
+  }, [focusSlide, selectedSlideId, slides]);
 
   const playTtsWithProgress = useCallback(
     async (slideId: string, text: string, ttsId: string) => {

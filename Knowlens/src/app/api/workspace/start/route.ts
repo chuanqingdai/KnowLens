@@ -18,6 +18,7 @@ type WorkspaceStartPayload = {
     origin?: string;
     status?: string;
     excerpt?: string;
+    contentText?: string;
   }>;
 };
 
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
             origin: safeTrim(item.origin || "", 500),
             status: safeTrim(item.status || "ready", 20),
             excerpt: safeTrim(item.excerpt || "", 800),
+            contentText: safeTrim(item.contentText || "", 6000),
           }))
         : [];
 

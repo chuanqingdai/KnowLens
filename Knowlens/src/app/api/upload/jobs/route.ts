@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { writeFile } from "node:fs/promises";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
@@ -113,23 +113,25 @@ export async function POST(request: NextRequest) {
       sourceText: sourceText || undefined,
     });
 
-    void runUploadJob(job.jobId, async () => {
-      try {
-        return await buildUploadWorkerResult({
-          jobId: job.jobId,
-          fileName,
-          mimeType,
-          fileSize,
-          sourceKind,
-          sourceUrl: sourceUrl || undefined,
-          inputPath: tempInputPath,
-          sourceText: sourceText || undefined,
-        });
-      } finally {
-        if (tempInputPath) {
-          await unlink(tempInputPath).catch(() => undefined);
+    after(async () => {
+      await runUploadJob(job.jobId, async () => {
+        try {
+          return await buildUploadWorkerResult({
+            jobId: job.jobId,
+            fileName,
+            mimeType,
+            fileSize,
+            sourceKind,
+            sourceUrl: sourceUrl || undefined,
+            inputPath: tempInputPath,
+            sourceText: sourceText || undefined,
+          });
+        } finally {
+          if (tempInputPath) {
+            await unlink(tempInputPath).catch(() => undefined);
+          }
         }
-      }
+      });
     });
 
     return NextResponse.json({

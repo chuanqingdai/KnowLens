@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUp, LoaderCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 
@@ -49,6 +49,7 @@ type HomeSourceItem = {
     | "ready"
     | "failed";
   excerpt: string;
+  contentText?: string;
   errorMessage?: string | null;
   errorCode?: string | null;
   progress?: number;
@@ -133,10 +134,39 @@ type ImageGenerationTask = {
   composedPrompt: string;
 };
 
+type GenerationTaskUiStatus = "queued" | "generating" | "retrying" | "success" | "failed";
+
+type GenerationTaskUiState = {
+  index: number;
+  status: GenerationTaskUiStatus;
+  attempts: number;
+  maxAttempts: number;
+  imageUrl?: string;
+  error?: string;
+};
+
+type GenerationConfirmResponse = {
+  ok?: boolean;
+  error?: string;
+  generation?: {
+    providerCalled?: boolean;
+    results?: Array<{
+      index?: number;
+      ok?: boolean;
+      imageUrl?: string;
+      error?: string;
+      errorCode?: string;
+    }>;
+  };
+};
+
 const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
+const GENERATION_REQUEST_TIMEOUT_MS = 180000;
+const GENERATION_MAX_RETRY_ATTEMPTS = 3;
+const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {
@@ -995,6 +1025,7 @@ function readHomeDraftPayload() {
               origin: (item.origin || "").toString(),
               status: item.status,
               excerpt: (item.excerpt || "").toString(),
+              contentText: (item.contentText || "").toString(),
               errorMessage: item.errorMessage ?? null,
               errorCode: item.errorCode ?? null,
               progress: typeof item.progress === "number" ? item.progress : undefined,
@@ -1155,6 +1186,8 @@ export default function WorkspacePage() {
   const [topicSuggestionLocked, setTopicSuggestionLocked] = useState(false);
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
+  const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
+  const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
 
   const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(
     sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster"
@@ -1236,8 +1269,31 @@ export default function WorkspacePage() {
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
   const entrySources = initialEntry.sources;
+  const sourcePromptContext = useMemo(
+    () =>
+      entrySources
+        .map((item, index) => {
+          const sourceText = (item.contentText || item.excerpt || "").trim();
+          if (!sourceText) {
+            return "";
+          }
+          const clipped = sourceText.slice(0, 2400);
+          return `Source ${index + 1} (${item.kind} · ${item.name}):\n${clipped}`;
+        })
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 12000),
+    [entrySources],
+  );
+  const draftPrompt = useMemo(() => {
+    if (!sourcePromptContext) {
+      return contextPrompt;
+    }
+    const topicLine = contextPrompt.trim() || "Please process the uploaded source content.";
+    return `${topicLine}\n\n[Source content]\n${sourcePromptContext}`;
+  }, [contextPrompt, sourcePromptContext]);
   const sourceLanguageSeed = useMemo(
-    () => entrySources.map((item) => `${item.name} ${item.excerpt}`).join("\n"),
+    () => entrySources.map((item) => `${item.name} ${item.contentText || item.excerpt}`).join("\n"),
     [entrySources],
   );
   const outputLanguage = useMemo(
@@ -1624,6 +1680,177 @@ export default function WorkspacePage() {
   ]);
   const canConfirmBilling = credits >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
+  const imageGenerationTaskByIndex = useMemo(() => {
+    return new Map(imageGenerationTasks.map((task) => [task.index, task] as const));
+  }, [imageGenerationTasks]);
+  const buildGenerationRequestPayload = useCallback(
+    (tasks: ImageGenerationTask[]) => ({
+      intent: effectiveIntent,
+      outputs: standardOutputCount,
+      style: {
+        id: selectedStyle.id,
+        name: selectedStyle.englishName ?? selectedStyle.name,
+        prompt: selectedStyle.prompt,
+      },
+      ratio:
+        effectiveIntent === "poster"
+          ? posterSizeLabel || "9:16"
+          : effectiveIntent === "ppt"
+            ? pptRatio
+            : videoRatio,
+      imageModel: initialEntry.models?.imageModel || "gpt-image-2",
+      tasks,
+    }),
+    [
+      effectiveIntent,
+      initialEntry.models?.imageModel,
+      posterSizeLabel,
+      pptRatio,
+      selectedStyle.englishName,
+      selectedStyle.id,
+      selectedStyle.name,
+      selectedStyle.prompt,
+      standardOutputCount,
+      videoRatio,
+    ],
+  );
+  const runGenerationBatch = useCallback(
+    async (tasks: ImageGenerationTask[], isRetry = false) => {
+      if (!tasks.length) {
+        return;
+      }
+
+      const maxAttempts = GENERATION_MAX_RETRY_ATTEMPTS;
+      const pendingTaskMap = new Map(tasks.map((task) => [task.index, task]));
+      let attempt = 0;
+      let lastError: string | null = null;
+
+      setGenerationConfirmError(null);
+      setGenerationTaskStateByIndex((prev) => {
+        const next = { ...prev };
+        tasks.forEach((task) => {
+          next[task.index] = {
+            index: task.index,
+            status: isRetry ? "retrying" : "queued",
+            attempts: 0,
+            maxAttempts,
+          };
+        });
+        return next;
+      });
+
+      while (attempt < maxAttempts && pendingTaskMap.size > 0) {
+        const currentTasks = [...pendingTaskMap.values()];
+        for (const task of currentTasks) {
+          if (!pendingTaskMap.has(task.index)) {
+            continue;
+          }
+
+          setGenerationTaskStateByIndex((prev) => ({
+            ...prev,
+            [task.index]: {
+              ...(prev[task.index] ?? {
+                index: task.index,
+                status: "queued",
+                attempts: 0,
+                maxAttempts,
+              }),
+              status: attempt === 0 ? "generating" : "retrying",
+              attempts: attempt + 1,
+              maxAttempts,
+              error: undefined,
+            },
+          }));
+
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
+          try {
+            const response = await fetch("/api/workspace/generation-confirm", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(buildGenerationRequestPayload([task])),
+              signal: controller.signal,
+            });
+            const payload = (await response.json().catch(() => null)) as GenerationConfirmResponse | null;
+            if (!response.ok) {
+              throw new Error(payload?.error || `generation confirm failed (${response.status})`);
+            }
+
+            const result = (payload?.generation?.results ?? []).find(
+              (item) => Number(item.index ?? 0) === task.index,
+            );
+
+            if (result?.ok && result.imageUrl) {
+              pendingTaskMap.delete(task.index);
+              setGenerationTaskStateByIndex((prev) => ({
+                ...prev,
+                [task.index]: {
+                  index: task.index,
+                  status: "success",
+                  attempts: attempt + 1,
+                  maxAttempts,
+                  imageUrl: result.imageUrl,
+                },
+              }));
+            } else {
+              const nextError = result?.errorCode
+                ? `${result.error || tr("Generation failed.", "生成失败。")} (${result.errorCode})`
+                : result?.error || tr("Generation failed.", "生成失败。");
+              lastError = nextError || lastError;
+            }
+          } catch (error) {
+            lastError =
+              error instanceof DOMException && error.name === "AbortError"
+                ? tr("Generation timed out.", "生成超时。")
+                : error instanceof Error
+                  ? error.message
+                  : tr("Generation failed.", "生成失败。");
+          } finally {
+            window.clearTimeout(timeoutId);
+          }
+        }
+
+        if (attempt < maxAttempts - 1) {
+          const delay = GENERATION_RETRY_DELAYS_MS[Math.min(attempt, GENERATION_RETRY_DELAYS_MS.length - 1)];
+          await new Promise((resolve) => window.setTimeout(resolve, delay));
+        }
+        attempt += 1;
+      }
+
+      if (pendingTaskMap.size > 0) {
+        const finalError = lastError || tr("Generation failed.", "生成失败。");
+        setGenerationTaskStateByIndex((prev) => {
+          const next = { ...prev };
+          pendingTaskMap.forEach((task) => {
+            next[task.index] = {
+              index: task.index,
+              status: "failed",
+              attempts: maxAttempts,
+              maxAttempts,
+              error: finalError,
+            };
+          });
+          return next;
+        });
+        setGenerationConfirmError(finalError);
+      } else {
+        setGenerationConfirmError(null);
+      }
+    },
+    [buildGenerationRequestPayload, tr],
+  );
+  const handleRetryGenerationTask = useCallback(
+    (index: number) => {
+      const task = imageGenerationTaskByIndex.get(index);
+      if (!task) {
+        return;
+      }
+      void runGenerationBatch([task], true);
+    },
+    [imageGenerationTaskByIndex, runGenerationBatch],
+  );
 
   const stageLabel = useMemo(() => {
     if (flowStage === "intent" || flowStage === "config") {
@@ -1646,45 +1873,15 @@ export default function WorkspacePage() {
   const projectTitle = isZhOutput
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
-  const topicSuggestions = useMemo(() => {
-    const baseTopic = topicHintText(topic, outputLanguage);
-    if (!isZhOutput) {
-      const adaptiveSuggestions = [
-        `Generate a one-page poster that explains ${baseTopic} for beginners.`,
-        `Create a 6-frame short-video storyboard about how ${baseTopic} works.`,
-        `Build a 10-slide PPT lesson on ${baseTopic} with clear key points.`,
-        `Compare causes, impacts, and real-life examples of ${baseTopic}.`,
-      ];
-      return adaptiveSuggestions;
-    }
-    const mixedSuggestions = isZhOutput
-      ? [
-          "黑洞为什么连光都逃不出去？",
-          "工业革命为什么改变了世界？",
-          "通货膨胀为什么会影响日常生活？",
-          "洋流循环是如何影响全球气候的？",
-        ]
-      : [
-          "Why can’t light escape from a black hole?",
-          "Why did the Industrial Revolution change the world?",
-          "Why does inflation affect everyday life?",
-          "How does ocean circulation influence global climate?",
-        ];
-    const paidSuggestions = isZhOutput
-      ? [
-          "黑洞是怎么形成的？",
-          "郑和下西洋背后的航海技术是什么？",
-          "供需关系为什么会影响价格？",
-          "板块运动为什么会引发地震和火山？",
-        ]
-      : [
-          "How are black holes formed?",
-          "What navigation technologies powered Zheng He's voyages?",
-          "Why does supply and demand influence prices?",
-          "How does plate motion trigger earthquakes and volcanoes?",
-        ];
-    return isFreeUser ? mixedSuggestions : paidSuggestions;
-  }, [isFreeUser, isZhOutput, outputLanguage, topic]);
+  const topicSuggestions = useMemo(
+    () => [
+      "Generate a beginner-friendly poster that explains one topic with clear key points.",
+      "Create a 6-frame storyboard with narration guidance and scene focus.",
+      "Build a 10-slide learning deck with one core idea per slide.",
+      "Compare causes, impacts, and practical examples in one visual narrative.",
+    ],
+    [],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1925,7 +2122,7 @@ export default function WorkspacePage() {
           },
           body: JSON.stringify({
             topic,
-            prompt: contextPrompt,
+            prompt: draftPrompt,
             textModel: initialEntry.models?.textModel || "gemini-2.5",
             posterCount: count,
             posterSizeLabel: ratioOrSize,
@@ -2009,7 +2206,7 @@ export default function WorkspacePage() {
         },
         body: JSON.stringify({
           topic,
-          prompt: contextPrompt,
+          prompt: draftPrompt,
           textModel: initialEntry.models?.textModel || "gemini-2.5",
           posterCount,
           posterSizeLabel,
@@ -2128,6 +2325,7 @@ export default function WorkspacePage() {
       return;
     }
     setIsPlanningBillingStep(true);
+    setGenerationConfirmError(null);
     startThinking(
       effectiveIntent === "poster" ? tr("Poster Generation", "海报生成") : tr("Storyboard Generation", "分镜生成"),
       effectiveIntent === "poster"
@@ -2167,24 +2365,6 @@ export default function WorkspacePage() {
 
     setCreditVersion((prev) => prev + 1);
     setBillingConfirmed(true);
-    void fetch("/api/workspace/generation-confirm", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        intent: effectiveIntent,
-        outputs: standardOutputCount,
-        style: {
-          id: selectedStyle.id,
-          name: selectedStyle.englishName ?? selectedStyle.name,
-          prompt: selectedStyle.prompt,
-        },
-        ratio: effectiveIntent === "poster" ? posterSizeLabel || "9:16" : effectiveIntent === "ppt" ? pptRatio : videoRatio,
-        imageModel: initialEntry.models?.imageModel || "gpt-image-2",
-        tasks: imageGenerationTasks,
-      }),
-    }).catch(() => null);
 
     if (effectiveIntent === "ppt" || effectiveIntent === "video") {
       setFlowStage("generate");
@@ -2197,6 +2377,11 @@ export default function WorkspacePage() {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
+    void runGenerationBatch(imageGenerationTasks).catch((error) => {
+      setGenerationConfirmError(
+        error instanceof Error ? error.message : tr("Generation failed.", "生成失败。"),
+      );
+    });
     stopThinking();
     setIsPlanningBillingStep(false);
   }
@@ -2729,6 +2914,8 @@ export default function WorkspacePage() {
                 canvasModeExternal={lockedCanvasMode}
                 onExportingPptChange={setIsExportingPpt}
                 onComposingVideoChange={setIsComposingVideo}
+                generationTaskStateByIndex={generationTaskStateByIndex}
+                onRetryGenerationTask={handleRetryGenerationTask}
                 onModeActionRegister={(actions) => {
                   modeActionsRef.current = actions;
                 }}
@@ -2757,6 +2944,8 @@ export default function WorkspacePage() {
                 posterCount={posterCount}
                 posterDraft={posterDraft}
                 posterPlanList={editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList}
+                generationTaskStateByIndex={generationTaskStateByIndex}
+                onRetryGenerationTask={handleRetryGenerationTask}
                 onSaveStateChange={(nextState, unsaved) => {
                   setSaveState(nextState);
                   setHasUnsavedChanges(unsaved);

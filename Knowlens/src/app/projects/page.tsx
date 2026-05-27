@@ -72,10 +72,10 @@ export default function ProjectsPage() {
               {projectItems.map((item) => (
                 <article
                   key={item.id}
-                  className="rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                  className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
                 >
                   <div
-                    className="relative aspect-video w-full rounded-xl bg-zinc-100 bg-cover bg-center"
+                    className="relative aspect-video w-full bg-zinc-100 bg-cover bg-center"
                     style={{ backgroundImage: `url("${item.cover}")` }}
                   >
                     <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
@@ -87,7 +87,7 @@ export default function ProjectsPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="px-1 pb-1 pt-3">
+                  <div className="px-3 pb-3 pt-2.5">
                     <p className="text-lg font-medium leading-none text-zinc-900">{item.title}</p>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <p className="text-sm text-zinc-500">{item.updatedAt}</p>

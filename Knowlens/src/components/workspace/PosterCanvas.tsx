@@ -5,6 +5,7 @@ import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
+  AlertCircle,
   ArrowUpDown,
   Download,
   Grid3X3,
@@ -47,6 +48,17 @@ type PosterCanvasProps = {
   posterCount: number;
   posterDraft: PosterDraft | null;
   posterPlanList: PosterPlanItem[];
+  generationTaskStateByIndex?: Record<
+    number,
+    {
+      status: "queued" | "generating" | "retrying" | "success" | "failed";
+      attempts: number;
+      maxAttempts: number;
+      imageUrl?: string;
+      error?: string;
+    }
+  >;
+  onRetryGenerationTask?: (index: number) => void;
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
 };
 
@@ -56,11 +68,12 @@ type PosterCard = {
   copy: string;
   colorHex: string;
   imageSrc: string;
-  status: "queued" | "generating" | "ready" | "failed";
+  status: "queued" | "generating" | "retrying" | "ready" | "failed";
   x: number;
   y: number;
   initialCopy: string;
   history: string[];
+  errorMessage?: string;
   archives: Array<{
     id: string;
     imageSrc: string;
@@ -233,7 +246,8 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
     onDownload,
   } = data;
   const canEdit = card.status === "ready";
-  const isGenerating = card.status === "queued" || card.status === "generating";
+  const isGenerating =
+    card.status === "queued" || card.status === "generating" || card.status === "retrying";
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -326,15 +340,29 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
           </div>
         ) : null}
         {card.status === "failed" ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
-            <button
-              type="button"
-              onClick={() => onRetry(card.id)}
-              className="inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
-            >
-              <RefreshCw size={12} />
-              Retry
-            </button>
+          <div className="absolute inset-0 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
+            <div className="max-w-[220px] rounded-lg border border-red-200 bg-white px-3 py-2 text-center shadow-sm">
+              <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <AlertCircle size={15} />
+              </div>
+              <p className="text-xs font-medium text-zinc-800">Generation failed</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
+                {card.errorMessage || "Please retry from this card."}
+              </p>
+              <button
+                type="button"
+                onClick={() => onRetry(card.id)}
+                className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
+              >
+                <RefreshCw size={12} />
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {card.status === "ready" && card.errorMessage ? (
+          <div className="absolute inset-x-0 bottom-0 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            {card.errorMessage}
           </div>
         ) : null}
       </div>
@@ -359,6 +387,8 @@ export function PosterCanvas({
   posterCount,
   posterDraft,
   posterPlanList,
+  generationTaskStateByIndex,
+  onRetryGenerationTask,
   onSaveStateChange,
 }: PosterCanvasProps) {
   const count = Math.max(1, Math.min(10, posterCount));
@@ -368,6 +398,7 @@ export function PosterCanvas({
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const saveTimerRef = useRef<number | null>(null);
+  const hasAutoFocusedFirstCardRef = useRef(false);
   const initKey = useMemo(() => {
     const draftPart = [
       posterDraft?.headline ?? "",
@@ -411,58 +442,87 @@ export function PosterCanvas({
     [count, posterDraft, posterPlanList],
   );
   const [cards, setCards] = useState<PosterCard[]>(() => initialCards);
-  const initKeyRef = useRef<string>(initKey);
+  const initKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (initKeyRef.current === initKey) {
-      return;
-    }
     initKeyRef.current = initKey;
+    hasAutoFocusedFirstCardRef.current = false;
     setSelectedCardId(null);
     setHasPendingSave(false);
 
     let cancelled = false;
-    const timers: number[] = [];
     const raf = window.requestAnimationFrame(() => {
       if (cancelled) {
         return;
       }
       setCards(initialCards);
-      initialCards.forEach((_, idx) => {
-        const startTimer = window.setTimeout(() => {
-          if (cancelled) {
-            return;
-          }
-          setCards((prev) =>
-            prev.map((item, itemIdx) => (itemIdx === idx ? { ...item, status: "generating" } : item)),
-          );
-        }, 240 + idx * 560);
-        const readyTimer = window.setTimeout(() => {
-          if (cancelled) {
-            return;
-          }
-          setCards((prev) =>
-            prev.map((item, itemIdx) =>
-              itemIdx === idx
-                ? {
-                    ...item,
-                    status: "ready",
-                    colorHex: POSTER_PLACEHOLDER_COLORS[(idx + 2) % POSTER_PLACEHOLDER_COLORS.length],
-                  }
-                : item,
-            ),
-          );
-        }, 720 + idx * 560);
-        timers.push(startTimer, readyTimer);
-      });
     });
 
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(raf);
-      timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [initKey, initialCards]);
+
+  useEffect(() => {
+    if (hasAutoFocusedFirstCardRef.current || !cards.length) {
+      return;
+    }
+    const firstCard = [...cards].sort((a, b) => a.index - b.index)[0];
+    if (!firstCard) {
+      return;
+    }
+    hasAutoFocusedFirstCardRef.current = true;
+    setSelectedCardId(firstCard.id);
+    window.requestAnimationFrame(() => {
+      flowRef.current?.setCenter(firstCard.x + 210, firstCard.y + 380, {
+        zoom: 0.86,
+        duration: 220,
+      });
+    });
+  }, [cards]);
+
+  useEffect(() => {
+    if (!generationTaskStateByIndex) {
+      return;
+    }
+    setCards((prev) =>
+      prev.map((item) => {
+        const taskState = generationTaskStateByIndex[item.index];
+        if (!taskState) {
+          return item;
+        }
+        if (taskState.status === "success" && taskState.imageUrl) {
+          return {
+            ...item,
+            status: "ready",
+            imageSrc: taskState.imageUrl,
+            colorHex: POSTER_PLACEHOLDER_COLORS[(item.index + 2) % POSTER_PLACEHOLDER_COLORS.length],
+            errorMessage: undefined,
+          };
+        }
+        if (taskState.status === "failed") {
+          return {
+            ...item,
+            status: "failed",
+            errorMessage: taskState.error || "Please retry from this card.",
+          };
+        }
+        if (
+          taskState.status === "queued" ||
+          taskState.status === "generating" ||
+          taskState.status === "retrying"
+        ) {
+          return {
+            ...item,
+            status: taskState.status,
+            errorMessage: undefined,
+          };
+        }
+        return item;
+      }),
+    );
+  }, [generationTaskStateByIndex]);
 
   useEffect(() => {
     const hasFailed = cards.some((item) => item.status === "failed");
@@ -545,15 +605,17 @@ export function PosterCanvas({
   }, []);
 
   const handleRetryCard = useCallback((id: string) => {
+    const index = Number(id.replace("poster-card-", ""));
+    if (!Number.isFinite(index)) {
+      return;
+    }
     setCards((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status: "generating" } : item)),
+      prev.map((item) =>
+        item.id === id ? { ...item, status: "retrying", errorMessage: undefined } : item,
+      ),
     );
-    window.setTimeout(() => {
-      setCards((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, status: "ready" } : item)),
-      );
-    }, 760);
-  }, []);
+    onRetryGenerationTask?.(index);
+  }, [onRetryGenerationTask]);
 
   const handleRedrawCard = useCallback((id: string) => {
     setCards((prev) =>

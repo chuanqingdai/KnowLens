@@ -62,6 +62,11 @@ const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 
 function StyleCover({ style }: { style: StyleOption }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+    setImageLoaded(false);
+  }, [style.coverImage]);
   if (!style.coverImage || imageFailed) {
     return (
       <div
@@ -73,14 +78,21 @@ function StyleCover({ style }: { style: StyleOption }) {
     );
   }
   return (
-    <Image
-      src={style.coverImage}
-      alt={style.name}
-      fill
-      unoptimized
-      className="object-contain"
-      onError={() => setImageFailed(true)}
-    />
+    <>
+      {!imageLoaded ? <div className="skeleton-shimmer absolute inset-0" /> : null}
+      <Image
+        src={style.coverImage}
+        alt={style.name}
+        fill
+        unoptimized
+        className={`object-contain transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+        onLoad={() => setImageLoaded(true)}
+        onError={() => {
+          setImageFailed(true);
+          setImageLoaded(true);
+        }}
+      />
+    </>
   );
 }
 
@@ -897,7 +909,7 @@ export function ChatPanel({
                     key={`locked-style-en-${style.id}`}
                     type="button"
                     disabled
-                    className={`group relative cursor-not-allowed rounded-2xl border p-2 text-left ${
+                    className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border text-left ${
                       active
                         ? selectedStyleCardClass
                         : "border-zinc-200 bg-white"
@@ -908,7 +920,7 @@ export function ChatPanel({
                         <Check size={12} />
                       </span>
                     ) : null}
-                    <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
+                    <div className="relative aspect-[9/16] w-full overflow-hidden">
                       <StyleCover style={style} />
                       {supportsHoverDescription ? (
                         <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -916,9 +928,11 @@ export function ChatPanel({
                         </div>
                       ) : null}
                     </div>
-                    <p className={`mt-2 text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
-                      {styleDisplayName(style)}
-                    </p>
+                    <div className="px-2.5 pb-2.5 pt-2">
+                      <p className={`text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
+                        {styleDisplayName(style)}
+                      </p>
+                    </div>
                   </button>
                 );
               })}
@@ -947,7 +961,7 @@ export function ChatPanel({
                     styleButtonRefs.current[style.id] = node;
                   }}
                   onClick={() => onSelectStyle(style.id)}
-                  className={`group relative rounded-2xl border p-2 text-left transition ${
+                  className={`group relative overflow-hidden rounded-2xl border text-left transition ${
                     style.id === selectedStyleId
                       ? selectedStyleCardClass
                       : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
@@ -958,7 +972,7 @@ export function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
+                  <div className="relative aspect-[9/16] w-full overflow-hidden">
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -966,9 +980,11 @@ export function ChatPanel({
                       </div>
                     ) : null}
                   </div>
-                  <p className={`mt-2 text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
-                    {styleDisplayName(style)}
-                  </p>
+                  <div className="px-2.5 pb-2.5 pt-2">
+                    <p className={`text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
+                      {styleDisplayName(style)}
+                    </p>
+                  </div>
                 </button>
               ))}
             </div>
@@ -1926,7 +1942,7 @@ export function ChatPanel({
                   key={`locked-style-${style.id}`}
                   type="button"
                   disabled
-                  className={`group relative cursor-not-allowed rounded-2xl border p-2 text-left ${
+                  className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border text-left ${
                     active
                       ? selectedStyleCardClass
                       : "border-zinc-200 bg-white"
@@ -1937,7 +1953,7 @@ export function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
+                  <div className="relative aspect-[9/16] w-full overflow-hidden">
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -1945,9 +1961,11 @@ export function ChatPanel({
                       </div>
                     ) : null}
                   </div>
-                  <p className={`mt-2 text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
-                    {styleDisplayName(style)}
-                  </p>
+                  <div className="px-2.5 pb-2.5 pt-2">
+                    <p className={`text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
+                      {styleDisplayName(style)}
+                    </p>
+                  </div>
                 </button>
               );
             })}
@@ -1975,7 +1993,7 @@ export function ChatPanel({
                   styleButtonRefs.current[style.id] = node;
                 }}
                 onClick={() => onSelectStyle(style.id)}
-                className={`group relative rounded-2xl border p-2 text-left transition ${
+                className={`group relative overflow-hidden rounded-2xl border text-left transition ${
                   style.id === selectedStyleId
                     ? selectedStyleCardClass
                     : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
@@ -1986,7 +2004,7 @@ export function ChatPanel({
                     <Check size={12} />
                   </span>
                 ) : null}
-                <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
+                <div className="relative aspect-[9/16] w-full overflow-hidden">
                   <StyleCover style={style} />
                   {supportsHoverDescription ? (
                     <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -1994,9 +2012,11 @@ export function ChatPanel({
                     </div>
                   ) : null}
                 </div>
-                <p className={`mt-2 text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
-                  {styleDisplayName(style)}
-                </p>
+                <div className="px-2.5 pb-2.5 pt-2">
+                  <p className={`text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
+                    {styleDisplayName(style)}
+                  </p>
+                </div>
               </button>
             ))}
           </div>

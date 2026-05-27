@@ -21,6 +21,7 @@ export const MAX_TEXT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 export const MAX_UPLOAD_CONCURRENCY = 3;
 export const MAX_UPLOAD_RETRIES = 3;
 const MAX_MEDIA_TRANSCRIBE_BYTES = 120 * 1024 * 1024;
+const DEFAULT_UPLOAD_WORKER_TIMEOUT_MS = 180000;
 
 export type UploadSourceKind = "file" | "web" | "youtube" | "podcast";
 
@@ -58,6 +59,36 @@ const allowedMimePrefixes = [
 
 function safeTrim(value: string | undefined | null, max = 2000) {
   return (value ?? "").trim().slice(0, max);
+}
+
+function parseIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const value = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function cleanText(value: string) {
@@ -145,11 +176,16 @@ export function enqueueUpload(input: {
 
 export async function runUploadJob(jobId: string, worker: () => Promise<WorkerResult>) {
   updateUploadJob(jobId, { status: "processing", progress: 8, attempts: 1 });
+  const workerTimeoutMs = parseIntEnv("UPLOAD_WORKER_TIMEOUT_MS", DEFAULT_UPLOAD_WORKER_TIMEOUT_MS);
   let attempt = 1;
   while (attempt <= MAX_UPLOAD_RETRIES) {
     try {
       updateUploadJob(jobId, { attempts: attempt, progress: Math.min(20 + attempt * 15, 65) });
-      const result = await worker();
+      const result = await withTimeout(
+        worker(),
+        workerTimeoutMs,
+        `Upload worker timed out after ${Math.round(workerTimeoutMs / 1000)}s`,
+      );
       updateUploadJob(jobId, {
         status: "done",
         progress: 100,
@@ -382,6 +418,10 @@ async function extractYoutubeContent(url: string) {
     return transcript;
   }
 
+  if (!process.env.OPENAI_API_KEY?.trim()) {
+    throw new Error("YouTube transcript fallback requires OPENAI_API_KEY.");
+  }
+
   const downloaded = await downloadYoutubeAudio(url);
   if (!downloaded) {
     throw new Error("YouTube transcript extraction failed");
@@ -417,6 +457,11 @@ async function downloadYoutubeAudio(url: string) {
 async function extractPodcastContent(url: string) {
   const candidates: string[] = [url];
   const feedTextParts: string[] = [];
+  const hasTranscribeApiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+
+  if (!hasTranscribeApiKey) {
+    throw new Error("Podcast transcript extraction requires OPENAI_API_KEY.");
+  }
 
   try {
     const feed = await rssParser.parseURL(url);

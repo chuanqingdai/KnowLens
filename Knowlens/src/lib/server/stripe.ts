@@ -2,6 +2,12 @@ import Stripe from "stripe";
 
 let stripeClient: Stripe | null = null;
 
+const STRIPE_SECRET_ENV_KEYS = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_API_KEY",
+  "STRIPE_LIVE_SECRET_KEY",
+] as const;
+
 function isPlaceholderSecret(value: string) {
   const normalized = value.trim().toLowerCase();
   if (!normalized) {
@@ -14,12 +20,22 @@ function isPlaceholderSecret(value: string) {
   );
 }
 
-export function isStripeServerConfigured() {
-  const secret = process.env.STRIPE_SECRET_KEY?.trim();
-  if (!secret) {
-    return false;
+function getConfiguredStripeSecret() {
+  for (const key of STRIPE_SECRET_ENV_KEYS) {
+    const value = process.env[key]?.trim();
+    if (!value) {
+      continue;
+    }
+    if (isPlaceholderSecret(value)) {
+      continue;
+    }
+    return value;
   }
-  return !isPlaceholderSecret(secret);
+  return null;
+}
+
+export function isStripeServerConfigured() {
+  return Boolean(getConfiguredStripeSecret());
 }
 
 export function getStripePaymentLink(planId: string, cycle: "monthly" | "yearly") {
@@ -45,9 +61,11 @@ export function getStripeServerClient() {
   if (stripeClient) {
     return stripeClient;
   }
-  const secret = process.env.STRIPE_SECRET_KEY?.trim();
-  if (!secret || isPlaceholderSecret(secret)) {
-    throw new Error("Stripe is not configured. Please set a valid STRIPE_SECRET_KEY.");
+  const secret = getConfiguredStripeSecret();
+  if (!secret) {
+    throw new Error(
+      `Stripe is not configured. Please set one of: ${STRIPE_SECRET_ENV_KEYS.join(", ")}.`,
+    );
   }
   stripeClient = new Stripe(secret, {
     apiVersion: "2026-04-22.dahlia",

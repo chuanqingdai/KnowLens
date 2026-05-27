@@ -415,7 +415,7 @@ export default function MembershipPage() {
         normalized.includes("stripe") &&
         (normalized.includes("key") || normalized.includes("configured"))
       ) {
-        setToast("Stripe checkout is not configured yet. Please try again after adding the live key.");
+        setToast("Stripe checkout is unavailable. Please verify server env STRIPE_SECRET_KEY.");
       } else {
         setToast(message);
       }

@@ -8,14 +8,14 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://knowlens.ai";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "KnowLens.ai | AI Knowledge Visual Studio",
+    default: "KnowLens.ai | AI Infographic Generator for Posters, Slides & Videos",
     template: "%s · KnowLens.ai",
   },
   description:
-    "KnowLens.ai turns articles, documents, videos, and podcasts into clear visual posters, slides, and video drafts.",
+    "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
   keywords: [
     "KnowLens.ai",
-    "AI knowledge visual studio",
+    "AI infographic generator",
     "visual poster generator",
     "presentation generator",
     "storyboard video generator",
@@ -33,9 +33,9 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: siteUrl,
     siteName: "KnowLens.ai",
-    title: "KnowLens.ai | AI Knowledge Visual Studio",
+    title: "KnowLens.ai | AI Infographic Generator for Posters, Slides & Videos",
     description:
-      "KnowLens.ai turns articles, documents, videos, and podcasts into clear visual posters, slides, and video drafts.",
+      "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
     images: [
       {
         url: "/picture/knowlens-hero.png",
@@ -47,9 +47,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "KnowLens.ai | AI Knowledge Visual Studio",
+    title: "KnowLens.ai | AI Infographic Generator for Posters, Slides & Videos",
     description:
-      "KnowLens.ai turns articles, documents, videos, and podcasts into clear visual posters, slides, and video drafts.",
+      "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
     images: ["/picture/knowlens-hero.png"],
   },
   robots: {

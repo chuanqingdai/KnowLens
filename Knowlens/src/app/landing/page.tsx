@@ -520,7 +520,7 @@ function ProgressiveImage({
     <div className="relative h-full w-full">
       {!loaded ? (
         <div
-          className={`absolute inset-0 z-[2] ${failed ? "bg-zinc-200" : "animate-pulse bg-zinc-200/80"} ${skeletonClassName}`}
+          className={`absolute inset-0 z-[2] ${failed ? "bg-zinc-200" : "skeleton-shimmer"} ${skeletonClassName}`}
           aria-hidden="true"
         />
       ) : null}
@@ -582,8 +582,7 @@ function AspectSkeleton({
   return (
     <div className={`relative overflow-hidden bg-zinc-100 ${ratioClassName} ${className}`}>
       {children ? <div className="absolute inset-0 z-[1]">{children}</div> : null}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.85),rgba(229,231,235,0.55),rgba(255,255,255,0.7))] opacity-90" />
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent)] animate-[pulse_1.6s_ease-in-out_infinite]" />
+      <div className="pointer-events-none absolute inset-0 z-0 skeleton-shimmer" />
     </div>
   );
 }
@@ -713,30 +712,28 @@ export default function LandingPage() {
  
         <h1 className="sr-only">{t("KnowLens.ai visual creation platform", "KnowLens.ai 知识可视化创作平台")}</h1>
 
-        <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-center lg:gap-10 lg:pt-14">
-          <div className="max-w-[560px]">
+        <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
+          <div className="max-w-[620px]">
             <div className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-[11px] text-zinc-600">
               {t("From Source Content to Visual Delivery", "从源内容到可视化交付")}
             </div>
-            <h2 className="mt-4 text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[46px]">
+            <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
               {locale === "en" ? (
                 <>
-                  Turn Knowledge
-                  <br />
-                  into Visual Content
+                  <span className="block whitespace-nowrap">AI Infographic Generator</span>
+                  <span className="block whitespace-nowrap">for Learning</span>
                 </>
               ) : (
                 <>
-                  将知识转化为
-                  <br />
-                  可视化内容
+                  <span className="block whitespace-nowrap">AI 信息图生成器</span>
+                  <span className="block whitespace-nowrap">助力学习理解</span>
                 </>
               )}
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base">
               {t(
-                "Transform articles, documents, videos, and podcasts into shareable posters, presentation-ready slides, and editable content drafts — in minutes.",
-                "将文章、文档、视频和播客在几分钟内转化为可分享海报、可直接演示的幻灯片和可编辑内容草稿。",
+                "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
+                "将文本、文档、视频和播客转化为信息图海报、幻灯片和讲解视频，让知识更易理解与传播。",
               )}
             </p>
             <div className="mt-5 flex items-center sm:mt-6">
@@ -750,19 +747,17 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="w-full rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:p-2 lg:justify-self-end">
-            <div className="overflow-hidden rounded-xl bg-zinc-100">
-              <AspectSkeleton ratioClassName="aspect-square">
-                <ProgressiveImage
-                  src={toOptimized(heroImage)}
-                  fallbackSrc={toOriginal(heroImage)}
-                  alt="KnowLens Hero"
-                  className="absolute inset-0 h-full w-full object-cover"
-                  loading="eager"
-                  fetchPriority="high"
-                />
-              </AspectSkeleton>
-            </div>
+          <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 shadow-sm lg:justify-self-end">
+            <AspectSkeleton ratioClassName="aspect-square">
+              <ProgressiveImage
+                src={toOptimized(heroImage)}
+                fallbackSrc={toOriginal(heroImage)}
+                alt="KnowLens Hero"
+                className="absolute inset-0 h-full w-full object-cover"
+                loading="eager"
+                fetchPriority="high"
+              />
+            </AspectSkeleton>
           </div>
         </section>
 
@@ -800,8 +795,8 @@ export default function LandingPage() {
             </div>
 
             <div className="mx-auto mt-4 max-w-5xl">
-              <article className="rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm">
-                <div className="relative overflow-hidden rounded-xl bg-zinc-100">
+              <article className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+                <div className="relative overflow-hidden bg-zinc-100">
                   <AspectSkeleton ratioClassName="aspect-[16/9]">
                     <ProgressiveImage
                       src={activeFlowPreviewSrc}
@@ -839,9 +834,9 @@ export default function LandingPage() {
                   <article
                     key={`${item.id}-wide-${index}`}
                     aria-hidden={index >= previewWideCases.length}
-                    className="w-[250px] shrink-0 rounded-2xl border border-zinc-200 bg-white p-2 sm:w-[280px] lg:w-[300px]"
+                    className="w-[250px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white sm:w-[280px] lg:w-[300px]"
                   >
-                    <div className="aspect-video overflow-hidden rounded-xl bg-zinc-100">
+                    <div className="aspect-video overflow-hidden bg-zinc-100">
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
                         fallbackSrc={toOriginal(item.cover)}
@@ -864,9 +859,9 @@ export default function LandingPage() {
                   <article
                     key={`${item.id}-tall-${index}`}
                     aria-hidden={index >= previewTallCases.length}
-                    className="w-[150px] shrink-0 rounded-2xl border border-zinc-200 bg-white p-2 sm:w-[170px] lg:w-[180px]"
+                    className="w-[150px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white sm:w-[170px] lg:w-[180px]"
                   >
-                    <div className="aspect-[9/16] overflow-hidden rounded-xl bg-zinc-100">
+                    <div className="aspect-[9/16] overflow-hidden bg-zinc-100">
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
                         fallbackSrc={toOriginal(item.cover)}
