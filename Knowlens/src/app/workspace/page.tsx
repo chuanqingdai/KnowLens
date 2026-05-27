@@ -169,7 +169,7 @@ const styleCoverFileById: Record<string, string> = {
 
 function styleCoverById(styleId: string) {
   const filename = styleCoverFileById[styleId] ?? styleCoverFileById["clean-science-infographic"];
-  return `/style/${encodeURIComponent(filename)}?v=20260527b`;
+  return `/style/${encodeURIComponent(filename)}?v=20260527d`;
 }
 
 const styleOptions = [
@@ -187,19 +187,6 @@ const styleOptions = [
     coverImage: styleCoverById("clean-science-infographic"),
   },
   {
-    id: "premium-editorial-infographic",
-    name: "高级报告信息图风",
-    englishName: "Premium Editorial Infographic",
-    fit: "Professional report and magazine layout feel, ideal for business and trend analysis.",
-    prompt:
-      "Premium editorial information design, refined composition rhythm, elegant proportional balance, sophisticated typography tone, restrained luxury palette, soft micro-contrast, subtle shadow layering, high-end publication quality, minimalist but information-dense structure, calm professional visual authority.",
-    suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
-    carrierPriority: ["ppt", "poster", "video"],
-    topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
-    palette: ["#111827", "#f59e0b", "#f3f4f6"],
-    coverImage: styleCoverById("premium-editorial-infographic"),
-  },
-  {
     id: "youtube-science-thumbnail",
     name: "大主体科普封面风",
     englishName: "Hero Science Cover Style",
@@ -211,6 +198,19 @@ const styleOptions = [
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
     palette: ["#111827", "#ef4444", "#f8fafc"],
     coverImage: styleCoverById("youtube-science-thumbnail"),
+  },
+  {
+    id: "cinematic-science-illustration",
+    name: "电影级科普视觉风",
+    englishName: "Cinematic Science Illustration",
+    fit: "Immersive cinematic atmosphere, ideal for space, disaster, and large-scale science themes.",
+    prompt:
+      "Cinematic scientific illustration direction, high-detail realism, atmospheric depth grading, dramatic light shaping, premium documentary-like finish, controlled dynamic range, elegant contrast transitions, immersive but clean composition, visually powerful professional polish.",
+    suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
+    carrierPriority: ["poster", "video", "ppt"],
+    topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
+    palette: ["#111827", "#7c3aed", "#e2e8f0"],
+    coverImage: styleCoverById("cinematic-science-illustration"),
   },
   {
     id: "minimal-line-art",
@@ -304,17 +304,17 @@ const styleOptions = [
     coverImage: styleCoverById("medical-educational-illustration"),
   },
   {
-    id: "cinematic-science-illustration",
-    name: "电影级科普视觉风",
-    englishName: "Cinematic Science Illustration",
-    fit: "Immersive cinematic atmosphere, ideal for space, disaster, and large-scale science themes.",
+    id: "premium-editorial-infographic",
+    name: "高级报告信息图风",
+    englishName: "Premium Editorial Infographic",
+    fit: "Professional report and magazine layout feel, ideal for business and trend analysis.",
     prompt:
-      "Cinematic scientific illustration direction, high-detail realism, atmospheric depth grading, dramatic light shaping, premium documentary-like finish, controlled dynamic range, elegant contrast transitions, immersive but clean composition, visually powerful professional polish.",
-    suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
-    carrierPriority: ["poster", "video", "ppt"],
-    topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
-    palette: ["#111827", "#7c3aed", "#e2e8f0"],
-    coverImage: styleCoverById("cinematic-science-illustration"),
+      "Premium editorial information design, refined composition rhythm, elegant proportional balance, sophisticated typography tone, restrained luxury palette, soft micro-contrast, subtle shadow layering, high-end publication quality, minimalist but information-dense structure, calm professional visual authority.",
+    suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
+    carrierPriority: ["ppt", "poster", "video"],
+    topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
+    palette: ["#111827", "#f59e0b", "#f3f4f6"],
+    coverImage: styleCoverById("premium-editorial-infographic"),
   },
   {
     id: "premium-sketchnote-science",
@@ -1288,6 +1288,7 @@ export default function WorkspacePage() {
   const showDirectionGuide = flowStage === "intent" || flowStage === "config";
   const showStyleStage = flowStage === "style";
   const showBillingConfirm = flowStage === "billing";
+  const showBillingRecord = flowStage === "billing" || flowStage === "generate";
   const showStoryboard = flowStage === "generate" && (effectiveIntent === "ppt" || effectiveIntent === "video");
   const showPosterCanvas = flowStage === "generate" && effectiveIntent === "poster";
   const hasCanvasPanel = showStoryboard || showPosterCanvas;
@@ -2570,6 +2571,8 @@ export default function WorkspacePage() {
         actionsDisabled={!showStoryboard}
         isExportingPpt={isExportingPpt}
         isComposingVideo={isComposingVideo}
+        showOpenCanvasButton={isMobileViewport && hasCanvasPanel && mobileWorkspaceView === "chat"}
+        onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
       <main className="mx-auto mt-[56px] max-w-none px-2 pb-1 pt-3 sm:px-3">
@@ -2584,17 +2587,6 @@ export default function WorkspacePage() {
             } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
             <div className="flex min-h-[calc(100dvh-86px)] flex-col">
-              {isMobileViewport && hasCanvasPanel ? (
-                <div className="mb-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setMobileWorkspaceView("canvas")}
-                    className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
-                  >
-                    {tr("Open Canvas", "查看画布")}
-                  </button>
-                </div>
-              ) : null}
               <div className={hasCanvasPanel ? "pr-1.5 pb-36 pt-4" : "pb-36 pt-4"}>
                 <ChatPanel
                   outputLanguage={uiLanguage}
@@ -2648,6 +2640,7 @@ export default function WorkspacePage() {
                   styleConfirmed={flowStage === "billing" || flowStage === "generate"}
                   isPlanningStyleStep={isPlanningStyleStep}
                   showBillingConfirm={showBillingConfirm}
+                  showBillingRecord={showBillingRecord}
                   isPlanningBillingStep={isPlanningBillingStep}
                   billingConfirmed={billingConfirmed}
                   canConfirmBilling={canConfirmBilling}

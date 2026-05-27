@@ -206,6 +206,7 @@ type ChatPanelProps = {
   styleConfirmed: boolean;
   isPlanningStyleStep: boolean;
   showBillingConfirm: boolean;
+  showBillingRecord: boolean;
   isPlanningBillingStep: boolean;
   billingConfirmed: boolean;
   canConfirmBilling: boolean;
@@ -280,6 +281,7 @@ export function ChatPanel({
   styleConfirmed,
   isPlanningStyleStep,
   showBillingConfirm,
+  showBillingRecord,
   isPlanningBillingStep,
   billingConfirmed,
   canConfirmBilling,
@@ -300,9 +302,59 @@ export function ChatPanel({
   const styleDisplayName = (style: StyleOption) => (isZh ? style.name : style.englishName ?? style.name);
   const styleHoverDescription = (style: StyleOption) =>
     style.hoverDescription ?? style.fit;
+  const selectedStyleCardClass =
+    "translate-y-[-1px] border-zinc-900 bg-white shadow-[0_14px_28px_rgba(24,24,27,0.24)] ring-[3px] ring-zinc-900/18";
+  const selectedStyleBadgeClass =
+    "absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-zinc-900 text-white shadow-sm";
+  const [supportsHoverDescription, setSupportsHoverDescription] = useState(false);
   const [introPhase, setIntroPhase] = useState<"analyzing" | "planning" | "ask">("analyzing");
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(updates), [updates]);
+
+  const scrollToLatestCard = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const run = () => {
+      const doc = document.documentElement;
+      const targetTop = Math.max(0, doc.scrollHeight - window.innerHeight + 80);
+      window.scrollTo({ top: targetTop, behavior: "smooth" });
+    };
+    window.requestAnimationFrame(run);
+    window.setTimeout(run, 160);
+    window.setTimeout(run, 420);
+  };
+
+  const handleTopicSuggestionNext = () => {
+    onConfirmTopicSuggestion();
+    scrollToLatestCard();
+  };
+
+  const handleDraftNext = () => {
+    onConfirm();
+    scrollToLatestCard();
+  };
+
+  const handleStyleNext = () => {
+    onStyleNext();
+    scrollToLatestCard();
+  };
+
+  const handleBillingConfirm = () => {
+    onConfirmBilling();
+    scrollToLatestCard();
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const media = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const apply = () => setSupportsHoverDescription(media.matches);
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -383,6 +435,9 @@ export function ChatPanel({
   const showWorkflowSummaryCard = !(showWeakPromptSuggestions && showDirectionGuide) && !topicSuggestionLocked;
   const isDirectionLocked = configConfirmed && !showDirectionGuide;
   const shouldShowDraftConfirmAction = !showStyleStage && !showBillingConfirm && !styleConfirmed;
+  const draftGenerationLoadingActive =
+    thinkingState.active &&
+    /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
 
   if (shouldUseEnglishUi) {
     return (
@@ -462,7 +517,7 @@ export function ChatPanel({
                   <div className="mt-3 flex justify-end">
                     <button
                       type="button"
-                      onClick={onConfirmTopicSuggestion}
+                      onClick={handleTopicSuggestionNext}
                       className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                     >
                       Next
@@ -718,7 +773,7 @@ export function ChatPanel({
                     <button
                       type="button"
                       disabled={isPlanningNextStep || !canProceed}
-                      onClick={onConfirm}
+                      onClick={handleDraftNext}
                       className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
                     >
                       {isPlanningNextStep ? (
@@ -801,11 +856,17 @@ export function ChatPanel({
             ) : null}
 
             {configConfirmed && intent === "poster" && !posterDraft ? (
-              <p className="text-sm text-zinc-600">Final draft is being generated. If it still does not appear, please retry.</p>
+              <div className="flex items-center gap-2 text-sm text-zinc-700">
+                <LoaderCircle size={14} className="animate-spin text-zinc-500" />
+                {draftGenerationLoadingActive ? thinkingState.text : "Final draft is being generated. Please wait..."}
+              </div>
             ) : null}
 
             {configConfirmed && (intent === "ppt" || intent === "video") && !outlineItems.length && !slideDrafts.length ? (
-              <p className="text-sm text-zinc-600">Final draft is being generated. If it still does not appear, please retry.</p>
+              <div className="flex items-center gap-2 text-sm text-zinc-700">
+                <LoaderCircle size={14} className="animate-spin text-zinc-500" />
+                {draftGenerationLoadingActive ? thinkingState.text : "Final draft is being generated. Please wait..."}
+              </div>
             ) : null}
           </article>
         ) : null}
@@ -838,20 +899,22 @@ export function ChatPanel({
                     disabled
                     className={`group relative cursor-not-allowed rounded-2xl border p-2 text-left ${
                       active
-                        ? "translate-y-[-1px] border-zinc-900 bg-white shadow-[0_10px_22px_rgba(24,24,27,0.2)] ring-2 ring-zinc-900/20"
+                        ? selectedStyleCardClass
                         : "border-zinc-200 bg-white"
                     }`}
                   >
                     {active ? (
-                      <span className="absolute right-3 top-3 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-white">
+                      <span className={selectedStyleBadgeClass}>
                         <Check size={12} />
                       </span>
                     ) : null}
                     <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
                       <StyleCover style={style} />
-                      <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
-                        <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
-                      </div>
+                      {supportsHoverDescription ? (
+                        <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
+                          <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
+                        </div>
+                      ) : null}
                     </div>
                     <p className={`mt-2 text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
                       {styleDisplayName(style)}
@@ -886,20 +949,22 @@ export function ChatPanel({
                   onClick={() => onSelectStyle(style.id)}
                   className={`group relative rounded-2xl border p-2 text-left transition ${
                     style.id === selectedStyleId
-                      ? "translate-y-[-1px] border-zinc-900 bg-white shadow-[0_10px_22px_rgba(24,24,27,0.24)] ring-2 ring-zinc-900/25"
+                      ? selectedStyleCardClass
                       : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
                   }`}
                 >
                   {style.id === selectedStyleId ? (
-                    <span className="absolute right-3 top-3 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-white">
+                    <span className={selectedStyleBadgeClass}>
                       <Check size={12} />
                     </span>
                   ) : null}
                   <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
                     <StyleCover style={style} />
-                    <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
-                      <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
-                    </div>
+                    {supportsHoverDescription ? (
+                      <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
+                        <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
+                      </div>
+                    ) : null}
                   </div>
                   <p className={`mt-2 text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
                     {styleDisplayName(style)}
@@ -918,7 +983,7 @@ export function ChatPanel({
                 <button
                   type="button"
                   disabled={isPlanningStyleStep}
-                  onClick={onStyleNext}
+                  onClick={handleStyleNext}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
                 >
                   {isPlanningStyleStep ? (
@@ -935,7 +1000,7 @@ export function ChatPanel({
           </article>
         ) : null}
 
-        {showBillingConfirm ? (
+        {showBillingRecord ? (
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
             <h3 className="text-sm font-semibold text-zinc-900">
               {intent === "poster" ? "Poster Billing Summary" : "Generation Billing Summary"}
@@ -965,42 +1030,41 @@ export function ChatPanel({
             </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className={`text-sm ${canConfirmBilling ? "text-zinc-600" : "font-medium text-red-600"}`}>
-                {canConfirmBilling
+                {billingConfirmed
+                  ? "Billing confirmed. Generation is in progress."
+                  : canConfirmBilling
                   ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
                   : "Insufficient credits. Please upgrade before confirming this charge."}
               </p>
-              <button
-                type="button"
-                disabled={isPlanningBillingStep || !canConfirmBilling}
-                onClick={onConfirmBilling}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
-              >
-                {isPlanningBillingStep ? (
-                  <>
-                    <LoaderCircle size={14} className="animate-spin" />
-                    Thinking...
-                  </>
-                ) : billingConfirmed ? (
-                  "Confirmed, generating..."
-                ) : !canConfirmBilling ? (
-                  "Insufficient credits"
-                ) : (
-                  "Confirm Charge & Generate"
-                )}
-              </button>
+              {showBillingConfirm ? (
+                <button
+                  type="button"
+                  disabled={isPlanningBillingStep || !canConfirmBilling}
+                  onClick={handleBillingConfirm}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                >
+                  {isPlanningBillingStep ? (
+                    <>
+                      <LoaderCircle size={14} className="animate-spin" />
+                      Thinking...
+                    </>
+                  ) : billingConfirmed ? (
+                    "Confirmed, generating..."
+                  ) : !canConfirmBilling ? (
+                    "Insufficient credits"
+                  ) : (
+                    "Confirm Charge & Generate"
+                  )}
+                </button>
+              ) : (
+                <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
+                  Confirmed
+                </span>
+              )}
             </div>
           </article>
         ) : null}
 
-        {thinkingState.active ? (
-          <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-            <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · {thinkingState.module}</div>
-            <div className="flex items-center gap-2 text-sm text-zinc-700">
-              <LoaderCircle size={14} className="animate-spin text-zinc-500" />
-              {thinkingState.text}
-            </div>
-          </article>
-        ) : null}
       </section>
     );
   }
@@ -1276,7 +1340,7 @@ export function ChatPanel({
                     <div className="mt-3 flex justify-end">
                       <button
                         type="button"
-                        onClick={onConfirmTopicSuggestion}
+                      onClick={handleTopicSuggestionNext}
                         className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
                       >
                         Next
@@ -1688,7 +1752,7 @@ export function ChatPanel({
                 <button
                   type="button"
                   disabled={isPlanningNextStep || !canProceed}
-                  onClick={onConfirm}
+                      onClick={handleDraftNext}
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
                 >
                   {isPlanningNextStep ? (
@@ -1864,20 +1928,22 @@ export function ChatPanel({
                   disabled
                   className={`group relative cursor-not-allowed rounded-2xl border p-2 text-left ${
                     active
-                      ? "translate-y-[-1px] border-zinc-900 bg-white shadow-[0_10px_22px_rgba(24,24,27,0.2)] ring-2 ring-zinc-900/20"
+                      ? selectedStyleCardClass
                       : "border-zinc-200 bg-white"
                   }`}
                 >
                   {active ? (
-                    <span className="absolute right-3 top-3 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-white">
+                    <span className={selectedStyleBadgeClass}>
                       <Check size={12} />
                     </span>
                   ) : null}
                   <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
                     <StyleCover style={style} />
-                    <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
-                      <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
-                    </div>
+                    {supportsHoverDescription ? (
+                      <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
+                        <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
+                      </div>
+                    ) : null}
                   </div>
                   <p className={`mt-2 text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
                     {styleDisplayName(style)}
@@ -1911,20 +1977,22 @@ export function ChatPanel({
                 onClick={() => onSelectStyle(style.id)}
                 className={`group relative rounded-2xl border p-2 text-left transition ${
                   style.id === selectedStyleId
-                    ? "translate-y-[-1px] border-zinc-900 bg-white shadow-[0_10px_22px_rgba(24,24,27,0.24)] ring-2 ring-zinc-900/25"
+                    ? selectedStyleCardClass
                     : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
                 }`}
               >
                 {style.id === selectedStyleId ? (
-                  <span className="absolute right-3 top-3 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-white">
+                  <span className={selectedStyleBadgeClass}>
                     <Check size={12} />
                   </span>
                 ) : null}
                 <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl">
                   <StyleCover style={style} />
-                  <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
-                    <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
-                  </div>
+                  {supportsHoverDescription ? (
+                    <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
+                      <p className="whitespace-normal break-words">{styleHoverDescription(style)}</p>
+                    </div>
+                  ) : null}
                 </div>
                 <p className={`mt-2 text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
                   {styleDisplayName(style)}
@@ -1944,7 +2012,7 @@ export function ChatPanel({
               <button
                 type="button"
                 disabled={isPlanningStyleStep}
-                onClick={onStyleNext}
+                onClick={handleStyleNext}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
               >
                 {isPlanningStyleStep ? (
@@ -1961,7 +2029,7 @@ export function ChatPanel({
         </article>
       ) : null}
 
-      {showBillingConfirm ? (
+      {showBillingRecord ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
           <h3 className="text-sm font-semibold text-zinc-900">
             {intent === "poster" ? "Poster Billing Summary" : "Generation Billing Summary"}
@@ -1993,42 +2061,41 @@ export function ChatPanel({
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className={`text-sm ${canConfirmBilling ? "text-zinc-600" : "font-medium text-red-600"}`}>
-              {canConfirmBilling
+              {billingConfirmed
+                ? "Billing confirmed. Generation is in progress."
+                : canConfirmBilling
                 ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
                 : "Insufficient credits. Please upgrade before confirming this charge."}
             </p>
-            <button
-              type="button"
-              disabled={isPlanningBillingStep || !canConfirmBilling}
-              onClick={onConfirmBilling}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
-            >
-              {isPlanningBillingStep ? (
-                <>
-                  <LoaderCircle size={14} className="animate-spin" />
-                  Thinking...
-                </>
-              ) : billingConfirmed ? (
-                "Confirmed, generating..."
-              ) : !canConfirmBilling ? (
-                "Insufficient credits"
-              ) : (
-                "Confirm Charge & Generate"
-              )}
-            </button>
+            {showBillingConfirm ? (
+              <button
+                type="button"
+                disabled={isPlanningBillingStep || !canConfirmBilling}
+                onClick={handleBillingConfirm}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+              >
+                {isPlanningBillingStep ? (
+                  <>
+                    <LoaderCircle size={14} className="animate-spin" />
+                    Thinking...
+                  </>
+                ) : billingConfirmed ? (
+                  "Confirmed, generating..."
+                ) : !canConfirmBilling ? (
+                  "Insufficient credits"
+                ) : (
+                  "Confirm Charge & Generate"
+                )}
+              </button>
+            ) : (
+              <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
+                Confirmed
+              </span>
+            )}
           </div>
         </article>
       ) : null}
 
-      {thinkingState.active ? (
-        <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · {thinkingState.module}</div>
-          <div className="flex items-center gap-2 text-sm text-zinc-700">
-            <LoaderCircle size={14} className="animate-spin text-zinc-500" />
-            {thinkingState.text}
-          </div>
-        </article>
-      ) : null}
     </section>
   );
 }

@@ -111,10 +111,29 @@ function splitCopy(copy: string, index: number) {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
-  const title = lines[0] || `海报 ${index}`;
-  const subtitle = lines[1] || "知识可视化海报";
-  const body = (lines.length > 2 ? lines.slice(2).join(" ") : lines.slice(1).join(" ")) || "补充这张海报的核心讲解内容。";
+  const title = lines[0] || `Poster ${index}`;
+  const subtitle = lines[1] || "Knowledge visual poster";
+  const body =
+    (lines.length > 2 ? lines.slice(2).join(" ") : lines.slice(1).join(" ")) ||
+    "Add the core explanation for this poster.";
   return { title, subtitle, body };
+}
+
+function buildPosterCardCopy(
+  posterDraft: PosterDraft | null | undefined,
+  plan: PosterPlanItem | undefined,
+  index: number,
+  posterCount: number,
+) {
+  const headline = posterDraft?.headline?.trim() || plan?.title?.trim() || `Poster ${index}`;
+  const subtitle = posterDraft?.subtitle?.trim() || posterDraft?.visualType?.trim() || "Knowledge visual poster";
+  const body = posterDraft?.body?.trim() || "Add the core explanation for this poster.";
+  const points = (posterDraft?.points ?? []).map((point) => point.trim()).filter(Boolean);
+  const focus = plan?.focus?.trim() || "";
+  const titleLine = posterCount > 1 ? `${headline} (${index}/${posterCount})` : headline;
+  return [titleLine, subtitle, body, ...points.map((point) => `- ${point}`), focus ? `- ${focus}` : ""]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function pickNextCaseImage(currentSrc: string, fallbackSeed: number) {
@@ -215,20 +234,20 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
   } = data;
   const canEdit = card.status === "ready";
   const isGenerating = card.status === "queued" || card.status === "generating";
-  const statusLabel =
-    card.status === "ready"
-      ? "已完成"
-      : card.status === "failed"
-        ? "生成失败"
-        : card.status === "queued"
-          ? "待生成"
-          : "生成中";
-  const statusClass =
-    card.status === "ready"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : card.status === "failed"
-        ? "bg-red-50 text-red-700 border-red-200"
-        : "bg-zinc-100 text-zinc-600 border-zinc-200";
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) {
+      return;
+    }
+    const minHeight = 108;
+    const maxHeight = 220;
+    el.style.height = "0px";
+    const nextHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [card.copy]);
 
   return (
     <div
@@ -238,8 +257,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <p className="text-xs text-zinc-500">海报 {card.index}</p>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] ${statusClass}`}>{statusLabel}</span>
+          <p className="text-xs text-zinc-500">Poster {card.index}</p>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -249,7 +267,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
             className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 text-[11px] text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RotateCcw size={11} />
-            撤销
+            Undo
           </button>
           <button
             type="button"
@@ -257,54 +275,53 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
             onClick={() => onRestoreCopy(card.id)}
             className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 text-[11px] text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            初稿
-          </button>
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={() => onRedraw(card.id)}
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RefreshCw size={12} />
-            重绘
+            Draft
           </button>
           <button
             type="button"
             disabled={!canEdit}
             onClick={() => onDownload(card)}
-            className="inline-flex h-8 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            className="inline-flex h-8 items-center gap-1 rounded-md bg-blue-600 px-3.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-300"
           >
             <Download size={12} />
-            下载
+            Download
           </button>
         </div>
       </div>
 
-      <textarea
-        value={card.copy}
-        onChange={(event) => onUpdate(card.id, { copy: event.target.value })}
-        rows={4}
-        disabled={!canEdit}
-        className="w-full resize-none rounded-md border border-zinc-200 px-2.5 py-2 text-xs leading-5 text-zinc-700 outline-none focus:border-zinc-400 disabled:cursor-not-allowed disabled:bg-zinc-50"
-      />
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={card.copy}
+          onChange={(event) => onUpdate(card.id, { copy: event.target.value })}
+          rows={4}
+          disabled={!canEdit}
+          className="min-h-[108px] w-full resize-none rounded-md border border-zinc-200 px-2.5 pb-10 pt-2 text-xs leading-5 text-zinc-700 outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden focus:border-zinc-400 disabled:cursor-not-allowed disabled:bg-zinc-50"
+        />
+        <button
+          type="button"
+          disabled={!canEdit}
+          onClick={() => onRedraw(card.id)}
+          className="absolute bottom-2 right-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 text-[11px] font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RefreshCw size={11} />
+          Redraw
+        </button>
+      </div>
 
       <div className="relative mt-2 overflow-hidden rounded-lg border border-zinc-200">
         {card.status === "ready" ? (
           <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100">
-            <Image src={card.imageSrc} alt={`海报占位图${card.index}`} fill className="object-cover" />
+            <Image src={card.imageSrc} alt={`Poster ${card.index}`} fill className="object-cover" />
           </div>
         ) : (
-          <div className="relative aspect-[9/16] w-full" style={{ backgroundColor: PENDING_POSTER_COLOR }}>
-            <div className="absolute left-3 top-3 rounded-md bg-white/80 px-2 py-1 text-[11px] font-medium text-zinc-700">
-              灰色占位
-            </div>
-          </div>
+          <div className="relative aspect-[9/16] w-full" style={{ backgroundColor: PENDING_POSTER_COLOR }} />
         )}
         {isGenerating ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
               <LoaderCircle size={12} className="animate-spin text-blue-500" />
-              正在绘制海报
+              Rendering poster
             </div>
           </div>
         ) : null}
@@ -316,7 +333,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
               className="inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
             >
               <RefreshCw size={12} />
-              重试本张
+              Retry
             </button>
           </div>
         ) : null}
@@ -324,11 +341,11 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
 
       {card.archives.length ? (
         <div className="mt-2">
-          <p className="mb-1 text-[11px] text-zinc-500">历史海报（重绘前）</p>
+          <p className="mb-1 text-[11px] text-zinc-500">History (before redraw)</p>
           <div className="grid grid-cols-4 gap-1.5">
             {card.archives.map((archive) => (
               <div key={archive.id} className="relative aspect-[9/16] overflow-hidden rounded-md border border-zinc-200">
-                <Image src={archive.imageSrc} alt="历史海报" fill className="object-cover" />
+                <Image src={archive.imageSrc} alt="Poster history" fill className="object-cover" />
               </div>
             ))}
           </div>
@@ -376,22 +393,17 @@ export function PosterCanvas({
     () =>
       Array.from({ length: count }, (_, idx) => {
         const plan = posterPlanList[idx];
-        const points = posterDraft?.points ?? [];
-        const fallbackPoint = points[idx % Math.max(1, points.length)] || "";
+        const copy = buildPosterCardCopy(posterDraft, plan, idx + 1, count);
         return {
           id: `poster-card-${idx + 1}`,
           index: idx + 1,
-          copy: `${plan?.title || `${posterDraft?.headline || "海报主题"} · 第${idx + 1}张`}\n${
-            posterDraft?.subtitle || posterDraft?.visualType || "信息可视化海报"
-          }\n${plan?.focus || fallbackPoint || posterDraft?.body || "补充这张海报的核心讲解内容。"}`,
+          copy,
           colorHex: POSTER_PLACEHOLDER_COLORS[idx % POSTER_PLACEHOLDER_COLORS.length],
           imageSrc: CASE_IMAGES[idx % CASE_IMAGES.length],
           status: "queued" as const,
           x: idx * 468,
           y: 48,
-          initialCopy: `${plan?.title || `${posterDraft?.headline || "海报主题"} · 第${idx + 1}张`}\n${
-            posterDraft?.subtitle || posterDraft?.visualType || "信息可视化海报"
-          }\n${plan?.focus || fallbackPoint || posterDraft?.body || "补充这张海报的核心讲解内容。"}`,
+          initialCopy: copy,
           history: [],
           archives: [],
         };
@@ -664,8 +676,8 @@ export function PosterCanvas({
     return (
       <section className="flex h-full w-full items-center justify-center border border-zinc-200 bg-white">
         <div className="text-center">
-          <p className="text-sm font-medium text-zinc-800">暂无海报内容</p>
-          <p className="mt-1 text-xs text-zinc-500">请先在左侧确认配置并生成文稿</p>
+          <p className="text-sm font-medium text-zinc-800">No poster content yet</p>
+          <p className="mt-1 text-xs text-zinc-500">Confirm settings and generate draft content first.</p>
         </div>
       </section>
     );
@@ -717,8 +729,8 @@ export function PosterCanvas({
             </>
           ) : null}
           <span className="text-xs text-zinc-500">
-            进度 {readyCount}/{cards.length}
-            {failedCount ? ` · 失败 ${failedCount}` : ""}
+            Progress {readyCount}/{cards.length}
+            {failedCount ? ` · Failed ${failedCount}` : ""}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -735,7 +747,7 @@ export function PosterCanvas({
             }}
             disabled={!selectedCard || selectedCard.history.length === 0}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
-            title="撤销上一步"
+            title="Undo"
           >
             <RotateCcw size={13} />
           </button>
@@ -746,7 +758,7 @@ export function PosterCanvas({
             className="inline-flex h-8 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-300"
           >
             {isBulkDownloading ? <LoaderCircle size={12} className="animate-spin" /> : <Download size={12} />}
-            下载全部
+            Download All
           </button>
         </div>
       </div>

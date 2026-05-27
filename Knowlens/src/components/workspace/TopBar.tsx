@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Clapperboard, FileDown, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clapperboard, FileDown, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UserMenu } from "@/components/auth/UserMenu";
 
@@ -18,6 +18,8 @@ type TopBarProps = {
   actionsDisabled?: boolean;
   isExportingPpt?: boolean;
   isComposingVideo?: boolean;
+  showOpenCanvasButton?: boolean;
+  onOpenCanvas?: () => void;
 };
 
 function getSaveStateLabel(saveState: SaveState) {
@@ -42,6 +44,8 @@ export function TopBar({
   actionsDisabled = false,
   isExportingPpt = false,
   isComposingVideo = false,
+  showOpenCanvasButton = false,
+  onOpenCanvas,
 }: TopBarProps) {
   const router = useRouter();
   const showWorkspaceActions = Boolean(onDownloadPpt || onDownloadVideo);
@@ -118,6 +122,20 @@ export function TopBar({
             <span className="text-zinc-500">|</span>
             <span className="font-medium">Upgrade</span>
           </button>
+          <UserMenu />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2 sm:hidden">
+          {showOpenCanvasButton ? (
+            <button
+              type="button"
+              onClick={onOpenCanvas}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 active:translate-y-[1px]"
+            >
+              <span>Open Canvas</span>
+              <ArrowRight size={13} />
+            </button>
+          ) : null}
           <UserMenu />
         </div>
       </div>
