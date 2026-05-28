@@ -5,6 +5,7 @@ import { buildMockDraftPayload } from "@/lib/prompts/content-draft-mock";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
 import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 import { incrementAndCheckUsageLimit, getUsageCounter } from "@/lib/server/guard";
+import { logOpsEvent } from "@/lib/server/store";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import {
   getLanguageTag,
@@ -758,6 +759,14 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(nextAuthOptions);
     const email = session?.user?.email?.trim().toLowerCase();
     if (!email) {
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_failed",
+        status: "error",
+        source: "unknown",
+        code: "DRAFT_AUTH_REQUIRED",
+        message: "Draft generation requested without sign-in session.",
+      });
       return NextResponse.json({ error: "Please sign in before generating draft content." }, { status: 401 });
     }
 
@@ -791,7 +800,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = (await request.json()) as PosterDraftRequest;
-    const topic = (payload.topic ?? "知识主题").trim() || "知识主题";
+    const topic = (payload.topic ?? "Knowledge Topic").trim() || "Knowledge Topic";
     const prompt = (payload.prompt ?? "").trim();
     const textModel = (payload.textModel ?? "").trim().toLowerCase();
     const direction = payload.direction ?? "poster";
@@ -834,9 +843,20 @@ export async function POST(request: NextRequest) {
     });
 
     let content = "";
+    const modelForLog = textModel || "paid-default";
     if (isFreeTextModel(textModel)) {
       const freeResult = await requestDraftFromGptsApi({ textModel, promptBundle });
       if (!freeResult.ok) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_failed",
+          status: "error",
+          source: modelForLog,
+          userEmail: email,
+          code: "FREE_MODEL_REQUEST_FAILED",
+          message: freeResult.error,
+          details: { direction, outputCount },
+        });
         if (direction === "poster") {
           return NextResponse.json(
             {
@@ -854,6 +874,16 @@ export async function POST(request: NextRequest) {
     } else {
       const paidResult = await requestDraftFromPaidModels({ textModel, promptBundle });
       if (!paidResult.ok) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_failed",
+          status: "error",
+          source: modelForLog,
+          userEmail: email,
+          code: "PAID_MODEL_REQUEST_FAILED",
+          message: paidResult.error,
+          details: { direction, outputCount },
+        });
         if (direction === "poster") {
           return NextResponse.json(
             {
@@ -871,6 +901,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (!content) {
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_failed",
+        status: "error",
+        source: modelForLog,
+        userEmail: email,
+        code: "DRAFT_EMPTY_RESPONSE",
+        message: "Model response is empty.",
+        details: { direction, outputCount },
+      });
       if (direction === "poster") {
         return NextResponse.json(
           {
@@ -887,6 +927,16 @@ export async function POST(request: NextRequest) {
     const parsed = parseJsonContent(content);
 
     if (!parsed) {
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_failed",
+        status: "error",
+        source: modelForLog,
+        userEmail: email,
+        code: "DRAFT_INVALID_JSON",
+        message: "Model response is not valid JSON.",
+        details: { direction, outputCount },
+      });
       if (direction !== "poster") {
         return NextResponse.json({ error: "Model response is not valid JSON." }, { status: 502 });
       }
@@ -899,6 +949,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (direction !== "poster") {
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_success",
+        status: "ok",
+        source: modelForLog,
+        userEmail: email,
+        details: { direction, outputCount },
+      });
       const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic);
       if (direction === "ppt") {
         const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount);
@@ -993,6 +1051,15 @@ export async function POST(request: NextRequest) {
     void renderSpec;
     void internalModelPrompt;
 
+    logOpsEvent({
+      category: "llm",
+      action: "draft_generation_success",
+      status: "ok",
+      source: modelForLog,
+      userEmail: email,
+      details: { direction, outputCount },
+    });
+
     return NextResponse.json({
       posterDraft: specificPosterDraft,
       planList,
@@ -1002,12 +1069,28 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
     if (retryAfter) {
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_failed",
+        status: "error",
+        source: "unknown",
+        code: "DRAFT_RATE_LIMIT",
+        message: "Too many draft requests.",
+      });
       return NextResponse.json(
         { error: "Too many draft requests. Please retry later." },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       );
     }
     const message = error instanceof Error ? error.message : "Unknown error";
+    logOpsEvent({
+      category: "llm",
+      action: "draft_generation_failed",
+      status: "error",
+      source: "unknown",
+      code: "DRAFT_INTERNAL",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

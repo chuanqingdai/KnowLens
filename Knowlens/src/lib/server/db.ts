@@ -158,6 +158,24 @@ function createTables(db: DatabaseSync) {
       cycle TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS ops_events (
+      id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      action TEXT NOT NULL,
+      status TEXT NOT NULL,
+      source TEXT,
+      code TEXT,
+      message TEXT,
+      user_email TEXT,
+      project_id TEXT,
+      details_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ops_events_created_at ON ops_events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ops_events_category_status ON ops_events(category, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ops_events_source ON ops_events(source, created_at DESC);
   `);
 
   const uploadJobColumns = [
@@ -174,6 +192,22 @@ function createTables(db: DatabaseSync) {
   for (const columnDef of uploadJobColumns) {
     try {
       db.exec(`ALTER TABLE upload_jobs ADD COLUMN ${columnDef}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate column name/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  const billingFulfillmentColumns = [
+    "checkout_source TEXT",
+    "checkout_status TEXT",
+  ];
+
+  for (const columnDef of billingFulfillmentColumns) {
+    try {
+      db.exec(`ALTER TABLE billing_fulfillments ADD COLUMN ${columnDef}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!/duplicate column name/i.test(message)) {

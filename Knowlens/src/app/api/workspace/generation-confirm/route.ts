@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { incrementUsageCounter } from "@/lib/server/guard";
-import { getLatestSubscriptionDb } from "@/lib/server/store";
+import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
 import { buildImage2ProviderConfig, requestImage2Generation, resolveImage2Size } from "@/lib/server/image2";
 
 export const runtime = "nodejs";
@@ -53,6 +53,27 @@ function ensureSafeOrigin(req: NextRequest) {
   return origin === req.nextUrl.origin;
 }
 
+function isLocalNetworkRequest(req: NextRequest) {
+  const host = (req.headers.get("host") || req.nextUrl.host || "").toLowerCase();
+  const hostname = host.split(":")[0];
+  if (!hostname) {
+    return false;
+  }
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return true;
+  }
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return true;
+  }
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return true;
+  }
+  return false;
+}
+
 function normalizeImageModel(imageModel?: string) {
   const raw = (imageModel || "").trim();
   if (!raw) {
@@ -100,8 +121,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
     }
     const session = await getServerSession(nextAuthOptions);
-    const email = session?.user?.email?.trim().toLowerCase();
+    const localBypassAllowed =
+      process.env.NODE_ENV !== "production" &&
+      isLocalNetworkRequest(request) &&
+      (process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true" || process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN == null);
+    const email = session?.user?.email?.trim().toLowerCase() || (localBypassAllowed ? "local-dev@knowlens.ai" : "");
     if (!email) {
+      logOpsEvent({
+        category: "image",
+        action: "image_generation_failed",
+        status: "error",
+        source: "unknown",
+        code: "IMAGE_AUTH_REQUIRED",
+        message: "Image generation confirm requested without sign-in session.",
+      });
       return NextResponse.json({ error: "Please sign in before confirming generation." }, { status: 401 });
     }
     let payload: GenerationConfirmPayload | null = null;
@@ -110,20 +143,67 @@ export async function POST(request: NextRequest) {
     } catch {
       payload = null;
     }
+    if (!payload) {
+      logOpsEvent({
+        category: "image",
+        action: "image_generation_failed",
+        status: "error",
+        source: "unknown",
+        userEmail: email,
+        code: "IMAGE_INVALID_PAYLOAD",
+        message: "Invalid generation payload.",
+      });
+      return NextResponse.json({ error: "Invalid generation payload." }, { status: 400 });
+    }
+
     const scopeKey = getScopeFromRequest(request, email);
+    const taskCount = Array.isArray(payload.tasks) ? payload.tasks.length : 0;
+    const requestedOutputs =
+      Number.isFinite(payload.outputs) && Number(payload.outputs) > 0
+        ? Math.round(Number(payload.outputs))
+        : 0;
+    const imageModel = normalizeImageModel(payload.imageModel);
+    const wantsImageProvider = /gpt-image-?2/i.test(imageModel);
+
+    if (wantsImageProvider && requestedOutputs > 0 && taskCount === 0) {
+      logOpsEvent({
+        category: "image",
+        action: "image_generation_failed",
+        status: "error",
+        source: imageModel,
+        userEmail: email,
+        code: "GENERATION_TASKS_REQUIRED",
+        message: "Generation tasks are required before confirming image generation.",
+      });
+      return NextResponse.json(
+        {
+          error: "Generation tasks are required before confirming image generation.",
+          code: "GENERATION_TASKS_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
+
     const count = incrementUsageCounter({
       scopeKey,
       metricKey: "workspace:generation_confirmed",
     });
-    const taskCount = Array.isArray(payload?.tasks) ? payload.tasks.length : 0;
-    const imageModel = normalizeImageModel(payload?.imageModel);
     const isFreeUser = isFreeUserBySubscription(email);
     const image2ProviderConfig = buildImage2ProviderConfig();
 
-    const shouldCallImageProvider = taskCount > 0 && /gpt-image-?2/i.test(imageModel);
+    const shouldCallImageProvider = taskCount > 0 && wantsImageProvider;
     const taskResults: GenerationTaskResult[] = [];
     if (shouldCallImageProvider) {
       if (!image2ProviderConfig) {
+        logOpsEvent({
+          category: "image",
+          action: "image_generation_failed",
+          status: "error",
+          source: imageModel,
+          userEmail: email,
+          code: "IMAGE_PROVIDER_KEY_MISSING",
+          message: "Missing IMAGE2 provider API key.",
+        });
         return NextResponse.json({ error: "Missing IMAGE2 provider API key." }, { status: 500 });
       }
       const tasks = payload?.tasks ?? [];
@@ -135,6 +215,15 @@ export async function POST(request: NextRequest) {
             index,
             ok: false,
             error: "Empty generation prompt.",
+          });
+          logOpsEvent({
+            category: "image",
+            action: "image_generation_failed",
+            status: "error",
+            source: imageModel,
+            userEmail: email,
+            code: "EMPTY_GENERATION_PROMPT",
+            message: `Empty generation prompt for task ${index}.`,
           });
           continue;
         }
@@ -156,7 +245,38 @@ export async function POST(request: NextRequest) {
             error: generated.errorMessage,
             errorCode: generated.errorCode,
           });
+          logOpsEvent({
+            category: "image",
+            action: "image_generation_failed",
+            status: "error",
+            source: imageModel,
+            userEmail: email,
+            code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
+            message: generated.errorMessage || "Image generation failed.",
+            details: {
+              intent: payload.intent ?? "unknown",
+              taskIndex: index,
+              ratio: task.aspectRatio || payload?.ratio || null,
+              outputType: task.outputType || null,
+            },
+          });
         }
+      }
+      const successCount = taskResults.filter((item) => item.ok).length;
+      if (successCount > 0) {
+        logOpsEvent({
+          category: "image",
+          action: "image_generation_success",
+          status: "ok",
+          source: imageModel,
+          userEmail: email,
+          message: `${successCount}/${taskResults.length} tasks succeeded`,
+          details: {
+            intent: payload.intent ?? "unknown",
+            outputs: requestedOutputs,
+            ratio: payload.ratio ?? "",
+          },
+        });
       }
     }
 
@@ -164,12 +284,12 @@ export async function POST(request: NextRequest) {
       ok: true,
       count,
       accepted: {
-        intent: payload?.intent ?? "unknown",
-        outputs: Number.isFinite(payload?.outputs) ? payload?.outputs : 0,
-        ratio: payload?.ratio ?? "",
+        intent: payload.intent ?? "unknown",
+        outputs: requestedOutputs,
+        ratio: payload.ratio ?? "",
         imageModel,
-        styleId: payload?.style?.id ?? "",
-        styleName: payload?.style?.name ?? "",
+        styleId: payload.style?.id ?? "",
+        styleName: payload.style?.name ?? "",
         taskCount,
       },
       generation: {
@@ -179,6 +299,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation confirm failed.";
+    logOpsEvent({
+      category: "image",
+      action: "image_generation_failed",
+      status: "error",
+      source: "unknown",
+      code: "IMAGE_CONFIRM_INTERNAL",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

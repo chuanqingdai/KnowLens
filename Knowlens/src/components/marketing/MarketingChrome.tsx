@@ -87,6 +87,8 @@ function canUseOneTapNow() {
   return !isIOS && !isSafariLike && navigator.cookieEnabled;
 }
 
+const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
+
 export function MarketingChrome({ children, showLocaleSwitch = false }: MarketingChromeProps) {
   const { t } = useLocale();
   const router = useRouter();
@@ -130,6 +132,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
         : pathname || "/";
     try {
       window.sessionStorage.setItem("membership:return-path", currentPath);
+      window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, "landing_upgrade");
     } catch {
       // ignore storage errors
     }

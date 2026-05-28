@@ -18,6 +18,20 @@ type UploadJobInput = {
   sourceText?: string;
 };
 
+type OpsEventStatus = "ok" | "error" | "info";
+
+type OpsEventInput = {
+  category: string;
+  action: string;
+  status: OpsEventStatus;
+  source?: string;
+  code?: string;
+  message?: string;
+  userEmail?: string;
+  projectId?: string;
+  details?: unknown;
+};
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -400,16 +414,20 @@ export function recordBillingFulfillment(input: {
   userEmail: string;
   planId: string;
   cycle: "monthly" | "yearly";
+  checkoutSource?: string;
+  checkoutStatus?: string;
 }) {
   const { db } = getDb();
   db.prepare(
-    `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, checkout_source, checkout_status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.sessionId,
     normalizeScope(input.userEmail),
     input.planId,
     input.cycle,
+    input.checkoutSource?.trim().slice(0, 64) || null,
+    input.checkoutStatus?.trim().slice(0, 32) || "fulfilled",
     nowIso(),
   );
 }
@@ -423,6 +441,7 @@ export function applyBillingFulfillmentAtomic(input: {
   monthlyCredits: number;
   startedAt: string;
   renewAt: string;
+  checkoutSource?: string;
 }) {
   const { db } = getDb();
   const normalizedEmail = normalizeScope(input.userEmail);
@@ -482,7 +501,7 @@ export function applyBillingFulfillmentAtomic(input: {
     ).run(
       creditRecordId,
       nowIso(),
-      `${input.planName} ${input.cycle} purchase credited`,
+      `${input.planName} ${input.cycle} purchase credited${input.checkoutSource ? ` [source:${input.checkoutSource}]` : ""}`,
       input.monthlyCredits,
       nextBalance,
       userId,
@@ -490,13 +509,15 @@ export function applyBillingFulfillmentAtomic(input: {
     );
 
     db.prepare(
-      `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, checkout_source, checkout_status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       input.sessionId,
       normalizedEmail,
       input.planId,
       input.cycle,
+      input.checkoutSource?.trim().slice(0, 64) || null,
+      "fulfilled",
       nowIso(),
     );
 
@@ -506,4 +527,179 @@ export function applyBillingFulfillmentAtomic(input: {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function clampText(input: string | undefined, max: number) {
+  if (!input) {
+    return "";
+  }
+  return input.trim().slice(0, max);
+}
+
+function stringifyDetails(details: unknown) {
+  if (details === undefined) {
+    return null;
+  }
+  try {
+    return JSON.stringify(details).slice(0, 4000);
+  } catch {
+    return null;
+  }
+}
+
+export function logOpsEvent(input: OpsEventInput) {
+  try {
+    const { db } = getDb();
+    const id = `evt-${randomUUID()}`;
+    const category = clampText(input.category, 48) || "unknown";
+    const action = clampText(input.action, 64) || "unknown";
+    const status = (clampText(input.status, 16) || "info") as OpsEventStatus;
+    const source = clampText(input.source, 64) || null;
+    const code = clampText(input.code, 64) || null;
+    const message = clampText(input.message, 500) || null;
+    const userEmail = clampText(input.userEmail, 160).toLowerCase() || null;
+    const projectId = clampText(input.projectId, 120) || null;
+    const detailsJson = stringifyDetails(input.details);
+    db.prepare(
+      `INSERT INTO ops_events (id, category, action, status, source, code, message, user_email, project_id, details_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      category,
+      action,
+      status,
+      source,
+      code,
+      message,
+      userEmail,
+      projectId,
+      detailsJson,
+      nowIso(),
+    );
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+export function getCheckoutSourceDailyStats(input?: { days?: number }) {
+  const { db } = getDb();
+  const days = Math.min(90, Math.max(1, Math.round(input?.days ?? 14)));
+  const rows = db
+    .prepare(
+      `WITH base AS (
+         SELECT
+           substr(created_at, 1, 10) AS day,
+           COALESCE(NULLIF(trim(source), ''), 'unknown') AS source,
+           action,
+           status
+         FROM ops_events
+         WHERE category = 'billing'
+           AND action IN ('checkout_attempt', 'checkout_finalize_success')
+           AND created_at >= datetime('now', ?)
+       )
+       SELECT
+         day,
+         source,
+         SUM(CASE WHEN action = 'checkout_attempt' THEN 1 ELSE 0 END) AS attempts,
+         SUM(CASE WHEN action = 'checkout_finalize_success' THEN 1 ELSE 0 END) AS successes
+       FROM base
+       GROUP BY day, source
+       ORDER BY day DESC, source ASC`,
+    )
+    .all(`-${days} day`) as Array<{
+    day?: string;
+    source?: string;
+    attempts?: number;
+    successes?: number;
+  }>;
+
+  return rows.map((row) => {
+    const attempts = Number(row.attempts ?? 0);
+    const successes = Number(row.successes ?? 0);
+    const successRate = attempts > 0 ? Number(((successes / attempts) * 100).toFixed(2)) : 0;
+    return {
+      day: row.day ?? "",
+      source: row.source ?? "unknown",
+      attempts,
+      successes,
+      successRate,
+    };
+  });
+}
+
+export function getAdminOpsSummary(input?: { errorLimit?: number; checkoutDays?: number }) {
+  const { db } = getDb();
+  const errorLimit = Math.min(200, Math.max(10, Math.round(input?.errorLimit ?? 80)));
+  const projectTotalRow = db.prepare("SELECT COUNT(*) as count FROM projects").get() as { count?: number } | undefined;
+  const activeProjectRow = db
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM projects
+       WHERE LOWER(COALESCE(status, '')) IN ('进行中', 'in progress', 'in_progress', 'processing', 'queued')`,
+    )
+    .get() as { count?: number } | undefined;
+  const totalProjectCount = Number(projectTotalRow?.count ?? 0);
+  const activeProjectCount = Number(activeProjectRow?.count ?? 0);
+  const checkoutStats = getCheckoutSourceDailyStats({ days: input?.checkoutDays ?? 14 });
+
+  const errorRows = db
+    .prepare(
+      `SELECT
+         id,
+         category,
+         action,
+         status,
+         source,
+         code,
+         message,
+         user_email as userEmail,
+         project_id as projectId,
+         details_json as detailsJson,
+         created_at as createdAt
+       FROM ops_events
+       WHERE status = 'error'
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(errorLimit) as Array<Record<string, unknown>>;
+
+  const errorByCategory = db
+    .prepare(
+      `SELECT category, COUNT(*) as count
+       FROM ops_events
+       WHERE status = 'error'
+       GROUP BY category
+       ORDER BY count DESC`,
+    )
+    .all() as Array<{ category?: string; count?: number }>;
+
+  const totalErrorCount = errorByCategory.reduce((sum, row) => sum + Number(row.count ?? 0), 0);
+
+  return {
+    projects: {
+      total: totalProjectCount,
+      active: activeProjectCount,
+    },
+    errors: {
+      total: totalErrorCount,
+      byCategory: errorByCategory.map((row) => ({
+        category: row.category ?? "unknown",
+        count: Number(row.count ?? 0),
+      })),
+      recent: errorRows.map((row) => ({
+        id: String(row.id ?? ""),
+        category: String(row.category ?? ""),
+        action: String(row.action ?? ""),
+        source: row.source ? String(row.source) : "unknown",
+        code: row.code ? String(row.code) : null,
+        message: row.message ? String(row.message) : "",
+        userEmail: row.userEmail ? String(row.userEmail) : null,
+        projectId: row.projectId ? String(row.projectId) : null,
+        detailsJson: row.detailsJson ? String(row.detailsJson) : null,
+        createdAt: String(row.createdAt ?? ""),
+      })),
+    },
+    checkout: checkoutStats,
+  };
 }

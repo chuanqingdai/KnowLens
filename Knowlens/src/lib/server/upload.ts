@@ -174,6 +174,49 @@ export function enqueueUpload(input: {
   } satisfies EnqueuedUpload;
 }
 
+function isLikelyTimeoutMessage(message: string) {
+  return /timed out/i.test(message);
+}
+
+function classifyUploadWorkerError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (isLikelyTimeoutMessage(message)) {
+    return { code: "UPLOAD_WORKER_TIMEOUT", retryable: true };
+  }
+  if (
+    normalized.includes("requires openai_api_key") ||
+    normalized.includes("missing paid model api key") ||
+    normalized.includes("missing image2 provider api key")
+  ) {
+    return { code: "UPLOAD_PROVIDER_NOT_CONFIGURED", retryable: false };
+  }
+  if (
+    normalized.includes("missing uploaded file path") ||
+    normalized.includes("missing url") ||
+    normalized.includes("invalid youtube url") ||
+    normalized.includes("failed to parse url")
+  ) {
+    return { code: "UPLOAD_INPUT_INVALID", retryable: false };
+  }
+  if (normalized.includes("too large for transcription")) {
+    return { code: "UPLOAD_INPUT_TOO_LARGE", retryable: false };
+  }
+  if (/web fetch failed:\s*4\d\d/i.test(message)) {
+    return { code: "UPLOAD_SOURCE_FETCH_4XX", retryable: false };
+  }
+  if (
+    normalized.includes("fetch failed") ||
+    normalized.includes("network") ||
+    normalized.includes("econnreset") ||
+    normalized.includes("enotfound")
+  ) {
+    return { code: "UPLOAD_NETWORK_FAILURE", retryable: true };
+  }
+
+  return { code: "UPLOAD_WORKER_FAILED", retryable: true };
+}
+
 export async function runUploadJob(jobId: string, worker: () => Promise<WorkerResult>) {
   updateUploadJob(jobId, { status: "processing", progress: 8, attempts: 1 });
   const workerTimeoutMs = parseIntEnv("UPLOAD_WORKER_TIMEOUT_MS", DEFAULT_UPLOAD_WORKER_TIMEOUT_MS);
@@ -201,12 +244,13 @@ export async function runUploadJob(jobId: string, worker: () => Promise<WorkerRe
       return { ok: true as const, result };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload worker failed";
-      if (attempt >= MAX_UPLOAD_RETRIES) {
+      const classified = classifyUploadWorkerError(message);
+      if (!classified.retryable || attempt >= MAX_UPLOAD_RETRIES) {
         updateUploadJob(jobId, {
           status: "failed",
           progress: 100,
           errorMessage: message,
-          errorCode: "UPLOAD_WORKER_FAILED",
+          errorCode: classified.code,
         });
         return { ok: false as const, error: message };
       }

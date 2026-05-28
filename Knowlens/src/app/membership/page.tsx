@@ -164,13 +164,37 @@ function formatUsd(value: number) {
 }
 
 const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
+const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 
 type PendingCheckout = {
   planId: string;
   cycle: BillingCycle;
   startedAt: string;
   sessionId?: string;
+  source?: string;
 };
+
+type TelemetryEventInput = {
+  category: string;
+  action: string;
+  status?: "ok" | "error" | "info";
+  source?: string;
+  code?: string;
+  message?: string;
+  details?: unknown;
+};
+
+function readMembershipSource() {
+  if (typeof window === "undefined") {
+    return "unknown";
+  }
+  try {
+    const source = window.sessionStorage.getItem(MEMBERSHIP_SOURCE_KEY)?.trim();
+    return source || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 function readPendingCheckout() {
   if (typeof window === "undefined") {
@@ -211,6 +235,7 @@ export default function MembershipPage() {
   const [finalizing, setFinalizing] = useState(false);
   const [pendingFinalizeSessionId, setPendingFinalizeSessionId] = useState<string | null>(null);
   const [pendingCheckoutMeta, setPendingCheckoutMeta] = useState<PendingCheckout | null>(null);
+  const [membershipSource, setMembershipSource] = useState("unknown");
   const processedSessionRef = useRef<string | null>(null);
   const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -236,6 +261,37 @@ export default function MembershipPage() {
   useEffect(() => {
     window.history.replaceState(null, "", returnPath);
   }, [returnPath]);
+
+  useEffect(() => {
+    setMembershipSource(readMembershipSource());
+  }, []);
+
+  const trackTelemetry = useCallback(async (event: TelemetryEventInput) => {
+    try {
+      await fetch("/api/telemetry/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      });
+    } catch {
+      // best-effort telemetry only
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    void trackTelemetry({
+      category: "billing",
+      action: "paywall_exposed",
+      status: "info",
+      source: membershipSource || "unknown",
+      details: {
+        path: "/membership",
+      },
+    });
+  }, [currentEmail, membershipSource, trackTelemetry]);
 
   const finalizeCheckoutSession = useCallback(
     async (sessionId: string) => {
@@ -373,21 +429,37 @@ export default function MembershipPage() {
       return;
     }
     setIsPaying(true);
+    void trackTelemetry({
+      category: "billing",
+      action: "pay_button_clicked",
+      status: "info",
+      source: membershipSource,
+      details: {
+        planId: plan.id,
+        cycle: billingCycle,
+      },
+    });
     try {
       savePendingCheckout({
         planId: plan.id,
         cycle: billingCycle,
         startedAt: new Date().toISOString(),
+        source: membershipSource,
       });
       setPendingCheckoutMeta({
         planId: plan.id,
         cycle: billingCycle,
         startedAt: new Date().toISOString(),
+        source: membershipSource,
       });
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: plan.id, cycle: billingCycle }),
+        body: JSON.stringify({
+          planId: plan.id,
+          cycle: billingCycle,
+          source: membershipSource,
+        }),
       });
       const data = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -401,6 +473,17 @@ export default function MembershipPage() {
       if (data.fallback) {
         setToast("Using one-time checkout fallback to maximize payment success.");
       }
+      void trackTelemetry({
+        category: "billing",
+        action: "checkout_redirect_started",
+        status: "ok",
+        source: membershipSource,
+        details: {
+          planId: plan.id,
+          cycle: billingCycle,
+          fallback: Boolean(data.fallback),
+        },
+      });
       try {
         window.location.assign(data.checkoutUrl);
       } catch {
@@ -419,6 +502,17 @@ export default function MembershipPage() {
       } else {
         setToast(message);
       }
+      void trackTelemetry({
+        category: "billing",
+        action: "checkout_redirect_failed",
+        status: "error",
+        source: membershipSource,
+        message,
+        details: {
+          planId: plan.id,
+          cycle: billingCycle,
+        },
+      });
     } finally {
       setIsPaying(false);
     }

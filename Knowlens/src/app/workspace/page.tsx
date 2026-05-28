@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 
 import {
   ChatPanel,
+  type ChatTurnMeta,
   type ChatTurn,
   type WorkspaceIntent,
 } from "@/components/workspace/ChatPanel";
@@ -160,6 +161,11 @@ type GenerationConfirmResponse = {
   };
 };
 
+type StructuredWorkspaceError = {
+  userMessage: string;
+  code?: string;
+};
+
 const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
@@ -184,7 +190,7 @@ type StyleOption = {
 
 const styleCoverFileById: Record<string, string> = {
   "clean-science-infographic": "Clean Science Infographic Style.png",
-  "premium-editorial-infographic": "Premium Editorial Infographic Style.png",
+  "premium-editorial-infographic": "Premium Editorial Infographic Style.jpg",
   "youtube-science-thumbnail": "Hero Science Cover Style.png",
   "minimal-line-art": "Minimal Line Art Style.png",
   "hand-drawn-explainer": "Hand-drawn Explainer Style.png",
@@ -199,7 +205,7 @@ const styleCoverFileById: Record<string, string> = {
 
 function styleCoverById(styleId: string) {
   const filename = styleCoverFileById[styleId] ?? styleCoverFileById["clean-science-infographic"];
-  return `/style/${encodeURIComponent(filename)}?v=20260527d`;
+  return `/style/${encodeURIComponent(filename)}?v=20260528a`;
 }
 
 const styleOptions = [
@@ -1116,6 +1122,10 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
         role,
         module,
         content,
+        meta:
+          turn.meta && typeof turn.meta === "object"
+            ? (turn.meta as ChatTurnMeta)
+            : undefined,
       } satisfies ChatTurn;
     })
     .filter((turn) => turn.content.trim().length > 0);
@@ -1150,6 +1160,7 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
         role: item.role,
         module: item.module,
         content: item.content,
+        meta: item.meta,
       })),
   );
   window.sessionStorage.setItem(key, payload);
@@ -1180,6 +1191,8 @@ export default function WorkspacePage() {
   const [updates, setUpdates] = useState<ChatTurn[]>(() =>
     readWorkspaceChatHistory(sessionPrefsScopeKey),
   );
+  const updatesRef = useRef<ChatTurn[]>(updates);
+  const retryingErrorTurnIdsRef = useRef<Record<string, boolean>>({});
   const [chatInput, setChatInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [selectedTopicSuggestion, setSelectedTopicSuggestion] = useState<string | null>(null);
@@ -1188,6 +1201,7 @@ export default function WorkspacePage() {
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
+  const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
 
   const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(
     sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster"
@@ -1574,19 +1588,41 @@ export default function WorkspacePage() {
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const billingCost = languageModelCredits + imageModelCredits;
   const imageGenerationTasks = useMemo(() => {
+    const isChineseOutput = isChineseLanguage(outputLanguage);
     const styleName = selectedStyle.englishName ?? selectedStyle.name;
     const stylePrompt = selectedStyle.prompt.trim();
     const posterPlanList = editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList;
+    const languageRule = isChineseOutput
+      ? "Language rule: Render all visible text in Simplified Chinese only. Do not mix with English."
+      : "Language rule: Render all visible text in English only. Do not use Chinese.";
+    const promptFieldLabels = isChineseOutput
+      ? {
+          style: "风格提示",
+          outputType: "输出类型",
+          aspectRatio: "画面比例",
+          title: "标题",
+          content: "内容",
+          visualHint: "视觉提示",
+        }
+      : {
+          style: "Style prompt",
+          outputType: "Output type",
+          aspectRatio: "Aspect ratio",
+          title: "Title",
+          content: "Content",
+          visualHint: "Visual hint",
+        };
 
     const createComposedPrompt = (task: Omit<ImageGenerationTask, "composedPrompt">) =>
       [
-        `Style prompt: ${task.stylePrompt}`,
-        `Output type: ${task.outputType}`,
-        `Aspect ratio: ${task.aspectRatio}`,
-        `Title: ${task.contentTitle}`,
-        "Content:",
+        `${promptFieldLabels.style}: ${task.stylePrompt}`,
+        `${promptFieldLabels.outputType}: ${task.outputType}`,
+        `${promptFieldLabels.aspectRatio}: ${task.aspectRatio}`,
+        `${promptFieldLabels.title}: ${task.contentTitle}`,
+        `${promptFieldLabels.content}:`,
         task.contentBody,
-        `Visual hint: ${task.visualHint}`,
+        `${promptFieldLabels.visualHint}: ${task.visualHint}`,
+        languageRule,
       ].join("\n");
 
     if (effectiveIntent === "poster" && posterDraft) {
@@ -1599,8 +1635,12 @@ export default function WorkspacePage() {
         const contentBody = [
           posterDraft.subtitle,
           posterDraft.body,
-          plan?.focus ? `Focus: ${plan.focus}` : "",
-          posterDraft.points.length ? `Key points: ${posterDraft.points.join(" | ")}` : "",
+          plan?.focus ? (isChineseOutput ? `聚焦要点：${plan.focus}` : `Focus: ${plan.focus}`) : "",
+          posterDraft.points.length
+            ? isChineseOutput
+              ? `关键要点：${posterDraft.points.join(" | ")}`
+              : `Key points: ${posterDraft.points.join(" | ")}`
+            : "",
         ]
           .filter(Boolean)
           .join("\n");
@@ -1675,6 +1715,7 @@ export default function WorkspacePage() {
     selectedStyle.id,
     selectedStyle.name,
     selectedStyle.prompt,
+    outputLanguage,
     videoRatio,
     videoStoryboardCount,
   ]);
@@ -1775,7 +1816,25 @@ export default function WorkspacePage() {
             });
             const payload = (await response.json().catch(() => null)) as GenerationConfirmResponse | null;
             if (!response.ok) {
-              throw new Error(payload?.error || `generation confirm failed (${response.status})`);
+              const failureMessage = payload?.error || `generation confirm failed (${response.status})`;
+              const nonRetryable = response.status >= 400 && response.status < 500;
+              if (nonRetryable) {
+                pendingTaskMap.delete(task.index);
+                lastError = failureMessage;
+                setGenerationTaskStateByIndex((prev) => ({
+                  ...prev,
+                  [task.index]: {
+                    index: task.index,
+                    status: "failed",
+                    attempts: attempt + 1,
+                    maxAttempts,
+                    error: failureMessage,
+                  },
+                }));
+                upsertImageErrorCard(task, failureMessage);
+                continue;
+              }
+              throw new Error(failureMessage);
             }
 
             const result = (payload?.generation?.results ?? []).find(
@@ -1784,6 +1843,7 @@ export default function WorkspacePage() {
 
             if (result?.ok && result.imageUrl) {
               pendingTaskMap.delete(task.index);
+              removeImageErrorCardByTaskIndex(task.index);
               setGenerationTaskStateByIndex((prev) => ({
                 ...prev,
                 [task.index]: {
@@ -1798,7 +1858,25 @@ export default function WorkspacePage() {
               const nextError = result?.errorCode
                 ? `${result.error || tr("Generation failed.", "生成失败。")} (${result.errorCode})`
                 : result?.error || tr("Generation failed.", "生成失败。");
+              const nonRetryableErrorCode = (result?.errorCode || "").toUpperCase();
+              const shouldStopRetry =
+                nonRetryableErrorCode === "IMAGE_PROVIDER_KEY_MISSING" ||
+                nonRetryableErrorCode === "GENERATION_TASKS_REQUIRED";
               lastError = nextError || lastError;
+              upsertImageErrorCard(task, nextError || tr("Generation failed.", "生成失败。"));
+              if (shouldStopRetry) {
+                pendingTaskMap.delete(task.index);
+                setGenerationTaskStateByIndex((prev) => ({
+                  ...prev,
+                  [task.index]: {
+                    index: task.index,
+                    status: "failed",
+                    attempts: attempt + 1,
+                    maxAttempts,
+                    error: nextError || tr("Generation failed.", "生成失败。"),
+                  },
+                }));
+              }
             }
           } catch (error) {
             lastError =
@@ -1807,6 +1885,7 @@ export default function WorkspacePage() {
                 : error instanceof Error
                   ? error.message
                   : tr("Generation failed.", "生成失败。");
+            upsertImageErrorCard(task, lastError || tr("Generation failed.", "生成失败。"));
           } finally {
             window.clearTimeout(timeoutId);
           }
@@ -1821,6 +1900,9 @@ export default function WorkspacePage() {
 
       if (pendingTaskMap.size > 0) {
         const finalError = lastError || tr("Generation failed.", "生成失败。");
+        pendingTaskMap.forEach((task) => {
+          upsertImageErrorCard(task, finalError);
+        });
         setGenerationTaskStateByIndex((prev) => {
           const next = { ...prev };
           pendingTaskMap.forEach((task) => {
@@ -1934,8 +2016,13 @@ export default function WorkspacePage() {
   }, [entrySources]);
 
   useEffect(() => {
+    updatesRef.current = updates;
     writeWorkspaceChatHistory(sessionPrefsScopeKey, updates);
   }, [sessionPrefsScopeKey, updates]);
+
+  useEffect(() => {
+    retryingErrorTurnIdsRef.current = retryingErrorTurnIds;
+  }, [retryingErrorTurnIds]);
 
   function pushAssistantMessage(content: string, module = "内容改写") {
     setUpdates((prev) => [
@@ -1948,6 +2035,125 @@ export default function WorkspacePage() {
       },
     ]);
   }
+
+  const pushAssistantErrorMessage = useCallback((
+    content: string,
+    module: string,
+    meta: ChatTurnMeta,
+  ) => {
+    const turn: ChatTurn = {
+      id: `err-${Date.now()}-${Math.round(Math.random() * 9999)}`,
+      role: "assistant",
+      module,
+      content,
+      meta,
+    };
+    setUpdates((prev) => [...prev, turn]);
+    return turn.id;
+  }, []);
+
+  const upsertAssistantErrorMessage = useCallback((
+    turnId: string | null | undefined,
+    content: string,
+    module: string,
+    meta: ChatTurnMeta,
+  ) => {
+    if (!turnId) {
+      return pushAssistantErrorMessage(content, module, meta);
+    }
+    setUpdates((prev) => {
+      const next = [...prev];
+      const foundIndex = next.findIndex((item) => item.id === turnId);
+      if (foundIndex < 0) {
+        next.push({
+          id: turnId,
+          role: "assistant",
+          module,
+          content,
+          meta,
+        });
+        return next;
+      }
+      next[foundIndex] = {
+        ...next[foundIndex],
+        role: "assistant",
+        module,
+        content,
+        meta,
+      };
+      return next;
+    });
+    return turnId;
+  }, [pushAssistantErrorMessage]);
+
+  const removeErrorTurn = useCallback((turnId: string) => {
+    setUpdates((prev) => prev.filter((item) => item.id !== turnId));
+    setRetryingErrorTurnIds((prev) => {
+      if (!prev[turnId]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[turnId];
+      return next;
+    });
+  }, []);
+
+  const removeImageErrorCardByTaskIndex = useCallback((taskIndex: number) => {
+    setUpdates((prev) =>
+      prev.filter(
+        (item) => !(item.meta?.kind === "image_error" && item.meta.taskIndex === taskIndex),
+      ),
+    );
+  }, []);
+
+  const parseStructuredError = useCallback((error: unknown): StructuredWorkspaceError => {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        userMessage: "The request timed out. Please retry.",
+        code: "LM_TIMEOUT",
+      };
+    }
+    const message = error instanceof Error ? error.message : "Unknown request error.";
+    const codeMatch = message.match(/\b([A-Z][A-Z0-9_]{2,})\b/);
+    return {
+      userMessage: message,
+      code: codeMatch?.[1],
+    };
+  }, []);
+
+  const upsertImageErrorCard = useCallback((task: ImageGenerationTask, errorText: string) => {
+    const codeMatch = errorText.match(/\(([A-Z0-9_:-]+)\)\s*$/);
+    const code = codeMatch?.[1] ?? undefined;
+    const nextMessage = `Image ${task.index} failed to generate. ${errorText}`;
+    setUpdates((prev) => {
+      const next = [...prev];
+      const foundIndex = next.findIndex(
+        (item) => item.meta?.kind === "image_error" && item.meta.taskIndex === task.index,
+      );
+      const nextTurn: ChatTurn = {
+        id:
+          foundIndex >= 0
+            ? next[foundIndex].id
+            : `err-img-${task.index}-${Date.now()}-${Math.round(Math.random() * 9999)}`,
+        role: "assistant",
+        module: "Image Generation Error",
+        content: nextMessage,
+        meta: {
+          kind: "image_error",
+          source: "image_generation",
+          code,
+          taskIndex: task.index,
+          retryable: true,
+        },
+      };
+      if (foundIndex >= 0) {
+        next[foundIndex] = nextTurn;
+      } else {
+        next.push(nextTurn);
+      }
+      return next;
+    });
+  }, []);
 
   function pushUserMessage(content: string, module = "内容改写") {
     setUpdates((prev) => [
@@ -2070,7 +2276,7 @@ export default function WorkspacePage() {
     setConfigConfirmed(false);
   }
 
-  async function handleConfirmConfig() {
+  const handleConfirmConfig = useCallback(async (existingErrorTurnId?: string | null): Promise<boolean> => {
     setConfigConfirmed(true);
     setFlowStage("content");
     if (manualIntent) {
@@ -2108,6 +2314,7 @@ export default function WorkspacePage() {
     };
 
     if (effectiveIntent !== "poster") {
+      let requestSucceeded = true;
       setEditableOutlineItems([]);
       setEditableSlideDrafts([]);
       setEditablePosterDraft(basePosterDraft);
@@ -2179,18 +2386,30 @@ export default function WorkspacePage() {
         setEditableOutlineItems(nextOutline.length ? nextOutline : baseOutlineItems);
         setEditableSlideDrafts(nextSlides.length ? nextSlides : baseSlideDrafts);
       } catch (error) {
+        requestSucceeded = false;
         setEditableOutlineItems(baseOutlineItems);
         setEditableSlideDrafts(baseSlideDrafts);
-        const message = error instanceof Error ? error.message : "Draft request failed.";
-        pushAssistantMessage(`Draft generation fallback applied. Reason: ${message}`, "Draft Generation");
+        const parsed = parseStructuredError(error);
+        upsertAssistantErrorMessage(
+          existingErrorTurnId,
+          `Language model draft generation failed. ${parsed.userMessage}`,
+          "Language Model Error",
+          {
+            kind: "llm_error",
+            source: "draft_generation",
+            code: parsed.code,
+            retryable: true,
+          },
+        );
       } finally {
         await ensureThinkingVisible();
       }
-      return;
+      return requestSucceeded;
     }
 
     const requestId = posterDraftRequestRef.current + 1;
     posterDraftRequestRef.current = requestId;
+    let requestSucceeded = true;
     setEditablePosterDraft(null);
     setEditablePosterPlanList([]);
     startThinking(
@@ -2237,7 +2456,7 @@ export default function WorkspacePage() {
         };
       };
       if (posterDraftRequestRef.current !== requestId) {
-        return;
+        return false;
       }
       setEditablePosterDraft(data.posterDraft ?? basePosterDraft);
       setEditablePosterPlanList(
@@ -2245,18 +2464,52 @@ export default function WorkspacePage() {
       );
     } catch (error) {
       if (posterDraftRequestRef.current !== requestId) {
-        return;
+        return false;
       }
+      requestSucceeded = false;
       setEditablePosterDraft(basePosterDraft);
       setEditablePosterPlanList(basePosterPlanList);
-      const message = error instanceof Error ? error.message : "Draft request failed.";
-      pushAssistantMessage(`Draft generation fallback applied. Reason: ${message}`, "Draft Generation");
+      const parsed = parseStructuredError(error);
+      upsertAssistantErrorMessage(
+        existingErrorTurnId,
+        `Language model draft generation failed. ${parsed.userMessage}`,
+        "Language Model Error",
+        {
+          kind: "llm_error",
+          source: "draft_generation",
+          code: parsed.code,
+          retryable: true,
+        },
+      );
     } finally {
       if (posterDraftRequestRef.current === requestId) {
         await ensureThinkingVisible();
       }
     }
-  }
+    return requestSucceeded;
+  }, [
+    baseOutlineItems,
+    basePosterDraft,
+    basePosterPlanList,
+    baseSlideDrafts,
+    draftPrompt,
+    effectiveIntent,
+    initialEntry.models?.textModel,
+    manualIntent,
+    outputLanguage,
+    parseStructuredError,
+    posterCount,
+    posterSizeId,
+    posterSizeLabel,
+    pptPageCount,
+    pptRatio,
+    pushAssistantErrorMessage,
+    tr,
+    topic,
+    upsertAssistantErrorMessage,
+    videoRatio,
+    videoStoryboardCount,
+  ]);
 
   async function handleNextStep() {
     if (isPlanningNextStep) {
@@ -2704,6 +2957,59 @@ export default function WorkspacePage() {
     setIsSending(false);
   }
 
+  const retryLanguageModelDraftByTurn = useCallback(async (turnId: string) => {
+    const target = updatesRef.current.find((item) => item.id === turnId);
+    if (!target || target.meta?.kind !== "llm_error") {
+      return;
+    }
+    if (retryingErrorTurnIdsRef.current[turnId]) {
+      return;
+    }
+    setRetryingErrorTurnIds((prev) => ({ ...prev, [turnId]: true }));
+    try {
+      const ok = await handleConfirmConfig(turnId);
+      if (ok) {
+        removeErrorTurn(turnId);
+      }
+    } finally {
+      setRetryingErrorTurnIds((prev) => {
+        if (!prev[turnId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[turnId];
+        return next;
+      });
+    }
+  }, []);
+
+  const handleRetryErrorTurn = useCallback((turnId: string) => {
+    const target = updatesRef.current.find((item) => item.id === turnId);
+    if (!target?.meta) {
+      return;
+    }
+    if (target.meta.kind === "llm_error") {
+      void retryLanguageModelDraftByTurn(turnId);
+      return;
+    }
+    if (target.meta.kind === "image_error" && Number.isFinite(target.meta.taskIndex)) {
+      const taskIndex = Number(target.meta.taskIndex);
+      setRetryingErrorTurnIds((prev) => ({ ...prev, [turnId]: true }));
+      removeImageErrorCardByTaskIndex(taskIndex);
+      handleRetryGenerationTask(taskIndex);
+      window.setTimeout(() => {
+        setRetryingErrorTurnIds((prev) => {
+          if (!prev[turnId]) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[turnId];
+          return next;
+        });
+      }, 1200);
+    }
+  }, [handleRetryGenerationTask, retryLanguageModelDraftByTurn]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -2846,6 +3152,8 @@ export default function WorkspacePage() {
                   onConfirmBilling={handleConfirmBilling}
                   visualizationTypeHint={visualizationTypeHint}
                   thinkingState={thinkingState}
+                  retryingErrorTurnIds={retryingErrorTurnIds}
+                  onRetryErrorTurn={handleRetryErrorTurn}
                 />
               </div>
 

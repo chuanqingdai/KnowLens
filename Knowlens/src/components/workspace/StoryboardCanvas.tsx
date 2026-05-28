@@ -1496,7 +1496,7 @@ export function StoryboardCanvas({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: "火山喷发过程科普PPT",
+          title: slides[0]?.title?.trim() || "KnowLens Deck",
           slides: payload,
         }),
       });

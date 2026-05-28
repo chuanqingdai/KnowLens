@@ -150,6 +150,18 @@ type SourceItem = {
   contentText?: string;
 };
 
+type HomeDraftPayload = {
+  prompt?: string;
+  textModel?: string;
+  imageModel?: string;
+  sources?: Array<Partial<SourceItem>>;
+};
+
+type WorkspaceStartErrorPayload = {
+  error?: string;
+  code?: string;
+};
+
 function normalizeLegacySourceName(name: string) {
   if (name === "网页链接") {
     return "Web URL";
@@ -268,6 +280,33 @@ function cleanUploadErrorMessage(message: string) {
   return trimmed.length > 90 ? `${trimmed.slice(0, 90)}...` : trimmed;
 }
 
+function getUploadFailureMessageFromJob(job: UploadJobRecord) {
+  const code = String(job.errorCode || job.error_code || "").trim().toUpperCase();
+  const rawMessage = String(job.errorMessage || job.error_message || "").trim();
+
+  if (code === "UPLOAD_PROVIDER_NOT_CONFIGURED") {
+    return "This source type requires premium model setup. Please upgrade or try another source.";
+  }
+  if (code === "UPLOAD_NETWORK_FAILURE") {
+    return "Upload failed due to a network issue. Please retry.";
+  }
+  if (code === "UPLOAD_WORKER_TIMEOUT") {
+    return "Upload timed out during extraction. Please retry.";
+  }
+  if (code === "UPLOAD_INPUT_TOO_LARGE") {
+    return "Upload failed: the source is too large to process.";
+  }
+  if (code === "UPLOAD_INPUT_INVALID") {
+    return "Upload failed: source input is invalid. Please check and retry.";
+  }
+  if (code === "UPLOAD_SOURCE_FETCH_4XX") {
+    return "Upload failed: source link is not accessible. Please verify the URL.";
+  }
+
+  const fallback = cleanUploadErrorMessage(rawMessage || "Upload failed.");
+  return code ? `${fallback} (${code})` : fallback;
+}
+
 function hasFilesInDataTransfer(dataTransfer: DataTransfer | null) {
   if (!dataTransfer) {
     return false;
@@ -354,7 +393,68 @@ const MIN_COMPOSER_HEIGHT = 132;
 const MAX_COMPOSER_HEIGHT = 260;
 const DEFAULT_COVER_FALLBACK = "/picture/text-to-poster.png";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
+const HOME_DRAFT_KEY = "knowlens-home-draft";
+const GENERATE_INTENT_KEY = "knowlens:generate-intent";
+const GENERATE_INTENT_TTL_MS = 15 * 60 * 1000;
+const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const loadedImageCache = new Set<string>();
+
+function normalizeDraftSourceKind(kind: string | undefined): SourceKind {
+  if (kind === "youtube" || kind === "podcast" || kind === "web") {
+    return kind;
+  }
+  return "file";
+}
+
+function mapWorkspaceStartErrorMessage(code: string | undefined, fallback: string | undefined) {
+  if (code === "WORKSPACE_START_EMPTY_INPUT") {
+    return "Enter your topic or attach at least one source to continue.";
+  }
+  if (code === "WORKSPACE_START_AUTH_REQUIRED") {
+    return "Please sign in to continue.";
+  }
+  if (code === "WORKSPACE_START_DAILY_LIMIT") {
+    return "You reached today's project-start limit. Continue from existing projects or try again tomorrow.";
+  }
+  if (code === "WORKSPACE_START_RATE_LIMIT") {
+    return "You're creating projects too quickly. Please wait a moment and retry.";
+  }
+  if (code === "WORKSPACE_START_FORBIDDEN_ORIGIN") {
+    return "Request verification failed. Please refresh and try again.";
+  }
+  return fallback || "Unable to start a new project right now. Please try again later.";
+}
+
+function trackAppEvent(eventName: string, params: Record<string, unknown> = {}) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const gtag = (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;
+    if (typeof gtag === "function") {
+      gtag("event", eventName, params);
+    }
+  } catch {
+    // analytics should never interrupt product flow
+  }
+}
+
+function shouldRetryWorkspaceStart(error: unknown) {
+  if (!(error instanceof Error)) {
+    return true;
+  }
+  const message = (error.message || "").toLowerCase();
+  if (!message) {
+    return true;
+  }
+  if (message.includes("abort") || message.includes("timeout")) {
+    return true;
+  }
+  if (message.includes("network") || message.includes("failed to fetch") || message.includes("load failed")) {
+    return true;
+  }
+  return false;
+}
 
 type ProgressiveCoverProps = {
   src: string;
@@ -659,6 +759,8 @@ export default function Home() {
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const composeLimitToastShownRef = useRef(false);
   const dragDepthRef = useRef(0);
+  const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
+  const autoGenerateOnceRef = useRef(false);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);
@@ -687,6 +789,65 @@ export default function Home() {
       composeLimitToastShownRef.current = true;
     }
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    let shouldHydrate = !composeInput.trim() && sourceItems.length === 0;
+    if (!shouldHydrate) {
+      return;
+    }
+    try {
+      const raw = window.sessionStorage.getItem(HOME_DRAFT_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as HomeDraftPayload;
+      const normalizedPrompt = String(parsed.prompt || "");
+      const normalizedTextModel = String(parsed.textModel || "").trim();
+      const normalizedSources: SourceItem[] = Array.isArray(parsed.sources)
+        ? parsed.sources
+            .filter((item): item is Partial<SourceItem> => Boolean(item && typeof item === "object"))
+            .map((item, idx) => {
+              const status: SourceItem["status"] = item.status === "ready" ? "ready" : "failed";
+              return {
+                id: item.id || `cached-${idx}-${Date.now()}`,
+                kind: normalizeDraftSourceKind(item.kind),
+                name: String(item.name || "Source"),
+                origin: String(item.origin || ""),
+                mimeType: item.mimeType ? String(item.mimeType) : undefined,
+                sizeBytes: typeof item.sizeBytes === "number" ? item.sizeBytes : undefined,
+                status,
+                progress: status === "ready" ? 100 : 0,
+                excerpt: String(item.excerpt || ""),
+                contentText: item.contentText ? String(item.contentText) : undefined,
+              };
+            })
+            .filter((item) => item.status === "ready")
+            .slice(0, 30)
+        : [];
+      if (normalizedPrompt) {
+        setComposeInput(normalizedPrompt.slice(0, MAX_COMPOSE_TEXT_CHARS));
+      }
+      if (normalizedTextModel) {
+        const hasModel = textModelOptions.some((option) => option.value === normalizedTextModel);
+        if (hasModel) {
+          setTextModel(normalizedTextModel);
+        }
+      }
+      if (normalizedSources.length) {
+        setSourceItems((prev) => {
+          if (prev.length > 0) {
+            return prev;
+          }
+          return normalizedSources;
+        });
+      }
+    } catch {
+      // ignore broken cached payload
+    }
+  }, [composeInput, sourceItems.length]);
 
   useEffect(() => {
     const currentText = inputPlaceholders[placeholderIndex];
@@ -822,6 +983,12 @@ export default function Home() {
               contentText: resultText || item.contentText,
             };
             if (status === "failed") {
+              if (!notifiedUploadFailureIdsRef.current.has(job.id)) {
+                notifiedUploadFailureIdsRef.current.add(job.id);
+                window.setTimeout(() => {
+                  setUploadToast(getUploadFailureMessageFromJob(job));
+                }, 0);
+              }
               if (nextItem.previewUrl?.startsWith("blob:")) {
                 URL.revokeObjectURL(nextItem.previewUrl);
               }
@@ -1221,9 +1388,80 @@ export default function Home() {
     setUploadToast("Link detected from paste and queued.");
   }
 
-  function openMembershipFromHome() {
+  function buildWorkspacePayload() {
+    const readySources = sourceItems.filter((item) => item.status === "ready");
+    return {
+      prompt: composeInput.trim(),
+      textModel: resolvedTextModel,
+      imageModel: "gpt-image2",
+      sources: readySources,
+    };
+  }
+
+  function persistHomeDraft(payload?: ReturnType<typeof buildWorkspacePayload>) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const nextPayload = payload ?? buildWorkspacePayload();
+    window.sessionStorage.setItem(HOME_DRAFT_KEY, JSON.stringify(nextPayload));
+  }
+
+  async function createWorkspaceStartRequestWithRetry(payload: ReturnType<typeof buildWorkspacePayload>) {
+    const maxAttempts = 2;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const response = await fetch("/api/workspace/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        return response;
+      } catch (error) {
+        lastError = error;
+        const retryable = shouldRetryWorkspaceStart(error);
+        if (!retryable || attempt >= maxAttempts) {
+          throw error;
+        }
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 280);
+        });
+      }
+    }
+    throw lastError || new Error("Workspace start request failed.");
+  }
+
+  function rememberGenerateIntent() {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        GENERATE_INTENT_KEY,
+        JSON.stringify({
+          createdAt: Date.now(),
+        }),
+      );
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+
+  function openMembershipFromHome(
+    source: "model_paywall" | "media_paywall" | "preview_paywall" | "upgrade_button" = "model_paywall",
+  ) {
+    trackAppEvent("checkout_open_from_paywall", {
+      source,
+      from: "home",
+      model: resolvedTextModel,
+      has_sources: sourceItems.length > 0,
+    });
+    persistHomeDraft();
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("membership:return-path", pathname || "/");
+      window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, source);
     }
     router.push("/membership");
   }
@@ -1232,17 +1470,34 @@ export default function Home() {
     if (isStartingWorkspace) {
       return;
     }
+    trackAppEvent("generate_click", {
+      from: "home",
+      model: resolvedTextModel,
+      has_prompt: composeInput.trim().length > 0,
+      source_count: sourceItems.length,
+    });
     if (sessionStatus === "loading") {
       setUploadToast("Checking your account. Please try again in a second.");
       return;
     }
+    const payload = buildWorkspacePayload();
     if (!currentEmail) {
-      router.push("/auth?callbackUrl=%2Fapp");
+      persistHomeDraft(payload);
+      rememberGenerateIntent();
+      trackAppEvent("generate_requires_login", {
+        from: "home",
+        model: resolvedTextModel,
+      });
+      router.push(`/auth?callbackUrl=${encodeURIComponent("/app?intent=generate")}`);
       return;
     }
     const hasPremiumRequiredSource = sourceItems.some((item) => sourceItemNeedsPremium(item));
     if (!hasMembership && hasPremiumRequiredSource) {
       setMediaUploadPaywallOpen(true);
+      trackAppEvent("generate_blocked_premium_source", {
+        from: "home",
+        source_count: sourceItems.length,
+      });
       setUploadToast(
         "Some uploaded sources require a premium language model for transcript extraction. Please upgrade to generate.",
       );
@@ -1250,6 +1505,10 @@ export default function Home() {
     }
     if (!hasMembership && isPremiumTextModel(resolvedTextModel)) {
       setModelPaywallOpen(true);
+      trackAppEvent("generate_blocked_premium_model", {
+        from: "home",
+        model: resolvedTextModel,
+      });
       setUploadToast(
         "The selected language model is a premium model. Please upgrade to generate with this model.",
       );
@@ -1257,47 +1516,59 @@ export default function Home() {
     }
     const pendingSources = sourceItems.filter((item) => item.status !== "ready" && item.status !== "failed");
     if (pendingSources.length > 0) {
-      setUploadToast("Your files are still being extracted. Please wait a moment and try Generate again.");
+      setUploadToast(
+        "Some files are still being processed. Wait for extraction to finish, or remove pending files before generating.",
+      );
       return;
     }
-    const readySources = sourceItems.filter((item) => item.status === "ready");
-    const payload = {
-      prompt: composeInput.trim(),
-      textModel: resolvedTextModel,
-      imageModel: "gpt-image2",
-      sources: readySources,
-    };
     setIsStartingWorkspace(true);
     try {
-      const response = await fetch("/api/workspace/start", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await createWorkspaceStartRequestWithRetry(payload);
       const data = (await response.json()) as {
         ok?: boolean;
         payload?: typeof payload;
         error?: string;
+        code?: string;
       };
       if (!response.ok || !data?.ok || !data.payload) {
+        const failedCode = (data as WorkspaceStartErrorPayload)?.code;
+        trackAppEvent("workspace_start_fail_code", {
+          from: "home",
+          code: failedCode || `HTTP_${response.status}`,
+          model: resolvedTextModel,
+        });
         if (response.status >= 500 && typeof window !== "undefined") {
-          sessionStorage.setItem("knowlens-home-draft", JSON.stringify(payload));
+          persistHomeDraft(payload);
           router.push("/workspace");
           return;
         }
-        setUploadToast(data?.error || "Unable to start a new project right now. Please try again later.");
+        setUploadToast(
+          mapWorkspaceStartErrorMessage(
+            failedCode,
+            data?.error || "Unable to start a new project right now. Please try again later.",
+          ),
+        );
         return;
       }
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("knowlens-home-draft", JSON.stringify(data.payload));
+        persistHomeDraft(data.payload);
+        window.sessionStorage.removeItem(GENERATE_INTENT_KEY);
       }
+      trackAppEvent("workspace_start_success", {
+        from: "home",
+        model: resolvedTextModel,
+        source_count: payload.sources.length,
+      });
       router.push("/workspace");
     } catch {
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("knowlens-home-draft", JSON.stringify(payload));
+        persistHomeDraft(payload);
       }
+      trackAppEvent("workspace_start_fail_code", {
+        from: "home",
+        code: "NETWORK_OR_RUNTIME",
+        model: resolvedTextModel,
+      });
       router.push("/workspace");
     } finally {
       setIsStartingWorkspace(false);
@@ -1457,6 +1728,50 @@ export default function Home() {
     return () => observer.disconnect();
   }, [hasMoreFeaturedItems, featuredFilteredItems.length]);
 
+  useEffect(() => {
+    if (autoGenerateOnceRef.current) {
+      return;
+    }
+    if (sessionStatus !== "authenticated" || !currentEmail || isStartingWorkspace) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const intentFromQuery = new URLSearchParams(window.location.search).get("intent") === "generate";
+    let hasIntentFromStorage = false;
+    try {
+      const raw = window.sessionStorage.getItem(GENERATE_INTENT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { createdAt?: number };
+        const createdAt = typeof parsed.createdAt === "number" ? parsed.createdAt : 0;
+        hasIntentFromStorage = Date.now() - createdAt <= GENERATE_INTENT_TTL_MS;
+      }
+    } catch {
+      hasIntentFromStorage = false;
+    }
+    if (!intentFromQuery && !hasIntentFromStorage) {
+      return;
+    }
+    const hasInput = composeInput.trim().length > 0 || sourceItems.length > 0;
+    if (!hasInput) {
+      return;
+    }
+    autoGenerateOnceRef.current = true;
+    trackAppEvent("generate_auto_resume_after_login", {
+      from: "home",
+      model: resolvedTextModel,
+    });
+    void handleGoGenerate();
+  }, [
+    composeInput,
+    currentEmail,
+    isStartingWorkspace,
+    resolvedTextModel,
+    sessionStatus,
+    sourceItems.length,
+  ]);
+
   return (
     <div
       className="min-h-screen bg-page text-zinc-900"
@@ -1471,7 +1786,7 @@ export default function Home() {
         <div className="mb-3 flex items-center justify-end gap-2 md:hidden">
           <button
             type="button"
-            onClick={() => router.push("/membership")}
+            onClick={() => openMembershipFromHome("upgrade_button")}
             className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
           >
             <Zap size={14} className="text-zinc-500" />
@@ -1484,7 +1799,7 @@ export default function Home() {
         <div className="fixed right-6 top-6 z-50 hidden items-center gap-3 md:flex">
           <button
             type="button"
-            onClick={() => router.push("/membership")}
+            onClick={() => openMembershipFromHome("upgrade_button")}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             <Zap size={15} className="text-zinc-500" />
@@ -1930,7 +2245,7 @@ export default function Home() {
         onClose={() => setModelPaywallOpen(false)}
         onConfirm={() => {
           setModelPaywallOpen(false);
-          openMembershipFromHome();
+          openMembershipFromHome("model_paywall");
         }}
         confirmLabel="Go to Membership"
       />
@@ -2044,7 +2359,7 @@ export default function Home() {
         onConfirm={() => {
           setPreviewPaywallOpen(false);
           closeFeaturedPreview();
-          openMembershipFromHome();
+          openMembershipFromHome("preview_paywall");
         }}
         confirmLabel="Go to Membership"
       />
@@ -2056,7 +2371,7 @@ export default function Home() {
         onClose={() => setMediaUploadPaywallOpen(false)}
         onConfirm={() => {
           setMediaUploadPaywallOpen(false);
-          openMembershipFromHome();
+          openMembershipFromHome("media_paywall");
         }}
         confirmLabel="Go to Membership"
       />

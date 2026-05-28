@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Crown, X } from "lucide-react";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 
@@ -11,6 +12,7 @@ type PaywallDialogProps = {
   cancelLabel?: string;
   showPromoBanner?: boolean;
   compact?: boolean;
+  source?: string;
   onClose: () => void;
   onConfirm: () => void;
 };
@@ -23,9 +25,27 @@ export function PaywallDialog({
   cancelLabel = "Not now",
   showPromoBanner = false,
   compact = false,
+  source = "workspace-paywall",
   onClose,
   onConfirm,
 }: PaywallDialogProps) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void fetch("/api/telemetry/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: "billing",
+        action: "paywall_exposed",
+        status: "info",
+        source,
+        message: title,
+      }),
+    }).catch(() => undefined);
+  }, [open, source, title]);
+
   if (!open) {
     return null;
   }
@@ -56,14 +76,38 @@ export function PaywallDialog({
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              void fetch("/api/telemetry/event", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  category: "billing",
+                  action: "paywall_closed",
+                  status: "info",
+                  source,
+                }),
+              }).catch(() => undefined);
+              onClose();
+            }}
             className="inline-flex h-10 items-center rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             {cancelLabel}
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => {
+              void fetch("/api/telemetry/event", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  category: "billing",
+                  action: "paywall_confirm_clicked",
+                  status: "info",
+                  source,
+                }),
+              }).catch(() => undefined);
+              onConfirm();
+            }}
             className="inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
           >
             {confirmLabel}

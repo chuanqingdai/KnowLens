@@ -6,6 +6,7 @@ import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 import {
   applyBillingFulfillmentAtomic,
   hasBillingFulfillment,
+  logOpsEvent,
 } from "@/lib/server/store";
 
 export const runtime = "nodejs";
@@ -21,16 +22,36 @@ function parseCycle(value: string | null | undefined): BillingCycle {
 }
 
 export async function POST(request: NextRequest) {
+  let userEmailForLog = "";
+  let checkoutSourceForLog = "unknown";
   try {
     const session = await getServerSession(nextAuthOptions);
     const email = session?.user?.email?.trim().toLowerCase();
+    userEmailForLog = email ?? "";
     if (!email) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_error",
+        status: "error",
+        source: "unknown",
+        code: "BILLING_FINALIZE_AUTH_REQUIRED",
+        message: "Finalize requested without sign-in session.",
+      });
       return NextResponse.json({ error: "Please sign in before finalizing payment." }, { status: 401 });
     }
 
     const body = (await request.json()) as { sessionId?: string };
     const sessionId = (body.sessionId ?? "").trim();
     if (!sessionId) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_error",
+        status: "error",
+        source: "unknown",
+        userEmail: email,
+        code: "BILLING_FINALIZE_MISSING_SESSION",
+        message: "Missing checkout session ID in finalize request.",
+      });
       return NextResponse.json({ error: "Missing sessionId." }, { status: 400 });
     }
 
@@ -40,6 +61,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (checkout.customer_email?.trim().toLowerCase() !== email) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_error",
+        status: "error",
+        source: "unknown",
+        userEmail: email,
+        code: "BILLING_FINALIZE_EMAIL_MISMATCH",
+        message: "Checkout session email mismatch.",
+        details: {
+          sessionId,
+          checkoutEmail: checkout.customer_email ?? null,
+        },
+      });
       return NextResponse.json({ error: "Checkout session does not belong to current user." }, { status: 403 });
     }
 
@@ -50,6 +84,20 @@ export async function POST(request: NextRequest) {
           : checkout.payment_status === "unpaid" || checkout.payment_status === "no_payment_required"
             ? "payment_failed_or_unpaid"
             : "pending";
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_failed",
+        status: "error",
+        source: "unknown",
+        userEmail: email,
+        code: normalized,
+        message: "Payment is not completed or not paid during finalize.",
+        details: {
+          sessionId,
+          checkoutStatus: checkout.status,
+          paymentStatus: checkout.payment_status,
+        },
+      });
       return NextResponse.json({
         ok: false,
         reason: normalized,
@@ -67,7 +115,18 @@ export async function POST(request: NextRequest) {
     }
 
     const cycle = parseCycle(meta.billing_cycle);
+    const checkoutSource = (meta.checkout_source ?? "unknown").trim().slice(0, 64) || "unknown";
+    checkoutSourceForLog = checkoutSource;
     if (hasBillingFulfillment(sessionId)) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_duplicate",
+        status: "info",
+        source: checkoutSource,
+        userEmail: email,
+        message: "Finalize duplicate: billing fulfillment already exists.",
+        details: { sessionId },
+      });
       return NextResponse.json({
         ok: true,
         plan: {
@@ -76,6 +135,7 @@ export async function POST(request: NextRequest) {
         },
         cycle,
         checkoutMode: checkout.mode,
+        checkoutSource,
         credited: false,
         duplicate: true,
       });
@@ -94,9 +154,19 @@ export async function POST(request: NextRequest) {
       startedAt,
       renewAt,
       monthlyCredits: plan.monthlyCredits,
+      checkoutSource,
     });
 
     if (!result.applied) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_duplicate",
+        status: "info",
+        source: checkoutSource,
+        userEmail: email,
+        message: "Finalize duplicate: atomic billing apply skipped.",
+        details: { sessionId },
+      });
       return NextResponse.json({
         ok: true,
         plan: {
@@ -105,10 +175,21 @@ export async function POST(request: NextRequest) {
         },
         cycle,
         checkoutMode: checkout.mode,
+        checkoutSource,
         credited: false,
         duplicate: true,
       });
     }
+
+    logOpsEvent({
+      category: "billing",
+      action: "checkout_finalize_success",
+      status: "ok",
+      source: checkoutSource,
+      userEmail: email,
+      message: `${plan.id}:${cycle}`,
+      details: { sessionId },
+    });
 
     return NextResponse.json({
       ok: true,
@@ -118,10 +199,59 @@ export async function POST(request: NextRequest) {
       },
       cycle,
       checkoutMode: checkout.mode,
+      checkoutSource,
       credited: true,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Finalize payment failed.";
+    const normalized = message.toLowerCase();
+    if (normalized.includes("stripe is not configured")) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_error",
+        status: "error",
+        source: checkoutSourceForLog,
+        userEmail: userEmailForLog || undefined,
+        code: "STRIPE_ENV_MISSING",
+        message,
+      });
+      return NextResponse.json(
+        {
+          code: "STRIPE_ENV_MISSING",
+          error:
+            "Stripe finalize is not configured yet. Please set STRIPE_SECRET_KEY (or STRIPE_API_KEY) in server environment variables.",
+        },
+        { status: 503 },
+      );
+    }
+    if (normalized.includes("invalid api key") || normalized.includes("stripeauthenticationerror")) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_finalize_error",
+        status: "error",
+        source: checkoutSourceForLog,
+        userEmail: userEmailForLog || undefined,
+        code: "STRIPE_ENV_INVALID",
+        message,
+      });
+      return NextResponse.json(
+        {
+          code: "STRIPE_ENV_INVALID",
+          error:
+            "Stripe finalize is not configured correctly. Please verify STRIPE_SECRET_KEY (or STRIPE_API_KEY) in deployment settings.",
+        },
+        { status: 503 },
+      );
+    }
+    logOpsEvent({
+      category: "billing",
+      action: "checkout_finalize_error",
+      status: "error",
+      source: checkoutSourceForLog,
+      userEmail: userEmailForLog || undefined,
+      code: "BILLING_FINALIZE_INTERNAL",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

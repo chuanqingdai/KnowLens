@@ -10,6 +10,10 @@ const runMode = (process.env.USABILITY_TEST_MODE || "auto").trim().toLowerCase()
 const testTextModel = process.env.USABILITY_TEST_TEXT_MODEL || "gemini-2.5";
 const expectTranscriptSuccess = process.env.USABILITY_EXPECT_TRANSCRIPT_SUCCESS === "true";
 const expectImageSuccess = process.env.USABILITY_EXPECT_IMAGE_SUCCESS === "true";
+const testRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const testUserEmail =
+  process.env.USABILITY_TEST_USER_EMAIL || `local+usability-${testRunId}@knowlens.ai`;
+const testUserName = process.env.USABILITY_TEST_USER_NAME || "Local Tester";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -139,8 +143,8 @@ async function loginWithDevCredentials() {
 
   const form = new URLSearchParams();
   form.set("csrfToken", csrf.data.csrfToken);
-  form.set("email", "local@knowlens.ai");
-  form.set("name", "Local Tester");
+  form.set("email", testUserEmail);
+  form.set("name", testUserName);
   form.set("callbackUrl", "/app");
   form.set("json", "true");
 
@@ -259,6 +263,57 @@ function shortJson(value, max = 320) {
   return `${raw.slice(0, max)}...`;
 }
 
+function getHeader(responseLike, name) {
+  const headers = responseLike?.headers;
+  if (!headers) {
+    return "";
+  }
+  if (typeof headers.get === "function") {
+    return String(headers.get(name) || "");
+  }
+  const direct = headers[name] ?? headers[name.toLowerCase()];
+  return direct ? String(direct) : "";
+}
+
+function hasMp4Signature(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 12) {
+    return false;
+  }
+  // MP4/ISO BMFF usually has "ftyp" at offset 4.
+  return (
+    bytes[4] === 0x66 &&
+    bytes[5] === 0x74 &&
+    bytes[6] === 0x79 &&
+    bytes[7] === 0x70
+  );
+}
+
+function hasWebmSignature(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 4) {
+    return false;
+  }
+  // EBML header: 1A 45 DF A3
+  return (
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3
+  );
+}
+
+function hasZipSignature(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 4) {
+    return false;
+  }
+  // ZIP local file header: PK\x03\x04 (pptx is zip)
+  return (
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  );
+}
+
 function toMarkdown(input) {
   const lines = [];
   lines.push("# KnowLens MVP Usability Test Report");
@@ -374,6 +429,95 @@ async function main() {
           throw new Error(`unexpected response: ${res.status} ${res.text.slice(0, 180)}`);
         }
         return `promptLen=${(res.data?.payload?.prompt || "").length}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Workspace start: empty input is rejected",
+      async () => {
+        const res = await fetchJson(
+          `${baseUrl}/api/workspace/start`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              prompt: "   ",
+              sources: [],
+            }),
+          },
+          auth.jar,
+        );
+        if (res.status !== 400) {
+          throw new Error(`expected 400 but got ${res.status}: ${res.text.slice(0, 180)}`);
+        }
+        return "status=400";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Workspace start: prompt is trimmed to 6000 chars",
+      async () => {
+        const longPrompt = "A".repeat(9000);
+        const res = await fetchJson(
+          `${baseUrl}/api/workspace/start`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              prompt: longPrompt,
+              textModel: testTextModel,
+              imageModel: "gpt-image-2",
+            }),
+          },
+          auth.jar,
+        );
+        if (!res.ok || !res.data?.ok) {
+          throw new Error(`unexpected response: ${res.status} ${res.text.slice(0, 180)}`);
+        }
+        const prompt = String(res.data?.payload?.prompt || "");
+        if (prompt.length !== 6000) {
+          throw new Error(`expected prompt length 6000 but got ${prompt.length}`);
+        }
+        return "len=6000";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Workspace start: sources list is capped at 30",
+      async () => {
+        const sources = Array.from({ length: 45 }, (_, idx) => ({
+          id: `src-${idx + 1}`,
+          kind: "web",
+          name: `Source ${idx + 1}`,
+          origin: `https://example.com/${idx + 1}`,
+          status: "ready",
+          excerpt: "demo",
+        }));
+        const res = await fetchJson(
+          `${baseUrl}/api/workspace/start`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              prompt: "Summarize with many sources",
+              sources,
+            }),
+          },
+          auth.jar,
+        );
+        if (!res.ok || !res.data?.ok) {
+          throw new Error(`unexpected response: ${res.status} ${res.text.slice(0, 180)}`);
+        }
+        const normalizedSources = Array.isArray(res.data?.payload?.sources)
+          ? res.data.payload.sources
+          : [];
+        if (normalizedSources.length !== 30) {
+          throw new Error(`expected 30 sources but got ${normalizedSources.length}`);
+        }
+        return "sources=30";
       },
       cases,
     );
@@ -565,6 +709,124 @@ async function main() {
     );
 
     await runCase(
+      "Upload chain: provider-missing errors fail fast without retries",
+      async () => {
+        if (envStatus.hasOpenAiApiKey) {
+          return "skipped (OPENAI_API_KEY configured)";
+        }
+        const create = await createUploadJob(
+          {
+            userEmail: auth.email,
+            fileName: "podcast-link-fastfail.txt",
+            mimeType: "text/plain",
+            fileSize: 120,
+            sourceKind: "podcast",
+            sourceUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+          },
+          auth.jar,
+        );
+        if (!create.ok || !create.data?.job?.jobId) {
+          throw new Error(`create job failed: ${create.status} ${create.text.slice(0, 180)}`);
+        }
+        const done = await waitUploadDone(auth.email, create.data.job.jobId, auth.jar, 120000);
+        if (!done || done.status !== "failed") {
+          throw new Error(`expected failed status: ${shortJson(done)}`);
+        }
+        const attempts = Number(done.attempts ?? done.attempt_count ?? 0);
+        const code = String(done.error_code || done.errorCode || "");
+        if (attempts !== 1) {
+          throw new Error(`expected attempts=1 but got ${attempts} (${code || "no-code"})`);
+        }
+        if (code !== "UPLOAD_PROVIDER_NOT_CONFIGURED") {
+          throw new Error(`expected UPLOAD_PROVIDER_NOT_CONFIGURED but got ${code || "empty"}`);
+        }
+        return `attempts=${attempts}, code=${code}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Upload chain: retryable network failures exhaust retries",
+      async () => {
+        const create = await createUploadJob(
+          {
+            userEmail: auth.email,
+            fileName: "unreachable-web-link.txt",
+            mimeType: "text/plain",
+            fileSize: 120,
+            sourceKind: "web",
+            sourceUrl: "https://127.0.0.1:1/unreachable",
+          },
+          auth.jar,
+        );
+        if (!create.ok || !create.data?.job?.jobId) {
+          throw new Error(`create job failed: ${create.status} ${create.text.slice(0, 180)}`);
+        }
+        const done = await waitUploadDone(auth.email, create.data.job.jobId, auth.jar, 120000);
+        if (!done || done.status !== "failed") {
+          throw new Error(`expected failed status: ${shortJson(done)}`);
+        }
+        const attempts = Number(done.attempts ?? done.attempt_count ?? 0);
+        const code = String(done.error_code || done.errorCode || "");
+        if (attempts !== 3) {
+          throw new Error(`expected attempts=3 but got ${attempts} (${code || "no-code"})`);
+        }
+        if (code !== "UPLOAD_NETWORK_FAILURE" && code !== "UPLOAD_WORKER_TIMEOUT") {
+          throw new Error(`unexpected error code after retries: ${code || "empty"}`);
+        }
+        return `attempts=${attempts}, code=${code}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Upload chain: minimal YouTube link payload is accepted",
+      async () => {
+        const create = await createUploadJob(
+          {
+            userEmail: auth.email,
+            sourceKind: "youtube",
+            sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          },
+          auth.jar,
+        );
+        if (!create.ok || !create.data?.job?.jobId) {
+          throw new Error(`create job failed: ${create.status} ${create.text.slice(0, 180)}`);
+        }
+        const done = await waitUploadDone(auth.email, create.data.job.jobId, auth.jar, 180000);
+        if (!done) {
+          throw new Error("minimal youtube job missing from polling");
+        }
+        if (done.status !== "done" && done.status !== "failed") {
+          throw new Error(`unexpected job status: ${shortJson(done)}`);
+        }
+        return `status=${done.status}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Upload guard: missing file payload is rejected immediately",
+      async () => {
+        const create = await createUploadJob(
+          {
+            userEmail: auth.email,
+            fileName: "missing.pdf",
+            mimeType: "application/pdf",
+            fileSize: 2048,
+            sourceKind: "file",
+          },
+          auth.jar,
+        );
+        if (create.status !== 400) {
+          throw new Error(`expected 400 but got ${create.status}: ${create.text.slice(0, 180)}`);
+        }
+        return "status=400";
+      },
+      cases,
+    );
+
+    await runCase(
       "Upload guard: invalid file type is rejected",
       async () => {
         const badFile = new File([new Uint8Array([1, 2, 3])], "malware.bin", {
@@ -643,6 +905,284 @@ async function main() {
       cases,
     );
 
+    let generatedPosterUrl = "";
+    let generatedPosterMime = "";
+    await runCase(
+      "Core deliverable: poster render URL is downloadable",
+      async () => {
+        const res = await fetchJson(
+          `${baseUrl}/api/workspace/generation-confirm`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              intent: "poster",
+              outputs: 1,
+              ratio: "9:16",
+              imageModel: "gpt-image-2",
+              style: {
+                id: "clean-science-infographic",
+                name: "Clean Science Infographic",
+                prompt: "Clean scientific infographic aesthetic, high legibility, neutral palette.",
+              },
+              tasks: [
+                {
+                  index: 1,
+                  outputType: "poster",
+                  aspectRatio: "9:16",
+                  stylePrompt: "Clean scientific infographic aesthetic.",
+                  contentTitle: "Volcano Eruption Process",
+                  contentBody:
+                    "Explain magma pressure buildup, vent opening, eruption column, ash dispersion, and cooling.",
+                  visualHint: "Educational hierarchy blocks with simple annotations",
+                  composedPrompt:
+                    "Style prompt: Clean scientific infographic aesthetic.\nTitle: Volcano Eruption Process\nContent: Explain magma pressure buildup, vent opening, eruption column, ash dispersion, and cooling.",
+                },
+              ],
+            }),
+          },
+          auth.jar,
+        );
+        if (!res.ok || !res.data?.ok) {
+          throw new Error(`generation-confirm failed: ${res.status} ${res.text.slice(0, 220)}`);
+        }
+        const first = res.data?.generation?.results?.[0];
+        if (!first?.ok || !first?.imageUrl) {
+          throw new Error(`poster generation failed: ${shortJson(first || res.data?.generation)}`);
+        }
+        generatedPosterUrl = String(first.imageUrl);
+        const imageRes = await fetch(generatedPosterUrl, { method: "GET" });
+        if (!imageRes.ok) {
+          throw new Error(`poster url not reachable: ${imageRes.status}`);
+        }
+        const buf = new Uint8Array(await imageRes.arrayBuffer());
+        if (buf.byteLength < 1000) {
+          throw new Error(`poster content too small: ${buf.byteLength} bytes`);
+        }
+        generatedPosterMime = String(imageRes.headers.get("content-type") || "");
+        if (!/^image\//i.test(generatedPosterMime)) {
+          throw new Error(`poster content-type is not image: ${generatedPosterMime || "empty"}`);
+        }
+        return `bytes=${buf.byteLength}, mime=${generatedPosterMime || "unknown"}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Core deliverable: PPT export returns valid .pptx binary",
+      async () => {
+        if (!generatedPosterUrl) {
+          throw new Error("missing generated poster URL from previous case");
+        }
+        const payload = {
+          title: "KnowLens End-to-End PPT",
+          slides: [
+            {
+              page: 1,
+              title: "Volcano Eruption Overview",
+              body: "Magma pressure rises, vents open, ash and gases erupt, and the plume disperses.",
+              imageSrc: generatedPosterUrl,
+            },
+            {
+              page: 2,
+              title: "Risk and Mitigation",
+              body: "Monitor seismic activity, define evacuation zones, and communicate alerts clearly.",
+              imageSrc: generatedPosterUrl,
+            },
+          ],
+        };
+        const response = await fetch(`${baseUrl}/api/export/ppt`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: auth.jar.toHeader(),
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          throw new Error(`ppt export failed: ${response.status} ${text.slice(0, 180)}`);
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength < 4000) {
+          throw new Error(`pptx too small: ${bytes.byteLength} bytes`);
+        }
+        if (!hasZipSignature(bytes)) {
+          throw new Error("ppt export is not a valid zip/pptx binary");
+        }
+        const contentType = getHeader(response, "content-type");
+        if (!/presentationml\.presentation/i.test(contentType)) {
+          throw new Error(`unexpected ppt content-type: ${contentType || "empty"}`);
+        }
+        const disposition = getHeader(response, "content-disposition");
+        if (!/attachment/i.test(disposition)) {
+          throw new Error("ppt export missing attachment content-disposition");
+        }
+        return `bytes=${bytes.byteLength}, content-type=${contentType || "unknown"}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Core deliverable: audio TTS returns playable WAV",
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tts`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: auth.jar.toHeader(),
+          },
+          body: JSON.stringify({
+            voice: "Ting-Ting",
+            text: "This is a short test narration for KnowLens video export.",
+          }),
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          throw new Error(`tts failed: ${response.status} ${text.slice(0, 180)}`);
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength < 1000) {
+          throw new Error(`wav too small: ${bytes.byteLength} bytes`);
+        }
+        // RIFF....WAVE header check
+        const riff =
+          bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+        const wave =
+          bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45;
+        if (!riff || !wave) {
+          throw new Error("tts result is not a valid wav header");
+        }
+        const contentType = getHeader(response, "content-type");
+        if (!/audio\/wav/i.test(contentType)) {
+          throw new Error(`unexpected tts content-type: ${contentType || "empty"}`);
+        }
+        return `bytes=${bytes.byteLength}, content-type=${contentType || "unknown"}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Core deliverable: video export returns downloadable mp4/webm",
+      async () => {
+        const ffmpegPath = path.join(projectRoot, "node_modules", "ffmpeg-static", "ffmpeg");
+        const inputVideoPath = path.join(projectRoot, ".tmp-usability-input.webm");
+        try {
+          await new Promise((resolve, reject) => {
+            const ff = spawn(
+              ffmpegPath,
+              [
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=#1f2937:s=640x360:d=1.6",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=channel_layout=stereo:sample_rate=48000",
+                "-shortest",
+                "-c:v",
+                "libvpx-vp9",
+                "-b:v",
+                "450k",
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "96k",
+                inputVideoPath,
+              ],
+              { cwd: projectRoot, stdio: "ignore" },
+            );
+            ff.on("error", reject);
+            ff.on("exit", (code) => {
+              if (code === 0) {
+                resolve(null);
+                return;
+              }
+              reject(new Error(`ffmpeg exited with code ${code}`));
+            });
+          });
+
+          const videoBytes = readFileSync(inputVideoPath);
+          const videoFile = new File([videoBytes], "core-export-input.webm", {
+            type: "video/webm",
+          });
+          const form = new FormData();
+          form.append("video", videoFile);
+
+          const response = await fetch(`${baseUrl}/api/export/video`, {
+            method: "POST",
+            headers: {
+              cookie: auth.jar.toHeader(),
+            },
+            body: form,
+          });
+          if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            throw new Error(`video export failed: ${response.status} ${text.slice(0, 180)}`);
+          }
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (bytes.byteLength < 1200) {
+            throw new Error(`video output too small: ${bytes.byteLength} bytes`);
+          }
+          const contentType = getHeader(response, "content-type");
+          const isMp4 = hasMp4Signature(bytes);
+          const isWebm = hasWebmSignature(bytes);
+          if (!isMp4 && !isWebm) {
+            throw new Error(`video output signature is neither mp4 nor webm (content-type=${contentType || "empty"})`);
+          }
+          if (!/video\//i.test(contentType)) {
+            throw new Error(`unexpected video content-type: ${contentType || "empty"}`);
+          }
+          const disposition = getHeader(response, "content-disposition");
+          if (!/attachment/i.test(disposition)) {
+            throw new Error("video export missing attachment content-disposition");
+          }
+          const format = isMp4 ? "mp4" : "webm";
+          return `format=${format}, bytes=${bytes.byteLength}, content-type=${contentType || "unknown"}`;
+        } finally {
+          try {
+            unlinkSync(inputVideoPath);
+          } catch {
+            // ignore
+          }
+        }
+      },
+      cases,
+    );
+
+    await runCase(
+      "Generation guard: missing tasks is rejected",
+      async () => {
+        const res = await fetchJson(
+          `${baseUrl}/api/workspace/generation-confirm`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              intent: "poster",
+              outputs: 1,
+              ratio: "9:16",
+              imageModel: "gpt-image-2",
+              style: {
+                id: "clean-science-infographic",
+                name: "Clean Science Infographic",
+                prompt: "Clean scientific infographic aesthetic, high legibility, neutral palette.",
+              },
+              tasks: [],
+            }),
+          },
+          auth.jar,
+        );
+        if (res.status !== 400) {
+          throw new Error(`expected 400 but got ${res.status}: ${res.text.slice(0, 220)}`);
+        }
+        return "status=400";
+      },
+      cases,
+    );
+
     await runCase(
       "Image provider smoke API",
       async () => {
@@ -654,6 +1194,155 @@ async function main() {
           throw new Error(`smoke failed: ${res.status} ${res.text.slice(0, 220)}`);
         }
         return `endpoint=${res.data.endpoint}`;
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing checkout: signed-out request is rejected",
+      async () => {
+        const res = await fetchJson(`${baseUrl}/api/billing/checkout`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ planId: "starter", cycle: "monthly" }),
+        });
+        if (res.status !== 401) {
+          throw new Error(`expected 401 but got ${res.status}: ${res.text.slice(0, 200)}`);
+        }
+        return "status=401";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing checkout: invalid plan is rejected",
+      async () => {
+        const res = await fetchJson(
+          `${baseUrl}/api/billing/checkout`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ planId: "unknown-plan", cycle: "monthly" }),
+          },
+          auth.jar,
+        );
+        if (res.status !== 400) {
+          throw new Error(`expected 400 but got ${res.status}: ${res.text.slice(0, 200)}`);
+        }
+        return "status=400";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing checkout: signed-in request yields redirect or actionable 503",
+      async () => {
+        const res = await fetchJson(
+          `${baseUrl}/api/billing/checkout`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ planId: "starter", cycle: "monthly" }),
+          },
+          auth.jar,
+        );
+        if (res.ok && res.data?.ok && typeof res.data?.checkoutUrl === "string" && res.data.checkoutUrl.length > 0) {
+          return `mode=${res.data.mode || "unknown"}`;
+        }
+        if (res.status === 503) {
+          const code = String(res.data?.code || "");
+          if (code === "STRIPE_ENV_MISSING" || code === "STRIPE_ENV_INVALID") {
+            return `status=503 (${code})`;
+          }
+        }
+        throw new Error(`unexpected response: ${res.status} ${res.text.slice(0, 220)}`);
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing redirect: missing target is rejected",
+      async () => {
+        const res = await fetchJson(`${baseUrl}/api/billing/redirect`, {
+          method: "GET",
+          redirect: "manual",
+        });
+        if (res.status !== 400) {
+          throw new Error(`expected 400 but got ${res.status}`);
+        }
+        return "status=400";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing redirect: non-stripe target is rejected",
+      async () => {
+        const badTarget = encodeURIComponent("https://example.com/pay");
+        const res = await fetchJson(`${baseUrl}/api/billing/redirect?target=${badTarget}`, {
+          method: "GET",
+          redirect: "manual",
+        });
+        if (res.status !== 400) {
+          throw new Error(`expected 400 but got ${res.status}`);
+        }
+        return "status=400";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing redirect: stripe target is allowed",
+      async () => {
+        const stripeTarget = encodeURIComponent("https://checkout.stripe.com/c/pay/cs_test_123");
+        const res = await fetchJson(`${baseUrl}/api/billing/redirect?target=${stripeTarget}`, {
+          method: "GET",
+          redirect: "manual",
+        });
+        if (res.status !== 302) {
+          throw new Error(`expected 302 but got ${res.status}`);
+        }
+        const location = res.headers.get("location") || "";
+        if (!location.includes("checkout.stripe.com")) {
+          throw new Error(`unexpected redirect target: ${location || "empty"}`);
+        }
+        return "status=302";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing finalize: signed-out request is rejected",
+      async () => {
+        const res = await fetchJson(`${baseUrl}/api/billing/finalize`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId: "cs_test_mock_123" }),
+        });
+        if (res.status !== 401) {
+          throw new Error(`expected 401 but got ${res.status}`);
+        }
+        return "status=401";
+      },
+      cases,
+    );
+
+    await runCase(
+      "Billing finalize: missing sessionId is rejected",
+      async () => {
+        const res = await fetchJson(
+          `${baseUrl}/api/billing/finalize`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({}),
+          },
+          auth.jar,
+        );
+        if (res.status !== 400) {
+          throw new Error(`expected 400 but got ${res.status}`);
+        }
+        return "status=400";
       },
       cases,
     );

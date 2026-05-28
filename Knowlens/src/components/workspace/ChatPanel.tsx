@@ -7,7 +7,23 @@ export type ChatTurn = {
   role: "user" | "assistant";
   module: string;
   content: string;
+  meta?: ChatTurnMeta;
 };
+
+export type ChatTurnMeta =
+  | {
+      kind: "llm_error";
+      source: "draft_generation";
+      code?: string;
+      retryable?: boolean;
+    }
+  | {
+      kind: "image_error";
+      source: "image_generation";
+      code?: string;
+      taskIndex?: number;
+      retryable?: boolean;
+    };
 
 export type WorkspaceIntent = "ppt" | "video" | "poster" | "unknown";
 
@@ -243,6 +259,8 @@ type ChatPanelProps = {
     module: string;
     text: string;
   };
+  retryingErrorTurnIds?: Record<string, boolean>;
+  onRetryErrorTurn?: (turnId: string) => void;
 };
 
 export function ChatPanel({
@@ -305,6 +323,8 @@ export function ChatPanel({
   onConfirmBilling,
   visualizationTypeHint,
   thinkingState,
+  retryingErrorTurnIds,
+  onRetryErrorTurn,
 }: ChatPanelProps) {
   const isZh = outputLanguage === "zh";
   const shouldUseEnglishUi = !isZh;
@@ -450,6 +470,51 @@ export function ChatPanel({
   const draftGenerationLoadingActive =
     thinkingState.active &&
     /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
+  const renderUpdateCard = (update: ChatTurn, idx: number) => {
+    const isErrorCard =
+      update.role === "assistant" &&
+      (update.meta?.kind === "llm_error" || update.meta?.kind === "image_error");
+    if (isErrorCard) {
+      const isRetrying = Boolean(retryingErrorTurnIds?.[update.id]);
+      const errorCode = update.meta?.code?.trim();
+      const canRetry = update.meta?.retryable !== false;
+      return (
+        <article
+          key={`${update.id}-${idx}`}
+          className="max-w-[95%] rounded-2xl border border-red-200 bg-red-50/70 px-4 py-3 text-sm text-zinc-800"
+        >
+          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · {update.module}</div>
+          <p className="whitespace-pre-line leading-6">{update.content}</p>
+          {errorCode ? <p className="mt-1 text-[11px] text-zinc-500">Error code: {errorCode}</p> : null}
+          {canRetry && onRetryErrorTurn ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                disabled={isRetrying}
+                onClick={() => onRetryErrorTurn(update.id)}
+                className="inline-flex h-8 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRetrying ? "Retrying..." : "Retry"}
+              </button>
+            </div>
+          ) : null}
+        </article>
+      );
+    }
+    return (
+      <article
+        key={`${update.id}-${idx}`}
+        className={`max-w-[95%] rounded-2xl px-4 py-3 text-sm ${
+          update.role === "user" ? "ml-auto bg-zinc-900 text-white" : "bg-zinc-100/85 text-zinc-800"
+        }`}
+      >
+        <div className={`mb-1 text-[11px] ${update.role === "user" ? "text-zinc-300" : "text-zinc-500"}`}>
+          {update.role === "user" ? "You" : "KnowLens.ai"} · {update.module}
+        </div>
+        <p className="whitespace-pre-line leading-6">{update.content}</p>
+      </article>
+    );
+  };
 
   if (shouldUseEnglishUi) {
     return (
@@ -883,19 +948,7 @@ export function ChatPanel({
           </article>
         ) : null}
 
-        {displayedUpdates.map((update, idx) => (
-          <article
-            key={`${update.id}-${idx}`}
-            className={`max-w-[95%] rounded-2xl px-4 py-3 text-sm ${
-              update.role === "user" ? "ml-auto bg-zinc-900 text-white" : "bg-zinc-100/85 text-zinc-800"
-            }`}
-          >
-            <div className={`mb-1 text-[11px] ${update.role === "user" ? "text-zinc-300" : "text-zinc-500"}`}>
-              {update.role === "user" ? "You" : "KnowLens.ai"} · {update.module}
-            </div>
-            <p className="whitespace-pre-line leading-6">{update.content}</p>
-          </article>
-        ))}
+        {displayedUpdates.map((update, idx) => renderUpdateCard(update, idx))}
 
         {styleConfirmed ? (
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
@@ -1915,19 +1968,7 @@ export function ChatPanel({
         </article>
       ) : null}
 
-      {displayedUpdates.map((update, idx) => (
-        <article
-          key={`${update.id}-${idx}`}
-          className={`max-w-[95%] rounded-2xl px-4 py-3 text-sm ${
-            update.role === "user" ? "ml-auto bg-zinc-900 text-white" : "bg-zinc-100/85 text-zinc-800"
-          }`}
-        >
-          <div className={`mb-1 text-[11px] ${update.role === "user" ? "text-zinc-300" : "text-zinc-500"}`}>
-            {update.role === "user" ? "You" : "KnowLens.ai"} · {update.module}
-          </div>
-          <p className="leading-6">{update.content}</p>
-        </article>
-      ))}
+      {displayedUpdates.map((update, idx) => renderUpdateCard(update, idx))}
 
       {styleConfirmed ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">

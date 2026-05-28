@@ -135,13 +135,23 @@ export function detectInputLanguage(text: string): OutputLanguage {
 
 export function resolveOutputLanguage(input: ResolveOutputLanguageInput): OutputLanguage {
   const fallback = input.fallback ?? "en";
-  const explicit = extractExplicitOutputLanguage(input.userPrompt ?? "");
+  const userPrompt = normalize(input.userPrompt ?? "");
+  const sourceText = normalize(input.sourceText ?? "");
+  const explicit = extractExplicitOutputLanguage(userPrompt);
   if (explicit) {
     return explicit;
   }
-  const mixedText = `${input.userPrompt ?? ""}\n${input.sourceText ?? ""}`.trim();
-  if (!mixedText) {
-    return fallback;
+
+  // Language should follow explicit user typing first.
+  // This prevents uploaded source language from unexpectedly overriding
+  // the user's requested/default output language.
+  if (userPrompt) {
+    return detectInputLanguage(userPrompt);
   }
-  return detectInputLanguage(mixedText);
+
+  if (sourceText) {
+    return detectInputLanguage(sourceText);
+  }
+
+  return fallback;
 }

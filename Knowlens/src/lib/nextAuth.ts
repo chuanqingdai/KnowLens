@@ -2,7 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { resolveRoleByEmail } from "@/lib/auth";
-import { upsertUser } from "@/lib/server/store";
+import { logOpsEvent, upsertUser } from "@/lib/server/store";
 import { OAuth2Client } from "google-auth-library";
 import https from "node:https";
 import crypto from "node:crypto";
@@ -44,14 +44,56 @@ function decodeJwtPayload(token: string) {
   }
 }
 
+function stringifyLoggerDetails(parts: unknown[]) {
+  try {
+    return parts
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        return JSON.stringify(part);
+      })
+      .join(" | ")
+      .slice(0, 500);
+  } catch {
+    return "";
+  }
+}
+
+function safeLogAuthEvent(input: Parameters<typeof logOpsEvent>[0]) {
+  try {
+    logOpsEvent(input);
+  } catch {
+    // Never break auth flow because of telemetry write failures.
+  }
+}
+
 export const nextAuthOptions: NextAuthOptions = {
   debug: process.env.NODE_ENV !== "production",
   logger: {
     error(code, ...message) {
       console.error("[next-auth][logger][error]", code, ...message);
+      safeLogAuthEvent({
+        category: "auth",
+        action: "signin_failed",
+        status: "error",
+        source: "nextauth",
+        code,
+        message: stringifyLoggerDetails(message) || "NextAuth logger error",
+      });
     },
     warn(code, ...message) {
       console.warn("[next-auth][logger][warn]", code, ...message);
+      if (String(code).toLowerCase().includes("oauth")) {
+        safeLogAuthEvent({
+          category: "auth",
+          action: "signin_warning",
+          status: "error",
+          source: "nextauth",
+          code,
+          message: stringifyLoggerDetails(message) || "NextAuth OAuth warning",
+        });
+      }
     },
     debug(code, ...message) {
       if (process.env.NODE_ENV !== "production") {
@@ -191,6 +233,13 @@ export const nextAuthOptions: NextAuthOptions = {
           email: user.email,
           name: user.name || user.email.split("@")[0] || "User",
           role: resolveRoleByEmail(user.email),
+        });
+        safeLogAuthEvent({
+          category: "auth",
+          action: "signin_success",
+          status: "ok",
+          source: "nextauth",
+          userEmail: user.email,
         });
       }
       return true;

@@ -25,6 +25,29 @@ type UploadJobRequest = {
   inputPath?: string;
 };
 
+type UploadSourceKind = NonNullable<UploadJobRequest["sourceKind"]>;
+
+function normalizeSourceKind(raw: string | undefined): UploadSourceKind {
+  const value = (raw ?? "").trim().toLowerCase();
+  if (value === "web" || value === "youtube" || value === "podcast") {
+    return value;
+  }
+  return "file";
+}
+
+function buildLinkFallbackName(sourceKind: UploadSourceKind, sourceUrl: string) {
+  if (!sourceUrl) {
+    return `${sourceKind || "link"}-source`;
+  }
+  try {
+    const url = new URL(sourceUrl);
+    const host = url.hostname.replace(/^www\./i, "").trim() || "source";
+    return `${sourceKind || "link"}-${host}`;
+  } catch {
+    return `${sourceKind || "link"}-source`;
+  }
+}
+
 function getScopeFromRequest(req: NextRequest, bodyUserEmail?: string) {
   const forwardedFor = req.headers.get("x-forwarded-for") ?? "";
   const ip = forwardedFor.split(",")[0]?.trim() || "unknown";
@@ -62,10 +85,10 @@ export async function POST(request: NextRequest) {
       body = (await request.json()) as UploadJobRequest;
     }
     const userEmail = (body.userEmail ?? "").trim().toLowerCase();
-    const fileName = (body.fileName ?? "").trim();
-    const mimeType = (body.mimeType ?? "").trim();
-    const fileSize = Number(body.fileSize ?? 0);
-    const sourceKind = body.sourceKind ?? "file";
+    let fileName = (body.fileName ?? "").trim();
+    let mimeType = (body.mimeType ?? "").trim();
+    let fileSize = Number(body.fileSize ?? 0);
+    const sourceKind = normalizeSourceKind(body.sourceKind);
     const sourceUrl = (body.sourceUrl ?? "").trim();
     const sourceText = (body.sourceText ?? "").trim();
 
@@ -77,18 +100,42 @@ export async function POST(request: NextRequest) {
       windowMs: RATE_LIMIT_CONFIG.uploadJobCreate.windowMs,
     });
 
-    const valid = validateUploadFile({
-      name: fileName,
-      type: mimeType,
-      size: fileSize,
-    });
-    if (!valid.ok) {
-      return NextResponse.json(
-        {
-          error: valid.reason,
-        },
-        { status: 400 },
-      );
+    if (sourceKind === "file") {
+      if (uploadFile) {
+        fileName = fileName || uploadFile.name || "upload-file";
+        mimeType = mimeType || uploadFile.type || "application/octet-stream";
+        if (!Number.isFinite(fileSize) || fileSize <= 0) {
+          fileSize = uploadFile.size;
+        }
+      }
+      if (!uploadFile && !body.inputPath?.trim()) {
+        return NextResponse.json({ error: "Missing file payload." }, { status: 400 });
+      }
+      const valid = validateUploadFile({
+        name: fileName,
+        type: mimeType,
+        size: fileSize,
+      });
+      if (!valid.ok) {
+        return NextResponse.json(
+          {
+            error: valid.reason,
+          },
+          { status: 400 },
+        );
+      }
+    } else {
+      if (!sourceUrl && !sourceText) {
+        return NextResponse.json(
+          { error: "Missing source URL or source text for link extraction." },
+          { status: 400 },
+        );
+      }
+      fileName = fileName || buildLinkFallbackName(sourceKind, sourceUrl);
+      mimeType = mimeType || "text/plain";
+      if (!Number.isFinite(fileSize) || fileSize <= 0) {
+        fileSize = Math.max(1, sourceText.length);
+      }
     }
 
     const tempInputPath =
@@ -142,7 +189,9 @@ export async function POST(request: NextRequest) {
     const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
     if (retryAfter) {
       return NextResponse.json(
-        { error: "Too many upload requests. Please retry later." },
+        {
+          error: "Too many upload requests. Please retry later.",
+        },
         {
           status: 429,
           headers: {

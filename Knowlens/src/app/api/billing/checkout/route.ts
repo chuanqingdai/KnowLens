@@ -11,6 +11,7 @@ import {
   isStripeServerConfigured,
 } from "@/lib/server/stripe";
 import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
+import { logOpsEvent } from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
@@ -42,11 +43,49 @@ function buildCrossBrowserRedirectUrl(url: string) {
   return `/api/billing/redirect?target=${safe}`;
 }
 
+function hasWechatClientConstraintError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("wechat_pay") && normalized.includes("client");
+}
+
+async function createCheckoutSessionWithFallback(
+  stripe: ReturnType<typeof getStripeServerClient>,
+  params: Parameters<ReturnType<typeof getStripeServerClient>["checkout"]["sessions"]["create"]>[0],
+) {
+  try {
+    return await stripe.checkout.sessions.create(params);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!hasWechatClientConstraintError(message)) {
+      throw error;
+    }
+    const cardOnlyParams: Parameters<
+      ReturnType<typeof getStripeServerClient>["checkout"]["sessions"]["create"]
+    >[0] = {
+      ...params,
+      payment_method_types: ["card"],
+    };
+    delete (cardOnlyParams as { payment_method_options?: unknown }).payment_method_options;
+    return stripe.checkout.sessions.create(cardOnlyParams);
+  }
+}
+
 export async function POST(request: NextRequest) {
+  let checkoutSourceForLog = "unknown";
+  let userEmailForLog = "";
   try {
     const session = await getServerSession(nextAuthOptions);
     const email = session?.user?.email?.trim().toLowerCase();
+    userEmailForLog = email ?? "";
     if (!email) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_error",
+        status: "error",
+        source: "unknown",
+        code: "BILLING_CHECKOUT_AUTH_REQUIRED",
+        message: "Checkout requested without sign-in session.",
+      });
       return NextResponse.json({ error: "Please sign in before checkout." }, { status: 401 });
     }
 
@@ -60,14 +99,34 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       planId?: string;
       cycle?: BillingCycle;
+      source?: string;
     };
 
     const planId = (body.planId ?? "").trim();
     const cycle = body.cycle === "monthly" ? "monthly" : "yearly";
+    const checkoutSource = (body.source ?? "unknown").trim().slice(0, 64) || "unknown";
+    checkoutSourceForLog = checkoutSource;
     const plan = findBillingPlan(planId);
     if (!plan) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_error",
+        status: "error",
+        source: checkoutSource,
+        userEmail: email,
+        code: "BILLING_CHECKOUT_UNKNOWN_PLAN",
+        message: `Unknown billing plan: ${planId || "empty"}`,
+      });
       return NextResponse.json({ error: "Unknown plan." }, { status: 400 });
     }
+    logOpsEvent({
+      category: "billing",
+      action: "checkout_attempt",
+      status: "info",
+      source: checkoutSource,
+      userEmail: email,
+      message: `${plan.id}:${cycle}`,
+    });
 
     const siteUrl = normalizedSiteUrl();
     const metadata = {
@@ -77,6 +136,7 @@ export async function POST(request: NextRequest) {
       plan_name: plan.name,
       billing_cycle: cycle,
       monthly_credits: String(plan.monthlyCredits),
+      checkout_source: checkoutSource,
     };
 
     const successUrl = `${siteUrl}/membership?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -85,6 +145,14 @@ export async function POST(request: NextRequest) {
     const recurringProductId = getStripeProductId(plan.id, cycle);
     const paymentLink = getStripePaymentLink(plan.id, cycle);
     if (!isStripeServerConfigured() && paymentLink) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_session_created",
+        status: "ok",
+        source: checkoutSource,
+        userEmail: email,
+        message: "payment_link_fallback",
+      });
       return NextResponse.json({
         ok: true,
         mode: "payment_link",
@@ -94,6 +162,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isStripeServerConfigured()) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_error",
+        status: "error",
+        source: checkoutSource,
+        userEmail: email,
+        code: "STRIPE_ENV_MISSING",
+        message: "Stripe checkout is not configured.",
+      });
       return NextResponse.json(
         {
           code: "STRIPE_ENV_MISSING",
@@ -107,7 +184,7 @@ export async function POST(request: NextRequest) {
     const stripe = getStripeServerClient();
 
     if (recurringPriceId) {
-      const sessionResult = await stripe.checkout.sessions.create({
+      const sessionResult = await createCheckoutSessionWithFallback(stripe, {
         mode: "subscription",
         line_items: [{ price: recurringPriceId, quantity: 1 }],
         success_url: successUrl,
@@ -115,6 +192,14 @@ export async function POST(request: NextRequest) {
         customer_email: email,
         metadata,
         allow_promotion_codes: true,
+      });
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_session_created",
+        status: "ok",
+        source: checkoutSource,
+        userEmail: email,
+        message: `subscription_price_id:${recurringPriceId}`,
       });
       return NextResponse.json({
         ok: true,
@@ -129,7 +214,7 @@ export async function POST(request: NextRequest) {
       if (!amount) {
         return NextResponse.json({ error: "Unable to resolve recurring amount." }, { status: 400 });
       }
-      const sessionResult = await stripe.checkout.sessions.create({
+      const sessionResult = await createCheckoutSessionWithFallback(stripe, {
         mode: "subscription",
         line_items: [
           {
@@ -148,6 +233,14 @@ export async function POST(request: NextRequest) {
         metadata,
         allow_promotion_codes: true,
       });
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_session_created",
+        status: "ok",
+        source: checkoutSource,
+        userEmail: email,
+        message: `subscription_price_data:${recurringProductId}`,
+      });
       return NextResponse.json({
         ok: true,
         mode: "subscription",
@@ -161,7 +254,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unable to resolve fallback amount." }, { status: 400 });
     }
 
-    const fallbackSession = await stripe.checkout.sessions.create({
+    const fallbackSession = await createCheckoutSessionWithFallback(stripe, {
       mode: "payment",
       line_items: [
         {
@@ -191,6 +284,14 @@ export async function POST(request: NextRequest) {
       },
       allow_promotion_codes: true,
     });
+    logOpsEvent({
+      category: "billing",
+      action: "checkout_session_created",
+      status: "ok",
+      source: checkoutSource,
+      userEmail: email,
+      message: "one_time_fallback",
+    });
 
     return NextResponse.json({
       ok: true,
@@ -202,6 +303,15 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
     if (retryAfter) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_error",
+        status: "error",
+        source: checkoutSourceForLog,
+        userEmail: userEmailForLog || undefined,
+        code: "BILLING_CHECKOUT_RATE_LIMIT",
+        message: "Too many checkout attempts.",
+      });
       return NextResponse.json(
         { error: "Too many checkout attempts. Please retry later." },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
@@ -210,6 +320,15 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Failed to create checkout session.";
     const normalized = message.toLowerCase();
     if (normalized.includes("invalid api key") || normalized.includes("stripeauthenticationerror")) {
+      logOpsEvent({
+        category: "billing",
+        action: "checkout_error",
+        status: "error",
+        source: checkoutSourceForLog,
+        userEmail: userEmailForLog || undefined,
+        code: "STRIPE_ENV_INVALID",
+        message,
+      });
       return NextResponse.json(
         {
           code: "STRIPE_ENV_INVALID",
@@ -219,6 +338,15 @@ export async function POST(request: NextRequest) {
         { status: 503 },
       );
     }
+    logOpsEvent({
+      category: "billing",
+      action: "checkout_error",
+      status: "error",
+      source: checkoutSourceForLog,
+      userEmail: userEmailForLog || undefined,
+      code: "BILLING_CHECKOUT_INTERNAL",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

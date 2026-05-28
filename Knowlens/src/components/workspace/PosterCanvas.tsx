@@ -3,7 +3,6 @@
 import "@xyflow/react/dist/style.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import {
   AlertCircle,
   ArrowUpDown,
@@ -161,77 +160,120 @@ function pickNextCaseImage(currentSrc: string, fallbackSeed: number) {
   return CASE_IMAGES[(currentIdx + 1) % CASE_IMAGES.length];
 }
 
+function reportPosterDownloadEvent(input: {
+  status: "ok" | "error";
+  code?: string;
+  message?: string;
+  cardIndex: number;
+}) {
+  void fetch("/api/telemetry/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      category: "download",
+      action: input.status === "ok" ? "poster_download_success" : "poster_download_failed",
+      status: input.status,
+      source: "poster",
+      code: input.code,
+      message: input.message,
+      details: {
+        cardIndex: input.cardIndex,
+      },
+    }),
+  }).catch(() => undefined);
+}
+
 async function exportPosterImage(card: PosterCard) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1080;
-  canvas.height = 1920;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return;
-  }
-  const { title, subtitle, body } = splitCopy(card.copy, card.index);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "#111827";
-  ctx.font = "bold 56px sans-serif";
-  wrapText(title, 16)
-    .slice(0, 2)
-    .forEach((line, idx) => {
-      ctx.fillText(line, 60, 96 + idx * 68);
-    });
-
-  ctx.fillStyle = "#4b5563";
-  ctx.font = "32px sans-serif";
-  wrapText(subtitle, 24)
-    .slice(0, 1)
-    .forEach((line) => {
-      ctx.fillText(line, 60, 250);
-    });
-
-  const imageBox = { x: 60, y: 300, w: 960, h: 1280 };
-  const shouldUseImage = card.status === "ready" && Boolean(card.imageSrc);
-  if (shouldUseImage && card.imageSrc) {
-    const image = new window.Image();
-    image.crossOrigin = "anonymous";
-    image.src = card.imageSrc;
-    await new Promise<void>((resolve) => {
-      image.onload = () => resolve();
-      image.onerror = () => resolve();
-    });
-    if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-      const scale = Math.max(imageBox.w / image.naturalWidth, imageBox.h / image.naturalHeight);
-      const drawW = image.naturalWidth * scale;
-      const drawH = image.naturalHeight * scale;
-      const drawX = imageBox.x + (imageBox.w - drawW) / 2;
-      const drawY = imageBox.y + (imageBox.h - drawH) / 2;
-      ctx.drawImage(image, drawX, drawY, drawW, drawH);
-    } else {
-      ctx.fillStyle = card.colorHex;
-      ctx.fillRect(imageBox.x, imageBox.y, imageBox.w, imageBox.h);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      reportPosterDownloadEvent({
+        status: "error",
+        code: "POSTER_CANVAS_UNAVAILABLE",
+        message: "Canvas context is unavailable.",
+        cardIndex: card.index,
+      });
+      return;
     }
-  } else {
-    ctx.fillStyle = PENDING_POSTER_COLOR;
-    ctx.fillRect(imageBox.x, imageBox.y, imageBox.w, imageBox.h);
-    ctx.fillStyle = "rgba(17,24,39,0.08)";
-    ctx.fillRect(imageBox.x + 44, imageBox.y + 80, imageBox.w - 88, 4);
-    ctx.fillRect(imageBox.x + 44, imageBox.y + 140, imageBox.w - 188, 4);
-    ctx.fillRect(imageBox.x + 44, imageBox.y + 340, imageBox.w - 120, 4);
-  }
+    const { title, subtitle, body } = splitCopy(card.copy, card.index);
 
-  ctx.fillStyle = "#111827";
-  ctx.font = "30px sans-serif";
-  wrapText(body, 26)
-    .slice(0, 3)
-    .forEach((line, idx) => {
-      ctx.fillText(line, 60, 1665 + idx * 44);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "bold 56px sans-serif";
+    wrapText(title, 16)
+      .slice(0, 2)
+      .forEach((line, idx) => {
+        ctx.fillText(line, 60, 96 + idx * 68);
+      });
+
+    ctx.fillStyle = "#4b5563";
+    ctx.font = "32px sans-serif";
+    wrapText(subtitle, 24)
+      .slice(0, 1)
+      .forEach((line) => {
+        ctx.fillText(line, 60, 250);
+      });
+
+    const imageBox = { x: 60, y: 300, w: 960, h: 1280 };
+    const shouldUseImage = card.status === "ready" && Boolean(card.imageSrc);
+    if (shouldUseImage && card.imageSrc) {
+      const image = new window.Image();
+      image.crossOrigin = "anonymous";
+      image.src = card.imageSrc;
+      await new Promise<void>((resolve) => {
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+      });
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        const scale = Math.max(imageBox.w / image.naturalWidth, imageBox.h / image.naturalHeight);
+        const drawW = image.naturalWidth * scale;
+        const drawH = image.naturalHeight * scale;
+        const drawX = imageBox.x + (imageBox.w - drawW) / 2;
+        const drawY = imageBox.y + (imageBox.h - drawH) / 2;
+        ctx.drawImage(image, drawX, drawY, drawW, drawH);
+      } else {
+        ctx.fillStyle = card.colorHex;
+        ctx.fillRect(imageBox.x, imageBox.y, imageBox.w, imageBox.h);
+      }
+    } else {
+      ctx.fillStyle = PENDING_POSTER_COLOR;
+      ctx.fillRect(imageBox.x, imageBox.y, imageBox.w, imageBox.h);
+      ctx.fillStyle = "rgba(17,24,39,0.08)";
+      ctx.fillRect(imageBox.x + 44, imageBox.y + 80, imageBox.w - 88, 4);
+      ctx.fillRect(imageBox.x + 44, imageBox.y + 140, imageBox.w - 188, 4);
+      ctx.fillRect(imageBox.x + 44, imageBox.y + 340, imageBox.w - 120, 4);
+    }
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "30px sans-serif";
+    wrapText(body, 26)
+      .slice(0, 3)
+      .forEach((line, idx) => {
+        ctx.fillText(line, 60, 1665 + idx * 44);
+      });
+
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `KnowLens-海报-${card.index}.png`;
+    link.click();
+    reportPosterDownloadEvent({
+      status: "ok",
+      cardIndex: card.index,
     });
-
-  const link = document.createElement("a");
-  link.href = canvas.toDataURL("image/png");
-  link.download = `KnowLens-海报-${card.index}.png`;
-  link.click();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Poster download failed.";
+    reportPosterDownloadEvent({
+      status: "error",
+      code: "POSTER_DOWNLOAD_FAILED",
+      message,
+      cardIndex: card.index,
+    });
+  }
 }
 
 function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
@@ -326,7 +368,21 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
       <div className="relative mt-2 overflow-hidden rounded-lg border border-zinc-200">
         {card.status === "ready" ? (
           <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100">
-            <Image src={card.imageSrc} alt={`Poster ${card.index}`} fill className="object-cover" />
+            <img
+              src={card.imageSrc}
+              alt={`Poster ${card.index}`}
+              className="block h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={() => {
+                console.warn("[PosterCanvas] image load failed:", card.imageSrc);
+                onUpdate(card.id, {
+                  status: "failed",
+                  errorMessage: "Image failed to load from provider URL. Please retry.",
+                });
+              }}
+            />
           </div>
         ) : (
           <div className="relative aspect-[9/16] w-full" style={{ backgroundColor: PENDING_POSTER_COLOR }} />
@@ -373,7 +429,14 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
           <div className="grid grid-cols-4 gap-1.5">
             {card.archives.map((archive) => (
               <div key={archive.id} className="relative aspect-[9/16] overflow-hidden rounded-md border border-zinc-200">
-                <Image src={archive.imageSrc} alt="Poster history" fill className="object-cover" />
+                <img
+                  src={archive.imageSrc}
+                  alt="Poster history"
+                  className="block h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                />
               </div>
             ))}
           </div>

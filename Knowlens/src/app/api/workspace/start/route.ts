@@ -55,13 +55,22 @@ function ensureSafeOrigin(req: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     if (!ensureSafeOrigin(request)) {
-      return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
+      return NextResponse.json(
+        { code: "WORKSPACE_START_FORBIDDEN_ORIGIN", error: "Forbidden request origin." },
+        { status: 403 },
+      );
     }
 
     const session = await getServerSession(nextAuthOptions);
     const email = session?.user?.email?.trim().toLowerCase();
     if (!email) {
-      return NextResponse.json({ error: "Please sign in before starting a workspace project." }, { status: 401 });
+      return NextResponse.json(
+        {
+          code: "WORKSPACE_START_AUTH_REQUIRED",
+          error: "Please sign in before starting a workspace project.",
+        },
+        { status: 401 },
+      );
     }
 
     const scopeKey = getScopeFromRequest(request, email);
@@ -81,6 +90,7 @@ export async function POST(request: NextRequest) {
     if (!dailyUsage.ok) {
       return NextResponse.json(
         {
+          code: "WORKSPACE_START_DAILY_LIMIT",
           error:
             "Daily new-project limit reached. Please continue in existing conversations or retry tomorrow.",
         },
@@ -89,6 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = (await request.json()) as WorkspaceStartPayload;
+    const normalizedPrompt = safeTrim(payload.prompt, 6000);
     const normalizedSources =
       Array.isArray(payload.sources) && payload.sources.length
         ? payload.sources.slice(0, 30).map((item, idx) => ({
@@ -101,11 +112,20 @@ export async function POST(request: NextRequest) {
             contentText: safeTrim(item.contentText || "", 6000),
           }))
         : [];
+    if (!normalizedPrompt && normalizedSources.length === 0) {
+      return NextResponse.json(
+        {
+          code: "WORKSPACE_START_EMPTY_INPUT",
+          error: "Please enter text or upload at least one source before generating.",
+        },
+        { status: 400 },
+      );
+    }
 
     return NextResponse.json({
       ok: true,
       payload: {
-        prompt: safeTrim(payload.prompt, 6000),
+        prompt: normalizedPrompt,
         textModel: safeTrim(payload.textModel, 40),
         imageModel: safeTrim(payload.imageModel, 40),
         sources: normalizedSources,
@@ -115,11 +135,14 @@ export async function POST(request: NextRequest) {
     const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
     if (retryAfter) {
       return NextResponse.json(
-        { error: "Too many new project attempts. Please retry later." },
+        {
+          code: "WORKSPACE_START_RATE_LIMIT",
+          error: "Too many new project attempts. Please retry later.",
+        },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       );
     }
     const message = error instanceof Error ? error.message : "Workspace start failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ code: "WORKSPACE_START_INTERNAL", error: message }, { status: 500 });
   }
 }

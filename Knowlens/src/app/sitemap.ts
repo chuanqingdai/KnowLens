@@ -1,26 +1,22 @@
 import type { MetadataRoute } from "next";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://knowlens.ai";
+const siteUrl = "https://knowlens.ai";
 
 const publicRoutes = [
-  "",
-  "/app",
+  "/",
   "/membership",
-  "/about",
+  "/app",
+  "/blog",
   "/privacy",
   "/terms",
-  "/contact",
-  "/feedback",
-  "/projects",
-  "/profile",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
   return publicRoutes.map((route) => ({
-    url: `${siteUrl}${route}`,
+    url: `${siteUrl}${route === "/" ? "" : route}`,
     lastModified: now,
-    changeFrequency: route === "" || route === "/app" ? "daily" : "weekly",
-    priority: route === "" || route === "/app" ? 1 : 0.7,
+    changeFrequency: route === "/" || route === "/app" ? "daily" : "weekly",
+    priority: route === "/" || route === "/app" ? 1 : 0.8,
   }));
 }

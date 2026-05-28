@@ -8,7 +8,6 @@ export default withAuth({
 
 export const config = {
   matcher: [
-    "/app/:path*",
     "/workspace/:path*",
     "/projects/:path*",
     "/profile/:path*",

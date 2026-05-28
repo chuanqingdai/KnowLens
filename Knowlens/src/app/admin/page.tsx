@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FolderKanban, Search, Users, X, Zap } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
 import {
@@ -14,6 +14,40 @@ import { getFeedbackRecords } from "@/lib/feedback";
 import { getCreditRecords } from "@/lib/billing";
 
 type DashboardTab = "overview" | "projectOps" | "featured";
+
+type CheckoutStatRow = {
+  day: string;
+  source: string;
+  attempts: number;
+  successes: number;
+  successRate: number;
+};
+
+type OpsErrorRow = {
+  id: string;
+  category: string;
+  action: string;
+  source: string;
+  code: string | null;
+  message: string;
+  userEmail: string | null;
+  projectId: string | null;
+  detailsJson: string | null;
+  createdAt: string;
+};
+
+type OpsSummaryResponse = {
+  projects: {
+    total: number;
+    active: number;
+  };
+  errors: {
+    total: number;
+    byCategory: Array<{ category: string; count: number }>;
+    recent: OpsErrorRow[];
+  };
+  checkout: CheckoutStatRow[];
+};
 
 function formatDate(input: string) {
   const date = new Date(input);
@@ -40,6 +74,55 @@ export default function AdminDashboardPage() {
   const [featuredOrder, setFeaturedOrder] = useState("100");
   const [featuredError, setFeaturedError] = useState("");
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [opsSummary, setOpsSummary] = useState<OpsSummaryResponse | null>(null);
+  const [opsLoading, setOpsLoading] = useState(false);
+  const [opsError, setOpsError] = useState("");
+  const [opsLastRefresh, setOpsLastRefresh] = useState("");
+  const [opsReloadVersion, setOpsReloadVersion] = useState(0);
+
+  useEffect(() => {
+    if (activeTab !== "overview") {
+      return;
+    }
+    let cancelled = false;
+    async function loadOpsSummary() {
+      setOpsLoading(true);
+      setOpsError("");
+      try {
+        const response = await fetch("/api/admin/ops-summary?checkoutDays=14&errorLimit=80", {
+          method: "GET",
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          summary?: OpsSummaryResponse;
+          generatedAt?: string;
+          error?: string;
+        };
+        if (!response.ok || !data.ok || !data.summary) {
+          throw new Error(data.error || "Unable to load ops summary.");
+        }
+        if (cancelled) {
+          return;
+        }
+        setOpsSummary(data.summary);
+        setOpsLastRefresh(data.generatedAt || new Date().toISOString());
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : "Unable to load ops summary.";
+        setOpsError(message);
+      } finally {
+        if (!cancelled) {
+          setOpsLoading(false);
+        }
+      }
+    }
+    void loadOpsSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, opsReloadVersion]);
 
   const stats = useMemo(() => {
     const activeProjects = projects.filter((p) => p.status === "进行中").length;
@@ -281,6 +364,145 @@ export default function AdminDashboardPage() {
               </p>
             </article>
           </div>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">线上运行统计（服务端）</h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  项目规模、支付来源转化率、关键报错日志（登录 / LLM / Image / 下载）
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpsReloadVersion((prev) => prev + 1)}
+                className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+              >
+                刷新
+              </button>
+            </div>
+
+            {opsLoading ? (
+              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
+            ) : opsError ? (
+              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {opsError}
+              </p>
+            ) : !opsSummary ? (
+              <p className="mt-3 text-sm text-zinc-500">暂无服务端统计数据</p>
+            ) : (
+              <div className="mt-3 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                    <p className="text-xs text-zinc-500">历史项目总数</p>
+                    <p className="mt-1 text-xl font-semibold text-zinc-900">{opsSummary.projects.total}</p>
+                  </article>
+                  <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                    <p className="text-xs text-zinc-500">当前项目数量</p>
+                    <p className="mt-1 text-xl font-semibold text-zinc-900">{opsSummary.projects.active}</p>
+                  </article>
+                  <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                    <p className="text-xs text-zinc-500">当前报错总数</p>
+                    <p className="mt-1 text-xl font-semibold text-rose-600">{opsSummary.errors.total}</p>
+                  </article>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <article className="rounded-xl border border-zinc-200 bg-white p-3">
+                    <h3 className="text-sm font-medium text-zinc-900">支付来源转化（日）</h3>
+                    {!opsSummary.checkout.length ? (
+                      <p className="mt-2 text-sm text-zinc-500">暂无支付埋点数据</p>
+                    ) : (
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="min-w-full text-left text-sm">
+                          <thead className="text-xs text-zinc-500">
+                            <tr>
+                              <th className="px-2 py-1.5 font-medium">日期</th>
+                              <th className="px-2 py-1.5 font-medium">来源</th>
+                              <th className="px-2 py-1.5 font-medium">出单次数</th>
+                              <th className="px-2 py-1.5 font-medium">成功数</th>
+                              <th className="px-2 py-1.5 font-medium">成功率</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {opsSummary.checkout.map((row) => (
+                              <tr key={`${row.day}-${row.source}`} className="border-t border-zinc-100">
+                                <td className="px-2 py-1.5 text-xs text-zinc-500">{row.day}</td>
+                                <td className="px-2 py-1.5 text-zinc-700">{row.source}</td>
+                                <td className="px-2 py-1.5 text-zinc-700">{row.attempts}</td>
+                                <td className="px-2 py-1.5 text-zinc-700">{row.successes}</td>
+                                <td className="px-2 py-1.5 font-medium text-zinc-900">{row.successRate}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </article>
+
+                  <article className="rounded-xl border border-zinc-200 bg-white p-3">
+                    <h3 className="text-sm font-medium text-zinc-900">报错类型分布</h3>
+                    {!opsSummary.errors.byCategory.length ? (
+                      <p className="mt-2 text-sm text-zinc-500">暂无报错</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {opsSummary.errors.byCategory.map((item) => (
+                          <li
+                            key={item.category}
+                            className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-sm"
+                          >
+                            <span className="text-zinc-700">{item.category}</span>
+                            <span className="font-medium text-zinc-900">{item.count}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </article>
+                </div>
+
+                <article className="rounded-xl border border-zinc-200 bg-white p-3">
+                  <h3 className="text-sm font-medium text-zinc-900">最近关键报错日志</h3>
+                  {!opsSummary.errors.recent.length ? (
+                    <p className="mt-2 text-sm text-zinc-500">暂无关键报错日志</p>
+                  ) : (
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="min-w-full text-left text-sm">
+                        <thead className="text-xs text-zinc-500">
+                          <tr>
+                            <th className="px-2 py-1.5 font-medium">时间</th>
+                            <th className="px-2 py-1.5 font-medium">分类</th>
+                            <th className="px-2 py-1.5 font-medium">动作</th>
+                            <th className="px-2 py-1.5 font-medium">来源</th>
+                            <th className="px-2 py-1.5 font-medium">错误码</th>
+                            <th className="px-2 py-1.5 font-medium">错误描述</th>
+                            <th className="px-2 py-1.5 font-medium">用户</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {opsSummary.errors.recent.slice(0, 25).map((item) => (
+                            <tr key={item.id} className="border-t border-zinc-100 align-top">
+                              <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">
+                                {formatDate(item.createdAt)}
+                              </td>
+                              <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
+                              <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
+                              <td className="px-2 py-1.5 text-zinc-700">{item.source}</td>
+                              <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
+                              <td className="max-w-[420px] px-2 py-1.5 text-zinc-700">{item.message}</td>
+                              <td className="px-2 py-1.5 text-xs text-zinc-500">{item.userEmail ?? "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {opsLastRefresh ? (
+                    <p className="mt-2 text-xs text-zinc-500">最后刷新：{formatDate(opsLastRefresh)}</p>
+                  ) : null}
+                </article>
+              </div>
+            )}
+          </section>
 
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">

@@ -3,7 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://knowlens.ai";
+const siteUrl = "https://knowlens.ai";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

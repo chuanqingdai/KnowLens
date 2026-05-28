@@ -9,6 +9,7 @@
     "lint": "eslint",
     "optimize:landing-images": "node scripts/optimize-landing-images.mjs",
     "image2:smoke": "node scripts/image2-smoke.mjs",
+    "release:gate-check": "node scripts/release-gate-check.mjs",
     "stripe:setup-products": "node scripts/setup-stripe-products.mjs",
     "regression:stripe-checkout": "node scripts/regression-stripe-checkout.mjs"
   },
