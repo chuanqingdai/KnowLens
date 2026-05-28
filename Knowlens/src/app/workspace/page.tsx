@@ -1150,6 +1150,30 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
   if (!Array.isArray(raw)) {
     return [];
   }
+  function sanitizeMeta(meta: unknown): ChatTurnMeta | undefined {
+    if (!meta || typeof meta !== "object") {
+      return undefined;
+    }
+    const candidate = meta as Record<string, unknown>;
+    if (candidate.kind === "llm_error") {
+      return {
+        kind: "llm_error",
+        source: "draft_generation",
+        code: typeof candidate.code === "string" ? candidate.code.slice(0, 80) : undefined,
+        retryable: typeof candidate.retryable === "boolean" ? candidate.retryable : undefined,
+      };
+    }
+    if (candidate.kind === "image_error") {
+      return {
+        kind: "image_error",
+        source: "image_generation",
+        code: typeof candidate.code === "string" ? candidate.code.slice(0, 80) : undefined,
+        taskIndex: Number.isFinite(candidate.taskIndex) ? Number(candidate.taskIndex) : undefined,
+        retryable: typeof candidate.retryable === "boolean" ? candidate.retryable : undefined,
+      };
+    }
+    return undefined;
+  }
   return raw
     .filter((item) => item && typeof item === "object")
     .map((item, index) => {
@@ -1162,10 +1186,7 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
         role,
         module,
         content,
-        meta:
-          turn.meta && typeof turn.meta === "object"
-            ? (turn.meta as ChatTurnMeta)
-            : undefined,
+        meta: sanitizeMeta(turn.meta),
       } satisfies ChatTurn;
     })
     .filter((turn) => turn.content.trim().length > 0);
@@ -1200,7 +1221,7 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
         role: item.role,
         module: item.module,
         content: item.content,
-        meta: item.meta,
+        meta: normalizeChatHistory([{ ...item }])[0]?.meta,
       })),
   );
   window.sessionStorage.setItem(key, payload);
@@ -1397,9 +1418,9 @@ export default function WorkspacePage() {
       }),
     [contextPrompt, sourceLanguageSeed],
   );
-  const uiLanguage: "en" | "zh" = "en";
-  const isZhOutput = false;
-  const tr = (en: string, _zh: string) => en;
+  const uiLanguage: "en" | "zh" = isChineseLanguage(outputLanguage) ? "zh" : "en";
+  const isZhOutput = uiLanguage === "zh";
+  const tr = (en: string, zh: string) => (isZhOutput ? zh : en);
 
   const detectedIntent = useMemo(
     () => detectIntent(contextPrompt, entrySources),
@@ -2061,13 +2082,40 @@ export default function WorkspacePage() {
     () =>
       topicSuggestionsOverride && topicSuggestionsOverride.length
         ? topicSuggestionsOverride
-        : [
-            `Explain ${topic || "this topic"} with one clear mechanism.`,
-            `Show a real-world case about ${topic || "this topic"}.`,
-            `Compare key types or stages of ${topic || "this topic"}.`,
-            `Turn ${topic || "this topic"} into a poster, PPT, or video.`,
-          ],
-    [topic, topicSuggestionsOverride],
+        : isZhOutput
+          ? [
+              `用一个清晰机制解释${topic || "这个主题"}。`,
+              `给出一个和${topic || "这个主题"}相关的真实案例。`,
+              `比较${topic || "这个主题"}的关键类型或阶段。`,
+              `把${topic || "这个主题"}整理成海报、PPT 或视频。`,
+            ]
+          : [
+              `Explain ${topic || "this topic"} with one clear mechanism.`,
+              `Show a real-world case about ${topic || "this topic"}.`,
+              `Compare key types or stages of ${topic || "this topic"}.`,
+              `Turn ${topic || "this topic"} into a poster, PPT, or video.`,
+            ],
+    [isZhOutput, topic, topicSuggestionsOverride],
+  );
+
+  const topicSuggestionsToShow = useMemo(
+    () =>
+      topicSuggestionsOverride && topicSuggestionsOverride.length
+        ? topicSuggestionsOverride
+        : isZhOutput
+          ? [
+              `用一个清晰机制解释${topic || "这个主题"}。`,
+              `给出一个和${topic || "这个主题"}相关的真实案例。`,
+              `比较${topic || "这个主题"}的关键类型或阶段。`,
+              `把${topic || "这个主题"}整理成海报、PPT 或视频。`,
+            ]
+          : [
+              `Explain ${topic || "this topic"} with one clear mechanism.`,
+              `Show a real-world case about ${topic || "this topic"}.`,
+              `Compare key types or stages of ${topic || "this topic"}.`,
+              `Turn ${topic || "this topic"} into a poster, PPT, or video.`,
+            ],
+    [isZhOutput, topic, topicSuggestionsOverride],
   );
 
   useEffect(() => {
@@ -3306,7 +3354,7 @@ export default function WorkspacePage() {
                   showDirectionGuide={showDirectionGuide}
                   shouldClarifyIntent={shouldClarifyIntent}
                   showWeakPromptSuggestions={showWeakPromptSuggestions}
-                  topicSuggestions={topicSuggestions}
+                  topicSuggestions={topicSuggestionsToShow}
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
                   lockedTopicSuggestion={lockedTopicSuggestion}
