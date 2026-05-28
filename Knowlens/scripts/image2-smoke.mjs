@@ -239,7 +239,7 @@ async function main() {
   try {
     const mode = (process.env.IMAGE2_SMOKE_MODE || "direct").trim().toLowerCase();
     if (mode === "route") {
-      const baseUrl = process.env.IMAGE2_SMOKE_BASE_URL || "http://localhost:3000";
+      const baseUrl = process.env.IMAGE2_SMOKE_BASE_URL || "http://localhost:3002";
       await runRouteSmoke(baseUrl);
       return;
     }

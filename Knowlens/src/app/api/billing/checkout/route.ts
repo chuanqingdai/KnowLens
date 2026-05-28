@@ -19,7 +19,7 @@ function normalizedSiteUrl() {
   const base =
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
     process.env.NEXTAUTH_URL?.trim() ||
-    "http://localhost:3000";
+    "http://localhost:3002";
   return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 

@@ -21,7 +21,7 @@ function parseArgs(argv) {
 }
 
 function normalizeBaseUrl(value) {
-  const raw = (value || "http://localhost:3000").trim();
+  const raw = (value || "http://localhost:3002").trim();
   return raw.endsWith("/") ? raw.slice(0, -1) : raw;
 }
 
