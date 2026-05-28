@@ -529,20 +529,22 @@ function inferRecommendedIntent(
 function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage: OutputLanguage) {
   const trimmed = prompt.trim();
   if (trimmed) {
-    const cleaned = trimmed
-      .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
-      .replace(/(a|an|one|一个|一份|一套|一个关于)/gi, "")
-      .replace(/(的)?(ppt|slides?|video|poster|infographic|长图|视频|海报).*/i, "")
-      .replace(/[，。；,.]/g, " ")
-      .trim();
+    const cleaned = cleanTopicText(
+      trimmed
+        .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
+        .replace(/(a|an|one|一个|一份|一套|一个关于)/gi, "")
+        .replace(/(的)?(ppt|slides?|video|poster|infographic|长图|视频|海报).*/i, "")
+        .replace(/[，。；,.]/g, " ")
+        .trim(),
+    );
     if (cleaned.length >= 2) {
       return cleaned.slice(0, 26);
     }
-    return trimmed.slice(0, 26);
+    return cleanTopicText(trimmed).slice(0, 26);
   }
   const source = sources[0];
   if (source) {
-    return source.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 26);
+    return cleanTopicText(source.name.replace(/\.[a-z0-9]+$/i, "")).slice(0, 26);
   }
   return isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic";
 }
@@ -584,6 +586,86 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
 
 function topicHintText(value: string, outputLanguage: OutputLanguage) {
   return value.trim() || (isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic");
+}
+
+function cleanTopicText(value: string) {
+  const raw = value.trim();
+  if (!raw) {
+    return "";
+  }
+  const withoutGreeting = raw
+    .replace(/^(hello|hi|hey|test|你好|在吗|测试|请问|麻烦|help)\b[:：]?\s*/i, "")
+    .replace(/^(please|pls|can you|could you|i want to|need to|help me)\b[:：]?\s*/i, "")
+    .trim();
+  const withoutFiller = withoutGreeting
+    .replace(/[\u3000\s]+/g, " ")
+    .replace(/^(关于|帮我|请帮我|我想要|我想|需要|请生成|请制作)\s*/i, "")
+    .replace(/^(a|an|the|one|some)\s+/i, "")
+    .replace(/^(和|关于|有关|有关的)\s*/i, "")
+    .trim();
+  return withoutFiller || raw;
+}
+
+function sanitizeSuggestionTopic(value: string) {
+  const cleaned = cleanTopicText(value);
+  return cleaned.replace(/^\W+|\W+$/g, "").trim();
+}
+
+function buildFallbackTopicSuggestions(topic: string, isChinese: boolean) {
+  const safeTopic = sanitizeSuggestionTopic(topic) || (isChinese ? "这个主题" : "this topic");
+  if (isChinese) {
+    return [
+      `${safeTopic}的核心概念是什么？`,
+      `${safeTopic}通常包含哪些关键步骤或阶段？`,
+      `${safeTopic}在现实中有什么典型应用？`,
+      `用一个真实案例解释${safeTopic}。`,
+    ];
+  }
+  return [
+    `What is the core concept of ${safeTopic}?`,
+    `What are the key stages or steps of ${safeTopic}?`,
+    `How is ${safeTopic} used in real life?`,
+    `Explain ${safeTopic} with one real-world case.`,
+  ];
+}
+
+function sanitizeSuggestionText(item: string, topic: string, outputLanguage: OutputLanguage) {
+  const isZh = isChineseLanguage(outputLanguage);
+  const safeTopic = sanitizeSuggestionTopic(topic) || (isZh ? "这个主题" : "this topic");
+  const normalized = item.trim().replace(/\s+/g, " ");
+  const withoutDirective = normalized
+    .replace(/\b(create|generate|make|build|turn)\b.*$/i, "")
+    .replace(/(海报|PPT|视频|video|poster|ppt|storyboard)[^。.!?]*$/i, "")
+    .replace(/[。.!?，,;；]+$/g, "")
+    .trim();
+
+  if (!withoutDirective || withoutDirective.length < 8) {
+    return null;
+  }
+
+  if (isZh) {
+    if (!/火山|机制|原理|影响|案例|阶段|类型|过程|系统|结构|主题/.test(withoutDirective)) {
+      return `用一个真实案例解释${safeTopic}。`;
+    }
+    return `${withoutDirective.replace(/hello|hi|hey|test|你好|在吗|测试/gi, "").trim()}。`;
+  }
+
+  const lowered = withoutDirective.toLowerCase();
+  if (!/(concept|mechanism|impact|case|stage|type|process|system|structure|topic)/.test(lowered)) {
+    return `Explain ${safeTopic} with one real-world case.`;
+  }
+  return withoutDirective.endsWith(".") ? withoutDirective : `${withoutDirective}.`;
+}
+
+function sanitizeSuggestionList(items: string[], topic: string, outputLanguage: OutputLanguage) {
+  const normalized = items
+    .map((item) => sanitizeSuggestionText(item, topic, outputLanguage))
+    .filter((item): item is string => !!item)
+    .slice(0, 4);
+  if (normalized.length >= 4) {
+    return normalized;
+  }
+  return buildFallbackTopicSuggestions(topic, isChineseLanguage(outputLanguage));
 }
 
 function extractPageCount(prompt: string) {
@@ -1418,9 +1500,9 @@ export default function WorkspacePage() {
       }),
     [contextPrompt, sourceLanguageSeed],
   );
-  const uiLanguage: "en" | "zh" = isChineseLanguage(outputLanguage) ? "zh" : "en";
-  const isZhOutput = uiLanguage === "zh";
-  const tr = (en: string, zh: string) => (isZhOutput ? zh : en);
+  const isZhContent = isChineseLanguage(outputLanguage);
+  const uiLanguage = "en" as const;
+  const tr = (en: string, _zh: string) => en;
 
   const detectedIntent = useMemo(
     () => detectIntent(contextPrompt, entrySources),
@@ -1539,30 +1621,21 @@ export default function WorkspacePage() {
       ? tr("Your request is still incomplete. I need to confirm the output direction first.", "你的需求还不够完整，我先和你确认一下生成方向。")
       : tr("I recognized your output direction and prepared the base configuration.", "我已识别你的目标方向，并完成基础配置。");
     if (manualIntent === "ppt") {
-      return isZhOutput
-        ? `${sourcePart}${intentPart} 默认按 ${pptPageCount} 页、${pptRatio} 比例生成。`
-        : `${sourcePart}${intentPart} Default: ${pptPageCount} slides at ${pptRatio}.`;
+      return `${sourcePart}${intentPart} Default: ${pptPageCount} slides at ${pptRatio}.`;
     }
     if (manualIntent === "video") {
-      return isZhOutput
-        ? `${sourcePart}${intentPart} 默认按 ${videoStoryboardCount} 个分镜（约 ${
-            videoStoryboardCount * 10
-          } 秒）、${videoRatio} 比例生成。`
-        : `${sourcePart}${intentPart} Default: ${videoStoryboardCount} storyboard frames (~${
-            videoStoryboardCount * 10
-          }s) at ${videoRatio}.`;
+      return `${sourcePart}${intentPart} Default: ${videoStoryboardCount} storyboard frames (~${
+        videoStoryboardCount * 10
+      }s) at ${videoRatio}.`;
     }
     if (manualIntent === "poster") {
       const sizeLabel = posterSizeOptions.find((item) => item.id === posterSizeId)?.label ?? tr("Size not selected", "未选尺寸");
-      return isZhOutput
-        ? `${sourcePart}${intentPart} 默认生成 ${posterCount} 张，尺寸 ${sizeLabel}。`
-        : `${sourcePart}${intentPart} Default: ${posterCount} poster(s), size ${sizeLabel}.`;
+      return `${sourcePart}${intentPart} Default: ${posterCount} poster(s), size ${sizeLabel}.`;
     }
     return `${sourcePart}${intentPart}`;
   }, [
     contextPrompt,
     entrySources.length,
-    isZhOutput,
     manualIntent,
     posterCount,
     posterSizeId,
@@ -1597,7 +1670,7 @@ export default function WorkspacePage() {
     if (effectiveIntent !== "poster" || !basePosterDraft || !configConfirmed) {
       return [] as PosterPlanItem[];
     }
-    const base = isZhOutput
+    const base = isZhContent
       ? [
           { title: `${topic} · 核心问题`, focus: "用一句话提出问题并建立兴趣" },
           { title: `${topic} · 关键机制`, focus: "拆解机制过程，突出因果关系" },
@@ -1628,7 +1701,7 @@ export default function WorkspacePage() {
       title: item.title,
       focus: item.focus,
     }));
-  }, [basePosterDraft, configConfirmed, effectiveIntent, isZhOutput, posterCount, topic]);
+  }, [basePosterDraft, configConfirmed, effectiveIntent, isZhContent, posterCount, topic]);
 
   const [editableOutlineItems, setEditableOutlineItems] = useState<string[]>([]);
   const [editableSlideDrafts, setEditableSlideDrafts] = useState<SlideDraft[]>([]);
@@ -2075,47 +2148,15 @@ export default function WorkspacePage() {
     }
     return tr("Step 1/7 · Input", "第 1/7 步 · 输入");
   }, [flowStage, tr]);
-  const projectTitle = isZhOutput
-    ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
-    : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
-  const topicSuggestions = useMemo(
-    () =>
-      topicSuggestionsOverride && topicSuggestionsOverride.length
-        ? topicSuggestionsOverride
-        : isZhOutput
-          ? [
-              `用一个清晰机制解释${topic || "这个主题"}。`,
-              `给出一个和${topic || "这个主题"}相关的真实案例。`,
-              `比较${topic || "这个主题"}的关键类型或阶段。`,
-              `把${topic || "这个主题"}整理成海报、PPT 或视频。`,
-            ]
-          : [
-              `Explain ${topic || "this topic"} with one clear mechanism.`,
-              `Show a real-world case about ${topic || "this topic"}.`,
-              `Compare key types or stages of ${topic || "this topic"}.`,
-              `Turn ${topic || "this topic"} into a poster, PPT, or video.`,
-            ],
-    [isZhOutput, topic, topicSuggestionsOverride],
-  );
-
+  const projectTitle = `${topicHintText(topic, outputLanguage)} · Intent Summary`;
   const topicSuggestionsToShow = useMemo(
-    () =>
-      topicSuggestionsOverride && topicSuggestionsOverride.length
+    () => {
+      const fallbackSuggestions = buildFallbackTopicSuggestions(topic, isZhContent);
+      return topicSuggestionsOverride && topicSuggestionsOverride.length
         ? topicSuggestionsOverride
-        : isZhOutput
-          ? [
-              `用一个清晰机制解释${topic || "这个主题"}。`,
-              `给出一个和${topic || "这个主题"}相关的真实案例。`,
-              `比较${topic || "这个主题"}的关键类型或阶段。`,
-              `把${topic || "这个主题"}整理成海报、PPT 或视频。`,
-            ]
-          : [
-              `Explain ${topic || "this topic"} with one clear mechanism.`,
-              `Show a real-world case about ${topic || "this topic"}.`,
-              `Compare key types or stages of ${topic || "this topic"}.`,
-              `Turn ${topic || "this topic"} into a poster, PPT, or video.`,
-            ],
-    [isZhOutput, topic, topicSuggestionsOverride],
+        : fallbackSuggestions;
+    },
+    [isZhContent, topic, topicSuggestionsOverride],
   );
 
   useEffect(() => {
@@ -2754,7 +2795,7 @@ export default function WorkspacePage() {
   async function handleConfirmBilling() {
     if (credits < billingCost) {
       pushAssistantMessage(
-        isZhOutput
+        isZhContent
           ? `当前积分不足（余额 ${credits}，需要 ${billingCost}）。请先升级后再继续。`
           : `Insufficient credits (balance: ${credits}, required: ${billingCost}). Please upgrade first.`,
         tr("Billing Check", "账单确认"),
@@ -2789,7 +2830,7 @@ export default function WorkspacePage() {
 
     appendCreditRecord({
       type: "consume",
-      description: isZhOutput
+      description: isZhContent
         ? `${selectedProject?.title ?? "生成项目"} · ${
             effectiveIntent === "poster" ? "海报生成" : "分镜生成"
           }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
@@ -2940,7 +2981,9 @@ export default function WorkspacePage() {
     if (triageResult) {
       setIntentTriageResult(triageResult);
       if (triageResult.suggestions?.length) {
-        setTopicSuggestionsOverride(triageResult.suggestions.slice(0, 4));
+        setTopicSuggestionsOverride(
+          sanitizeSuggestionList(triageResult.suggestions.slice(0, 4), triageResult.topic || topic, outputLanguage),
+        );
       } else {
         setTopicSuggestionsOverride(null);
       }
@@ -2981,7 +3024,9 @@ export default function WorkspacePage() {
     }
 
     if (triageResult?.classification === "pure_text_incomplete" && triageResult.suggestions.length) {
-      setTopicSuggestionsOverride(triageResult.suggestions.slice(0, 4));
+      setTopicSuggestionsOverride(
+        sanitizeSuggestionList(triageResult.suggestions.slice(0, 4), triageResult.topic || topic, outputLanguage),
+      );
     }
 
     if (weakPrompt && !hasDirectionHint) {
@@ -3091,7 +3136,7 @@ export default function WorkspacePage() {
               : tr("updated based on your extra requirement", "已按补充要求调整");
         next[cmd.target.index] = {
           ...next[cmd.target.index],
-          focus: isZhOutput
+          focus: isZhContent
             ? `${next[cmd.target.index].focus}（${focusPatch}）`
             : `${next[cmd.target.index].focus} (${focusPatch})`,
         };
@@ -3285,12 +3330,12 @@ export default function WorkspacePage() {
       bodyOverscrollBehavior: bodyStyle.overscrollBehavior,
       htmlOverscrollBehavior: htmlStyle.overscrollBehavior,
     };
-    bodyStyle.overflow = "auto";
-    htmlStyle.overflow = "auto";
-    bodyStyle.height = "";
-    htmlStyle.height = "";
-    bodyStyle.overscrollBehavior = "auto";
-    htmlStyle.overscrollBehavior = "auto";
+    bodyStyle.overflow = "hidden";
+    htmlStyle.overflow = "hidden";
+    bodyStyle.height = "100%";
+    htmlStyle.height = "100%";
+    bodyStyle.overscrollBehavior = "none";
+    htmlStyle.overscrollBehavior = "none";
     return () => {
       bodyStyle.overflow = previous.bodyOverflow;
       htmlStyle.overflow = previous.htmlOverflow;
@@ -3302,7 +3347,7 @@ export default function WorkspacePage() {
   }, []);
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-[#f7f7f8] text-zinc-800">
+    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -3331,19 +3376,19 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
-      <main className="mx-auto mt-[56px] flex min-h-[calc(100dvh-56px)] max-w-none flex-col px-2 pb-1 pt-3 sm:px-3">
+      <main className="mx-auto mt-[56px] flex h-[calc(100dvh-56px)] min-h-0 max-w-none flex-col overflow-hidden px-2 pb-1 pt-3 sm:px-3">
         <div
-          className={`grid min-h-0 flex-1 gap-2 ${
+          className={`grid h-full min-h-0 flex-1 gap-2 overflow-hidden ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
           }`}
         >
           <section
             className={`min-h-0 ${
               hasCanvasPanel ? "" : "lg:mx-auto lg:w-full lg:max-w-[980px]"
-            } ${showChatPanelInLayout ? "" : "hidden"}`}
+            } ${showChatPanelInLayout ? "overflow-hidden" : "hidden"}`}
           >
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="min-h-0 flex-1 pr-1.5 pb-36 pt-4 lg:pr-1.5">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden pr-1.5 pt-4 lg:pr-1.5">
                 <ChatPanel
                   outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}
@@ -3423,7 +3468,7 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="sticky bottom-0 z-30 mt-auto pt-2">
+              <div className="z-30 mt-auto shrink-0 pt-2">
                 <div className="pointer-events-none px-2 pb-2 sm:px-3">
                   <div
                     className={`mx-auto ${

@@ -65,7 +65,9 @@ Never mix test Price IDs with live secret keys.
 ## 6) Data & Storage Policy
 
 - Local:
-  - SQLite in `.data/knowlens.sqlite` for development only.
+  - Default SQLite path is shared across all local worktrees:
+    - `~/.knowlens/shared/knowlens.sqlite`
+  - Override with `KNOWLENS_DB_PATH` when needed.
 - Staging/Production:
   - Avoid ephemeral SQLite for core business data.
   - Use persistent external DB for users/projects/credits/payments.
@@ -82,4 +84,3 @@ npm run release:gate-check -- --stage staging --base-url https://staging.knowlen
 # Production (pre-release window)
 npm run release:gate-check -- --stage production --base-url https://knowlens.ai --http-check true
 ```
-

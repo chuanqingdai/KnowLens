@@ -81,11 +81,11 @@ function resolveGenerationsEndpoint(endpoint) {
   return endpoint;
 }
 
-const SEED_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnM5m8AAAAASUVORK5CYII=";
-
 async function runRouteSmoke(baseUrl) {
-  const target = `${baseUrl.replace(/\/$/, "")}/api/workspace/image2-smoke`;
+  const provider = (process.env.IMAGE2_SMOKE_PROVIDER || "auto").trim().toLowerCase();
+  const supported = new Set(["auto", "tuzi", "duomi", "gptsapi"]);
+  const providerParam = supported.has(provider) ? provider : "auto";
+  const target = `${baseUrl.replace(/\/$/, "")}/api/workspace/image2-smoke?provider=${encodeURIComponent(providerParam)}`;
   const response = await fetch(target, {
     method: "POST",
     headers: {
@@ -100,7 +100,7 @@ async function runRouteSmoke(baseUrl) {
   }
 
   if (data?.ok && typeof data?.imageUrl === "string" && data.imageUrl.trim()) {
-    console.log(`[IMAGE2_SMOKE_OK] endpoint=${data.endpoint}`);
+    console.log(`[IMAGE2_SMOKE_OK] provider=${data.provider || providerParam} endpoint=${data.endpoint}`);
     console.log(`[IMAGE2_SMOKE_URL] ${data.imageUrl.trim()}`);
     return;
   }
@@ -128,34 +128,6 @@ async function runDirectSmoke() {
   }
 
   async function call(targetEndpoint) {
-    if (shouldAttachSeedImage(targetEndpoint)) {
-      const formData = new FormData();
-      formData.append("model", model);
-      const seedBuffer = Buffer.from(SEED_PNG_BASE64, "base64");
-      formData.append("image", new File([seedBuffer], "seed.png", { type: "image/png" }));
-      formData.append(
-        "messages",
-        JSON.stringify([
-          {
-            role: "user",
-            content:
-              "Create a clean science-style poster cover with a simple geometric focal object on a light background.",
-          },
-        ]),
-      );
-      formData.append("size", size);
-      formData.append("quality", "standard");
-      formData.append("n", "1");
-      formData.append("response_format", "url");
-      return fetch(targetEndpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      });
-    }
-
     return fetch(targetEndpoint, {
       method: "POST",
       headers: {
@@ -164,8 +136,20 @@ async function runDirectSmoke() {
       },
       body: JSON.stringify({
         model,
-        prompt:
-          "Create a clean science-style poster cover with a simple geometric focal object on a light background.",
+        ...(shouldAttachSeedImage(targetEndpoint)
+          ? {
+              messages: [
+                {
+                  role: "user",
+                  content:
+                    "Create a clean science-style poster cover with a simple geometric focal object on a light background.",
+                },
+              ],
+            }
+          : {
+              prompt:
+                "Create a clean science-style poster cover with a simple geometric focal object on a light background.",
+            }),
         size,
         quality: "standard",
         n: 1,

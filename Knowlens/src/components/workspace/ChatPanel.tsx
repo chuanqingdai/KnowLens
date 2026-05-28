@@ -380,6 +380,7 @@ export function ChatPanel({
   const [supportsHoverDescription, setSupportsHoverDescription] = useState(false);
   const [introPhase, setIntroPhase] = useState<"analyzing" | "planning" | "ask">("analyzing");
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
   const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(updates), [updates]);
 
   const scrollToLatestCard = () => {
@@ -387,6 +388,13 @@ export function ChatPanel({
       return;
     }
     const run = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({
+          top: scrollContainerRef.current.scrollHeight + 120,
+          behavior: "smooth",
+        });
+        return;
+      }
       const doc = document.documentElement;
       const targetTop = Math.max(0, doc.scrollHeight - window.innerHeight + 80);
       window.scrollTo({ top: targetTop, behavior: "smooth" });
@@ -522,9 +530,10 @@ export function ChatPanel({
     thinkingState.active &&
     /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
   const renderUpdateCard = (update: ChatTurn, idx: number) => {
-    const isErrorCard =
-      update.role === "assistant" &&
-      (update.meta?.kind === "llm_error" || update.meta?.kind === "image_error");
+    if (update.role === "assistant" && update.meta?.kind === "image_error") {
+      return null;
+    }
+    const isErrorCard = update.role === "assistant" && update.meta?.kind === "llm_error";
     if (isErrorCard) {
       const isRetrying = Boolean(retryingErrorTurnIds?.[update.id]);
       const errorCode = update.meta?.code?.trim();
@@ -569,7 +578,10 @@ export function ChatPanel({
 
   if (shouldUseEnglishUi) {
     return (
-      <section className="space-y-5 px-1 py-4 text-[14px] leading-6 text-zinc-800">
+      <section
+        ref={scrollContainerRef}
+        className="h-full space-y-5 overflow-y-auto px-1 py-4 text-[14px] leading-6 text-zinc-800"
+      >
         {userPrompt ? (
           <article className="ml-auto w-fit max-w-[78%] rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white">
             {userPrompt}
@@ -1005,7 +1017,7 @@ export function ChatPanel({
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
             <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
             <p className="mt-1 text-[11px] leading-5 text-zinc-400">Style selection is confirmed for this generation.</p>
-            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {styleOptions.map((style) => {
                 const active = style.id === selectedStyleId;
                 return (
@@ -1056,7 +1068,7 @@ export function ChatPanel({
             <p className="mt-1 text-[11px] leading-5 text-zinc-400">
               Select one style card. Hover each card to preview the visual tone and best-fit use cases.
             </p>
-            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {styleOptions.map((style) => (
                 <button
                   key={`style-en-${style.id}`}
@@ -1194,7 +1206,10 @@ export function ChatPanel({
   }
 
   return (
-    <section className="space-y-5 px-1 py-4 text-[14px] leading-6 text-zinc-800">
+    <section
+      ref={scrollContainerRef}
+      className="h-full space-y-5 overflow-y-auto px-1 py-4 text-[14px] leading-6 text-zinc-800"
+    >
       {userPrompt ? (
         <article className="ml-auto w-fit max-w-[78%] rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white">
           {userPrompt}
@@ -2030,7 +2045,7 @@ export function ChatPanel({
           <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
           <p className="mt-1 text-[11px] leading-5 text-zinc-400">Style selection is confirmed for this generation.</p>
 
-          <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {styleOptions.map((style) => {
               const active = style.id === selectedStyleId;
               return (
@@ -2080,7 +2095,7 @@ export function ChatPanel({
             Select one style card. Hover each card to preview the visual tone and best-fit use cases.
           </p>
 
-          <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {styleOptions.map((style) => (
               <button
                 key={style.id}

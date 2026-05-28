@@ -16,7 +16,7 @@ const projectItems = [
     title: "Volcanic Eruption Explainer PPT",
     updatedAt: "Today 15:24",
     status: "In Progress",
-    cover: "/picture/39f7e57c-2e46-4e53-8ba6-756b22ef6437.png",
+    cover: "/en-picture/plate-tectonics-earthquake-infographic-case.jpg",
     format: "PPT",
   },
   {
@@ -24,7 +24,7 @@ const projectItems = [
     title: "Tide Mechanism Visual Poster",
     updatedAt: "Yesterday 21:08",
     status: "Completed",
-    cover: "/picture/176e6527-21ef-4528-a0fc-91c879a00b4c.png",
+    cover: "/en-picture/photosynthesis-infographic-case.jpg",
     format: "Poster",
   },
   {
@@ -32,7 +32,7 @@ const projectItems = [
     title: "Black Hole Formation Short Video",
     updatedAt: "May 18",
     status: "Completed",
-    cover: "/picture/eab2accf-e36a-45a2-89bb-0faa73e518e6.png",
+    cover: "/en-picture/featured-visual-case-03.jpg",
     format: "Video",
     duration: "01:35",
   },
@@ -41,7 +41,7 @@ const projectItems = [
     title: "Immune Mechanism Classroom Deck",
     updatedAt: "May 16",
     status: "Completed",
-    cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png",
+    cover: "/en-picture/featured-visual-case-01.jpg",
     format: "PPT",
   },
 ];
@@ -78,7 +78,7 @@ export default function ProjectsPage() {
 
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold tracking-tight text-zinc-900">最近项目</h2>
+              <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Recent Projects</h2>
               <button
                 type="button"
                 className="text-sm text-zinc-500 transition hover:text-zinc-800"

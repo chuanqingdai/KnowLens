@@ -40,6 +40,22 @@ Use the matrix file to fill variables:
 - Staging template: [env.staging.example](/Users/daichuanqing/Documents/Scilens/Knowlens/docs/templates/env.staging.example)
 - Production template: [env.production.example](/Users/daichuanqing/Documents/Scilens/Knowlens/docs/templates/env.production.example)
 
+### A4) Shared local SQLite for the 4 workstreams
+
+To let `main`, `ui`, `qa`, and `server` read/write the same local data set, set the same path in every worktree:
+
+- `KNOWLENS_DB_PATH=/Users/daichuanqing/.knowlens/shared/knowlens.sqlite`
+
+This keeps:
+
+- projects
+- credits
+- upload jobs
+- subscriptions
+- ops events
+
+in one shared local database while you switch between worktrees.
+
 ## B. Release Pipeline
 
 ### Step 1: Local gate

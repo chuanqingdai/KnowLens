@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 export type DbHandle = {
@@ -8,10 +9,8 @@ export type DbHandle = {
 
 let singleton: DbHandle | null = null;
 
-function ensureDataDir() {
-  const dataDir = path.join(process.cwd(), ".data");
-  mkdirSync(dataDir, { recursive: true });
-  return dataDir;
+function getDefaultLocalSharedDbPath() {
+  return path.join(os.homedir(), ".knowlens", "shared", "knowlens.sqlite");
 }
 
 function getDbFilePath() {
@@ -21,7 +20,18 @@ function getDbFilePath() {
   if (process.env.VERCEL === "1") {
     return path.join("/tmp", "knowlens.sqlite");
   }
-  return path.join(ensureDataDir(), "knowlens.sqlite");
+  return getDefaultLocalSharedDbPath();
+}
+
+function ensureParentDir(filePath: string) {
+  if (!filePath || filePath === ":memory:") {
+    return;
+  }
+  const normalizedPath = filePath.startsWith("file:") ? filePath.replace(/^file:/, "") : filePath;
+  const directory = path.dirname(normalizedPath);
+  if (directory && directory !== ".") {
+    mkdirSync(directory, { recursive: true });
+  }
 }
 
 function createTables(db: DatabaseSync) {
@@ -222,6 +232,7 @@ export function getDb() {
     return singleton;
   }
   const filePath = getDbFilePath();
+  ensureParentDir(filePath);
   const db = new DatabaseSync(filePath);
   createTables(db);
   singleton = { db };

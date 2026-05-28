@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 
@@ -127,7 +128,7 @@ function getDbPath() {
   if (process.env.KNOWLENS_DB_PATH?.trim()) {
     return process.env.KNOWLENS_DB_PATH.trim();
   }
-  return path.join(process.cwd(), ".data", "knowlens.sqlite");
+  return path.join(os.homedir(), ".knowlens", "shared", "knowlens.sqlite");
 }
 
 function ensureUserAndCredits(email, name, targetBalance) {

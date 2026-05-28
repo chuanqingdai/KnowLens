@@ -1,10 +1,36 @@
 import { NextResponse } from "next/server";
-import { buildImage2ProviderConfig, requestImage2Generation, resolveImage2Size, toImage2ErrorPayload } from "@/lib/server/image2";
+import {
+  buildImage2ProviderConfig,
+  requestImage2Generation,
+  resolveImage2Size,
+  toImage2ErrorPayload,
+  type Image2ProviderChoice,
+} from "@/lib/server/image2";
 
 export const runtime = "nodejs";
 
-export async function POST() {
-  const provider = buildImage2ProviderConfig();
+const PROVIDER_CHOICES: Image2ProviderChoice[] = ["auto", "tuzi", "duomi", "gptsapi"];
+
+function normalizeProviderChoice(raw: string | null | undefined): Image2ProviderChoice {
+  const normalized = (raw || "").trim().toLowerCase();
+  if (normalized === "tuzi" || normalized === "duomi" || normalized === "gptsapi") {
+    return normalized;
+  }
+  return "auto";
+}
+
+export async function POST(request: Request) {
+  let bodyProvider: string | null = null;
+  try {
+    const body = (await request.json()) as { provider?: string } | null;
+    bodyProvider = body?.provider?.trim() || null;
+  } catch {
+    bodyProvider = null;
+  }
+  const url = new URL(request.url);
+  const queryProvider = url.searchParams.get("provider");
+  const providerChoice = normalizeProviderChoice(queryProvider || bodyProvider);
+  const provider = buildImage2ProviderConfig(providerChoice);
   const endpoint = provider?.endpoint || "https://api.tu-zi.com/v1/images/generations";
   const model = provider?.model || "gpt-image-2";
   const size = "1024x1792";
@@ -13,6 +39,8 @@ export async function POST() {
     return NextResponse.json(
       {
         ok: false,
+        provider: providerChoice,
+        supportedProviders: PROVIDER_CHOICES,
         error: {
           code: "IMAGE2_API_KEY_MISSING",
           message: "Missing IMAGE2 API key in server environment.",
@@ -31,6 +59,7 @@ export async function POST() {
       return NextResponse.json(
         {
           ok: false,
+          provider: providerChoice,
           endpoint,
           model,
           size,
@@ -43,6 +72,7 @@ export async function POST() {
     return NextResponse.json(
       {
         ok: true,
+        provider: providerChoice,
         endpoint,
         model,
         size,
@@ -54,6 +84,7 @@ export async function POST() {
     return NextResponse.json(
       {
         ok: false,
+        provider: providerChoice,
         endpoint,
         model,
         size,
@@ -68,6 +99,6 @@ export async function POST() {
   }
 }
 
-export async function GET() {
-  return POST();
+export async function GET(request: Request) {
+  return POST(request);
 }

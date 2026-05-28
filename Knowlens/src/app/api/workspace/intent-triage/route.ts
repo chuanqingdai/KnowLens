@@ -73,25 +73,44 @@ function pickDirection(input: string): TriageDirection {
   return "unknown";
 }
 
+function cleanTopicText(value: string) {
+  const raw = value.trim();
+  if (!raw) {
+    return "";
+  }
+  const withoutGreeting = raw
+    .replace(/^(hello|hi|hey|test|你好|在吗|测试|请问|麻烦|help)\b[:：]?\s*/i, "")
+    .replace(/^(please|pls|can you|could you|i want to|need to|help me)\b[:：]?\s*/i, "")
+    .trim();
+  const withoutFiller = withoutGreeting
+    .replace(/[\u3000\s]+/g, " ")
+    .replace(/^(关于|帮我|请帮我|我想要|我想|需要|请生成|请制作)\s*/i, "")
+    .replace(/^(a|an|the|one|some)\s+/i, "")
+    .trim();
+  return withoutFiller || raw;
+}
+
 function buildTopic(input: string) {
-  const cleaned = input
+  const cleaned = cleanTopicText(
+    input
     .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
     .replace(/(的)?(ppt|slides?|video|poster|infographic|长图|视频|海报).*/i, "")
     .replace(/[，。；,.]/g, " ")
-    .trim();
+    .trim(),
+  );
   if (cleaned.length >= 2) {
     return cleaned.slice(0, 32);
   }
-  return input.trim().slice(0, 32);
+  return cleanTopicText(input).slice(0, 32);
 }
 
 function buildTopicRelatedSuggestions(topic: string) {
-  const seed = topic || "this topic";
+  const seed = cleanTopicText(topic) || "this topic";
   return [
-    `Explain ${seed}: core concept and mechanism.`,
-    `Show real-world impacts of ${seed} with one concrete case.`,
-    `Compare key types or scenarios of ${seed} for beginners.`,
-    `Create a structured learning version of ${seed} (Poster / PPT / Video).`,
+    `What is the core concept of ${seed}?`,
+    `What are the key stages or steps of ${seed}?`,
+    `How is ${seed} used in real life?`,
+    `Explain ${seed} with one real-world case.`,
   ];
 }
 
@@ -289,4 +308,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

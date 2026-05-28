@@ -20,6 +20,8 @@ export type Image2ProviderConfig = {
   fallbackProvider?: Image2FallbackProviderConfig;
 };
 
+export type Image2ProviderChoice = "auto" | "tuzi" | "duomi" | "gptsapi";
+
 export type Image2ProviderSuccess = {
   ok: true;
   imageUrl: string;
@@ -87,11 +89,12 @@ export const IMAGE2_SUPPORTED_SIZES = {
   landscape43: "1536x1152",
 } as const;
 
-const SEED_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnM5m8AAAAASUVORK5CYII=";
-
 function shouldAttachSeedImage(endpoint: string) {
   return /\/images\/edits(?:$|\?)/i.test(endpoint);
+}
+
+function isDuomiGenerationsEndpoint(endpoint: string) {
+  return /duomiapi\.com\/v1\/images\/generations(?:$|\?)/i.test(endpoint.trim());
 }
 
 function resolveGenerationsEndpoint(endpoint: string) {
@@ -397,39 +400,6 @@ async function callImage2Endpoint(input: {
   size: string;
   signal: AbortSignal;
 }) {
-  if (shouldAttachSeedImage(input.endpoint)) {
-    const formData = new FormData();
-    formData.append("model", input.model);
-    const seedPng = Buffer.from(SEED_PNG_BASE64, "base64");
-    formData.append(
-      "image",
-      new File([seedPng], "seed.png", {
-        type: "image/png",
-      }),
-    );
-    formData.append(
-      "messages",
-      JSON.stringify([
-        {
-          role: "user",
-          content: input.prompt,
-        },
-      ]),
-    );
-    formData.append("size", input.size);
-    formData.append("quality", "standard");
-    formData.append("n", "1");
-    formData.append("response_format", "url");
-    return fetch(input.endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${input.apiKey}`,
-      },
-      body: formData,
-      signal: input.signal,
-    });
-  }
-
   return fetch(input.endpoint, {
     method: "POST",
     headers: {
@@ -438,7 +408,18 @@ async function callImage2Endpoint(input: {
     },
     body: JSON.stringify({
       model: input.model,
-      prompt: input.prompt,
+      ...(shouldAttachSeedImage(input.endpoint)
+        ? {
+            messages: [
+              {
+                role: "user",
+                content: input.prompt,
+              },
+            ],
+          }
+        : {
+            prompt: input.prompt,
+          }),
       size: input.size,
       quality: "standard",
       n: 1,
@@ -927,6 +908,7 @@ async function requestPrimaryImage2Generation(
   const retryDelaysMs = [500, 1200];
   const maxAttempts = retryDelaysMs.length + 1;
   let lastFailure: Image2ProviderFailure | null = null;
+  const canTryGenerationsFallback = resolveGenerationsEndpoint(config.endpoint) !== config.endpoint;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
@@ -946,13 +928,7 @@ async function requestPrimaryImage2Generation(
 
       if (!response.ok) {
         const failure = normalizeResponseError(response.status, rawText, body);
-        const shouldFallbackToGenerations =
-          shouldAttachSeedImage(config.endpoint) &&
-          resolveGenerationsEndpoint(config.endpoint) !== config.endpoint &&
-          (response.status >= 500 ||
-            failure.errorCode === "json_marshal_failed" ||
-            /image is required/i.test(failure.detail || ""));
-        if (shouldFallbackToGenerations) {
+        if (canTryGenerationsFallback) {
           const fallbackResult = await callGenerationsFallback({
             endpoint: config.endpoint,
             apiKey: config.apiKey,
@@ -982,6 +958,25 @@ async function requestPrimaryImage2Generation(
 
       const imageUrl = extractImage2Url(body);
       if (!imageUrl) {
+        if (canTryGenerationsFallback) {
+          const fallbackResult = await callGenerationsFallback({
+            endpoint: config.endpoint,
+            apiKey: config.apiKey,
+            model: config.model,
+            prompt: input.prompt,
+            size: input.size || IMAGE2_SUPPORTED_SIZES.square,
+            signal: controller.signal,
+          });
+          if (fallbackResult.ok) {
+            return fallbackResult;
+          }
+          if (attempt >= maxAttempts || !isRetryableStatus(fallbackResult.status ?? 0)) {
+            return fallbackResult;
+          }
+          lastFailure = fallbackResult;
+          await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt - 1] ?? 1200));
+          continue;
+        }
         const errorFromBody =
           body && typeof body === "object"
             ? (body as Record<string, unknown>).error
@@ -1006,10 +1001,7 @@ async function requestPrimaryImage2Generation(
         rawText,
       };
     } catch (error) {
-      const shouldFallbackToGenerations =
-        shouldAttachSeedImage(config.endpoint) &&
-        resolveGenerationsEndpoint(config.endpoint) !== config.endpoint;
-      if (shouldFallbackToGenerations) {
+      if (canTryGenerationsFallback) {
         const fallbackController = new AbortController();
         const fallbackTimeout = setTimeout(() => fallbackController.abort(), 120000);
         try {
@@ -1090,12 +1082,36 @@ export async function requestImage2Generation(
     aspectRatio?: string;
   },
 ): Promise<Image2ProviderResult> {
-  const duomi = config.duomiProvider;
+  const primaryIsDuomi = isDuomiGenerationsEndpoint(config.endpoint);
+  const duomiPrimaryConfig = primaryIsDuomi
+    ? {
+        endpoint: config.endpoint,
+        apiKey: config.apiKey,
+        model: config.model,
+      }
+    : null;
+  const duomi =
+    config.duomiProvider &&
+    !(
+      primaryIsDuomi &&
+      config.duomiProvider.endpoint === config.endpoint &&
+      config.duomiProvider.apiKey === config.apiKey &&
+      config.duomiProvider.model === config.model
+    )
+      ? config.duomiProvider
+      : undefined;
   const fallback = config.fallbackProvider;
   const fallbackAspectRatio = resolveFallbackAspectRatio({
     aspectRatio: input.aspectRatio,
     size: input.size,
   });
+  const requestPrimary = () =>
+    duomiPrimaryConfig
+      ? requestDuomiFallbackGeneration(duomiPrimaryConfig, {
+          prompt: input.prompt,
+          aspectRatio: fallbackAspectRatio,
+        })
+      : requestPrimaryImage2Generation(config, input);
   const now = Date.now();
   const fallbackMode = fallback && isFallbackModeActive(now);
   const shouldTryPrimary =
@@ -1103,7 +1119,7 @@ export async function requestImage2Generation(
 
   if (shouldTryPrimary) {
     image2CircuitState.lastPrimaryProbeAt = now;
-    const primaryResult = await requestPrimaryImage2Generation(config, input);
+    const primaryResult = await requestPrimary();
     if (primaryResult.ok) {
       markPrimarySuccess();
       return primaryResult;
@@ -1222,7 +1238,7 @@ export async function requestImage2Generation(
     }
   }
 
-  const primaryResult = await requestPrimaryImage2Generation(config, input);
+  const primaryResult = await requestPrimary();
   if (primaryResult.ok) {
     markPrimarySuccess();
     return primaryResult;
@@ -1231,23 +1247,97 @@ export async function requestImage2Generation(
   return primaryResult;
 }
 
-export function buildImage2ProviderConfig(): Image2ProviderConfig | null {
-  const endpoint = process.env.IMAGE2_PROVIDER_ENDPOINT || "https://api.tu-zi.com/v1/images/generations";
-  const apiKey =
+export function buildImage2ProviderConfig(choice: Image2ProviderChoice = "auto"): Image2ProviderConfig | null {
+  const duomiEndpoint = process.env.IMAGE2_DUOMI_PROVIDER_ENDPOINT || "https://duomiapi.com/v1/images/generations";
+  const duomiPollEndpoint = process.env.IMAGE2_DUOMI_PROVIDER_POLL_ENDPOINT || "";
+  const duomiApiKey = process.env.IMAGE2_DUOMI_PROVIDER_API_KEY || "";
+  const tuziEndpoint = process.env.IMAGE2_TUZI_PROVIDER_ENDPOINT || "https://api.tu-zi.com/v1/images/edits";
+  const tuziApiKey =
+    process.env.IMAGE2_TUZI_PROVIDER_API_KEY ||
     process.env.IMAGE2_PROVIDER_API_KEY ||
     process.env.PAID_IMAGE_API_KEY ||
     process.env.PAID_LLM_API_KEY ||
     "";
-  const model = process.env.IMAGE2_PROVIDER_MODEL || "gpt-image-2";
-  const duomiEndpoint = process.env.IMAGE2_DUOMI_PROVIDER_ENDPOINT || "https://duomiapi.com/v1/images/generations";
-  const duomiPollEndpoint = process.env.IMAGE2_DUOMI_PROVIDER_POLL_ENDPOINT || "";
-  const duomiApiKey = process.env.IMAGE2_DUOMI_PROVIDER_API_KEY || "";
+  const tuziModel = process.env.IMAGE2_TUZI_PROVIDER_MODEL || process.env.IMAGE2_PROVIDER_MODEL || "gpt-image-2";
   const duomiModel = process.env.IMAGE2_DUOMI_PROVIDER_MODEL || "gpt-image-2";
   const fallbackEndpoint =
     process.env.IMAGE2_FALLBACK_PROVIDER_ENDPOINT ||
     "https://api.gptsapi.net/api/v3/openai/gpt-image-2/text-to-image";
   const fallbackApiKey = process.env.IMAGE2_FALLBACK_PROVIDER_API_KEY || "";
   const fallbackModel = process.env.IMAGE2_FALLBACK_PROVIDER_MODEL || "gpt-image-2";
+
+  if (choice === "tuzi") {
+    if (!tuziApiKey) {
+      return null;
+    }
+    return {
+      endpoint: tuziEndpoint,
+      apiKey: tuziApiKey,
+      model: tuziModel,
+    };
+  }
+
+  if (choice === "duomi") {
+    const resolvedDuomiKey = duomiApiKey || process.env.IMAGE2_PROVIDER_API_KEY || "";
+    if (!resolvedDuomiKey) {
+      return null;
+    }
+    return {
+      endpoint: duomiEndpoint,
+      apiKey: resolvedDuomiKey,
+      model: duomiModel,
+      duomiProvider: {
+        endpoint: duomiEndpoint,
+        pollEndpoint: duomiPollEndpoint || undefined,
+        apiKey: resolvedDuomiKey,
+        model: duomiModel,
+      },
+    };
+  }
+
+  if (choice === "gptsapi") {
+    if (!fallbackApiKey) {
+      return null;
+    }
+    const fallbackResolutionRaw = (process.env.IMAGE2_FALLBACK_RESOLUTION || "1K").trim().toUpperCase();
+    const fallbackResolution: "1K" | "2K" | "4K" =
+      fallbackResolutionRaw === "2K" || fallbackResolutionRaw === "4K"
+        ? fallbackResolutionRaw
+        : "1K";
+    return {
+      endpoint: fallbackEndpoint,
+      apiKey: fallbackApiKey,
+      model: fallbackModel,
+      fallbackProvider: {
+        endpoint: fallbackEndpoint,
+        apiKey: fallbackApiKey,
+        model: fallbackModel,
+        resolution: fallbackResolution,
+      },
+    };
+  }
+
+  const configuredEndpoint = (process.env.IMAGE2_PROVIDER_ENDPOINT || "").trim();
+  const allowTuziPrimary = process.env.IMAGE2_ALLOW_TUZI_PRIMARY === "true";
+  const isLegacyTuziConfigured =
+    Boolean(configuredEndpoint) &&
+    /api\.tu-zi\.com\/v1\/images\/(edits|generations)(?:$|\?)/i.test(configuredEndpoint);
+  const endpoint =
+    configuredEndpoint && !(isLegacyTuziConfigured && !allowTuziPrimary)
+      ? configuredEndpoint
+      : duomiEndpoint;
+  const endpointIsDuomi = isDuomiGenerationsEndpoint(endpoint);
+  const apiKey = endpointIsDuomi
+    ? duomiApiKey ||
+      process.env.IMAGE2_PROVIDER_API_KEY ||
+      process.env.PAID_IMAGE_API_KEY ||
+      process.env.PAID_LLM_API_KEY ||
+      ""
+    : process.env.IMAGE2_PROVIDER_API_KEY ||
+      process.env.PAID_IMAGE_API_KEY ||
+      process.env.PAID_LLM_API_KEY ||
+      "";
+  const model = process.env.IMAGE2_PROVIDER_MODEL || duomiModel;
   const fallbackResolutionRaw = (process.env.IMAGE2_FALLBACK_RESOLUTION || "1K").trim().toUpperCase();
   const fallbackResolution: "1K" | "2K" | "4K" =
     fallbackResolutionRaw === "2K" || fallbackResolutionRaw === "4K"
@@ -1259,11 +1349,11 @@ export function buildImage2ProviderConfig(): Image2ProviderConfig | null {
   }
 
   const duomiProvider =
-    duomiApiKey
+    duomiApiKey || (isDuomiGenerationsEndpoint(endpoint) ? apiKey : "")
       ? {
           endpoint: duomiEndpoint,
           pollEndpoint: duomiPollEndpoint || undefined,
-          apiKey: duomiApiKey,
+          apiKey: duomiApiKey || apiKey,
           model: duomiModel,
         }
       : undefined;
