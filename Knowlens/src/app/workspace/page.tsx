@@ -415,6 +415,265 @@ function containsAny(text: string, words: string[]) {
   return words.some((word) => text.includes(word));
 }
 
+function cleanTopicText(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const withoutGreeting = trimmed.replace(
+    /^(?:hello|hi|hey|yo|test|testing|pls|please|你好|您好|哈喽|嗨|测试|开始|在吗|麻烦|请问)[\s,，。.!！？?：:;；-]*/i,
+    "",
+  );
+  const withoutDirectionWords = withoutGreeting
+    .replace(/\b(?:generate|create|make|build|write|draft|produce)\b/gi, " ")
+    .replace(/\b(?:ppt|slides?|slide\s*deck|video|poster|infographic|storyboard)\b/gi, " ")
+    .replace(/(?:生成|制作|创建|做|输出|海报|视频|分镜|课件|长图|图文卡片|文稿)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutDirectionWords || withoutGreeting || trimmed;
+}
+
+type SuggestionTheme =
+  | "volcano"
+  | "black-hole"
+  | "photosynthesis"
+  | "tide"
+  | "tectonics"
+  | "inflation"
+  | "immune"
+  | "dna"
+  | "printing"
+  | "electrolysis"
+  | "generic";
+
+function sanitizeSuggestionTopic(topic: string, outputLanguage: OutputLanguage) {
+  const cleaned = cleanTopicText(topic)
+    .replace(/[，。；,.!?！？]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length >= 2) {
+    return cleaned.slice(0, 36);
+  }
+  return isChineseLanguage(outputLanguage) ? "这个主题" : "this topic";
+}
+
+function detectSuggestionTheme(topic: string): SuggestionTheme {
+  const bag = normalizeText(cleanTopicText(topic));
+  if (containsAny(bag, ["火山", "volcano", "magma", "eruption"])) {
+    return "volcano";
+  }
+  if (containsAny(bag, ["黑洞", "blackhole", "eventhorizon", "奇点"])) {
+    return "black-hole";
+  }
+  if (containsAny(bag, ["光合作用", "photosynthesis", "叶绿体", "chlorophyll"])) {
+    return "photosynthesis";
+  }
+  if (containsAny(bag, ["潮汐", "潮水", "tide", "moon", "月球引力"])) {
+    return "tide";
+  }
+  if (containsAny(bag, ["板块", "地震", "tectonic", "plateboundary", "fault"])) {
+    return "tectonics";
+  }
+  if (containsAny(bag, ["通货膨胀", "cpi", "inflation", "物价上涨", "购买力"])) {
+    return "inflation";
+  }
+  if (containsAny(bag, ["免疫", "抗体", "immune", "vaccine", "炎症"])) {
+    return "immune";
+  }
+  if (containsAny(bag, ["dna", "基因", "遗传", "mutation", "双螺旋"])) {
+    return "dna";
+  }
+  if (containsAny(bag, ["印刷术", "活字", "printing", "movabletype"])) {
+    return "printing";
+  }
+  if (containsAny(bag, ["电解", "electrolysis", "阴极", "阳极"])) {
+    return "electrolysis";
+  }
+  return "generic";
+}
+
+function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: OutputLanguage) {
+  const topic = sanitizeSuggestionTopic(seedTopic, outputLanguage);
+  const theme = detectSuggestionTheme(topic);
+  const isZh = isChineseLanguage(outputLanguage);
+
+  if (!isZh) {
+    if (theme === "volcano") {
+      return [
+        "How pressure buildup in a magma chamber triggers eruption timing",
+        "Which precursor signals (seismicity, gas, ground uplift) are most reliable",
+        "Why some eruptions become explosive while others stay effusive",
+        "How ash, lava, and volcanic gases affect climate, health, and infrastructure",
+      ];
+    }
+    if (theme === "black-hole") {
+      return [
+        "How a black hole forms from stellar collapse and mass threshold",
+        "What the event horizon changes for light, time, and information",
+        "How accretion disks and jets make black holes observable",
+        "How scientists estimate black-hole mass from orbit and radiation data",
+      ];
+    }
+    if (theme === "photosynthesis") {
+      return [
+        "How light reactions convert photon energy into ATP and NADPH",
+        "How the Calvin cycle stores carbon into sugars step by step",
+        "Which factors (light, CO2, temperature) limit photosynthesis first",
+        "How photosynthesis links plant growth, food webs, and carbon balance",
+      ];
+    }
+    if (theme === "tide") {
+      return [
+        "How Moon-Sun gravity creates periodic high and low tides",
+        "Why spring tides and neap tides differ in range",
+        "How coastline shape and seabed depth amplify local tide height",
+        "How tides influence navigation safety, ecosystems, and energy use",
+      ];
+    }
+    if (theme === "tectonics") {
+      return [
+        "How plate boundaries control earthquake and volcano distribution",
+        "How stress accumulates and releases along active faults",
+        "How subduction, collision, and rifting shape landforms differently",
+        "How tectonic evidence is measured with seismic and GPS data",
+      ];
+    }
+    if (theme === "inflation") {
+      return [
+        "How demand-pull and cost-push inflation follow different mechanisms",
+        "How inflation changes real wages, savings value, and household budgets",
+        "How CPI is built and why different baskets show different inflation views",
+        "How rate policy transmits from central banks to jobs and consumption",
+      ];
+    }
+    if (theme === "immune") {
+      return [
+        "How innate immunity reacts within hours before adaptive response starts",
+        "How B cells and T cells coordinate targeted pathogen elimination",
+        "How vaccines build memory cells without causing full disease",
+        "How chronic inflammation differs from short protective inflammation",
+      ];
+    }
+    if (theme === "dna") {
+      return [
+        "How DNA replication maintains accuracy and where mutations arise",
+        "How transcription and translation convert genes into proteins",
+        "How dominant and recessive inheritance appears across generations",
+        "How gene variants influence disease risk and treatment response",
+      ];
+    }
+    if (theme === "printing") {
+      return [
+        "How movable type changed speed, cost, and scale of knowledge spread",
+        "How printing innovation reshaped education and scientific communication",
+        "How East-West printing paths differed in materials and workflow",
+        "How printing technology evolved from manual press to modern systems",
+      ];
+    }
+    if (theme === "electrolysis") {
+      return [
+        "How ion migration at anode/cathode drives electrolysis reactions",
+        "How voltage, concentration, and electrode material change product yield",
+        "How Faraday's law predicts output mass from current and time",
+        "How electrolysis is applied in hydrogen production and metal refining",
+      ];
+    }
+    return [
+      `What exactly is "${topic}" and where are its boundaries?`,
+      `Which core mechanism best explains how "${topic}" works?`,
+      `Which measurable indicators can verify changes in "${topic}"?`,
+      `What is one real-world case that explains "${topic}" clearly?`,
+    ];
+  }
+
+  if (theme === "volcano") {
+    return [
+      "岩浆房压力如何累积到触发喷发阈值",
+      "地震活动、火山气体和地表隆起哪些最能预警喷发",
+      "爆炸式喷发和溢流式喷发的触发条件有什么差别",
+      "火山灰、熔岩和火山气体分别会造成哪些连锁影响",
+    ];
+  }
+  if (theme === "black-hole") {
+    return [
+      "恒星坍缩到什么质量条件才会形成黑洞",
+      "事件视界对光、时间和信息传递意味着什么",
+      "吸积盘和喷流如何帮助我们间接观测黑洞",
+      "科学家如何用轨道和辐射数据估算黑洞质量",
+    ];
+  }
+  if (theme === "photosynthesis") {
+    return [
+      "光反应如何把光能转成 ATP 和 NADPH",
+      "卡尔文循环如何把二氧化碳固定成糖",
+      "光照、温度和 CO2 浓度谁最先限制光合作用效率",
+      "光合作用如何影响食物链和碳循环平衡",
+    ];
+  }
+  if (theme === "tide") {
+    return [
+      "月球和太阳引力如何形成周期性的涨潮与落潮",
+      "大潮和小潮为什么会出现明显潮差",
+      "海岸线形状和水深如何放大局地潮位变化",
+      "潮汐变化如何影响航运、沿海生态与潮汐能利用",
+    ];
+  }
+  if (theme === "tectonics") {
+    return [
+      "板块边界类型如何决定地震和火山分布",
+      "断层应力如何累积并在地震中瞬时释放",
+      "俯冲、碰撞与张裂三类构造会形成哪些不同地貌",
+      "地震波和 GPS 数据如何用于板块运动监测",
+    ];
+  }
+  if (theme === "inflation") {
+    return [
+      "需求拉动型和成本推动型通胀的机制区别",
+      "通胀如何影响工资购买力、储蓄实际价值和预算结构",
+      "CPI 的构成与统计口径为什么会影响通胀感知",
+      "加息政策如何传导到消费、就业和企业融资",
+    ];
+  }
+  if (theme === "immune") {
+    return [
+      "先天免疫与适应性免疫在时间和作用上的分工",
+      "B 细胞和 T 细胞如何协同识别并清除病原体",
+      "疫苗如何在不致病的前提下建立免疫记忆",
+      "急性炎症和慢性炎症在风险和意义上有何区别",
+    ];
+  }
+  if (theme === "dna") {
+    return [
+      "DNA 复制如何保证高保真并减少突变累积",
+      "转录与翻译如何把基因信息转为蛋白质功能",
+      "显性与隐性遗传在家系中如何呈现分布规律",
+      "基因变异如何影响疾病风险与个体化治疗",
+    ];
+  }
+  if (theme === "printing") {
+    return [
+      "活字印刷如何改变知识传播速度与成本结构",
+      "印刷术如何推动教育普及与科学交流",
+      "中西方印刷技术路线在材料与工艺上的差异",
+      "从手工排印到现代印刷的关键技术演进",
+    ];
+  }
+  if (theme === "electrolysis") {
+    return [
+      "电解过程中阴极与阳极分别发生哪些反应",
+      "电压、溶液浓度和电极材料如何影响产物选择",
+      "法拉第定律如何用于计算电解产物质量",
+      "电解在制氢和金属精炼中的典型应用路径",
+    ];
+  }
+  return [
+    `“${topic}”的核心定义与边界是什么`,
+    `“${topic}”最关键的因果机制可以怎样拆解`,
+    `判断“${topic}”变化时最有价值的观测指标有哪些`,
+    `“${topic}”对应的一个真实案例如何完整解释`,
+  ];
+}
+
 function detectIntent(
   prompt: string,
   sources: HomeSourceItem[],
@@ -508,7 +767,7 @@ function inferRecommendedIntent(
 }
 
 function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage: OutputLanguage) {
-  const trimmed = prompt.trim();
+  const trimmed = cleanTopicText(prompt) || prompt.trim();
   if (trimmed) {
     const cleaned = trimmed
       .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
@@ -1996,15 +2255,10 @@ export default function WorkspacePage() {
   const projectTitle = isZhOutput
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
-  const topicSuggestions = useMemo(
-    () => [
-      "Generate a beginner-friendly poster that explains one topic with clear key points.",
-      "Create a 6-frame storyboard with narration guidance and scene focus.",
-      "Build a 10-slide learning deck with one core idea per slide.",
-      "Compare causes, impacts, and practical examples in one visual narrative.",
-    ],
-    [],
-  );
+  const topicSuggestions = useMemo(() => {
+    const suggestionSeed = topicContextPrompt || topic;
+    return buildSpecificTopicSuggestions(suggestionSeed, outputLanguage);
+  }, [outputLanguage, topic, topicContextPrompt]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3108,7 +3362,7 @@ export default function WorkspacePage() {
   }, []);
 
   return (
-    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800">
+    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800 workspace-shell">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -3137,7 +3391,7 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
-      <main className="mx-auto mt-[56px] flex h-[calc(100dvh-56px)] max-w-none min-h-0 flex-col px-2 pb-1 pt-3 sm:px-3">
+      <main className="workspace-page-scroll mx-auto mt-[56px] flex h-[calc(100dvh-56px)] max-w-none min-h-0 flex-col overflow-y-auto overflow-x-hidden px-2 pb-1 pt-3 sm:px-3 [scrollbar-gutter:stable]">
         <div
           className={`grid min-h-0 flex-1 gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
@@ -3149,7 +3403,7 @@ export default function WorkspacePage() {
             } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
             <div className="flex h-full min-h-0 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto pr-1.5 pb-36 pt-4 [scrollbar-width:thin] lg:pr-1.5">
+              <div className="min-h-0 flex-1 pr-1.5 pb-36 pt-4 lg:pr-1.5">
                 <ChatPanel
                   outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}
@@ -3274,7 +3528,7 @@ export default function WorkspacePage() {
           {showStoryboard && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-full overflow-y-auto overflow-x-hidden lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-full overflow-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">
@@ -3308,7 +3562,7 @@ export default function WorkspacePage() {
           {showPosterCanvas && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-full overflow-y-auto overflow-x-hidden lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-full overflow-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">

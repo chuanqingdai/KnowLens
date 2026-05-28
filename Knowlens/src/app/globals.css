@@ -111,6 +111,32 @@ input[type="reset"]:disabled {
   }
 }
 
+.workspace-shell {
+  scrollbar-width: thin;
+  scrollbar-color: #a1a1aa transparent;
+}
+
+.workspace-shell ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.workspace-shell ::-webkit-scrollbar-track {
+  background: transparent;
+  box-shadow: none;
+}
+
+.workspace-shell ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #a1a1aa;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.workspace-shell ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .workspace-canvas-shell {
   scrollbar-width: thin;
   scrollbar-color: #a1a1aa transparent;
