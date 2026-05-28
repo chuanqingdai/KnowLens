@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Check, LoaderCircle, Sparkles } from "lucide-react";
 
@@ -80,8 +80,10 @@ function styleCoverCandidates(coverImage?: string) {
     return [];
   }
   const normalized = coverImage.trim();
-  const jpgCandidate = normalized.replace(/\.(png|webp|jpeg)$/i, ".jpg");
-  return Array.from(new Set([jpgCandidate, normalized]));
+  const [path, query = ""] = normalized.split("?");
+  const jpgPath = path.replace(/\.(png|webp|jpeg|jpg)$/i, ".jpg");
+  const finalSrc = query ? `${jpgPath}?${query}` : jpgPath;
+  return [finalSrc];
 }
 
 function StyleCover({ style }: { style: StyleOption }) {
@@ -352,6 +354,10 @@ export function ChatPanel({
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
   const stylePreloadRefs = useRef<Record<string, boolean>>({});
+  const previousCardVisibilityRef = useRef({
+    billingShown: false,
+    draftShown: false,
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -382,7 +388,7 @@ export function ChatPanel({
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(updates), [updates]);
 
-  const scrollToLatestCard = () => {
+  const scrollToLatestCard = useCallback(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -394,7 +400,7 @@ export function ChatPanel({
     window.requestAnimationFrame(run);
     window.setTimeout(run, 160);
     window.setTimeout(run, 420);
-  };
+  }, []);
 
   const handleTopicSuggestionNext = () => {
     onConfirmTopicSuggestion();
@@ -510,9 +516,35 @@ export function ChatPanel({
   const showWorkflowSummaryCard = !(showWeakPromptSuggestions && showDirectionGuide) && !topicSuggestionLocked;
   const isDirectionLocked = configConfirmed && !showDirectionGuide;
   const shouldShowDraftConfirmAction = !showStyleStage && !showBillingConfirm && !styleConfirmed;
+  const hasDraftContentCard =
+    Boolean(posterDraft) ||
+    ((intent === "ppt" || intent === "video") && (outlineItems.length > 0 || slideDrafts.length > 0));
   const draftGenerationLoadingActive =
     thinkingState.active &&
     /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const prev = previousCardVisibilityRef.current;
+    const billingJustShown = showBillingRecord && !prev.billingShown;
+    const draftJustShown = hasDraftContentCard && !prev.draftShown;
+
+    previousCardVisibilityRef.current = {
+      billingShown: showBillingRecord,
+      draftShown: hasDraftContentCard,
+    };
+
+    if (!billingJustShown && !draftJustShown) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      scrollToLatestCard();
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [hasDraftContentCard, scrollToLatestCard, showBillingRecord]);
   const renderUpdateCard = (update: ChatTurn, idx: number) => {
     const isErrorCard =
       update.role === "assistant" &&
@@ -2022,7 +2054,7 @@ export function ChatPanel({
           <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
           <p className="mt-1 text-[11px] leading-5 text-zinc-400">Style selection is confirmed for this generation.</p>
 
-          <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3">
             {styleOptions.map((style) => {
               const active = style.id === selectedStyleId;
               return (
@@ -2041,7 +2073,7 @@ export function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
+                    <div className="relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none">
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2072,7 +2104,7 @@ export function ChatPanel({
             Select one style card. Hover each card to preview the visual tone and best-fit use cases.
           </p>
 
-          <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3">
             {styleOptions.map((style) => (
               <button
                 key={style.id}
@@ -2092,7 +2124,7 @@ export function ChatPanel({
                     <Check size={12} />
                   </span>
                 ) : null}
-                <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
+                  <div className="relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none">
                   <StyleCover style={style} />
                   {supportsHoverDescription ? (
                     <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">

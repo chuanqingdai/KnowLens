@@ -7,10 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
+import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 
 const heroImage = "/picture/ai-infographic-generator-learning-hero.jpg";
 const LANDING_ASSET_VERSION = "20260528c";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
+const MEMBERSHIP_SOURCE = "landing-page";
 
 const previewWideCases = [
   {
@@ -258,7 +260,7 @@ const capabilityFlows = [
     id: "text-to-poster",
     tabEn: "Text → Poster",
     tabZh: "文本 → 海报",
-    previewImage: "/picture/text-to-poster-workflow.jpg",
+    previewImage: "/picture/text-to-poster.jpg",
     inputEn: "Topic / Text prompt",
     inputZh: "主题 / 文本需求",
     outputEn: "Visual poster",
@@ -486,6 +488,37 @@ function withAssetVersion(assetPath: string) {
   return `${assetPath}${sep}v=${LANDING_ASSET_VERSION}`;
 }
 
+async function startStripeCheckout(planId: string, cycle: BillingCycle) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!findBillingPlan(planId)) {
+    throw new Error("Plan config is invalid. Please refresh and retry.");
+  }
+  const response = await fetch("/api/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      planId,
+      cycle,
+      source: MEMBERSHIP_SOURCE,
+    }),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    checkoutUrl?: string;
+    error?: string;
+  };
+  if (!response.ok || !data.ok || !data.checkoutUrl) {
+    throw new Error(data.error || "Unable to create checkout session.");
+  }
+  try {
+    window.location.assign(data.checkoutUrl);
+  } catch {
+    window.location.replace(data.checkoutUrl);
+  }
+}
+
 function ProgressiveImage({
   src,
   fallbackSrc,
@@ -609,10 +642,24 @@ export default function LandingPage() {
         capabilityFlows[0].previewImage,
     ),
   );
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const activeFlow =
     capabilityFlows.find((flow) => flow.id === activeFlowId) ??
     capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID) ??
     capabilityFlows[0];
+
+  const handleCheckoutClick = async (planId: string, cycle: BillingCycle) => {
+    if (checkoutPlanId) {
+      return;
+    }
+    setCheckoutPlanId(planId);
+    try {
+      await startStripeCheckout(planId, cycle);
+    } catch (error) {
+      console.error(error);
+      setCheckoutPlanId(null);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1053,16 +1100,18 @@ export default function LandingPage() {
                     ) : null}
                   </div>
 
-                  <Link
-                    href="/membership"
-                    className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition ${
+                  <button
+                    type="button"
+                    onClick={() => handleCheckoutClick(plan.id, billingCycle)}
+                    disabled={checkoutPlanId === plan.id}
+                    className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-70 ${
                       plan.highlight
                         ? "bg-zinc-900 text-white hover:bg-zinc-700"
                         : "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
                     }`}
                   >
-                    {t(plan.ctaEn, plan.ctaZh)}
-                  </Link>
+                    {checkoutPlanId === plan.id ? t("Redirecting...", "正在跳转...") : t(plan.ctaEn, plan.ctaZh)}
+                  </button>
 
                   <p className="mt-2 text-xs text-zinc-500">{t(plan.usageEn, plan.usageZh)}</p>
 

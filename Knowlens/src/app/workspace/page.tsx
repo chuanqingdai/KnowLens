@@ -457,12 +457,48 @@ function sanitizeSuggestionTopic(topic: string, outputLanguage: OutputLanguage) 
   return isChineseLanguage(outputLanguage) ? "这个主题" : "this topic";
 }
 
+function isLowSignalSuggestionInput(seedTopic: string) {
+  const raw = seedTopic.trim();
+  if (!raw) {
+    return true;
+  }
+  const cleaned = cleanTopicText(raw)
+    .replace(/[，。；,.!?！？]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) {
+    return true;
+  }
+  const compact = cleaned
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+  if (!compact) {
+    return true;
+  }
+  if (
+    /^(?:hello|hi|hey|yo|test|testing|pls|please|ok|okay|你好|您好|哈喽|嗨|测试|开始|在吗)$/.test(
+      compact,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function detectSuggestionTheme(topic: string): SuggestionTheme {
-  const bag = normalizeText(cleanTopicText(topic));
+  const raw = cleanTopicText(topic);
+  const bag = normalizeText(raw);
+  const zhBag = raw.replace(/\s+/g, "");
   if (containsAny(bag, ["火山", "volcano", "magma", "eruption"])) {
     return "volcano";
   }
+  if (containsAny(zhBag, ["火山爆发", "喷发"])) {
+    return "volcano";
+  }
   if (containsAny(bag, ["黑洞", "blackhole", "eventhorizon", "奇点"])) {
+    return "black-hole";
+  }
+  if (containsAny(zhBag, ["黑洞形成", "事件视界"])) {
     return "black-hole";
   }
   if (containsAny(bag, ["光合作用", "photosynthesis", "叶绿体", "chlorophyll"])) {
@@ -496,8 +532,17 @@ function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: Output
   const topic = sanitizeSuggestionTopic(seedTopic, outputLanguage);
   const theme = detectSuggestionTheme(topic);
   const isZh = isChineseLanguage(outputLanguage);
+  const lowSignalInput = isLowSignalSuggestionInput(seedTopic);
 
   if (!isZh) {
+    if (lowSignalInput) {
+      return [
+        "How plate tectonics drives both earthquakes and volcano distribution",
+        "How black holes bend light and change time near the event horizon",
+        "How the immune system identifies pathogens while protecting normal cells",
+        "How deep-sea organisms adapt to high pressure and low-temperature habitats",
+      ];
+    }
     if (theme === "volcano") {
       return [
         "How pressure buildup in a magma chamber triggers eruption timing",
@@ -579,10 +624,19 @@ function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: Output
       ];
     }
     return [
-      `What exactly is "${topic}" and where are its boundaries?`,
-      `Which core mechanism best explains how "${topic}" works?`,
-      `Which measurable indicators can verify changes in "${topic}"?`,
-      `What is one real-world case that explains "${topic}" clearly?`,
+      `${topic}: formation conditions and trigger thresholds`,
+      `${topic}: first-changing signal and measurable key variables`,
+      `${topic}: step-by-step mechanism chain from cause to outcome`,
+      `${topic}: one data-backed real-world case and practical implication`,
+    ];
+  }
+
+  if (lowSignalInput) {
+    return [
+      "板块运动如何共同决定地震和火山的空间分布",
+      "黑洞的事件视界为什么会改变光与时间的行为",
+      "免疫系统如何识别病原体并避免攻击自身细胞",
+      "深海生物如何适应高压、低温与弱光环境",
     ];
   }
 
@@ -667,10 +721,10 @@ function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: Output
     ];
   }
   return [
-    `“${topic}”的核心定义与边界是什么`,
-    `“${topic}”最关键的因果机制可以怎样拆解`,
-    `判断“${topic}”变化时最有价值的观测指标有哪些`,
-    `“${topic}”对应的一个真实案例如何完整解释`,
+    `${topic}的形成条件与关键触发阈值`,
+    `${topic}中最先变化的可观测指标与核心变量`,
+    `${topic}从起因到结果的机制链路拆解`,
+    `${topic}在现实中的一个数据化案例及实际影响`,
   ];
 }
 

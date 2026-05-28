@@ -15,6 +15,40 @@ function formatDate(input: string) {
   });
 }
 
+function parseModelCreditSummary(description: string) {
+  const en = description.match(
+    /Language model\s*(\d+)\s*credits?\s*\+\s*Image model\s*(\d+)\s*credits?/i,
+  );
+  if (en) {
+    return { lm: Number(en[1]), image: Number(en[2]) };
+  }
+  const zh = description.match(/语言模型\s*(\d+)\s*积分\s*\+\s*图像模型\s*(\d+)\s*积分/i);
+  if (zh) {
+    return { lm: Number(zh[1]), image: Number(zh[2]) };
+  }
+  return null;
+}
+
+function simplifyRecordDescription(record: CreditRecord) {
+  const raw = record.description.trim();
+  if (!raw) {
+    return "-";
+  }
+  if (record.type !== "consume") {
+    return raw;
+  }
+
+  const isPoster = /poster generation|海报生成/i.test(raw);
+  const isStoryboard = /storyboard generation|分镜生成/i.test(raw);
+  const creditSummary = parseModelCreditSummary(raw);
+
+  const action = isPoster ? "Poster generation" : isStoryboard ? "Storyboard generation" : "Generation";
+  if (creditSummary) {
+    return `${action} (LM ${creditSummary.lm} + IMG ${creditSummary.image})`;
+  }
+  return action;
+}
+
 export default function CreditRecordsPage() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -80,7 +114,7 @@ export default function CreditRecordsPage() {
               <thead className="bg-zinc-50 text-zinc-500">
                 <tr>
                   <th className="px-3 py-2 font-medium">Time</th>
-                  <th className="px-3 py-2 font-medium">Type</th>
+                  <th className="px-3 py-2 font-medium">Action</th>
                   <th className="px-3 py-2 font-medium">Description</th>
                   <th className="px-3 py-2 font-medium">Change</th>
                   <th className="px-3 py-2 font-medium">Balance</th>
@@ -104,11 +138,11 @@ export default function CreditRecordsPage() {
                       ) : (
                         <span className="inline-flex items-center gap-1 text-red-700">
                           <Minus size={12} />
-                          Usage
+                          Spent
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-zinc-700">{record.description}</td>
+                    <td className="px-3 py-2 text-zinc-700">{simplifyRecordDescription(record)}</td>
                     <td
                       className={`px-3 py-2 font-medium ${
                         record.delta > 0 ? "text-emerald-700" : "text-red-700"
