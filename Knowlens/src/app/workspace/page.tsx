@@ -3415,8 +3415,12 @@ export default function WorkspacePage() {
     };
   }, []);
 
+  if (!isHydrated) {
+    return <div className="fixed inset-0 overflow-hidden bg-[#f7f7f8] text-zinc-800" />;
+  }
+
   return (
-    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800 workspace-shell">
+    <div className="fixed inset-0 overflow-hidden bg-[#f7f7f8] text-zinc-800">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -3445,7 +3449,7 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
-      <main className="workspace-page-scroll mx-auto mt-[56px] flex h-[calc(100dvh-56px)] max-w-none min-h-0 flex-col overflow-y-auto overflow-x-hidden px-2 pb-1 pt-3 sm:px-3 [scrollbar-gutter:stable]">
+      <main className="mx-auto flex h-full min-h-0 max-w-none flex-col overflow-hidden px-2 pb-1 pt-16 sm:px-3">
         <div
           className={`grid min-h-0 flex-1 gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"

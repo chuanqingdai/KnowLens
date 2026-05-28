@@ -25,7 +25,6 @@ import {
   Heart,
   Home as HomeIcon,
   ImagePlay,
-  Link2,
   LoaderCircle,
   Menu,
   Minus,
@@ -130,7 +129,6 @@ function defaultFreeModelByLocale(locale: "en" | "zh") {
 
 const inputPlaceholders = [
   'Describe what you want to explain, for example: "Why do tides happen?"',
-  "Paste a webpage URL and let KnowLens.ai extract key points automatically",
   "Upload a PDF, PPT, or document to generate visual learning content quickly",
 ];
 
@@ -363,16 +361,6 @@ const supportedUploadAccept = [
   ".md",
   ".srt",
   ".vtt",
-  ".mp4",
-  ".mov",
-  ".avi",
-  ".mkv",
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".flac",
-  ".aac",
-  ".ogg",
 ].join(",");
 
 const FREE_MODEL_UPLOAD_LIMITS = {
@@ -389,6 +377,8 @@ const PREMIUM_MODEL_UPLOAD_LIMITS = {
 
 const MAX_LINK_SOURCE_COUNT = 1;
 const MAX_COMPOSE_TEXT_CHARS = 6000;
+const LINK_UPLOAD_TEMP_DISABLED = true;
+const SHOW_FILE_UPLOAD_ENTRY = false;
 
 const MIN_COMPOSER_HEIGHT = 132;
 const MAX_COMPOSER_HEIGHT = 260;
@@ -627,6 +617,17 @@ function isMediaFile(file: File) {
   return /\.(mp4|mov|avi|mkv|mp3|wav|m4a|flac|aac|ogg)$/i.test(file.name.toLowerCase());
 }
 
+function isSupportedFileUpload(file: File) {
+  const mime = (file.type || "").toLowerCase();
+  const lowerName = file.name.toLowerCase();
+  if (mime.startsWith("image/") || mime.startsWith("text/")) {
+    return true;
+  }
+  return /\.(pdf|doc|docx|rtf|epub|ppt|pptx|key|xls|xlsx|csv|tsv|json|xml|txt|md|srt|vtt)$/i.test(
+    lowerName,
+  );
+}
+
 function isPremiumTextModel(modelValue: string) {
   return textModelOptions.some((option) => option.value === modelValue && option.premium);
 }
@@ -763,6 +764,7 @@ export default function Home() {
   const dragDepthRef = useRef(0);
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
+  const hydratedHomeDraftRef = useRef(false);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);
@@ -793,11 +795,11 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || hydratedHomeDraftRef.current) {
       return;
     }
-    let shouldHydrate = !composeInput.trim() && sourceItems.length === 0;
-    if (!shouldHydrate) {
+    hydratedHomeDraftRef.current = true;
+    if (composeInput.trim() || sourceItems.length > 0) {
       return;
     }
     try {
@@ -852,7 +854,13 @@ export default function Home() {
   }, [composeInput, sourceItems.length]);
 
   useEffect(() => {
+    if (!inputPlaceholders.length || composeInput.trim().length > 0) {
+      return;
+    }
     const currentText = inputPlaceholders[placeholderIndex];
+    if (!currentText) {
+      return;
+    }
     const typedDone = typedPlaceholder === currentText;
     const deletedDone = typedPlaceholder.length === 0;
 
@@ -882,7 +890,7 @@ export default function Home() {
     }, delay);
 
     return () => window.clearTimeout(timer);
-  }, [typedPlaceholder, isDeleting, placeholderIndex]);
+  }, [composeInput, typedPlaceholder, isDeleting, placeholderIndex]);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -991,9 +999,7 @@ export default function Home() {
                   setUploadToast(getUploadFailureMessageFromJob(job));
                 }, 0);
               }
-              if (nextItem.previewUrl?.startsWith("blob:")) {
-                URL.revokeObjectURL(nextItem.previewUrl);
-              }
+              acc.push(nextItem);
               return acc;
             }
             acc.push(nextItem);
@@ -1017,14 +1023,16 @@ export default function Home() {
 
   async function enqueueSelectedFiles(selectedFiles: File[]) {
     const blockedMediaFiles = selectedFiles.filter((file) => isMediaFile(file));
-    const allowedFiles =
-      !hasMembership && blockedMediaFiles.length
-        ? selectedFiles.filter((file) => !isMediaFile(file))
-        : selectedFiles;
-
-    if (!hasMembership && blockedMediaFiles.length) {
-      setMediaUploadPaywallOpen(true);
+    if (blockedMediaFiles.length) {
+      setUploadToast("Video/audio uploads are temporarily disabled. Please upload images or documents.");
     }
+
+    const unsupportedFiles = selectedFiles.filter((file) => !isSupportedFileUpload(file));
+    if (unsupportedFiles.length > blockedMediaFiles.length) {
+      setUploadToast("Only image and document files are supported right now.");
+    }
+
+    const allowedFiles = selectedFiles.filter((file) => isSupportedFileUpload(file));
 
     if (!allowedFiles.length) {
       return;
@@ -1062,17 +1070,30 @@ export default function Home() {
       origin: file.name,
       mimeType: file.type || "application/octet-stream",
       sizeBytes: file.size,
-      progress: 5,
+      progress: 12,
       previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
-      status: "queued" as const,
-      excerpt: "Queued for processing...",
+      status: "uploading" as const,
+      excerpt: "Uploading...",
     }));
 
     setSourceItems((prev) => [...items, ...prev]);
 
-    try {
-      for (let idx = 0; idx < acceptedFiles.length; idx += 1) {
-        const file = acceptedFiles[idx];
+    for (let idx = 0; idx < acceptedFiles.length; idx += 1) {
+      const file = acceptedFiles[idx];
+      const currentItem = items[idx];
+      setSourceItems((prev) =>
+        prev.map((item) =>
+          item.id === currentItem.id
+            ? {
+                ...item,
+                status: "uploading",
+                progress: 25,
+                excerpt: "Uploading...",
+              }
+            : item,
+        ),
+      );
+      try {
         const formData = new FormData();
         formData.append("userEmail", currentEmail);
         formData.append("fileName", file.name);
@@ -1096,7 +1117,7 @@ export default function Home() {
         const jobId = data.job.jobId;
         setSourceItems((prev) =>
           prev.map((item) =>
-            item.id === items[idx].id
+            item.id === currentItem.id
               ? {
                   ...item,
                   jobId,
@@ -1121,19 +1142,24 @@ export default function Home() {
             sourceKind: "file",
           },
         }));
+      } catch (error) {
+        const message = cleanUploadErrorMessage(
+          error instanceof Error ? error.message : "Upload failed",
+        );
+        setSourceItems((prev) =>
+          prev.map((item) =>
+            item.id === currentItem.id
+              ? {
+                  ...item,
+                  status: "failed",
+                  progress: 0,
+                  excerpt: message,
+                }
+              : item,
+          ),
+        );
+        setUploadToast(message);
       }
-    } catch (error) {
-      setSourceItems((prev) => {
-        const next = prev.filter((item) => !items.some((candidate) => candidate.id === item.id));
-        items.forEach((item) => {
-          if (item.previewUrl?.startsWith("blob:")) {
-            URL.revokeObjectURL(item.previewUrl);
-          }
-        });
-        return next;
-      });
-    } finally {
-      // no-op
     }
   }
 
@@ -1193,6 +1219,12 @@ export default function Home() {
   }
 
   async function handleSubmitLink(rawInput?: string) {
+    if (LINK_UPLOAD_TEMP_DISABLED) {
+      setLinkInputOpen(false);
+      setLinkError("");
+      setUploadToast("Link uploads are temporarily unavailable.");
+      return;
+    }
     const value = (rawInput ?? linkValue).trim();
     if (!value) {
       setLinkError("Please enter a webpage, YouTube, or podcast URL.");
@@ -1379,6 +1411,9 @@ export default function Home() {
 
     const pastedText = clipboard.getData("text/plain").trim();
     if (!pastedText) {
+      return;
+    }
+    if (LINK_UPLOAD_TEMP_DISABLED) {
       return;
     }
     const pastedUrl = parseHttpUrl(pastedText);
@@ -1786,10 +1821,10 @@ export default function Home() {
   return (
     <div
       className="min-h-screen bg-page text-zinc-900"
-      onDragEnter={handlePageDragEnter}
-      onDragOver={handlePageDragOver}
-      onDragLeave={handlePageDragLeave}
-      onDrop={handlePageDrop}
+      onDragEnter={SHOW_FILE_UPLOAD_ENTRY ? handlePageDragEnter : undefined}
+      onDragOver={SHOW_FILE_UPLOAD_ENTRY ? handlePageDragOver : undefined}
+      onDragLeave={SHOW_FILE_UPLOAD_ENTRY ? handlePageDragLeave : undefined}
+      onDrop={SHOW_FILE_UPLOAD_ENTRY ? handlePageDrop : undefined}
     >
       <SidebarNav
         items={localizedNavItems}
@@ -1943,68 +1978,72 @@ export default function Home() {
 
                 <div className="mt-3 px-4 py-4 sm:px-5">
                   <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      aria-label="Upload files"
-                      title="Upload files"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-100"
-                    >
-                      <Upload size={15} />
-                    </button>
-                    <div className="relative">
+                    {SHOW_FILE_UPLOAD_ENTRY ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (hasLinkSource) {
-                            setUploadToast("Only one link is allowed per project.");
-                            return;
-                          }
-                          setLinkInputOpen((prev) => !prev);
-                          setLinkError("");
-                        }}
-                        aria-label="Add link"
-                        title="Add link"
-                        disabled={hasLinkSource}
-                        className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition ${
-                          hasLinkSource
-                            ? "cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400"
-                            : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
-                        }`}
+                        onClick={() => fileInputRef.current?.click()}
+                        aria-label="Upload files"
+                        title="Upload files"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-100"
                       >
-                        <Link2 size={15} />
+                        <Upload size={15} />
                       </button>
-                      {linkInputOpen ? (
-                        <div className="absolute bottom-12 left-0 z-[80] w-[min(92vw,440px)] rounded-2xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
-                          <p className="mb-2 whitespace-pre-line text-sm text-zinc-500">
-                            Supports webpage URLs, YouTube URLs, and podcast URLs (Apple Podcasts, Spotify, YouTube Music).
-                            {"\n"}YouTube/podcast transcript extraction requires a premium language model.
-                          </p>
-                          <input
-                            value={linkValue}
-                            onChange={(event) => {
-                              setLinkValue(event.target.value);
-                              if (linkError) {
-                                setLinkError("");
-                              }
-                            }}
-                            placeholder="Paste a link and press Enter or click Extract"
-                            onKeyDown={handleLinkInputKeyDown}
-                            className="h-11 w-full rounded-xl border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void handleSubmitLink()}
-                            className="mt-3 inline-flex h-9 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-                          >
-                            Extract text
-                          </button>
-                          {linkError ? (
-                            <p className="mt-2 text-xs text-red-600">{linkError}</p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
+                    ) : null}
+                    {!LINK_UPLOAD_TEMP_DISABLED ? (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (hasLinkSource) {
+                              setUploadToast("Only one link is allowed per project.");
+                              return;
+                            }
+                            setLinkInputOpen((prev) => !prev);
+                            setLinkError("");
+                          }}
+                          aria-label="Add link"
+                          title="Add link"
+                          disabled={hasLinkSource}
+                          className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                            hasLinkSource
+                              ? "cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400"
+                              : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
+                          }`}
+                        >
+                          <Globe size={15} />
+                        </button>
+                        {linkInputOpen ? (
+                          <div className="absolute bottom-12 left-0 z-[80] w-[min(92vw,440px)] rounded-2xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
+                            <p className="mb-2 whitespace-pre-line text-sm text-zinc-500">
+                              Supports webpage URLs, YouTube URLs, and podcast URLs (Apple Podcasts, Spotify, YouTube Music).
+                              {"\n"}YouTube/podcast transcript extraction requires a premium language model.
+                            </p>
+                            <input
+                              value={linkValue}
+                              onChange={(event) => {
+                                setLinkValue(event.target.value);
+                                if (linkError) {
+                                  setLinkError("");
+                                }
+                              }}
+                              placeholder="Paste a link and press Enter or click Extract"
+                              onKeyDown={handleLinkInputKeyDown}
+                              className="h-11 w-full rounded-xl border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleSubmitLink()}
+                              className="mt-3 inline-flex h-9 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                            >
+                              Extract text
+                            </button>
+                            {linkError ? (
+                              <p className="mt-2 text-xs text-red-600">{linkError}</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="relative w-[calc(50%-6px)] min-w-[130px] sm:w-auto">
                       <button
                         ref={textModelButtonRef}
@@ -2218,7 +2257,7 @@ export default function Home() {
           {uploadToast}
         </div>
       ) : null}
-      {isDragOverPage ? (
+      {SHOW_FILE_UPLOAD_ENTRY && isDragOverPage ? (
         <div className="pointer-events-none fixed inset-0 z-[95] bg-black/72 backdrop-blur-[2px]">
           <div className="flex h-full w-full items-center justify-center px-4">
             <div className="w-full max-w-2xl text-center">
@@ -2228,7 +2267,7 @@ export default function Home() {
                     <FileText size={18} />
                   </span>
                   <span className="absolute -right-5 top-1 inline-flex h-10 w-10 rotate-[14deg] items-center justify-center rounded-xl bg-indigo-100 text-indigo-900 shadow-[0_6px_18px_rgba(79,70,229,0.35)]">
-                    <Link2 size={18} />
+                    <Upload size={18} />
                   </span>
                   <span className="absolute left-1/2 top-5 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.45)]">
                     <ImagePlay size={20} />
