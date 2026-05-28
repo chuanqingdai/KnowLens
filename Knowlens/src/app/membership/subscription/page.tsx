@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
   cancelSubscription,
   getCreditRecords,
   getSubscriptionByUser,
+  syncCreditRecordsFromServer,
   type SubscriptionSnapshot,
 } from "@/lib/billing";
 
@@ -41,6 +42,26 @@ export default function SubscriptionManagePage() {
     void refreshVersion;
     return getCreditRecords(currentEmail)[0]?.balance ?? 80;
   }, [currentEmail, refreshVersion]);
+
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    let canceled = false;
+    void syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        if (canceled) {
+          return;
+        }
+        setRefreshVersion((prev) => prev + 1);
+      })
+      .catch(() => {
+        // Keep cached records if sync fails.
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [currentEmail]);
   const [showSurvey, setShowSurvey] = useState(false);
   const [selectedReason, setSelectedReason] = useState("");
   const [detailFeedback, setDetailFeedback] = useState("");

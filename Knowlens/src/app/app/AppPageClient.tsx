@@ -40,7 +40,7 @@ import { SidebarNav } from "@/components/app-shell/SidebarNav";
 import { getProjectsByUser } from "@/lib/admin";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
-import { getCreditRecords, getSubscriptionByUser } from "@/lib/billing";
+import { getCreditRecords, getSubscriptionByUser, syncCreditRecordsFromServer } from "@/lib/billing";
 import {
   getCaseMetrics,
   incrementCaseView,
@@ -735,7 +735,7 @@ export default function Home() {
     const subscription = getSubscriptionByUser(currentEmail);
     return !!subscription && (subscription.status === "active" || subscription.status === "canceling");
   }, [currentEmail]);
-  const currentCredits = useMemo(() => getCreditRecords(currentEmail)[0]?.balance ?? 80, [currentEmail]);
+  const [currentCredits, setCurrentCredits] = useState(80);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");
@@ -764,6 +764,51 @@ export default function Home() {
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
   const startedWorkspaceNavigationRef = useRef(false);
+  const creditSyncInFlightRef = useRef(false);
+  const creditSyncedEmailRef = useRef("");
+
+  useEffect(() => {
+    if (sessionStatus !== "authenticated" || !currentEmail) {
+      return;
+    }
+    if (creditSyncedEmailRef.current === currentEmail) {
+      return;
+    }
+    if (creditSyncInFlightRef.current) {
+      return;
+    }
+    creditSyncInFlightRef.current = true;
+    let canceled = false;
+    void syncCreditRecordsFromServer(currentEmail)
+      .then((records) => {
+        if (canceled) {
+          return;
+        }
+        const nextBalance =
+          records[0]?.balance ??
+          getCreditRecords(currentEmail)[0]?.balance ??
+          80;
+        setCurrentCredits((prev) => (prev === nextBalance ? prev : nextBalance));
+        creditSyncedEmailRef.current = currentEmail;
+      })
+      .catch(() => {
+        if (canceled) {
+          return;
+        }
+        const fallbackBalance = getCreditRecords(currentEmail)[0]?.balance ?? 80;
+        setCurrentCredits((prev) => (prev === fallbackBalance ? prev : fallbackBalance));
+      })
+      .finally(() => {
+        if (canceled) {
+          return;
+        }
+        creditSyncInFlightRef.current = false;
+      });
+    return () => {
+      canceled = true;
+      creditSyncInFlightRef.current = false;
+    };
+  }, [currentEmail, sessionStatus]);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);
@@ -1704,7 +1749,7 @@ export default function Home() {
       title: formatRecentProjectTitle(project.title, locale, index),
       updatedAt: `Updated ${project.updatedAt}`,
       cover: covers[index % covers.length] || recentProjects[0].cover,
-      format: normalizeFormatLabel(project.format || "海报"),
+      format: normalizeFormatLabel(project.format || "Poster"),
       duration: project.duration,
     }));
   }, [currentEmail, locale]);

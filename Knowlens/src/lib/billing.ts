@@ -180,3 +180,42 @@ export function appendCreditRecord(
   window.localStorage.setItem(key, JSON.stringify(nextRecords));
   return nextRecord;
 }
+
+export function setCreditRecords(
+  records: CreditRecord[],
+  email?: string | null,
+) {
+  if (!isClient()) {
+    return;
+  }
+  const key = email ? scopedKey(CREDIT_RECORDS_KEY, email) : CREDIT_RECORDS_KEY;
+  window.localStorage.setItem(key, JSON.stringify(records));
+}
+
+export async function syncCreditRecordsFromServer(email?: string | null) {
+  if (!isClient()) {
+    return [] as CreditRecord[];
+  }
+  const scopeEmail = (email ?? "").trim().toLowerCase();
+  if (!scopeEmail) {
+    return getCreditRecords(email);
+  }
+  const response = await fetch("/api/billing/credits", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`CREDIT_SYNC_HTTP_${response.status}`);
+  }
+  const payload = (await response.json()) as {
+    ok?: boolean;
+    records?: CreditRecord[];
+  };
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  setCreditRecords(records, scopeEmail);
+  return records;
+}

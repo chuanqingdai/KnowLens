@@ -20,6 +20,7 @@ import {
   appendCreditRecord,
   getCreditRecords,
   getSubscriptionByUser,
+  syncCreditRecordsFromServer,
 } from "@/lib/billing";
 import {
   STANDARD_OUTPUT_PROMO_CREDITS,
@@ -1336,6 +1337,26 @@ export default function WorkspacePage() {
     }
     router.push("/membership");
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    let canceled = false;
+    void syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        if (canceled) {
+          return;
+        }
+        setCreditVersion((prev) => prev + 1);
+      })
+      .catch(() => {
+        // Keep local cache when server sync is unavailable.
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [currentEmail]);
 
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
