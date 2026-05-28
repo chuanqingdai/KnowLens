@@ -258,7 +258,7 @@ const capabilityFlows = [
     id: "text-to-poster",
     tabEn: "Text → Poster",
     tabZh: "文本 → 海报",
-    previewImage: "/picture/text-to-poster-workflow.jpg",
+    previewImage: "/picture/text-to-poster.jpg",
     inputEn: "Topic / Text prompt",
     inputZh: "主题 / 文本需求",
     outputEn: "Visual poster",
@@ -747,13 +747,13 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 shadow-sm lg:justify-self-end">
+          <div className="w-full overflow-hidden rounded-lg lg:justify-self-end">
             <AspectSkeleton ratioClassName="aspect-square">
               <ProgressiveImage
                 src={toOptimized(heroImage)}
                 fallbackSrc={toOriginal(heroImage)}
                 alt="KnowLens Hero"
-                className="absolute inset-0 block h-full w-full object-cover align-top"
+                className="absolute inset-0 block h-full w-full scale-[1.02] object-cover align-top"
                 loading="eager"
                 fetchPriority="high"
               />

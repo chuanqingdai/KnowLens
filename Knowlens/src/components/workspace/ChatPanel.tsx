@@ -508,6 +508,14 @@ export function ChatPanel({
   const showPersistentDirectionSummary = !showDirectionGuide && Boolean(configConfirmed && selectedIntent);
   const showDirectionCard = showDirectionGuide || Boolean(selectedIntent);
   const showWorkflowSummaryCard = !(showWeakPromptSuggestions && showDirectionGuide) && !topicSuggestionLocked;
+  const resolvedTopicSuggestions = topicSuggestions.length
+    ? topicSuggestions
+    : [
+        "Explain the core concept with one clear mechanism.",
+        "Show one real-world case related to this topic.",
+        "Compare the main types or stages.",
+        "Turn it into a poster, PPT, or video workflow.",
+      ];
   const isDirectionLocked = configConfirmed && !showDirectionGuide;
   const shouldShowDraftConfirmAction = !showStyleStage && !showBillingConfirm && !styleConfirmed;
   const draftGenerationLoadingActive =
@@ -577,7 +585,7 @@ export function ChatPanel({
                 : "You continued with manual input. The previous options are now locked and kept for reference."}
             </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {topicSuggestions.map((item) => {
+              {resolvedTopicSuggestions.map((item) => {
                 const active = item === lockedTopicSuggestion;
                 return (
                   <button
@@ -610,12 +618,12 @@ export function ChatPanel({
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
             {showWeakPromptSuggestions ? (
               <div className="px-0.5 py-1">
-                <p className="text-sm font-medium text-zinc-900">Need a clearer request</p>
+                <p className="text-sm font-medium text-zinc-900">Topic-related suggestions</p>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Your input is still too short for stable generation. Pick one option to continue, or type a new request below to replace these suggestions.
+                  We detected a topic, but the request still needs one clearer direction. Pick one option to continue, or type a new request below.
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {topicSuggestions.map((item) => (
+                  {resolvedTopicSuggestions.map((item) => (
                     <button
                       key={`weak-en-${item}`}
                       type="button"
@@ -1198,7 +1206,7 @@ export function ChatPanel({
           <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · Topic Selection</div>
           <p className="text-sm leading-6 text-zinc-700">Topic selected and locked for this session:</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {topicSuggestions.map((item) => {
+            {resolvedTopicSuggestions.map((item) => {
               const active = item === lockedTopicSuggestion;
               return (
                 <button
@@ -1434,10 +1442,10 @@ export function ChatPanel({
 
               {showWeakPromptSuggestions ? (
                 <div className="mt-3 px-0.5 py-1">
-                  <p className="text-sm font-medium text-zinc-900">Try These Topics</p>
-                  <p className="mt-1 text-xs text-zinc-500">Pick one to continue with guided next steps.</p>
+                  <p className="text-sm font-medium text-zinc-900">Topic-related suggestions</p>
+                  <p className="mt-1 text-xs text-zinc-500">Pick one to continue with guided next steps, or type a new request to replace them.</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {topicSuggestions.map((item) => (
+                    {resolvedTopicSuggestions.map((item) => (
                       <button
                         key={item}
                         type="button"

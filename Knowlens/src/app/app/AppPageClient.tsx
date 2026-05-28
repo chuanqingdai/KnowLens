@@ -761,6 +761,7 @@ export default function Home() {
   const dragDepthRef = useRef(0);
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
+  const startedWorkspaceNavigationRef = useRef(false);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);
@@ -1470,6 +1471,7 @@ export default function Home() {
     if (isStartingWorkspace) {
       return;
     }
+    startedWorkspaceNavigationRef.current = false;
     setIsStartingWorkspace(true);
     trackAppEvent("generate_click", {
       from: "home",
@@ -1490,9 +1492,9 @@ export default function Home() {
         from: "home",
         model: resolvedTextModel,
       });
+      startedWorkspaceNavigationRef.current = true;
       router.prefetch("/workspace");
       router.push(`/auth?callbackUrl=${encodeURIComponent("/app?intent=generate")}`);
-      setIsStartingWorkspace(false);
       return;
     }
     const hasPremiumRequiredSource = sourceItems.some((item) => sourceItemNeedsPremium(item));
@@ -1545,6 +1547,7 @@ export default function Home() {
         });
         if (response.status >= 500 && typeof window !== "undefined") {
           persistHomeDraft(payload);
+          startedWorkspaceNavigationRef.current = true;
           router.prefetch("/workspace");
           router.push("/workspace");
           return;
@@ -1566,6 +1569,7 @@ export default function Home() {
         model: resolvedTextModel,
         source_count: payload.sources.length,
       });
+      startedWorkspaceNavigationRef.current = true;
       router.prefetch("/workspace");
       router.push("/workspace");
     } catch {
@@ -1577,10 +1581,13 @@ export default function Home() {
         code: "NETWORK_OR_RUNTIME",
         model: resolvedTextModel,
       });
+      startedWorkspaceNavigationRef.current = true;
       router.prefetch("/workspace");
       router.push("/workspace");
     } finally {
-      setIsStartingWorkspace(false);
+      if (!startedWorkspaceNavigationRef.current) {
+        setIsStartingWorkspace(false);
+      }
     }
   }
 

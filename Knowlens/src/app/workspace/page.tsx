@@ -110,6 +110,24 @@ type WorkspaceSessionPrefs = {
   styleId: string;
 };
 
+type IntentTriageDirection = "poster" | "ppt" | "video" | "unknown";
+type IntentTriageClassification =
+  | "invalid"
+  | "pure_text_complete"
+  | "pure_text_incomplete"
+  | "source_plus_request"
+  | "copied_text_plus_extra_request"
+  | "multilingual"
+  | "explicit_direction_intent";
+type IntentTriageResult = {
+  classification: IntentTriageClassification;
+  direction: IntentTriageDirection;
+  confidence: number;
+  topic: string;
+  reason: string;
+  suggestions: string[];
+};
+
 type ConfirmedConfigSnapshot = {
   intent: Exclude<WorkspaceIntent, "unknown">;
   posterCount: number;
@@ -1222,6 +1240,8 @@ export default function WorkspacePage() {
   const [topicSuggestionLocked, setTopicSuggestionLocked] = useState(false);
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
+  const [intentTriageResult, setIntentTriageResult] = useState<IntentTriageResult | null>(null);
+  const [topicSuggestionsOverride, setTopicSuggestionsOverride] = useState<string[] | null>(null);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
@@ -1375,7 +1395,6 @@ export default function WorkspacePage() {
     () => inferRecommendedIntent(contextPrompt, entrySources),
     [contextPrompt, entrySources],
   );
-  const effectiveIntent: WorkspaceIntent = manualIntent ?? detectedIntent.intent;
   const topic = useMemo(
     () => extractTopic(contextPrompt, entrySources, outputLanguage),
     [contextPrompt, entrySources, outputLanguage],
@@ -1384,15 +1403,28 @@ export default function WorkspacePage() {
     () => posterSizeOptions.find((item) => item.id === posterSizeId)?.label,
     [posterSizeId],
   );
+  const triageDirection = intentTriageResult?.direction ?? "unknown";
+  const triageClassification = intentTriageResult?.classification ?? null;
+  const effectiveIntent: WorkspaceIntent = manualIntent ?? triageDirection ?? detectedIntent.intent;
   const missingHints = useMemo(
     () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId, outputLanguage),
     [effectiveIntent, contextPrompt, posterSizeId, outputLanguage],
   );
-  const shouldClarifyIntent = weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58;
-  const waitingTopicSuggestionConfirm = weakPrompt;
+  const triageNeedsSuggestionCards =
+    triageClassification === "invalid" || triageClassification === "pure_text_incomplete";
+  const triageNeedsDirectionStep =
+    triageClassification === "explicit_direction_intent" ||
+    triageClassification === "pure_text_complete" ||
+    triageClassification === "source_plus_request" ||
+    triageClassification === "copied_text_plus_extra_request" ||
+    triageClassification === "multilingual";
+  const shouldClarifyIntent =
+    triageNeedsSuggestionCards || (!intentTriageResult && (weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58));
+  const waitingTopicSuggestionConfirm = triageNeedsSuggestionCards || weakPrompt;
+  const showDirectionGuide = flowStage === "intent" || flowStage === "config";
+  const showWeakPromptSuggestions = showDirectionGuide && waitingTopicSuggestionConfirm && !triageNeedsDirectionStep;
   const showPosterSizeSelector = effectiveIntent === "poster" && !posterSizeId;
   const canProceed = configConfirmed && !showPosterSizeSelector;
-  const showDirectionGuide = flowStage === "intent" || flowStage === "config";
   const showStyleStage = flowStage === "style";
   const showBillingConfirm = flowStage === "billing";
   const showBillingRecord = flowStage === "billing" || flowStage === "generate";
@@ -1997,13 +2029,16 @@ export default function WorkspacePage() {
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
   const topicSuggestions = useMemo(
-    () => [
-      "Generate a beginner-friendly poster that explains one topic with clear key points.",
-      "Create a 6-frame storyboard with narration guidance and scene focus.",
-      "Build a 10-slide learning deck with one core idea per slide.",
-      "Compare causes, impacts, and practical examples in one visual narrative.",
-    ],
-    [],
+    () =>
+      topicSuggestionsOverride && topicSuggestionsOverride.length
+        ? topicSuggestionsOverride
+        : [
+            `Explain ${topic || "this topic"} with one clear mechanism.`,
+            `Show a real-world case about ${topic || "this topic"}.`,
+            `Compare key types or stages of ${topic || "this topic"}.`,
+            `Turn ${topic || "this topic"} into a poster, PPT, or video.`,
+          ],
+    [topic, topicSuggestionsOverride],
   );
 
   useEffect(() => {
@@ -2240,6 +2275,40 @@ export default function WorkspacePage() {
       return;
     }
     setSelectedTopicSuggestion(text);
+  }
+
+  async function requestIntentTriage(inputText: string) {
+    try {
+      const response = await fetch("/api/workspace/intent-triage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: inputText,
+          outputLanguage,
+          sources: entrySources.map((item) => ({
+            kind: item.kind,
+            name: item.name,
+            origin: item.origin,
+            excerpt: item.excerpt,
+          })),
+        }),
+      });
+      if (!response.ok) {
+        return null;
+      }
+      const data = (await response.json()) as {
+        ok?: boolean;
+        triage?: IntentTriageResult;
+      };
+      if (!data?.ok || !data.triage) {
+        return null;
+      }
+      return data.triage;
+    } catch {
+      return null;
+    }
   }
 
   async function handleConfirmTopicSuggestion() {
@@ -2790,6 +2859,54 @@ export default function WorkspacePage() {
       setWeakPromptResolved(true);
     }
 
+    const triageResult = await requestIntentTriage(value);
+    if (triageResult) {
+      setIntentTriageResult(triageResult);
+      if (triageResult.suggestions?.length) {
+        setTopicSuggestionsOverride(triageResult.suggestions.slice(0, 4));
+      } else {
+        setTopicSuggestionsOverride(null);
+      }
+      if (
+        triageResult.classification === "explicit_direction_intent" &&
+        (triageResult.direction === "video" || triageResult.direction === "ppt" || triageResult.direction === "poster")
+      ) {
+        if (manualIntent !== triageResult.direction) {
+          setManualIntent(triageResult.direction);
+          resetToConfigStage("direction-change");
+        } else if (flowStage === "intent") {
+          setFlowStage("config");
+        }
+        pushAssistantMessage(
+          triageResult.direction === "video"
+            ? tr("Video intent is clear. Please confirm storyboard count and ratio, then click Next.", "已识别为视频需求。请先确认分镜数量和比例，再点击下一步。")
+            : triageResult.direction === "ppt"
+              ? tr("PPT intent is clear. Please confirm slide count and ratio, then click Next.", "已识别为 PPT 需求。请先确认页数和比例，再点击下一步。")
+              : tr("Poster intent is clear. Please confirm poster count and size, then click Next.", "已识别为海报需求。请先确认张数和尺寸，再点击下一步。"),
+          tr("Requirement Check", "需求确认"),
+        );
+        stopThinking();
+        setIsSending(false);
+        return;
+      }
+      if (triageResult.classification === "pure_text_incomplete" || triageResult.classification === "invalid") {
+        pushAssistantMessage(
+          tr(
+            "Your request is still incomplete. Pick one related suggestion below, or type a more specific request.",
+            "你的需求还不够完整。你可以选择下方相关建议，或重新输入更具体的需求。",
+          ),
+          tr("Requirement Check", "需求确认"),
+        );
+        stopThinking();
+        setIsSending(false);
+        return;
+      }
+    }
+
+    if (triageResult?.classification === "pure_text_incomplete" && triageResult.suggestions.length) {
+      setTopicSuggestionsOverride(triageResult.suggestions.slice(0, 4));
+    }
+
     if (weakPrompt && !hasDirectionHint) {
       if (inputSource === "suggestion") {
         stopThinking();
@@ -3159,7 +3276,7 @@ export default function WorkspacePage() {
                   analysisText={analysisText}
                   showDirectionGuide={showDirectionGuide}
                   shouldClarifyIntent={shouldClarifyIntent}
-                  showWeakPromptSuggestions={showDirectionGuide && shouldClarifyIntent && waitingTopicSuggestionConfirm}
+                  showWeakPromptSuggestions={showWeakPromptSuggestions}
                   topicSuggestions={topicSuggestions}
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
