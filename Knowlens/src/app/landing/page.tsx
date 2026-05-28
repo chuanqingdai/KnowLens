@@ -8,8 +8,8 @@ import { useLocale } from "@/components/i18n/LocaleProvider";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 
-const heroImage = "/picture/hero picture.png";
-const LANDING_ASSET_VERSION = "20260526b";
+const heroImage = "/picture/ai-infographic-generator-learning-hero.jpg";
+const LANDING_ASSET_VERSION = "20260528c";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 
 const previewWideCases = [
@@ -17,7 +17,7 @@ const previewWideCases = [
     id: "w-1",
     titleEn: "Featured Visual Case 01",
     titleZh: "精选案例 01",
-    cover: "/en-picture/c2b3c799-28c9-4267-a18e-fe3145449df7.png",
+    cover: "/en-picture/featured-visual-case-01.jpg",
     keywordsEn: "knowledge visual, education, infographic, featured case",
     keywordsZh: "知识可视化, 教育, 信息图, 精选案例",
   },
@@ -25,7 +25,7 @@ const previewWideCases = [
     id: "w-2",
     titleEn: "Featured Visual Case 02",
     titleZh: "精选案例 02",
-    cover: "/en-picture/ce307920-892e-46eb-a193-fe228d4b9c31.png",
+    cover: "/en-picture/featured-visual-case-02.jpg",
     keywordsEn: "knowledge visual, education, infographic, featured case",
     keywordsZh: "知识可视化, 教育, 信息图, 精选案例",
   },
@@ -33,7 +33,7 @@ const previewWideCases = [
     id: "w-3",
     titleEn: "Featured Visual Case 03",
     titleZh: "精选案例 03",
-    cover: "/en-picture/17e1c7f5-b04e-4e54-88af-787c79d1e8e3.png",
+    cover: "/en-picture/featured-visual-case-03.jpg",
     keywordsEn: "knowledge visual, education, infographic, featured case",
     keywordsZh: "知识可视化, 教育, 信息图, 精选案例",
   },
@@ -41,7 +41,7 @@ const previewWideCases = [
     id: "w-4",
     titleEn: "How Photosynthesis Works",
     titleZh: "光合作用如何运作",
-    cover: "/en-picture/645ecabf-1b29-4d05-a377-1c886b5a2ae8.png",
+    cover: "/en-picture/photosynthesis-infographic-case.jpg",
     keywordsEn: "photosynthesis, plant, biology, science, infographic",
     keywordsZh: "光合作用, 植物, 生物, 科学, 信息图",
   },
@@ -49,7 +49,7 @@ const previewWideCases = [
     id: "w-5",
     titleEn: "Why Inflation Changes Daily Life",
     titleZh: "为什么通胀会改变日常生活",
-    cover: "/en-picture/a4e1d8cf-9ce8-4301-8eaf-c2a0981ef380.png",
+    cover: "/en-picture/inflation-daily-life-infographic-case.jpg",
     keywordsEn: "inflation, economy, daily life, finance, infographic",
     keywordsZh: "通胀, 经济, 日常生活, 金融, 信息图",
   },
@@ -57,7 +57,7 @@ const previewWideCases = [
     id: "w-6",
     titleEn: "Plate Tectonics and Earthquakes",
     titleZh: "板块构造与地震",
-    cover: "/en-picture/a93133f7-46f9-4da1-a488-375e9f909169.png",
+    cover: "/en-picture/plate-tectonics-earthquake-infographic-case.jpg",
     keywordsEn: "plate tectonics, earthquake, geology, earth science, infographic",
     keywordsZh: "板块构造, 地震, 地质, 地球科学, 信息图",
   },
@@ -65,22 +65,22 @@ const previewWideCases = [
     id: "w-7",
     titleEn: "The Printing Press",
     titleZh: "印刷术",
-    cover: "/en-picture/d561aaef-2126-479e-bef3-5726b925f88e.png",
+    cover: "/en-picture/printing-press-history-infographic-case.jpg",
     keywordsEn: "printing press, history, invention, education, infographic",
     keywordsZh: "印刷术, 历史, 发明, 教育, 信息图",
   },
 ];
 
 const previewTallCases = [
-  { id: "t-1", titleEn: "Astronomy Card", titleZh: "天文卡片", cover: "/en-picture/astronomy/f811316c-2452-4a84-8785-c6de347998d4.png" },
-  { id: "t-2", titleEn: "Biology Card", titleZh: "生物卡片", cover: "/en-picture/biology/74380d3a-9a1b-44a2-998a-7c3482175ff4.png" },
-  { id: "t-3", titleEn: "Economics Card", titleZh: "经济卡片", cover: "/en-picture/economics/3e26f31b-fb9c-4855-8a32-d14e060ea98c.png" },
-  { id: "t-4", titleEn: "Geography Card", titleZh: "地理卡片", cover: "/en-picture/geography/8f861cf8-f326-4dcd-9c54-e1673f2caf13.png" },
-  { id: "t-5", titleEn: "History Card", titleZh: "历史卡片", cover: "/en-picture/history/88e45522-e408-429c-b670-92c62faa47d9.png" },
-  { id: "t-6", titleEn: "Medicine Card", titleZh: "医学卡片", cover: "/en-picture/mdeicine/15454ff0-b0e6-46b9-bc2a-787cb8ff2080.png" },
-  { id: "t-7", titleEn: "Astronomy Long Visual", titleZh: "天文长图", cover: "/en-picture/astronomy/63f2d8b5-da95-4f3c-9e02-46a61519071d.png" },
-  { id: "t-8", titleEn: "Biology Long Visual", titleZh: "生物长图", cover: "/en-picture/biology/c03468d1-6e9d-4808-9a69-2a3852412d0b.png" },
-  { id: "t-9", titleEn: "Geography Long Visual", titleZh: "地理长图", cover: "/en-picture/geography/94a41a11-5983-4b03-924c-e1e47aa8d945.png" },
+  { id: "t-1", titleEn: "Astronomy Card", titleZh: "天文卡片", cover: "/en-picture/astronomy/astronomy-infographic-card.jpg" },
+  { id: "t-2", titleEn: "Biology Card", titleZh: "生物卡片", cover: "/en-picture/biology/biology-infographic-card.jpg" },
+  { id: "t-3", titleEn: "Economics Card", titleZh: "经济卡片", cover: "/en-picture/economics/economics-infographic-card.jpg" },
+  { id: "t-4", titleEn: "Geography Card", titleZh: "地理卡片", cover: "/en-picture/geography/geography-infographic-card.jpg" },
+  { id: "t-5", titleEn: "History Card", titleZh: "历史卡片", cover: "/en-picture/history/history-infographic-card.jpg" },
+  { id: "t-6", titleEn: "Medicine Card", titleZh: "医学卡片", cover: "/en-picture/mdeicine/medical-infographic-card.jpg" },
+  { id: "t-7", titleEn: "Astronomy Long Visual", titleZh: "天文长图", cover: "/en-picture/astronomy/astronomy-long-infographic.jpg" },
+  { id: "t-8", titleEn: "Biology Long Visual", titleZh: "生物长图", cover: "/en-picture/biology/biology-long-infographic.jpg" },
+  { id: "t-9", titleEn: "Geography Long Visual", titleZh: "地理长图", cover: "/en-picture/geography/geography-long-infographic.jpg" },
 ];
 
 const principleModules = [
@@ -258,7 +258,7 @@ const capabilityFlows = [
     id: "text-to-poster",
     tabEn: "Text → Poster",
     tabZh: "文本 → 海报",
-    previewImage: "/picture/text-to-poster.png",
+    previewImage: "/picture/text-to-poster-workflow.jpg",
     inputEn: "Topic / Text prompt",
     inputZh: "主题 / 文本需求",
     outputEn: "Visual poster",
@@ -266,15 +266,15 @@ const capabilityFlows = [
     noteEn: "Turn a raw idea into a concise poster with clear key points and visual hierarchy.",
     noteZh: "把一句主题快速转成重点清晰、结构明确的可视化海报。",
     cases: [
-      { titleEn: "Inflation in Daily Life", titleZh: "通货膨胀影响生活", cover: "/picture/989f14bd-ff95-4298-a091-57a54ac5332f.png" },
-      { titleEn: "Immune Mechanism", titleZh: "免疫机制全景图", cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png" },
+      { titleEn: "Inflation in Daily Life", titleZh: "通货膨胀影响生活", cover: "/picture/inflation-daily-life-poster-case.jpg" },
+      { titleEn: "Immune Mechanism", titleZh: "免疫机制全景图", cover: "/picture/immune-mechanism-infographic-case.jpg" },
     ],
   },
   {
     id: "text-to-ppt",
     tabEn: "Text → PPT",
     tabZh: "文本 → PPT",
-    previewImage: "/picture/text-to-ppt.png",
+    previewImage: "/picture/text-to-ppt-workflow.jpg",
     inputEn: "Topic / Script draft",
     inputZh: "主题 / 讲解文案",
     outputEn: "Structured PPT",
@@ -282,15 +282,15 @@ const capabilityFlows = [
     noteEn: "Expand text into a multi-page presentation with slide-by-slide narrative flow.",
     noteZh: "把文案扩展为分页演示内容，形成完整的讲解节奏。",
     cases: [
-      { titleEn: "Volcano Eruption Process", titleZh: "火山喷发过程", cover: "/picture/39f7e57c-2e46-4e53-8ba6-756b22ef6437.png" },
-      { titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/fb1ec712-8275-4b22-989b-756e17684fbe.png" },
+      { titleEn: "Volcano Eruption Process", titleZh: "火山喷发过程", cover: "/picture/volcano-eruption-ppt-case.jpg" },
+      { titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/electrolysis-classroom-ppt-case.jpg" },
     ],
   },
   {
     id: "web-to-poster",
     tabEn: "Web → Poster",
     tabZh: "网页链接 → 海报",
-    previewImage: "/picture/web-to-poster.png",
+    previewImage: "/picture/webpage-to-poster-workflow.jpg",
     inputEn: "Webpage URL",
     inputZh: "网页链接",
     outputEn: "Visual poster",
@@ -298,15 +298,15 @@ const capabilityFlows = [
     noteEn: "Extract key points from long articles and convert them into a concise visual poster.",
     noteZh: "从长文中提炼核心观点，生成可直接传播的信息海报。",
     cases: [
-      { titleEn: "Inflation in Daily Life", titleZh: "通货膨胀影响生活", cover: "/picture/989f14bd-ff95-4298-a091-57a54ac5332f.png" },
-      { titleEn: "Ocean Circulation Basics", titleZh: "洋流循环与气候", cover: "/picture/8755ea1a-c5cc-4644-a505-553ec5905d71.png" },
+      { titleEn: "Inflation in Daily Life", titleZh: "通货膨胀影响生活", cover: "/picture/inflation-daily-life-poster-case.jpg" },
+      { titleEn: "Ocean Circulation Basics", titleZh: "洋流循环与气候", cover: "/picture/ocean-circulation-infographic-case.jpg" },
     ],
   },
   {
     id: "doc-to-ppt",
     tabEn: "Doc → PPT",
     tabZh: "文档资料 → PPT",
-    previewImage: "/picture/doc-to-ppt.png",
+    previewImage: "/picture/document-to-ppt-workflow.jpg",
     inputEn: "PDF / PPT / Docs",
     inputZh: "PDF / PPT / 文档",
     outputEn: "Structured PPT",
@@ -314,15 +314,15 @@ const capabilityFlows = [
     noteEn: "Turn fragmented materials into coherent slides with clear narrative progression.",
     noteZh: "把零散资料整合成有叙事主线的完整演示文稿。",
     cases: [
-      { titleEn: "Volcano Eruption Process", titleZh: "火山喷发过程", cover: "/picture/39f7e57c-2e46-4e53-8ba6-756b22ef6437.png" },
-      { titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/fb1ec712-8275-4b22-989b-756e17684fbe.png" },
+      { titleEn: "Volcano Eruption Process", titleZh: "火山喷发过程", cover: "/picture/volcano-eruption-ppt-case.jpg" },
+      { titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/electrolysis-classroom-ppt-case.jpg" },
     ],
   },
   {
     id: "video-to-video",
     tabEn: "Video → Video",
     tabZh: "视频 → 视频",
-    previewImage: "/picture/video-to-video.png",
+    previewImage: "/picture/video-to-video-workflow.jpg",
     inputEn: "Video",
     inputZh: "视频",
     outputEn: "Edited short video",
@@ -330,15 +330,15 @@ const capabilityFlows = [
     noteEn: "Extract transcript and highlights, then generate a reusable video draft pipeline.",
     noteZh: "提取字幕和关键片段，生成可继续编辑与合成的视频稿件。",
     cases: [
-      { titleEn: "Black Hole Video Draft", titleZh: "黑洞视频稿", cover: "/picture/eab2accf-e36a-45a2-89bb-0faa73e518e6.png" },
-      { titleEn: "DNA Video Script", titleZh: "DNA视频脚本", cover: "/picture/c24ee34d-8ee2-498a-b95d-c17d30640f2a.png" },
+      { titleEn: "Black Hole Video Draft", titleZh: "黑洞视频稿", cover: "/picture/black-hole-video-visual-case.jpg" },
+      { titleEn: "DNA Video Script", titleZh: "DNA视频脚本", cover: "/picture/dna-video-script-case.jpg" },
     ],
   },
   {
     id: "podcast-to-video",
     tabEn: "Podcast → Video",
     tabZh: "播客 → 视频",
-    previewImage: "/picture/podcast-to-video.png",
+    previewImage: "/picture/podcast-to-video-workflow.jpg",
     inputEn: "Podcast Audio",
     inputZh: "播客音频",
     outputEn: "Narrated video draft",
@@ -346,15 +346,15 @@ const capabilityFlows = [
     noteEn: "Turn spoken episodes into structured video scenes with concise narration flow.",
     noteZh: "将播客口播内容转成结构化视频分镜与简洁旁白流程。",
     cases: [
-      { titleEn: "Ocean Podcast Storyboard", titleZh: "洋流播客分镜稿", cover: "/picture/8755ea1a-c5cc-4644-a505-553ec5905d71.png" },
-      { titleEn: "Deep Sea Episode Visuals", titleZh: "深海播客可视化", cover: "/picture/feb2b176-157f-44f9-ac52-5a271e25ed6e.png" },
+      { titleEn: "Ocean Podcast Storyboard", titleZh: "洋流播客分镜稿", cover: "/picture/ocean-circulation-infographic-case.jpg" },
+      { titleEn: "Deep Sea Episode Visuals", titleZh: "深海播客可视化", cover: "/picture/deep-sea-podcast-visual-case.jpg" },
     ],
   },
   {
     id: "video-to-poster",
     tabEn: "Video → Poster",
     tabZh: "视频 → 海报",
-    previewImage: "/picture/video-to-poster.png",
+    previewImage: "/picture/video-to-poster-workflow.jpg",
     inputEn: "Video",
     inputZh: "视频",
     outputEn: "Visual poster",
@@ -362,8 +362,8 @@ const capabilityFlows = [
     noteEn: "Extract key moments from video and compress them into a concise visual poster.",
     noteZh: "提取视频核心片段与结论，压缩为重点明确的可视化海报。",
     cases: [
-      { titleEn: "Black Hole Key Takeaways", titleZh: "黑洞视频要点海报", cover: "/picture/eab2accf-e36a-45a2-89bb-0faa73e518e6.png" },
-      { titleEn: "Blue Light Health Summary", titleZh: "蓝光伤眼总结海报", cover: "/picture/9cfe9227-c75b-40d0-a459-8d85064a1e55.png" },
+      { titleEn: "Black Hole Key Takeaways", titleZh: "黑洞视频要点海报", cover: "/picture/black-hole-video-visual-case.jpg" },
+      { titleEn: "Blue Light Health Summary", titleZh: "蓝光伤眼总结海报", cover: "/picture/blue-light-health-poster-case.jpg" },
     ],
   },
 ];
@@ -564,7 +564,7 @@ function ProgressiveImage({
           setFailed(true);
           setLoaded(false);
         }}
-        className={`${className} transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`!rounded-none ${className} transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </div>
   );
@@ -753,7 +753,7 @@ export default function LandingPage() {
                 src={toOptimized(heroImage)}
                 fallbackSrc={toOriginal(heroImage)}
                 alt="KnowLens Hero"
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 block h-full w-full object-cover align-top"
                 loading="eager"
                 fetchPriority="high"
               />
@@ -842,7 +842,7 @@ export default function LandingPage() {
                         fallbackSrc={toOriginal(item.cover)}
                         alt={t(item.titleEn, item.titleZh)}
                         title={t(item.titleEn, item.titleZh)}
-                        className="h-full w-full object-cover"
+                        className="block h-full w-full object-cover align-top"
                         loading={index < previewWideCases.length ? "eager" : "lazy"}
                         fetchPriority={index < previewWideCases.length ? "high" : "low"}
                         skeletonClassName="bg-zinc-200"
@@ -867,7 +867,7 @@ export default function LandingPage() {
                         fallbackSrc={toOriginal(item.cover)}
                         alt={t(item.titleEn, item.titleZh)}
                         title={t(item.titleEn, item.titleZh)}
-                        className="h-full w-full object-cover"
+                        className="block h-full w-full object-cover align-top"
                         loading={index < previewTallCases.length ? "eager" : "lazy"}
                         fetchPriority={index < previewTallCases.length ? "high" : "low"}
                         skeletonClassName="bg-zinc-200"

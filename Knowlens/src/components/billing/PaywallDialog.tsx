@@ -10,6 +10,7 @@ type PaywallDialogProps = {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  confirmHref?: string;
   showPromoBanner?: boolean;
   compact?: boolean;
   source?: string;
@@ -23,6 +24,7 @@ export function PaywallDialog({
   description,
   confirmLabel = "Upgrade Now",
   cancelLabel = "Not now",
+  confirmHref,
   showPromoBanner = false,
   compact = false,
   source = "workspace-paywall",
@@ -51,14 +53,14 @@ export function PaywallDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="Close dialog"
         className="absolute inset-0 bg-zinc-900/45 backdrop-blur-[1px]"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
+      <div className="relative w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-5">
         <button
           type="button"
           aria-label="Close"
@@ -73,7 +75,7 @@ export function PaywallDialog({
         <h3 className="mt-3 text-lg font-semibold tracking-tight text-zinc-900">{title}</h3>
         <p className="mt-2 text-sm leading-6 text-zinc-600">{description}</p>
         {showPromoBanner && !compact ? <PromoCountdownBanner variant="inline" className="mt-3" /> : null}
-        <div className="mt-5 flex items-center justify-end gap-2">
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           <button
             type="button"
             onClick={() => {
@@ -107,8 +109,11 @@ export function PaywallDialog({
                 }),
               }).catch(() => undefined);
               onConfirm();
+              if (confirmHref && typeof window !== "undefined") {
+                window.location.href = confirmHref;
+              }
             }}
-            className="inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
           >
             {confirmLabel}
           </button>

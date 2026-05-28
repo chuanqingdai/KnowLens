@@ -75,18 +75,29 @@ type StyleOption = {
 };
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
+function styleCoverCandidates(coverImage?: string) {
+  if (!coverImage) {
+    return [];
+  }
+  const normalized = coverImage.trim();
+  const jpgCandidate = normalized.replace(/\.(png|webp|jpeg)$/i, ".jpg");
+  return Array.from(new Set([jpgCandidate, normalized]));
+}
 
 function StyleCover({ style }: { style: StyleOption }) {
   const [imageFailed, setImageFailed] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [coverSrc, setCoverSrc] = useState(() => styleCoverCandidates(style.coverImage)[0] ?? "");
+  const candidates = useMemo(() => styleCoverCandidates(style.coverImage), [style.coverImage]);
   useEffect(() => {
     setImageFailed(false);
     setImageLoaded(false);
-  }, [style.coverImage]);
-  if (!style.coverImage || imageFailed) {
+    setCoverSrc(candidates[0] ?? "");
+  }, [candidates]);
+  if (!coverSrc || imageFailed) {
     return (
       <div
-        className="h-full w-full"
+        className="skeleton-shimmer h-full w-full"
         style={{
           background: `linear-gradient(160deg, ${style.palette[0]}55, ${style.palette[1]}88 55%, ${style.palette[2]})`,
         }}
@@ -97,13 +108,20 @@ function StyleCover({ style }: { style: StyleOption }) {
     <>
       {!imageLoaded ? <div className="skeleton-shimmer absolute inset-0" /> : null}
       <Image
-        src={style.coverImage}
+        src={coverSrc}
         alt={style.name}
         fill
         unoptimized
-        className={`object-contain transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+        sizes="(max-width: 1024px) 50vw, 25vw"
+        className={`absolute inset-0 h-full w-full !rounded-none object-cover align-top transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setImageLoaded(true)}
         onError={() => {
+          const currentIndex = candidates.findIndex((candidate) => candidate === coverSrc);
+          const nextCandidate = candidates[currentIndex + 1];
+          if (nextCandidate) {
+            setCoverSrc(nextCandidate);
+            return;
+          }
           setImageFailed(true);
           setImageLoaded(true);
         }}
@@ -253,6 +271,7 @@ type ChatPanelProps = {
   onSelectStyle: (styleId: string) => void;
   onStyleNext: () => void;
   onConfirmBilling: () => void;
+  onUpgradeForCredits?: () => void;
   visualizationTypeHint: string | null;
   thinkingState: {
     active: boolean;
@@ -321,6 +340,7 @@ export function ChatPanel({
   onSelectStyle,
   onStyleNext,
   onConfirmBilling,
+  onUpgradeForCredits,
   visualizationTypeHint,
   thinkingState,
   retryingErrorTurnIds,
@@ -331,6 +351,25 @@ export function ChatPanel({
   const t = (en: string, zh: string) => (isZh ? zh : en);
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
+  const stylePreloadRefs = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    styleOptions.forEach((style) => {
+      const candidates = styleCoverCandidates(style.coverImage);
+      candidates.forEach((src) => {
+        if (!src || stylePreloadRefs.current[src]) {
+          return;
+        }
+        stylePreloadRefs.current[src] = true;
+        const preload = new window.Image();
+        preload.decoding = "async";
+        preload.src = src;
+      });
+    });
+  }, [styleOptions]);
   const styleDisplayName = (style: StyleOption) => (isZh ? style.name : style.englishName ?? style.name);
   const styleHoverDescription = (style: StyleOption) =>
     style.hoverDescription ?? style.fit;
@@ -373,6 +412,10 @@ export function ChatPanel({
   };
 
   const handleBillingConfirm = () => {
+    if (!canConfirmBilling) {
+      onUpgradeForCredits?.();
+      return;
+    }
     onConfirmBilling();
     scrollToLatestCard();
   };
@@ -962,7 +1005,7 @@ export function ChatPanel({
                     key={`locked-style-en-${style.id}`}
                     type="button"
                     disabled
-                    className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border text-left ${
+                    className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border p-0 text-left appearance-none ${
                       active
                         ? selectedStyleCardClass
                         : "border-zinc-200 bg-white"
@@ -973,7 +1016,7 @@ export function ChatPanel({
                         <Check size={12} />
                       </span>
                     ) : null}
-                    <div className="relative aspect-[9/16] w-full overflow-hidden">
+                    <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
                       <StyleCover style={style} />
                       {supportsHoverDescription ? (
                         <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -1014,7 +1057,7 @@ export function ChatPanel({
                     styleButtonRefs.current[style.id] = node;
                   }}
                   onClick={() => onSelectStyle(style.id)}
-                  className={`group relative overflow-hidden rounded-2xl border text-left transition ${
+                  className={`group relative overflow-hidden rounded-2xl border p-0 text-left transition appearance-none ${
                     style.id === selectedStyleId
                       ? selectedStyleCardClass
                       : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
@@ -1025,7 +1068,7 @@ export function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden">
+                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -1108,9 +1151,13 @@ export function ChatPanel({
               {showBillingConfirm ? (
                 <button
                   type="button"
-                  disabled={isPlanningBillingStep || !canConfirmBilling}
+                  disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
+                    !canConfirmBilling
+                      ? "bg-amber-600 hover:bg-amber-500"
+                      : "bg-zinc-900 hover:bg-zinc-700"
+                  } disabled:cursor-not-allowed disabled:bg-zinc-400`}
                 >
                   {isPlanningBillingStep ? (
                     <>
@@ -1983,7 +2030,7 @@ export function ChatPanel({
                   key={`locked-style-${style.id}`}
                   type="button"
                   disabled
-                  className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border text-left ${
+                  className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border p-0 text-left appearance-none ${
                     active
                       ? selectedStyleCardClass
                       : "border-zinc-200 bg-white"
@@ -1994,7 +2041,7 @@ export function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden">
+                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2034,7 +2081,7 @@ export function ChatPanel({
                   styleButtonRefs.current[style.id] = node;
                 }}
                 onClick={() => onSelectStyle(style.id)}
-                className={`group relative overflow-hidden rounded-2xl border text-left transition ${
+                className={`group relative overflow-hidden rounded-2xl border p-0 text-left transition appearance-none ${
                   style.id === selectedStyleId
                     ? selectedStyleCardClass
                     : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
@@ -2045,7 +2092,7 @@ export function ChatPanel({
                     <Check size={12} />
                   </span>
                 ) : null}
-                <div className="relative aspect-[9/16] w-full overflow-hidden">
+                <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
                   <StyleCover style={style} />
                   {supportsHoverDescription ? (
                     <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2129,12 +2176,16 @@ export function ChatPanel({
                 : "Insufficient credits. Please upgrade before confirming this charge."}
             </p>
             {showBillingConfirm ? (
-              <button
-                type="button"
-                disabled={isPlanningBillingStep || !canConfirmBilling}
-                onClick={handleBillingConfirm}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
-              >
+                <button
+                  type="button"
+                  disabled={isPlanningBillingStep}
+                  onClick={handleBillingConfirm}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
+                    !canConfirmBilling
+                      ? "bg-amber-600 hover:bg-amber-500"
+                      : "bg-zinc-900 hover:bg-zinc-700"
+                  } disabled:cursor-not-allowed disabled:bg-zinc-400`}
+                >
                 {isPlanningBillingStep ? (
                   <>
                     <LoaderCircle size={14} className="animate-spin" />

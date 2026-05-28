@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUp, LoaderCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   ChatPanel,
@@ -13,6 +14,7 @@ import {
 import { StoryboardCanvas } from "@/components/workspace/StoryboardCanvas";
 import { PosterCanvas } from "@/components/workspace/PosterCanvas";
 import { TopBar } from "@/components/workspace/TopBar";
+import { PaywallDialog } from "@/components/billing/PaywallDialog";
 import { outlineItems as volcanoOutlineItems, slideDrafts as volcanoSlideDrafts } from "@/components/workspace/mockData";
 import {
   appendCreditRecord,
@@ -155,6 +157,7 @@ type GenerationConfirmResponse = {
       index?: number;
       ok?: boolean;
       imageUrl?: string;
+      rawImageUrl?: string;
       error?: string;
       errorCode?: string;
     }>;
@@ -170,6 +173,7 @@ const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
+const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const GENERATION_REQUEST_TIMEOUT_MS = 180000;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
@@ -189,23 +193,23 @@ type StyleOption = {
 };
 
 const styleCoverFileById: Record<string, string> = {
-  "clean-science-infographic": "Clean Science Infographic Style.png",
+  "clean-science-infographic": "Clean Science Infographic Style.jpg",
   "premium-editorial-infographic": "Premium Editorial Infographic Style.jpg",
-  "youtube-science-thumbnail": "Hero Science Cover Style.png",
-  "minimal-line-art": "Minimal Line Art Style.png",
-  "hand-drawn-explainer": "Hand-drawn Explainer Style.png",
-  "cute-3d-educational": "Cute 3D Educational Style.png",
-  "3d-isometric-tech": "3D Isometric Tech Style.png",
-  "dark-premium-tech": "Dark Premium Tech Style.png",
-  "technical-blueprint": "Technical Blueprint Style.png",
-  "medical-educational-illustration": "Medical Educational Illustration Style.png",
-  "cinematic-science-illustration": "Cinematic Science Illustration Style.png",
-  "premium-sketchnote-science": "Premium Sketchnote Science Style.png",
+  "youtube-science-thumbnail": "Hero Science Cover Style.jpg",
+  "minimal-line-art": "Minimal Line Art Style.jpg",
+  "hand-drawn-explainer": "Hand-drawn Explainer Style.jpg",
+  "cute-3d-educational": "Cute 3D Educational Style.jpg",
+  "3d-isometric-tech": "3D Isometric Tech Style.jpg",
+  "dark-premium-tech": "Dark Premium Tech Style.jpg",
+  "technical-blueprint": "Technical Blueprint Style.jpg",
+  "medical-educational-illustration": "Medical Educational Illustration Style.jpg",
+  "cinematic-science-illustration": "Cinematic Science Illustration Style.jpg",
+  "premium-sketchnote-science": "Premium Sketchnote Science Style.jpg",
 };
 
 function styleCoverById(styleId: string) {
   const filename = styleCoverFileById[styleId] ?? styleCoverFileById["clean-science-infographic"];
-  return `/style/${encodeURIComponent(filename)}?v=20260528a`;
+  return `/style/${encodeURIComponent(filename)}?v=20260528b`;
 }
 
 const styleOptions = [
@@ -377,14 +381,27 @@ const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 
 const posterSizeOptions = [
   { id: "poster-9-16", label: "9:16 Portrait", desc: "Great for mobile-first vertical delivery." },
-  { id: "poster-9-21", label: "9:21 Long Portrait", desc: "Great for long-form visual breakdowns." },
-  { id: "poster-2-3", label: "2:3 Portrait", desc: "Great for step-by-step learning visuals." },
-  { id: "poster-4-5", label: "4:5 Portrait", desc: "Great for social feed distribution." },
-  { id: "poster-3-4", label: "3:4 Portrait", desc: "Balances readability and information density." },
   { id: "poster-1-1", label: "1:1 Square", desc: "Great for card-based publishing." },
   { id: "poster-16-9", label: "16:9 Landscape", desc: "Great for horizontal explainers and covers." },
-  { id: "poster-a4", label: "A4 Portrait", desc: "Great for print and classroom posting." },
+  { id: "poster-4-3", label: "4:3 Landscape", desc: "Balanced for presentation and educational visuals." },
+  { id: "poster-3-4", label: "3:4 Portrait", desc: "Balances readability and information density." },
 ];
+
+function normalizePosterSizeId(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  if (posterSizeOptions.some((item) => item.id === value)) {
+    return value;
+  }
+  if (value === "poster-9-21") {
+    return "poster-9-16";
+  }
+  if (value === "poster-2-3" || value === "poster-4-5" || value === "poster-a4") {
+    return "poster-3-4";
+  }
+  return null;
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -583,17 +600,17 @@ function extractVideoStoryboardCount(prompt: string) {
 
 function extractPosterSize(prompt: string) {
   const text = normalizeText(prompt);
-  if (text.includes("9:21") || text.includes("超长竖版") || text.includes("longportrait")) {
-    return "poster-9-21";
-  }
-  if (text.includes("9:16") || text.includes("竖版") || text.includes("手机全屏") || text.includes("portrait")) {
+  if (text.includes("9:21") || text.includes("longportrait")) {
     return "poster-9-16";
   }
-  if (text.includes("2:3")) {
-    return "poster-2-3";
+  if (text.includes("9:16")) {
+    return "poster-9-16";
   }
-  if (text.includes("4:5")) {
-    return "poster-4-5";
+  if (text.includes("2:3") || text.includes("4:5") || text.includes("a4")) {
+    return "poster-3-4";
+  }
+  if (text.includes("4:3")) {
+    return "poster-4-3";
   }
   if (text.includes("3:4")) {
     return "poster-3-4";
@@ -604,8 +621,8 @@ function extractPosterSize(prompt: string) {
   if (text.includes("16:9") || text.includes("横版") || text.includes("landscape")) {
     return "poster-16-9";
   }
-  if (text.includes("a4")) {
-    return "poster-a4";
+  if (text.includes("竖版") || text.includes("手机全屏") || text.includes("portrait")) {
+    return "poster-9-16";
   }
   return null;
 }
@@ -660,7 +677,11 @@ function buildMissingHints(
   }
   if (intent === "poster") {
     if (!posterSizeId) {
-      hints.push(isZh ? "请选择海报尺寸（9:16 / 4:5 / 1:1 / A4）" : "Choose poster size (9:16 / 4:5 / 1:1 / A4).");
+      hints.push(
+        isZh
+          ? "请选择海报尺寸（1:1 / 9:16 / 16:9 / 4:3 / 3:4）"
+          : "Choose poster size (1:1 / 9:16 / 16:9 / 4:3 / 3:4).",
+      );
     }
     if (!hasStyle) {
       hints.push(isZh ? "建议补充文案风格（例如：专业、简洁、生动）" : "Add content tone (e.g. professional, concise, vivid).");
@@ -1168,6 +1189,8 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
 }
 
 export default function WorkspacePage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const { data: session } = useSession();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [initialEntry] = useState(() => readHomeDraftPayload());
@@ -1202,6 +1225,7 @@ export default function WorkspacePage() {
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
+  const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
 
   const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(
     sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster"
@@ -1209,7 +1233,9 @@ export default function WorkspacePage() {
       : "poster",
   );
   const [posterSizeId, setPosterSizeId] = useState<string | null>(() =>
-    sessionPrefs?.posterSizeId ?? extractPosterSize(initialEntry.prompt) ?? "poster-9-16",
+    normalizePosterSizeId(
+      sessionPrefs?.posterSizeId ?? extractPosterSize(initialEntry.prompt) ?? "poster-9-16",
+    ) ?? "poster-9-16",
   );
   const [posterCount, setPosterCount] = useState(() =>
     clamp(sessionPrefs?.posterCount ?? 1, 1, 10),
@@ -1279,6 +1305,17 @@ export default function WorkspacePage() {
     downloadVideo: () => {},
   });
   const storyboardPanelRef = useRef<HTMLElement | null>(null);
+
+  const openCreditsPaywall = useCallback(() => {
+    setCreditsPaywallOpen(true);
+  }, []);
+  const openMembershipFromWorkspace = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("membership:return-path", pathname || "/workspace");
+      window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, "workspace_credits");
+    }
+    router.push("/membership");
+  }, [pathname, router]);
 
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
@@ -1840,8 +1877,12 @@ export default function WorkspacePage() {
             const result = (payload?.generation?.results ?? []).find(
               (item) => Number(item.index ?? 0) === task.index,
             );
+            const resolvedImageUrl =
+              (typeof result?.imageUrl === "string" && result.imageUrl.trim()) ||
+              (typeof result?.rawImageUrl === "string" && result.rawImageUrl.trim()) ||
+              "";
 
-            if (result?.ok && result.imageUrl) {
+            if ((result?.ok || resolvedImageUrl) && resolvedImageUrl) {
               pendingTaskMap.delete(task.index);
               removeImageErrorCardByTaskIndex(task.index);
               setGenerationTaskStateByIndex((prev) => ({
@@ -1851,7 +1892,7 @@ export default function WorkspacePage() {
                   status: "success",
                   attempts: attempt + 1,
                   maxAttempts,
-                  imageUrl: result.imageUrl,
+                  imageUrl: resolvedImageUrl,
                 },
               }));
             } else {
@@ -3036,8 +3077,38 @@ export default function WorkspacePage() {
     });
   }, [hasCanvasPanel, isMobileViewport]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previous = {
+      bodyOverflow: bodyStyle.overflow,
+      htmlOverflow: htmlStyle.overflow,
+      bodyHeight: bodyStyle.height,
+      htmlHeight: htmlStyle.height,
+      bodyOverscrollBehavior: bodyStyle.overscrollBehavior,
+      htmlOverscrollBehavior: htmlStyle.overscrollBehavior,
+    };
+    bodyStyle.overflow = "hidden";
+    htmlStyle.overflow = "hidden";
+    bodyStyle.height = "100%";
+    htmlStyle.height = "100%";
+    bodyStyle.overscrollBehavior = "none";
+    htmlStyle.overscrollBehavior = "none";
+    return () => {
+      bodyStyle.overflow = previous.bodyOverflow;
+      htmlStyle.overflow = previous.htmlOverflow;
+      bodyStyle.height = previous.bodyHeight;
+      htmlStyle.height = previous.htmlHeight;
+      bodyStyle.overscrollBehavior = previous.bodyOverscrollBehavior;
+      htmlStyle.overscrollBehavior = previous.htmlOverscrollBehavior;
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen overflow-y-auto bg-[#f7f7f8] text-zinc-800">
+    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -3066,9 +3137,9 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
-      <main className="mx-auto mt-[56px] max-w-none px-2 pb-1 pt-3 sm:px-3">
+      <main className="mx-auto mt-[56px] flex h-[calc(100dvh-56px)] max-w-none min-h-0 flex-col px-2 pb-1 pt-3 sm:px-3">
         <div
-          className={`grid gap-2 ${
+          className={`grid min-h-0 flex-1 gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
           }`}
         >
@@ -3077,8 +3148,8 @@ export default function WorkspacePage() {
               hasCanvasPanel ? "" : "lg:mx-auto lg:w-full lg:max-w-[980px]"
             } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
-            <div className="flex min-h-[calc(100dvh-86px)] flex-col">
-              <div className={hasCanvasPanel ? "pr-1.5 pb-36 pt-4" : "pb-36 pt-4"}>
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1.5 pb-36 pt-4 [scrollbar-width:thin] lg:pr-1.5">
                 <ChatPanel
                   outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}
@@ -3150,6 +3221,7 @@ export default function WorkspacePage() {
                   onSelectStyle={setSelectedStyleId}
                   onStyleNext={handleStyleNext}
                   onConfirmBilling={handleConfirmBilling}
+                  onUpgradeForCredits={openCreditsPaywall}
                   visualizationTypeHint={visualizationTypeHint}
                   thinkingState={thinkingState}
                   retryingErrorTurnIds={retryingErrorTurnIds}
@@ -3157,38 +3229,40 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-2 sm:px-3">
-                <div
-                  className={`mx-auto ${
-                    hasCanvasPanel
-                      ? "max-w-none lg:grid lg:grid-cols-[416px_minmax(0,1fr)] lg:gap-2"
-                      : "max-w-[980px]"
-                  }`}
-                >
-                  <div className={hasCanvasPanel ? "lg:col-start-1" : ""}>
-                    <div className="pointer-events-auto rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
-                      <div className="flex items-center gap-2">
-                        <textarea
-                          value={chatInput}
-                          onChange={(event) => setChatInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" && !event.shiftKey) {
-                              event.preventDefault();
-                              void handleSendInput();
-                            }
-                          }}
-                          className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
-                          placeholder={tr("Add more instructions", "继续补充需求")}
-                        />
-                        <button
-                          type="button"
-                          disabled={!chatInput.trim() || isSending}
-                          onClick={() => void handleSendInput()}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-                          aria-label={tr("Send", "发送")}
-                        >
-                          {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
-                        </button>
+              <div className="sticky bottom-0 z-30 mt-auto pt-2">
+                <div className="pointer-events-none px-2 pb-2 sm:px-3">
+                  <div
+                    className={`mx-auto ${
+                      hasCanvasPanel
+                        ? "max-w-none lg:grid lg:grid-cols-[416px_minmax(0,1fr)] lg:gap-2"
+                        : "max-w-[980px]"
+                    }`}
+                  >
+                    <div className={hasCanvasPanel ? "lg:col-start-1" : ""}>
+                      <div className="pointer-events-auto rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
+                        <div className="flex items-center gap-2">
+                          <textarea
+                            value={chatInput}
+                            onChange={(event) => setChatInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && !event.shiftKey) {
+                                event.preventDefault();
+                                void handleSendInput();
+                              }
+                            }}
+                            className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
+                            placeholder={tr("Add more instructions", "继续补充需求")}
+                          />
+                          <button
+                            type="button"
+                            disabled={!chatInput.trim() || isSending}
+                            onClick={() => void handleSendInput()}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                            aria-label={tr("Send", "发送")}
+                          >
+                            {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3200,7 +3274,7 @@ export default function WorkspacePage() {
           {showStoryboard && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-[calc(100dvh-72px)] overflow-hidden lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-full overflow-y-auto overflow-x-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">
@@ -3234,7 +3308,7 @@ export default function WorkspacePage() {
           {showPosterCanvas && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-[calc(100dvh-72px)] overflow-hidden lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-full overflow-y-auto overflow-x-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">
@@ -3263,6 +3337,23 @@ export default function WorkspacePage() {
           ) : null}
         </div>
       </main>
+
+      <PaywallDialog
+        open={creditsPaywallOpen}
+        title={isFreeUser ? "Membership required" : "Credits required"}
+        description={
+          isFreeUser
+            ? "Your free monthly credits are used up. Please go to the membership page to continue."
+            : "Your credits are used up. Extra credit purchase will be added later."
+        }
+        compact
+        onClose={() => setCreditsPaywallOpen(false)}
+        onConfirm={() => {
+          setCreditsPaywallOpen(false);
+          openMembershipFromWorkspace();
+        }}
+        confirmLabel="Go to Membership"
+      />
 
     </div>
   );

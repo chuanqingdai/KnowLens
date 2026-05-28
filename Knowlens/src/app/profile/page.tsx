@@ -22,7 +22,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
       <SidebarNav items={navItems} />
-      <main className="px-4 pb-10 pt-6 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
+      <main className="px-3 pb-10 pt-4 sm:px-6 sm:pt-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-5xl">
           <header className="mb-5">
             <div>
@@ -32,7 +32,7 @@ export default function ProfilePage() {
           </header>
 
           <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#2d8cff] text-white">
                   <UserCircle2 size={22} />
@@ -52,7 +52,7 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="mt-4 grid gap-2 grid-cols-1 sm:grid-cols-3">
               {quickStats.map((stat) => (
                 <div
                   key={stat.label}

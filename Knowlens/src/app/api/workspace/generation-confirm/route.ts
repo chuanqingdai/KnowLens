@@ -37,6 +37,7 @@ type GenerationTaskResult = {
   imageUrl?: string;
   error?: string;
   errorCode?: string;
+  rawImageUrl?: string;
 };
 
 function getScopeFromRequest(req: NextRequest, email: string) {
@@ -113,6 +114,13 @@ function isFreeUserBySubscription(email: string) {
 function appendFreeWatermarkInstruction(prompt: string) {
   const watermarkLine = 'Add a visible English watermark at the top: "Generated with KnowLens.ai".';
   return `${prompt}\n\n[Internal rendering constraint]\n${watermarkLine}`;
+}
+
+function extractTaskIndexFromPayload(task: ImageGenerationTask, fallbackIndex: number) {
+  if (Number.isFinite(task.index)) {
+    return Number(task.index);
+  }
+  return fallbackIndex;
 }
 
 export async function POST(request: NextRequest) {
@@ -230,17 +238,19 @@ export async function POST(request: NextRequest) {
 
         const generated = await requestImage2Generation(image2ProviderConfig, {
           size: resolveImage2Size(task.aspectRatio || payload?.ratio),
+          aspectRatio: task.aspectRatio || payload?.ratio,
           prompt: isFreeUser ? appendFreeWatermarkInstruction(prompt) : prompt,
         });
         if (generated.ok) {
           taskResults.push({
-            index,
+            index: extractTaskIndexFromPayload(task, index),
             ok: true,
             imageUrl: generated.imageUrl,
+            rawImageUrl: generated.imageUrl,
           });
         } else {
           taskResults.push({
-            index,
+            index: extractTaskIndexFromPayload(task, index),
             ok: false,
             error: generated.errorMessage,
             errorCode: generated.errorCode,

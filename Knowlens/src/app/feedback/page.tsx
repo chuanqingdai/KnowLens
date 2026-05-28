@@ -156,7 +156,7 @@ export default function FeedbackPage() {
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
       <SidebarNav items={navItems} />
-      <main className="px-4 pb-10 pt-6 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
+      <main className="px-3 pb-10 pt-4 sm:px-6 sm:pt-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-4xl">
           <header className="mb-5">
             <p className="text-sm text-zinc-500">KnowLens.ai</p>
@@ -206,7 +206,7 @@ export default function FeedbackPage() {
               <p className="mt-1 text-xs text-zinc-500">Minimum 10 characters. Current: {detailLength}</p>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-zinc-900">
                   Contact (optional)

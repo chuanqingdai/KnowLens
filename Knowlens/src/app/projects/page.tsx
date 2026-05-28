@@ -49,7 +49,7 @@ export default function ProjectsPage() {
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
       <SidebarNav items={navItems} />
-      <main className="px-4 pb-10 pt-6 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
+      <main className="px-3 pb-10 pt-4 sm:px-6 sm:pt-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-6xl">
           <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -68,7 +68,7 @@ export default function ProjectsPage() {
                 View all
               </button>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {projectItems.map((item) => (
                 <article
                   key={item.id}
@@ -88,7 +88,7 @@ export default function ProjectsPage() {
                     ) : null}
                   </div>
                   <div className="px-3 pb-3 pt-2.5">
-                    <p className="text-lg font-medium leading-none text-zinc-900">{item.title}</p>
+                    <p className="line-clamp-2 text-base font-medium leading-6 text-zinc-900 sm:text-lg sm:leading-none">{item.title}</p>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <p className="text-sm text-zinc-500">{item.updatedAt}</p>
                       <span
