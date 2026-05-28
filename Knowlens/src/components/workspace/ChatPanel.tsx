@@ -207,6 +207,14 @@ function compactChatTurnsForDisplay(turns: ChatTurn[]) {
 type ChatPanelProps = {
   outputLanguage?: "en" | "zh";
   userPrompt: string;
+  sourceAttachmentSummaries: Array<{
+    id: string;
+    kind: "file" | "web" | "youtube" | "podcast";
+    name: string;
+    origin: string;
+    excerpt: string;
+    status: "queued" | "uploading" | "extracting" | "processing" | "ready" | "failed";
+  }>;
   entrySources: SourceItem[];
   intent: WorkspaceIntent;
   selectedIntent: Exclude<WorkspaceIntent, "unknown"> | null;
@@ -239,6 +247,7 @@ type ChatPanelProps = {
   videoRatio: "16:9" | "9:16";
   onVideoRatioChange: (ratio: "16:9" | "9:16") => void;
   configConfirmed: boolean;
+  needsDirectionAfterDraft?: boolean;
   onConfirmConfig: () => void;
   outlineItems: string[];
   slideDrafts: SlideDraft[];
@@ -285,6 +294,7 @@ type ChatPanelProps = {
 export function ChatPanel({
   outputLanguage = "en",
   userPrompt,
+  sourceAttachmentSummaries,
   entrySources,
   intent,
   selectedIntent,
@@ -317,6 +327,7 @@ export function ChatPanel({
   videoRatio,
   onVideoRatioChange,
   configConfirmed,
+  needsDirectionAfterDraft = false,
   onConfirmConfig,
   outlineItems,
   slideDrafts,
@@ -514,7 +525,7 @@ export function ChatPanel({
   ]);
   const showMainSummaryBlock = !showDirectionGuide && !showStyleStage && !showBillingConfirm;
   const showPersistentDirectionSummary = !showDirectionGuide && Boolean(configConfirmed && selectedIntent);
-  const showDirectionCard = showDirectionGuide || Boolean(selectedIntent);
+  const showDirectionCard = (showDirectionGuide && !needsDirectionAfterDraft) || Boolean(selectedIntent && !needsDirectionAfterDraft);
   const showWorkflowSummaryCard = !(showWeakPromptSuggestions && showDirectionGuide) && !topicSuggestionLocked;
   const resolvedTopicSuggestions = topicSuggestions.length
     ? topicSuggestions
@@ -576,6 +587,39 @@ export function ChatPanel({
     );
   };
 
+  const renderSourceAttachmentCards = () => {
+    if (!sourceAttachmentSummaries.length) {
+      return null;
+    }
+    return (
+      <div className="ml-auto flex max-w-[88%] flex-col gap-2">
+        {sourceAttachmentSummaries.map((item) => (
+          <article
+            key={item.id}
+            className="ml-auto w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white"
+          >
+            <div className="mb-2 flex items-start gap-3">
+              <div className="mt-0.5 rounded-xl bg-blue-500 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white">
+                {item.kind === "youtube" ? "YT" : item.kind === "web" ? "WEB" : item.kind === "podcast" ? "AUD" : "DOC"}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{item.name}</p>
+                <p className="text-xs text-zinc-400">{item.origin}</p>
+              </div>
+            </div>
+            <p className="text-xs leading-5 text-zinc-300">
+              {item.status === "ready"
+                ? item.excerpt || "Source content ready for extraction."
+                : item.status === "failed"
+                  ? "Source extraction failed."
+                  : "Source is being processed."}
+            </p>
+          </article>
+        ))}
+      </div>
+    );
+  };
+
   if (shouldUseEnglishUi) {
     return (
       <section
@@ -587,6 +631,8 @@ export function ChatPanel({
             {userPrompt}
           </article>
         ) : null}
+
+        {renderSourceAttachmentCards()}
 
         {topicSuggestionLocked ? (
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
@@ -1215,6 +1261,8 @@ export function ChatPanel({
           {userPrompt}
         </article>
       ) : null}
+
+      {renderSourceAttachmentCards()}
 
       {topicSuggestionLocked && lockedTopicSuggestion ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">

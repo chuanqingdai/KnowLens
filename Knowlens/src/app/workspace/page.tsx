@@ -611,27 +611,215 @@ function sanitizeSuggestionTopic(value: string) {
   return cleaned.replace(/^\W+|\W+$/g, "").trim();
 }
 
-function buildFallbackTopicSuggestions(topic: string, isChinese: boolean) {
-  const safeTopic = sanitizeSuggestionTopic(topic) || (isChinese ? "这个主题" : "this topic");
-  if (isChinese) {
-    return [
-      `${safeTopic}的核心概念是什么？`,
-      `${safeTopic}通常包含哪些关键步骤或阶段？`,
-      `${safeTopic}在现实中有什么典型应用？`,
-      `用一个真实案例解释${safeTopic}。`,
-    ];
+type SuggestionTheme =
+  | "volcano"
+  | "blackHole"
+  | "photosynthesis"
+  | "tide"
+  | "tectonics"
+  | "inflation"
+  | "immune"
+  | "dna"
+  | "printing"
+  | "electrolysis"
+  | "generic";
+
+function detectSuggestionTheme(topic: string): SuggestionTheme {
+  const text = cleanTopicText(topic).toLowerCase();
+  if (containsAny(text, ["火山", "volcano", "eruption", "喷发"])) return "volcano";
+  if (containsAny(text, ["黑洞", "black hole"])) return "blackHole";
+  if (containsAny(text, ["光合作用", "photosynthesis"])) return "photosynthesis";
+  if (containsAny(text, ["潮汐", "tide"])) return "tide";
+  if (containsAny(text, ["板块", "地震", "tectonic", "earthquake"])) return "tectonics";
+  if (containsAny(text, ["通胀", "通货膨胀", "inflation"])) return "inflation";
+  if (containsAny(text, ["免疫", "疫苗", "immune", "vaccine"])) return "immune";
+  if (containsAny(text, ["dna", "基因", "染色体", "遗传", "复制"])) return "dna";
+  if (containsAny(text, ["印刷", "printing", "press"])) return "printing";
+  if (containsAny(text, ["电解", "electrolysis"])) return "electrolysis";
+  return "generic";
+}
+
+function buildSpecificTopicSuggestions(topic: string, outputLanguage: OutputLanguage) {
+  const isZh = isChineseLanguage(outputLanguage);
+  const safeTopic = sanitizeSuggestionTopic(topic) || (isZh ? "这个主题" : "this topic");
+  const theme = detectSuggestionTheme(safeTopic);
+
+  if (theme === "volcano") {
+    return isZh
+      ? [
+          "岩浆房里的压力为什么会持续升高？",
+          "火山喷发前的地表隆起和地震增加说明了什么？",
+          "爆炸式喷发和溢流式喷发分别由什么条件触发？",
+          "火山灰、熔岩和火山气体各会带来哪些影响？",
+        ]
+      : [
+          "Why does pressure keep building in a magma chamber?",
+          "What do ground swelling and increased earthquakes indicate before an eruption?",
+          "What triggers explosive eruptions versus effusive eruptions?",
+          "What impacts do ash, lava, and volcanic gases each cause?",
+        ];
   }
-  return [
-    `What is the core concept of ${safeTopic}?`,
-    `What are the key stages or steps of ${safeTopic}?`,
-    `How is ${safeTopic} used in real life?`,
-    `Explain ${safeTopic} with one real-world case.`,
-  ];
+
+  if (theme === "blackHole") {
+    return isZh
+      ? [
+          "事件视界为什么连光都无法逃脱？",
+          "黑洞吸积盘为什么会发出高能辐射？",
+          "恒星级黑洞和超大质量黑洞有什么区别？",
+          "黑洞合并时引力波如何被观测到？",
+        ]
+      : [
+          "Why can nothing, not even light, escape the event horizon?",
+          "Why does an accretion disk around a black hole emit high-energy radiation?",
+          "What is the difference between stellar-mass and supermassive black holes?",
+          "How are gravitational waves observed when black holes merge?",
+        ];
+  }
+
+  if (theme === "photosynthesis") {
+    return isZh
+      ? [
+          "光反应如何把光能转化成化学能？",
+          "卡尔文循环如何把二氧化碳固定成糖类？",
+          "叶绿体里的叶绿素和类囊体膜分别起什么作用？",
+          "光照、温度和二氧化碳浓度怎样影响光合作用效率？",
+        ]
+      : [
+          "How does the light reaction turn light energy into chemical energy?",
+          "How does the Calvin cycle fix carbon dioxide into sugars?",
+          "What do chlorophyll and the thylakoid membrane each do in chloroplasts?",
+          "How do light, temperature, and CO2 levels affect photosynthesis efficiency?",
+        ];
+  }
+
+  if (theme === "tide") {
+    return isZh
+      ? [
+          "月球引力为什么会让海水周期性涨落？",
+          "为什么同一地点一天会出现两次涨潮？",
+          "朔望月时潮差为什么会更大？",
+          "潮汐如何影响沿海生态和港口活动？",
+        ]
+      : [
+          "Why does the Moon's gravity make sea levels rise and fall periodically?",
+          "Why do many places experience two high tides in a day?",
+          "Why is the tidal range larger during new moon and full moon periods?",
+          "How do tides affect coastal ecosystems and port operations?",
+        ];
+  }
+
+  if (theme === "tectonics") {
+    return isZh
+      ? [
+          "板块边界为什么更容易发生地震？",
+          "俯冲带如何形成海沟和火山带？",
+          "P波和S波在地震中分别如何传播？",
+          "断层错动为什么会释放巨大能量？",
+        ]
+      : [
+          "Why do earthquakes happen more often at plate boundaries?",
+          "How do subduction zones form trenches and volcanic belts?",
+          "How do P waves and S waves travel differently during an earthquake?",
+          "Why does fault slip release so much energy?",
+        ];
+  }
+
+  if (theme === "inflation") {
+    return isZh
+      ? [
+          "CPI上涨为什么会削弱购买力？",
+          "工资增速跟不上物价时家庭预算会怎样变化？",
+          "食品、住房和交通价格中哪一项最先影响日常感受？",
+          "为什么通胀预期会进一步推高消费决策？",
+        ]
+      : [
+          "Why does a rising CPI weaken purchasing power?",
+          "What happens to a household budget when wages lag behind prices?",
+          "Which of food, housing, or transport prices is usually felt first in daily life?",
+          "Why can inflation expectations push consumer decisions higher?",
+        ];
+  }
+
+  if (theme === "immune") {
+    return isZh
+      ? [
+          "抗原进入身体后 B 细胞和 T 细胞分别做什么？",
+          "为什么疫苗能提前建立免疫记忆？",
+          "记忆 B 细胞和记忆 T 细胞有什么不同？",
+          "为什么第二次接触病原体时反应会更快？",
+        ]
+      : [
+          "What do B cells and T cells each do after an antigen enters the body?",
+          "Why can vaccines build immune memory in advance?",
+          "What is the difference between memory B cells and memory T cells?",
+          "Why is the response faster the second time the body meets a pathogen?",
+        ];
+  }
+
+  if (theme === "dna") {
+    return isZh
+      ? [
+          "DNA复制时解旋酶和DNA聚合酶分别起什么作用？",
+          "为什么碱基互补配对能保证复制准确？",
+          "染色体上的基因如何影响蛋白质表达？",
+          "突变会怎样改变遗传信息和表型？",
+        ]
+      : [
+          "What do helicase and DNA polymerase do during DNA replication?",
+          "Why does base pairing help replication stay accurate?",
+          "How do genes on chromosomes influence protein expression?",
+          "How can mutations change genetic information and traits?",
+        ];
+  }
+
+  if (theme === "printing") {
+    return isZh
+      ? [
+          "活字排版为什么能显著提高印刷速度？",
+          "纸张普及后书籍传播方式发生了什么变化？",
+          "印刷术如何推动知识标准化和教育普及？",
+          "古代手抄本和印刷本在传播效率上有什么差异？",
+        ]
+      : [
+          "Why did movable type greatly speed up printing?",
+          "How did the spread of paper change book distribution?",
+          "How did printing help standardize knowledge and education?",
+          "What is the efficiency difference between handwritten and printed books?",
+        ];
+  }
+
+  if (theme === "electrolysis") {
+    return isZh
+      ? [
+          "电解水时阴极和阳极分别产生什么气体？",
+          "为什么通电后离子会向不同电极移动？",
+          "电解液浓度和电压会怎样影响产气效率？",
+          "电解水为什么能证明水由氢和氧组成？",
+        ]
+      : [
+          "What gases are produced at the cathode and anode during water electrolysis?",
+          "Why do ions move toward different electrodes after current is applied?",
+          "How do electrolyte concentration and voltage affect gas production efficiency?",
+          "Why does electrolysis help prove that water is made of hydrogen and oxygen?",
+        ];
+  }
+
+  return isZh
+    ? [
+        `${safeTopic}的形成条件和触发机制是什么？`,
+        `${safeTopic}最关键的科学过程是哪一步？`,
+        `${safeTopic}会带来哪些现实影响或应用？`,
+        `用一个具体案例解释${safeTopic}。`,
+      ]
+    : [
+        `What are the formation conditions and triggering mechanisms of ${safeTopic}?`,
+        `Which scientific process is the key step in ${safeTopic}?`,
+        `What real-world impacts or applications does ${safeTopic} have?`,
+        `Explain ${safeTopic} with one concrete case.`,
+      ];
 }
 
 function sanitizeSuggestionText(item: string, topic: string, outputLanguage: OutputLanguage) {
-  const isZh = isChineseLanguage(outputLanguage);
-  const safeTopic = sanitizeSuggestionTopic(topic) || (isZh ? "这个主题" : "this topic");
   const normalized = item.trim().replace(/\s+/g, " ");
   const withoutDirective = normalized
     .replace(/\b(create|generate|make|build|turn)\b.*$/i, "")
@@ -643,29 +831,63 @@ function sanitizeSuggestionText(item: string, topic: string, outputLanguage: Out
     return null;
   }
 
-  if (isZh) {
-    if (!/火山|机制|原理|影响|案例|阶段|类型|过程|系统|结构|主题/.test(withoutDirective)) {
-      return `用一个真实案例解释${safeTopic}。`;
-    }
-    return `${withoutDirective.replace(/hello|hi|hey|test|你好|在吗|测试/gi, "").trim()}。`;
+  const safeTopic = sanitizeSuggestionTopic(topic);
+  const theme = detectSuggestionTheme(safeTopic || withoutDirective);
+  const lower = withoutDirective.toLowerCase();
+  const topicMatch = safeTopic && withoutDirective.includes(safeTopic);
+  const themeSpecific =
+    theme === "volcano"
+      ? /岩浆|火山灰|喷发|地表|地震|magma|eruption|ash|volcanic|lava/i.test(withoutDirective)
+      : theme === "blackHole"
+        ? /黑洞|事件视界|吸积|引力波|accretion|event horizon|gravitational/i.test(withoutDirective)
+        : theme === "photosynthesis"
+          ? /光反应|卡尔文|叶绿体|叶绿素|chlorophyll|calvin|photosynthesis|thylakoid/i.test(withoutDirective)
+          : theme === "tide"
+            ? /潮汐|月球|涨潮|退潮|tide|moon|high tide|low tide/i.test(withoutDirective)
+            : theme === "tectonics"
+              ? /板块|地震|俯冲|断层|plate|earthquake|subduction|fault/i.test(withoutDirective)
+              : theme === "inflation"
+                ? /cpi|通胀|购买力|物价|工资|inflation|purchasing power|prices/i.test(withoutDirective)
+                : theme === "immune"
+                  ? /免疫|疫苗|b细胞|t细胞|antigen|vaccine|memory|immune/i.test(withoutDirective)
+                  : theme === "dna"
+                    ? /dna|基因|染色体|复制|polymerase|helicase|mutation|gene/i.test(withoutDirective)
+                    : theme === "printing"
+                      ? /印刷|活字|纸张|printing|movable type|book|education/i.test(withoutDirective)
+                      : theme === "electrolysis"
+                        ? /电解|阴极|阳极|离子|electrolysis|cathode|anode|ion/i.test(withoutDirective)
+                        : false;
+
+  if (!topicMatch && !themeSpecific) {
+    return null;
   }
 
-  const lowered = withoutDirective.toLowerCase();
-  if (!/(concept|mechanism|impact|case|stage|type|process|system|structure|topic)/.test(lowered)) {
-    return `Explain ${safeTopic} with one real-world case.`;
-  }
-  return withoutDirective.endsWith(".") ? withoutDirective : `${withoutDirective}.`;
+  return outputLanguage === "zh"
+    ? `${withoutDirective.replace(/hello|hi|hey|test|你好|在吗|测试/gi, "").trim()}。`
+    : `${withoutDirective.endsWith(".") ? withoutDirective : `${withoutDirective}.`}`;
 }
 
 function sanitizeSuggestionList(items: string[], topic: string, outputLanguage: OutputLanguage) {
+  const theme = detectSuggestionTheme(topic);
+  const requiresSpecific = theme !== "generic";
   const normalized = items
     .map((item) => sanitizeSuggestionText(item, topic, outputLanguage))
     .filter((item): item is string => !!item)
     .slice(0, 4);
-  if (normalized.length >= 4) {
+  if (normalized.length >= 4 && !requiresSpecific) {
     return normalized;
   }
-  return buildFallbackTopicSuggestions(topic, isChineseLanguage(outputLanguage));
+  if (normalized.length >= 4 && requiresSpecific) {
+    const lowSpecific = normalized.some((item) =>
+      isChineseLanguage(outputLanguage)
+        ? /(核心概念|关键步骤|现实应用|真实案例)/.test(item)
+        : /(core concept|key stages|real-world impacts|real-world case)/i.test(item),
+    );
+    if (!lowSpecific) {
+      return normalized;
+    }
+  }
+  return buildSpecificTopicSuggestions(topic, outputLanguage);
 }
 
 function extractPageCount(prompt: string) {
@@ -1274,6 +1496,84 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
     .filter((turn) => turn.content.trim().length > 0);
 }
 
+function toSafeStorageText(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value == null) {
+    return "";
+  }
+  try {
+    const json = JSON.stringify(value);
+    if (typeof json === "string") {
+      return json;
+    }
+  } catch {
+    // Fall through to a generic tag below.
+  }
+  try {
+    return Object.prototype.toString.call(value);
+  } catch {
+    return "";
+  }
+}
+
+function safeStorageValue(value: unknown, depth = 0): unknown {
+  if (value == null) {
+    return value;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "function" || typeof value === "symbol") {
+    return undefined;
+  }
+  if (depth >= 3) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => safeStorageValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+  }
+  if (typeof value === "object") {
+    const tag = Object.prototype.toString.call(value);
+    if (tag === "[object Window]" || tag === "[object Document]" || tag === "[object HTMLDocument]") {
+      return undefined;
+    }
+    const node = value as Node & { nodeType?: number; outerHTML?: string };
+    if (typeof node.nodeType === "number") {
+      return typeof node.outerHTML === "string" ? node.outerHTML.slice(0, 2000) : undefined;
+    }
+    const next: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const safeChild = safeStorageValue(child, depth + 1);
+      if (safeChild !== undefined) {
+        next[key] = safeChild;
+      }
+    }
+    return next;
+  }
+  return undefined;
+}
+
+function sanitizeChatTurnForStorage(item: ChatTurn) {
+  const normalized = normalizeChatHistory([{ ...item }])[0];
+  return {
+    id: typeof item.id === "string" && item.id ? item.id : `turn-${Date.now()}`,
+    role: item.role === "assistant" ? "assistant" : "user",
+    module: toSafeStorageText(item.module).slice(0, 120) || "Workspace",
+    content: toSafeStorageText(item.content).slice(0, 8000),
+    meta: safeStorageValue(normalized?.meta) as ChatTurnMeta | undefined,
+  };
+}
+
 function readWorkspaceChatHistory(scopeKey: string) {
   if (typeof window === "undefined") {
     return [] as ChatTurn[];
@@ -1295,19 +1595,13 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
     return;
   }
   const key = buildWorkspaceChatHistoryStorageKey(scopeKey);
-  const payload = JSON.stringify(
-    updates
-      .slice(-160)
-      .map((item) => ({
-        id: item.id,
-        role: item.role,
-        module: item.module,
-        content: item.content,
-        meta: normalizeChatHistory([{ ...item }])[0]?.meta,
-      })),
-  );
-  window.sessionStorage.setItem(key, payload);
-  window.localStorage.setItem(key, payload);
+  try {
+    const payload = JSON.stringify(updates.slice(-160).map(sanitizeChatTurnForStorage));
+    window.sessionStorage.setItem(key, payload);
+    window.localStorage.setItem(key, payload);
+  } catch {
+    // Keep the page alive even if one turn is malformed.
+  }
 }
 
 export default function WorkspacePage() {
@@ -1315,6 +1609,7 @@ export default function WorkspacePage() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
+  const [isHydrated, setIsHydrated] = useState(false);
   const [initialEntry] = useState(() => readHomeDraftPayload());
   const [sessionPrefsScopeKey] = useState(() => buildWorkspaceSessionScopeKey(initialEntry));
   const [sessionPrefs] = useState(() => readWorkspaceSessionPrefs(sessionPrefsScopeKey));
@@ -1404,6 +1699,7 @@ export default function WorkspacePage() {
   const [isPlanningStyleStep, setIsPlanningStyleStep] = useState(false);
   const [isPlanningBillingStep, setIsPlanningBillingStep] = useState(false);
   const [configConfirmed, setConfigConfirmed] = useState(false);
+  const [needsDirectionAfterDraft, setNeedsDirectionAfterDraft] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<"chat" | "canvas">("chat");
   const [confirmedConfigSnapshot, setConfirmedConfigSnapshot] = useState<ConfirmedConfigSnapshot | null>(null);
@@ -1419,6 +1715,7 @@ export default function WorkspacePage() {
   });
   const [isExportingPpt, setIsExportingPpt] = useState(false);
   const [isComposingVideo, setIsComposingVideo] = useState(false);
+  const [generationClearToken, setGenerationClearToken] = useState("");
   const posterDraftRequestRef = useRef(0);
 
   const modeActionsRef = useRef<{
@@ -1461,6 +1758,10 @@ export default function WorkspacePage() {
     };
   }, [currentEmail]);
 
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
   const entrySources = initialEntry.sources;
@@ -1487,6 +1788,18 @@ export default function WorkspacePage() {
     const topicLine = contextPrompt.trim() || "Please process the uploaded source content.";
     return `${topicLine}\n\n[Source content]\n${sourcePromptContext}`;
   }, [contextPrompt, sourcePromptContext]);
+  const sourceAttachmentSummaries = useMemo(
+    () =>
+      entrySources.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        origin: item.origin,
+        excerpt: item.contentText || item.excerpt,
+        status: item.status,
+      })),
+    [entrySources],
+  );
   const sourceLanguageSeed = useMemo(
     () => entrySources.map((item) => `${item.name} ${item.contentText || item.excerpt}`).join("\n"),
     [entrySources],
@@ -2151,12 +2464,12 @@ export default function WorkspacePage() {
   const projectTitle = `${topicHintText(topic, outputLanguage)} · Intent Summary`;
   const topicSuggestionsToShow = useMemo(
     () => {
-      const fallbackSuggestions = buildFallbackTopicSuggestions(topic, isZhContent);
+      const fallbackSuggestions = buildSpecificTopicSuggestions(topic, outputLanguage);
       return topicSuggestionsOverride && topicSuggestionsOverride.length
         ? topicSuggestionsOverride
         : fallbackSuggestions;
     },
-    [isZhContent, topic, topicSuggestionsOverride],
+    [outputLanguage, topic, topicSuggestionsOverride],
   );
 
   useEffect(() => {
@@ -2188,26 +2501,6 @@ export default function WorkspacePage() {
     videoRatio,
     videoStoryboardCount,
   ]);
-
-  useEffect(() => {
-    if (!entrySources.length) {
-      return;
-    }
-    setUpdates((prev) => {
-      if (prev.some((item) => item.module === "Source Inputs")) {
-        return prev;
-      }
-      return [
-        ...prev,
-        {
-          id: `source-${Date.now()}`,
-          role: "assistant",
-          module: "Source Inputs",
-          content: `Attached sources:\n${formatSourceItemsForChat(entrySources)}`,
-        },
-      ];
-    });
-  }, [entrySources]);
 
   useEffect(() => {
     updatesRef.current = updates;
@@ -2372,6 +2665,7 @@ export default function WorkspacePage() {
   function resetToConfigStage(_reason: "direction-change" | "config-change") {
     setConfigConfirmed(false);
     setFlowStage("config");
+    setNeedsDirectionAfterDraft(false);
     setBillingConfirmed(false);
     setEditableOutlineItems([]);
     setEditableSlideDrafts([]);
@@ -2505,6 +2799,7 @@ export default function WorkspacePage() {
   }
 
   const handleConfirmConfig = useCallback(async (existingErrorTurnId?: string | null): Promise<boolean> => {
+    setNeedsDirectionAfterDraft(false);
     setConfigConfirmed(true);
     setFlowStage("content");
     if (manualIntent) {
@@ -2743,6 +3038,33 @@ export default function WorkspacePage() {
     if (isPlanningNextStep) {
       return;
     }
+    if (needsDirectionAfterDraft) {
+      setIsPlanningNextStep(true);
+      startThinking(
+        tr("Direction Setup", "方向配置"),
+        tr("Preparing output direction and quantity setup...", "正在准备输出方向和数量配置..."),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 320));
+      setNeedsDirectionAfterDraft(false);
+      setConfigConfirmed(false);
+      setFlowStage("config");
+      setBillingConfirmed(false);
+      setConfirmedConfigSnapshot(null);
+      setEditableOutlineItems([]);
+      setEditableSlideDrafts([]);
+      setEditablePosterDraft(null);
+      setEditablePosterPlanList([]);
+      pushAssistantMessage(
+        tr(
+          "Draft extraction is complete. Now choose output direction and quantity, then click Next to regenerate split draft content.",
+          "文稿提取已完成。现在请先选择输出方向和数量，再点击 Next 生成拆分后的文稿内容。",
+        ),
+        tr("Requirement Check", "需求确认"),
+      );
+      stopThinking();
+      setIsPlanningNextStep(false);
+      return;
+    }
     if (showPosterSizeSelector) {
       pushAssistantMessage(
         tr("Poster size is still missing. Please choose a size first.", "海报方向还缺少尺寸，请先选择一个尺寸后再继续。"),
@@ -2807,6 +3129,8 @@ export default function WorkspacePage() {
     }
     setIsPlanningBillingStep(true);
     setGenerationConfirmError(null);
+    setGenerationTaskStateByIndex({});
+    setGenerationClearToken(String(Date.now()));
     startThinking(
       effectiveIntent === "poster" ? tr("Poster Generation", "海报生成") : tr("Storyboard Generation", "分镜生成"),
       effectiveIntent === "poster"
@@ -2968,6 +3292,41 @@ export default function WorkspacePage() {
 
     if (likelyTopicText && (flowStage === "intent" || flowStage === "config" || shouldClarifyIntent)) {
       setTopicContextPrompt(value);
+    }
+
+    const hasReadySourceContent = entrySources.some(
+      (item) => item.status === "ready" && Boolean((item.contentText || item.excerpt || "").trim()),
+    );
+    const shouldExtractDraftFirst =
+      hasReadySourceContent &&
+      !configConfirmed &&
+      !needsDirectionAfterDraft &&
+      (flowStage === "intent" || flowStage === "config");
+    if (shouldExtractDraftFirst) {
+      let intentForExtraction: Exclude<WorkspaceIntent, "unknown"> | null = null;
+      if (containsAny(normalized, ["视频", "口播", "分镜", "video", "storyboard", "voiceover"])) {
+        intentForExtraction = "video";
+      } else if (containsAny(normalized, ["ppt", "课件", "幻灯", "slides", "slide deck"])) {
+        intentForExtraction = "ppt";
+      } else if (containsAny(normalized, ["海报", "长图", "poster", "infographic"])) {
+        intentForExtraction = "poster";
+      }
+      if (intentForExtraction && manualIntent !== intentForExtraction) {
+        setManualIntent(intentForExtraction);
+      }
+      const extracted = await handleConfirmConfig();
+      if (extracted) {
+        setNeedsDirectionAfterDraft(true);
+        pushAssistantMessage(
+          tr(
+            "I extracted the attached source and generated a draft for review. Click Confirm Draft & Next to choose output direction and quantity.",
+            "我已提取附件并生成文稿供你审阅。请先点击 Confirm Draft & Next，再选择生成方向和数量。",
+          ),
+          tr("Draft Generation", "文稿生成"),
+        );
+      }
+      setIsSending(false);
+      return;
     }
 
     if (
@@ -3346,6 +3705,10 @@ export default function WorkspacePage() {
     };
   }, []);
 
+  if (!isHydrated) {
+    return <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800" />;
+  }
+
   return (
     <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800">
       <TopBar
@@ -3398,6 +3761,7 @@ export default function WorkspacePage() {
                   analysisText={analysisText}
                   showDirectionGuide={showDirectionGuide}
                   shouldClarifyIntent={shouldClarifyIntent}
+                  sourceAttachmentSummaries={sourceAttachmentSummaries}
                   showWeakPromptSuggestions={showWeakPromptSuggestions}
                   topicSuggestions={topicSuggestionsToShow}
                   selectedTopicSuggestion={selectedTopicSuggestion}
@@ -3428,6 +3792,7 @@ export default function WorkspacePage() {
                   videoRatio={videoRatio}
                   onVideoRatioChange={handleVideoRatioChange}
                   configConfirmed={configConfirmed}
+                  needsDirectionAfterDraft={needsDirectionAfterDraft}
                   onConfirmConfig={handleConfirmConfig}
                   outlineItems={outlineItems}
                   slideDrafts={densityAdjustedSlideDrafts}
@@ -3533,6 +3898,14 @@ export default function WorkspacePage() {
                   setHasUnsavedChanges(unsaved);
                 }}
                 canvasModeExternal={lockedCanvasMode}
+                generationSeedSlides={Array.from({ length: Math.max(1, standardOutputCount) }, (_, idx) => ({
+                  id: `slide-${idx + 1}`,
+                  page: idx + 1,
+                  title: `${effectiveIntent === "ppt" ? "Slide" : "Frame"} ${idx + 1}`,
+                  body: "",
+                  visual: "",
+                }))}
+                generationClearToken={generationClearToken}
                 onExportingPptChange={setIsExportingPpt}
                 onComposingVideoChange={setIsComposingVideo}
                 generationTaskStateByIndex={generationTaskStateByIndex}
