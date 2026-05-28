@@ -1,6 +1,7 @@
 "use client";
 
-import { BadgeCheck, FolderOpen, Home as HomeIcon, ReceiptText, UserCircle2, Zap } from "lucide-react";
+import { useState } from "react";
+import { BadgeCheck, FolderOpen, Home as HomeIcon, Menu, ReceiptText, UserCircle2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
@@ -18,12 +19,28 @@ const quickStats = [
 
 export default function ProfilePage() {
   const router = useRouter();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
-      <SidebarNav items={navItems} />
+      <SidebarNav
+        items={navItems}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
       <main className="px-3 pb-10 pt-4 sm:px-6 sm:pt-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-5xl">
+          <div className="mb-3 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
+              aria-label="Open navigation"
+              title="Open navigation"
+            >
+              <Menu size={15} />
+            </button>
+          </div>
           <header className="mb-5">
             <div>
               <p className="text-sm text-zinc-500">KnowLens.ai</p>

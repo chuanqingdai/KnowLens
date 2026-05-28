@@ -53,14 +53,14 @@ export function PaywallDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
       <button
         type="button"
         aria-label="Close dialog"
         className="absolute inset-0 bg-zinc-900/45 backdrop-blur-[1px]"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-5">
+      <div className="relative w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl sm:p-5">
         <button
           type="button"
           aria-label="Close"

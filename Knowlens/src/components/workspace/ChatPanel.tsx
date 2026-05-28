@@ -1104,7 +1104,7 @@ export function ChatPanel({
                   type="button"
                   disabled={isPlanningStyleStep}
                   onClick={handleStyleNext}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                  className="inline-flex items-center justify-center gap-2 self-end rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
                 >
                   {isPlanningStyleStep ? (
                     <>
@@ -1161,7 +1161,7 @@ export function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
+                  className={`inline-flex items-center justify-center gap-2 self-end rounded-xl px-4 py-2 text-sm font-medium text-white ${
                     !canConfirmBilling
                       ? "bg-amber-600 hover:bg-amber-500"
                       : "bg-zinc-900 hover:bg-zinc-700"
@@ -1181,7 +1181,7 @@ export function ChatPanel({
                   )}
                 </button>
               ) : (
-                <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
+                <span className="inline-flex items-center justify-center self-end rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700">
                   Confirmed
                 </span>
               )}
@@ -2129,7 +2129,7 @@ export function ChatPanel({
                 type="button"
                 disabled={isPlanningStyleStep}
                 onClick={handleStyleNext}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                className="inline-flex items-center justify-center gap-2 self-end rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
               >
                 {isPlanningStyleStep ? (
                   <>
@@ -2188,7 +2188,7 @@ export function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
+                  className={`inline-flex items-center justify-center gap-2 self-end rounded-xl px-4 py-2 text-sm font-medium text-white ${
                     !canConfirmBilling
                       ? "bg-amber-600 hover:bg-amber-500"
                       : "bg-zinc-900 hover:bg-zinc-700"
@@ -2208,7 +2208,7 @@ export function ChatPanel({
                 )}
               </button>
             ) : (
-              <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
+              <span className="inline-flex items-center justify-center self-end rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700">
                 Confirmed
               </span>
             )}

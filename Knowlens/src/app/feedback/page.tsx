@@ -9,6 +9,7 @@ import {
   Home as HomeIcon,
   ImagePlus,
   LoaderCircle,
+  Menu,
   Send,
   UserCircle2,
   X,
@@ -69,6 +70,7 @@ export default function FeedbackPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [records, setRecords] = useState<FeedbackRecord[]>(() => getFeedbackRecords());
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -155,9 +157,24 @@ export default function FeedbackPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
-      <SidebarNav items={navItems} />
+      <SidebarNav
+        items={navItems}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
       <main className="px-3 pb-10 pt-4 sm:px-6 sm:pt-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-4xl">
+          <div className="mb-3 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
+              aria-label="Open navigation"
+              title="Open navigation"
+            >
+              <Menu size={15} />
+            </button>
+          </div>
           <header className="mb-5">
             <p className="text-sm text-zinc-500">KnowLens.ai</p>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Feedback</h1>

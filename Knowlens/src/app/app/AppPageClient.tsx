@@ -27,6 +27,7 @@ import {
   ImagePlay,
   Link2,
   LoaderCircle,
+  Menu,
   Minus,
   Plus,
   SendHorizontal,
@@ -750,6 +751,7 @@ export default function Home() {
   const [uploadJobs, setUploadJobs] = useState<Record<string, UploadJobRecord>>({});
   const [isStartingWorkspace, setIsStartingWorkspace] = useState(false);
   const [isDragOverPage, setIsDragOverPage] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [, setMetricVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
@@ -1796,21 +1798,36 @@ export default function Home() {
       onDragLeave={handlePageDragLeave}
       onDrop={handlePageDrop}
     >
-      <SidebarNav items={localizedNavItems} />
+      <SidebarNav
+        items={localizedNavItems}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
 
       <main className="px-3 py-4 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
-        <div className="mb-3 flex items-center justify-end gap-2 md:hidden">
+        <div className="mb-3 flex items-center justify-between gap-2 md:hidden">
           <button
             type="button"
-            onClick={() => openMembershipFromHome("upgrade_button")}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
+            aria-label="Open navigation"
+            title="Open navigation"
           >
-            <Zap size={14} className="text-zinc-500" />
-            <span className="font-medium text-zinc-900">{currentCredits}</span>
-            <span className="text-zinc-500">|</span>
-            <span className="font-medium">Upgrade</span>
+            <Menu size={15} />
           </button>
-          <UserMenu />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openMembershipFromHome("upgrade_button")}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+            >
+              <Zap size={14} className="text-zinc-500" />
+              <span className="font-medium text-zinc-900">{currentCredits}</span>
+              <span className="text-zinc-500">|</span>
+              <span className="font-medium">Upgrade</span>
+            </button>
+            <UserMenu />
+          </div>
         </div>
         <div className="fixed right-6 top-6 z-50 hidden items-center gap-3 md:flex">
           <button
@@ -1827,52 +1844,30 @@ export default function Home() {
         </div>
 
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 sm:gap-8">
-            <div className="grid grid-cols-3 gap-2 md:hidden">
-              {localizedNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
-                return (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => router.push(item.href)}
-                    aria-label={item.label}
-                    title={item.label}
-                    className={`flex h-11 items-center justify-center rounded-md border ${
-                      isActive
-                        ? "border-zinc-900 bg-zinc-900 text-white"
-                        : "border-zinc-300 bg-white text-zinc-700"
-                    }`}
-                  >
-                    <Icon size={14} />
-                  </button>
-                );
-              })}
+          <div className="h-1 sm:h-2" />
+
+          <section className="relative z-20 mx-auto flex min-h-[48vh] w-full max-w-3xl flex-col justify-center sm:min-h-[56vh]">
+            <div className="mb-6 flex flex-col items-center text-center">
+              <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
+              <h1 className="mt-1 text-center text-[clamp(1.3rem,6vw,2.55rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900">
+                <span className="block whitespace-nowrap">AI Infographic</span>
+                <span className="block whitespace-nowrap">Generator for Learning</span>
+              </h1>
             </div>
 
-            <div className="h-1 sm:h-2" />
-
-            <section className="relative z-20 mx-auto flex min-h-[48vh] w-full max-w-3xl flex-col justify-center sm:min-h-[56vh]">
-              <div className="mb-6 flex flex-col items-center text-center">
-                <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
-                <h1 className="mt-1 whitespace-nowrap text-[clamp(1.65rem,4.15vw,2.55rem)] font-semibold leading-[1.12] tracking-tight text-zinc-900">
-                  AI Infographic Generator for Learning
-                </h1>
-              </div>
-
-              <div
-                ref={menuLayerRef}
-                className="rounded-[30px] border border-zinc-200 bg-zinc-50 shadow-[0_20px_45px_rgba(15,23,42,0.08)]"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={supportedUploadAccept}
-                  onChange={handleUploadChange}
-                  className="hidden"
-                />
-                <label className="block">
+            <div
+              ref={menuLayerRef}
+              className="rounded-[30px] border border-zinc-200 bg-zinc-50 shadow-[0_20px_45px_rgba(15,23,42,0.08)]"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={supportedUploadAccept}
+                onChange={handleUploadChange}
+                className="hidden"
+              />
+              <label className="block">
                   <span className="sr-only">Creation input</span>
                   <textarea
                     ref={composeRef}

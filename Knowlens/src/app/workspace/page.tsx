@@ -1934,7 +1934,15 @@ export default function WorkspacePage() {
               const nonRetryableErrorCode = (result?.errorCode || "").toUpperCase();
               const shouldStopRetry =
                 nonRetryableErrorCode === "IMAGE_PROVIDER_KEY_MISSING" ||
-                nonRetryableErrorCode === "GENERATION_TASKS_REQUIRED";
+                nonRetryableErrorCode === "GENERATION_TASKS_REQUIRED" ||
+                /^IMAGE2_HTTP_4\d\d$/.test(nonRetryableErrorCode) ||
+                /^DUOMI_HTTP_4\d\d$/.test(nonRetryableErrorCode) ||
+                /^GPTSAPI_HTTP_4\d\d$/.test(nonRetryableErrorCode) ||
+                nonRetryableErrorCode === "IMAGE2_NO_URL" ||
+                nonRetryableErrorCode === "DUOMI_NO_URL" ||
+                nonRetryableErrorCode === "GPTSAPI_NO_URL" ||
+                nonRetryableErrorCode === "DUOMI_MISSING_TASK_ID" ||
+                nonRetryableErrorCode === "GPTSAPI_MISSING_RESULT_URL";
               lastError = nextError || lastError;
               upsertImageErrorCard(task, nextError || tr("Generation failed.", "生成失败。"));
               if (shouldStopRetry) {
@@ -3208,12 +3216,12 @@ export default function WorkspacePage() {
       bodyOverscrollBehavior: bodyStyle.overscrollBehavior,
       htmlOverscrollBehavior: htmlStyle.overscrollBehavior,
     };
-    bodyStyle.overflow = "hidden";
-    htmlStyle.overflow = "hidden";
-    bodyStyle.height = "100%";
-    htmlStyle.height = "100%";
-    bodyStyle.overscrollBehavior = "none";
-    htmlStyle.overscrollBehavior = "none";
+    bodyStyle.overflow = "auto";
+    htmlStyle.overflow = "auto";
+    bodyStyle.height = "";
+    htmlStyle.height = "";
+    bodyStyle.overscrollBehavior = "auto";
+    htmlStyle.overscrollBehavior = "auto";
     return () => {
       bodyStyle.overflow = previous.bodyOverflow;
       htmlStyle.overflow = previous.htmlOverflow;
@@ -3225,7 +3233,7 @@ export default function WorkspacePage() {
   }, []);
 
   return (
-    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800">
+    <div className="min-h-dvh overflow-x-hidden bg-[#f7f7f8] text-zinc-800">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -3254,7 +3262,7 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
-      <main className="mx-auto mt-[56px] flex h-[calc(100dvh-56px)] max-w-none min-h-0 flex-col px-2 pb-1 pt-3 sm:px-3">
+      <main className="mx-auto mt-[56px] flex min-h-[calc(100dvh-56px)] max-w-none flex-col px-2 pb-1 pt-3 sm:px-3">
         <div
           className={`grid min-h-0 flex-1 gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
@@ -3266,7 +3274,7 @@ export default function WorkspacePage() {
             } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
             <div className="flex h-full min-h-0 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto pr-1.5 pb-36 pt-4 [scrollbar-width:thin] lg:pr-1.5">
+              <div className="min-h-0 flex-1 pr-1.5 pb-36 pt-4 lg:pr-1.5">
                 <ChatPanel
                   outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}

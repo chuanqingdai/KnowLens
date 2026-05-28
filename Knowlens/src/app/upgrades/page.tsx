@@ -1,6 +1,7 @@
 "use client";
 
-import { FolderOpen, Home as HomeIcon, Sparkles, UserCircle2 } from "lucide-react";
+import { useState } from "react";
+import { FolderOpen, Home as HomeIcon, Menu, Sparkles, UserCircle2 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
@@ -57,11 +58,28 @@ const releaseTimeline = [
 ];
 
 export default function UpgradesPage() {
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
-      <SidebarNav items={navItems} />
+      <SidebarNav
+        items={navItems}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
       <main className="px-4 pb-10 pt-6 sm:px-6 md:pl-[6.5rem] lg:px-12 lg:pl-[7.5rem]">
         <div className="mx-auto max-w-4xl">
+          <div className="mb-3 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
+              aria-label="Open navigation"
+              title="Open navigation"
+            >
+              <Menu size={15} />
+            </button>
+          </div>
           <header className="mb-5">
             <p className="text-sm text-zinc-500">KnowLens.ai</p>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Product Updates</h1>
