@@ -19,7 +19,11 @@ type SidebarNavProps = {
   onMobileClose?: () => void;
 };
 
-export function SidebarNav({ items, mobileOpen = false, onMobileClose }: SidebarNavProps) {
+export function SidebarNav({
+  items,
+  mobileOpen = false,
+  onMobileClose,
+}: SidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();

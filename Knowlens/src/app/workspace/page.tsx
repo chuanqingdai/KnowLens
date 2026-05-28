@@ -20,7 +20,6 @@ import {
   appendCreditRecord,
   getCreditRecords,
   getSubscriptionByUser,
-  syncCreditRecordsFromServer,
 } from "@/lib/billing";
 import {
   STANDARD_OUTPUT_PROMO_CREDITS,
@@ -109,24 +108,6 @@ type WorkspaceSessionPrefs = {
   videoStoryboardCount: number;
   videoRatio: "16:9" | "9:16";
   styleId: string;
-};
-
-type IntentTriageDirection = "poster" | "ppt" | "video" | "unknown";
-type IntentTriageClassification =
-  | "invalid"
-  | "pure_text_complete"
-  | "pure_text_incomplete"
-  | "source_plus_request"
-  | "copied_text_plus_extra_request"
-  | "multilingual"
-  | "explicit_direction_intent";
-type IntentTriageResult = {
-  classification: IntentTriageClassification;
-  direction: IntentTriageDirection;
-  confidence: number;
-  topic: string;
-  reason: string;
-  suggestions: string[];
 };
 
 type ConfirmedConfigSnapshot = {
@@ -434,6 +415,319 @@ function containsAny(text: string, words: string[]) {
   return words.some((word) => text.includes(word));
 }
 
+function cleanTopicText(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const withoutGreeting = trimmed.replace(
+    /^(?:hello|hi|hey|yo|test|testing|pls|please|你好|您好|哈喽|嗨|测试|开始|在吗|麻烦|请问)[\s,，。.!！？?：:;；-]*/i,
+    "",
+  );
+  const withoutDirectionWords = withoutGreeting
+    .replace(/\b(?:generate|create|make|build|write|draft|produce)\b/gi, " ")
+    .replace(/\b(?:ppt|slides?|slide\s*deck|video|poster|infographic|storyboard)\b/gi, " ")
+    .replace(/(?:生成|制作|创建|做|输出|海报|视频|分镜|课件|长图|图文卡片|文稿)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutDirectionWords || withoutGreeting || trimmed;
+}
+
+type SuggestionTheme =
+  | "volcano"
+  | "black-hole"
+  | "photosynthesis"
+  | "tide"
+  | "tectonics"
+  | "inflation"
+  | "immune"
+  | "dna"
+  | "printing"
+  | "electrolysis"
+  | "generic";
+
+function sanitizeSuggestionTopic(topic: string, outputLanguage: OutputLanguage) {
+  const cleaned = cleanTopicText(topic)
+    .replace(/[，。；,.!?！？]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length >= 2) {
+    return cleaned.slice(0, 36);
+  }
+  return isChineseLanguage(outputLanguage) ? "这个主题" : "this topic";
+}
+
+function isLowSignalSuggestionInput(seedTopic: string) {
+  const raw = seedTopic.trim();
+  if (!raw) {
+    return true;
+  }
+  const cleaned = cleanTopicText(raw)
+    .replace(/[，。；,.!?！？]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) {
+    return true;
+  }
+  const compact = cleaned
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+  if (!compact) {
+    return true;
+  }
+  if (
+    /^(?:hello|hi|hey|yo|test|testing|pls|please|ok|okay|你好|您好|哈喽|嗨|测试|开始|在吗)$/.test(
+      compact,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function detectSuggestionTheme(topic: string): SuggestionTheme {
+  const raw = cleanTopicText(topic);
+  const bag = normalizeText(raw);
+  const zhBag = raw.replace(/\s+/g, "");
+  if (containsAny(bag, ["火山", "volcano", "magma", "eruption"])) {
+    return "volcano";
+  }
+  if (containsAny(zhBag, ["火山爆发", "喷发"])) {
+    return "volcano";
+  }
+  if (containsAny(bag, ["黑洞", "blackhole", "eventhorizon", "奇点"])) {
+    return "black-hole";
+  }
+  if (containsAny(zhBag, ["黑洞形成", "事件视界"])) {
+    return "black-hole";
+  }
+  if (containsAny(bag, ["光合作用", "photosynthesis", "叶绿体", "chlorophyll"])) {
+    return "photosynthesis";
+  }
+  if (containsAny(bag, ["潮汐", "潮水", "tide", "moon", "月球引力"])) {
+    return "tide";
+  }
+  if (containsAny(bag, ["板块", "地震", "tectonic", "plateboundary", "fault"])) {
+    return "tectonics";
+  }
+  if (containsAny(bag, ["通货膨胀", "cpi", "inflation", "物价上涨", "购买力"])) {
+    return "inflation";
+  }
+  if (containsAny(bag, ["免疫", "抗体", "immune", "vaccine", "炎症"])) {
+    return "immune";
+  }
+  if (containsAny(bag, ["dna", "基因", "遗传", "mutation", "双螺旋"])) {
+    return "dna";
+  }
+  if (containsAny(bag, ["印刷术", "活字", "printing", "movabletype"])) {
+    return "printing";
+  }
+  if (containsAny(bag, ["电解", "electrolysis", "阴极", "阳极"])) {
+    return "electrolysis";
+  }
+  return "generic";
+}
+
+function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: OutputLanguage) {
+  const topic = sanitizeSuggestionTopic(seedTopic, outputLanguage);
+  const theme = detectSuggestionTheme(topic);
+  const isZh = isChineseLanguage(outputLanguage);
+  const lowSignalInput = isLowSignalSuggestionInput(seedTopic);
+
+  if (!isZh) {
+    if (lowSignalInput) {
+      return [
+        "How plate tectonics drives both earthquakes and volcano distribution",
+        "How black holes bend light and change time near the event horizon",
+        "How the immune system identifies pathogens while protecting normal cells",
+        "How deep-sea organisms adapt to high pressure and low-temperature habitats",
+      ];
+    }
+    if (theme === "volcano") {
+      return [
+        "How pressure buildup in a magma chamber triggers eruption timing",
+        "Which precursor signals (seismicity, gas, ground uplift) are most reliable",
+        "Why some eruptions become explosive while others stay effusive",
+        "How ash, lava, and volcanic gases affect climate, health, and infrastructure",
+      ];
+    }
+    if (theme === "black-hole") {
+      return [
+        "How a black hole forms from stellar collapse and mass threshold",
+        "What the event horizon changes for light, time, and information",
+        "How accretion disks and jets make black holes observable",
+        "How scientists estimate black-hole mass from orbit and radiation data",
+      ];
+    }
+    if (theme === "photosynthesis") {
+      return [
+        "How light reactions convert photon energy into ATP and NADPH",
+        "How the Calvin cycle stores carbon into sugars step by step",
+        "Which factors (light, CO2, temperature) limit photosynthesis first",
+        "How photosynthesis links plant growth, food webs, and carbon balance",
+      ];
+    }
+    if (theme === "tide") {
+      return [
+        "How Moon-Sun gravity creates periodic high and low tides",
+        "Why spring tides and neap tides differ in range",
+        "How coastline shape and seabed depth amplify local tide height",
+        "How tides influence navigation safety, ecosystems, and energy use",
+      ];
+    }
+    if (theme === "tectonics") {
+      return [
+        "How plate boundaries control earthquake and volcano distribution",
+        "How stress accumulates and releases along active faults",
+        "How subduction, collision, and rifting shape landforms differently",
+        "How tectonic evidence is measured with seismic and GPS data",
+      ];
+    }
+    if (theme === "inflation") {
+      return [
+        "How demand-pull and cost-push inflation follow different mechanisms",
+        "How inflation changes real wages, savings value, and household budgets",
+        "How CPI is built and why different baskets show different inflation views",
+        "How rate policy transmits from central banks to jobs and consumption",
+      ];
+    }
+    if (theme === "immune") {
+      return [
+        "How innate immunity reacts within hours before adaptive response starts",
+        "How B cells and T cells coordinate targeted pathogen elimination",
+        "How vaccines build memory cells without causing full disease",
+        "How chronic inflammation differs from short protective inflammation",
+      ];
+    }
+    if (theme === "dna") {
+      return [
+        "How DNA replication maintains accuracy and where mutations arise",
+        "How transcription and translation convert genes into proteins",
+        "How dominant and recessive inheritance appears across generations",
+        "How gene variants influence disease risk and treatment response",
+      ];
+    }
+    if (theme === "printing") {
+      return [
+        "How movable type changed speed, cost, and scale of knowledge spread",
+        "How printing innovation reshaped education and scientific communication",
+        "How East-West printing paths differed in materials and workflow",
+        "How printing technology evolved from manual press to modern systems",
+      ];
+    }
+    if (theme === "electrolysis") {
+      return [
+        "How ion migration at anode/cathode drives electrolysis reactions",
+        "How voltage, concentration, and electrode material change product yield",
+        "How Faraday's law predicts output mass from current and time",
+        "How electrolysis is applied in hydrogen production and metal refining",
+      ];
+    }
+    return [
+      `${topic}: formation conditions and trigger thresholds`,
+      `${topic}: first-changing signal and measurable key variables`,
+      `${topic}: step-by-step mechanism chain from cause to outcome`,
+      `${topic}: one data-backed real-world case and practical implication`,
+    ];
+  }
+
+  if (lowSignalInput) {
+    return [
+      "板块运动如何共同决定地震和火山的空间分布",
+      "黑洞的事件视界为什么会改变光与时间的行为",
+      "免疫系统如何识别病原体并避免攻击自身细胞",
+      "深海生物如何适应高压、低温与弱光环境",
+    ];
+  }
+
+  if (theme === "volcano") {
+    return [
+      "岩浆房压力如何累积到触发喷发阈值",
+      "地震活动、火山气体和地表隆起哪些最能预警喷发",
+      "爆炸式喷发和溢流式喷发的触发条件有什么差别",
+      "火山灰、熔岩和火山气体分别会造成哪些连锁影响",
+    ];
+  }
+  if (theme === "black-hole") {
+    return [
+      "恒星坍缩到什么质量条件才会形成黑洞",
+      "事件视界对光、时间和信息传递意味着什么",
+      "吸积盘和喷流如何帮助我们间接观测黑洞",
+      "科学家如何用轨道和辐射数据估算黑洞质量",
+    ];
+  }
+  if (theme === "photosynthesis") {
+    return [
+      "光反应如何把光能转成 ATP 和 NADPH",
+      "卡尔文循环如何把二氧化碳固定成糖",
+      "光照、温度和 CO2 浓度谁最先限制光合作用效率",
+      "光合作用如何影响食物链和碳循环平衡",
+    ];
+  }
+  if (theme === "tide") {
+    return [
+      "月球和太阳引力如何形成周期性的涨潮与落潮",
+      "大潮和小潮为什么会出现明显潮差",
+      "海岸线形状和水深如何放大局地潮位变化",
+      "潮汐变化如何影响航运、沿海生态与潮汐能利用",
+    ];
+  }
+  if (theme === "tectonics") {
+    return [
+      "板块边界类型如何决定地震和火山分布",
+      "断层应力如何累积并在地震中瞬时释放",
+      "俯冲、碰撞与张裂三类构造会形成哪些不同地貌",
+      "地震波和 GPS 数据如何用于板块运动监测",
+    ];
+  }
+  if (theme === "inflation") {
+    return [
+      "需求拉动型和成本推动型通胀的机制区别",
+      "通胀如何影响工资购买力、储蓄实际价值和预算结构",
+      "CPI 的构成与统计口径为什么会影响通胀感知",
+      "加息政策如何传导到消费、就业和企业融资",
+    ];
+  }
+  if (theme === "immune") {
+    return [
+      "先天免疫与适应性免疫在时间和作用上的分工",
+      "B 细胞和 T 细胞如何协同识别并清除病原体",
+      "疫苗如何在不致病的前提下建立免疫记忆",
+      "急性炎症和慢性炎症在风险和意义上有何区别",
+    ];
+  }
+  if (theme === "dna") {
+    return [
+      "DNA 复制如何保证高保真并减少突变累积",
+      "转录与翻译如何把基因信息转为蛋白质功能",
+      "显性与隐性遗传在家系中如何呈现分布规律",
+      "基因变异如何影响疾病风险与个体化治疗",
+    ];
+  }
+  if (theme === "printing") {
+    return [
+      "活字印刷如何改变知识传播速度与成本结构",
+      "印刷术如何推动教育普及与科学交流",
+      "中西方印刷技术路线在材料与工艺上的差异",
+      "从手工排印到现代印刷的关键技术演进",
+    ];
+  }
+  if (theme === "electrolysis") {
+    return [
+      "电解过程中阴极与阳极分别发生哪些反应",
+      "电压、溶液浓度和电极材料如何影响产物选择",
+      "法拉第定律如何用于计算电解产物质量",
+      "电解在制氢和金属精炼中的典型应用路径",
+    ];
+  }
+  return [
+    `${topic}的形成条件与关键触发阈值`,
+    `${topic}中最先变化的可观测指标与核心变量`,
+    `${topic}从起因到结果的机制链路拆解`,
+    `${topic}在现实中的一个数据化案例及实际影响`,
+  ];
+}
+
 function detectIntent(
   prompt: string,
   sources: HomeSourceItem[],
@@ -527,24 +821,22 @@ function inferRecommendedIntent(
 }
 
 function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage: OutputLanguage) {
-  const trimmed = prompt.trim();
+  const trimmed = cleanTopicText(prompt) || prompt.trim();
   if (trimmed) {
-    const cleaned = cleanTopicText(
-      trimmed
-        .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
-        .replace(/(a|an|one|一个|一份|一套|一个关于)/gi, "")
-        .replace(/(的)?(ppt|slides?|video|poster|infographic|长图|视频|海报).*/i, "")
-        .replace(/[，。；,.]/g, " ")
-        .trim(),
-    );
+    const cleaned = trimmed
+      .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
+      .replace(/(a|an|one|一个|一份|一套|一个关于)/gi, "")
+      .replace(/(的)?(ppt|slides?|video|poster|infographic|长图|视频|海报).*/i, "")
+      .replace(/[，。；,.]/g, " ")
+      .trim();
     if (cleaned.length >= 2) {
       return cleaned.slice(0, 26);
     }
-    return cleanTopicText(trimmed).slice(0, 26);
+    return trimmed.slice(0, 26);
   }
   const source = sources[0];
   if (source) {
-    return cleanTopicText(source.name.replace(/\.[a-z0-9]+$/i, "")).slice(0, 26);
+    return source.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 26);
   }
   return isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic";
 }
@@ -586,86 +878,6 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
 
 function topicHintText(value: string, outputLanguage: OutputLanguage) {
   return value.trim() || (isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic");
-}
-
-function cleanTopicText(value: string) {
-  const raw = value.trim();
-  if (!raw) {
-    return "";
-  }
-  const withoutGreeting = raw
-    .replace(/^(hello|hi|hey|test|你好|在吗|测试|请问|麻烦|help)\b[:：]?\s*/i, "")
-    .replace(/^(please|pls|can you|could you|i want to|need to|help me)\b[:：]?\s*/i, "")
-    .trim();
-  const withoutFiller = withoutGreeting
-    .replace(/[\u3000\s]+/g, " ")
-    .replace(/^(关于|帮我|请帮我|我想要|我想|需要|请生成|请制作)\s*/i, "")
-    .replace(/^(a|an|the|one|some)\s+/i, "")
-    .replace(/^(和|关于|有关|有关的)\s*/i, "")
-    .trim();
-  return withoutFiller || raw;
-}
-
-function sanitizeSuggestionTopic(value: string) {
-  const cleaned = cleanTopicText(value);
-  return cleaned.replace(/^\W+|\W+$/g, "").trim();
-}
-
-function buildFallbackTopicSuggestions(topic: string, isChinese: boolean) {
-  const safeTopic = sanitizeSuggestionTopic(topic) || (isChinese ? "这个主题" : "this topic");
-  if (isChinese) {
-    return [
-      `${safeTopic}的核心概念是什么？`,
-      `${safeTopic}通常包含哪些关键步骤或阶段？`,
-      `${safeTopic}在现实中有什么典型应用？`,
-      `用一个真实案例解释${safeTopic}。`,
-    ];
-  }
-  return [
-    `What is the core concept of ${safeTopic}?`,
-    `What are the key stages or steps of ${safeTopic}?`,
-    `How is ${safeTopic} used in real life?`,
-    `Explain ${safeTopic} with one real-world case.`,
-  ];
-}
-
-function sanitizeSuggestionText(item: string, topic: string, outputLanguage: OutputLanguage) {
-  const isZh = isChineseLanguage(outputLanguage);
-  const safeTopic = sanitizeSuggestionTopic(topic) || (isZh ? "这个主题" : "this topic");
-  const normalized = item.trim().replace(/\s+/g, " ");
-  const withoutDirective = normalized
-    .replace(/\b(create|generate|make|build|turn)\b.*$/i, "")
-    .replace(/(海报|PPT|视频|video|poster|ppt|storyboard)[^。.!?]*$/i, "")
-    .replace(/[。.!?，,;；]+$/g, "")
-    .trim();
-
-  if (!withoutDirective || withoutDirective.length < 8) {
-    return null;
-  }
-
-  if (isZh) {
-    if (!/火山|机制|原理|影响|案例|阶段|类型|过程|系统|结构|主题/.test(withoutDirective)) {
-      return `用一个真实案例解释${safeTopic}。`;
-    }
-    return `${withoutDirective.replace(/hello|hi|hey|test|你好|在吗|测试/gi, "").trim()}。`;
-  }
-
-  const lowered = withoutDirective.toLowerCase();
-  if (!/(concept|mechanism|impact|case|stage|type|process|system|structure|topic)/.test(lowered)) {
-    return `Explain ${safeTopic} with one real-world case.`;
-  }
-  return withoutDirective.endsWith(".") ? withoutDirective : `${withoutDirective}.`;
-}
-
-function sanitizeSuggestionList(items: string[], topic: string, outputLanguage: OutputLanguage) {
-  const normalized = items
-    .map((item) => sanitizeSuggestionText(item, topic, outputLanguage))
-    .filter((item): item is string => !!item)
-    .slice(0, 4);
-  if (normalized.length >= 4) {
-    return normalized;
-  }
-  return buildFallbackTopicSuggestions(topic, isChineseLanguage(outputLanguage));
 }
 
 function extractPageCount(prompt: string) {
@@ -1232,30 +1444,6 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
   if (!Array.isArray(raw)) {
     return [];
   }
-  function sanitizeMeta(meta: unknown): ChatTurnMeta | undefined {
-    if (!meta || typeof meta !== "object") {
-      return undefined;
-    }
-    const candidate = meta as Record<string, unknown>;
-    if (candidate.kind === "llm_error") {
-      return {
-        kind: "llm_error",
-        source: "draft_generation",
-        code: typeof candidate.code === "string" ? candidate.code.slice(0, 80) : undefined,
-        retryable: typeof candidate.retryable === "boolean" ? candidate.retryable : undefined,
-      };
-    }
-    if (candidate.kind === "image_error") {
-      return {
-        kind: "image_error",
-        source: "image_generation",
-        code: typeof candidate.code === "string" ? candidate.code.slice(0, 80) : undefined,
-        taskIndex: Number.isFinite(candidate.taskIndex) ? Number(candidate.taskIndex) : undefined,
-        retryable: typeof candidate.retryable === "boolean" ? candidate.retryable : undefined,
-      };
-    }
-    return undefined;
-  }
   return raw
     .filter((item) => item && typeof item === "object")
     .map((item, index) => {
@@ -1268,7 +1456,10 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
         role,
         module,
         content,
-        meta: sanitizeMeta(turn.meta),
+        meta:
+          turn.meta && typeof turn.meta === "object"
+            ? (turn.meta as ChatTurnMeta)
+            : undefined,
       } satisfies ChatTurn;
     })
     .filter((turn) => turn.content.trim().length > 0);
@@ -1303,7 +1494,7 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
         role: item.role,
         module: item.module,
         content: item.content,
-        meta: normalizeChatHistory([{ ...item }])[0]?.meta,
+        meta: item.meta,
       })),
   );
   window.sessionStorage.setItem(key, payload);
@@ -1344,8 +1535,6 @@ export default function WorkspacePage() {
   const [topicSuggestionLocked, setTopicSuggestionLocked] = useState(false);
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
-  const [intentTriageResult, setIntentTriageResult] = useState<IntentTriageResult | null>(null);
-  const [topicSuggestionsOverride, setTopicSuggestionsOverride] = useState<string[] | null>(null);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
@@ -1441,26 +1630,6 @@ export default function WorkspacePage() {
     router.push("/membership");
   }, [pathname, router]);
 
-  useEffect(() => {
-    if (!currentEmail) {
-      return;
-    }
-    let canceled = false;
-    void syncCreditRecordsFromServer(currentEmail)
-      .then(() => {
-        if (canceled) {
-          return;
-        }
-        setCreditVersion((prev) => prev + 1);
-      })
-      .catch(() => {
-        // Keep local cache when server sync is unavailable.
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [currentEmail]);
-
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
   const entrySources = initialEntry.sources;
@@ -1500,8 +1669,8 @@ export default function WorkspacePage() {
       }),
     [contextPrompt, sourceLanguageSeed],
   );
-  const isZhContent = isChineseLanguage(outputLanguage);
-  const uiLanguage = "en" as const;
+  const uiLanguage: "en" | "zh" = "en";
+  const isZhOutput = false;
   const tr = (en: string, _zh: string) => en;
 
   const detectedIntent = useMemo(
@@ -1519,6 +1688,7 @@ export default function WorkspacePage() {
     () => inferRecommendedIntent(contextPrompt, entrySources),
     [contextPrompt, entrySources],
   );
+  const effectiveIntent: WorkspaceIntent = manualIntent ?? detectedIntent.intent;
   const topic = useMemo(
     () => extractTopic(contextPrompt, entrySources, outputLanguage),
     [contextPrompt, entrySources, outputLanguage],
@@ -1527,28 +1697,15 @@ export default function WorkspacePage() {
     () => posterSizeOptions.find((item) => item.id === posterSizeId)?.label,
     [posterSizeId],
   );
-  const triageDirection = intentTriageResult?.direction ?? "unknown";
-  const triageClassification = intentTriageResult?.classification ?? null;
-  const effectiveIntent: WorkspaceIntent = manualIntent ?? triageDirection ?? detectedIntent.intent;
   const missingHints = useMemo(
     () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId, outputLanguage),
     [effectiveIntent, contextPrompt, posterSizeId, outputLanguage],
   );
-  const triageNeedsSuggestionCards =
-    triageClassification === "invalid" || triageClassification === "pure_text_incomplete";
-  const triageNeedsDirectionStep =
-    triageClassification === "explicit_direction_intent" ||
-    triageClassification === "pure_text_complete" ||
-    triageClassification === "source_plus_request" ||
-    triageClassification === "copied_text_plus_extra_request" ||
-    triageClassification === "multilingual";
-  const shouldClarifyIntent =
-    triageNeedsSuggestionCards || (!intentTriageResult && (weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58));
-  const waitingTopicSuggestionConfirm = triageNeedsSuggestionCards || weakPrompt;
-  const showDirectionGuide = flowStage === "intent" || flowStage === "config";
-  const showWeakPromptSuggestions = showDirectionGuide && waitingTopicSuggestionConfirm && !triageNeedsDirectionStep;
+  const shouldClarifyIntent = weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58;
+  const waitingTopicSuggestionConfirm = weakPrompt;
   const showPosterSizeSelector = effectiveIntent === "poster" && !posterSizeId;
   const canProceed = configConfirmed && !showPosterSizeSelector;
+  const showDirectionGuide = flowStage === "intent" || flowStage === "config";
   const showStyleStage = flowStage === "style";
   const showBillingConfirm = flowStage === "billing";
   const showBillingRecord = flowStage === "billing" || flowStage === "generate";
@@ -1621,21 +1778,30 @@ export default function WorkspacePage() {
       ? tr("Your request is still incomplete. I need to confirm the output direction first.", "你的需求还不够完整，我先和你确认一下生成方向。")
       : tr("I recognized your output direction and prepared the base configuration.", "我已识别你的目标方向，并完成基础配置。");
     if (manualIntent === "ppt") {
-      return `${sourcePart}${intentPart} Default: ${pptPageCount} slides at ${pptRatio}.`;
+      return isZhOutput
+        ? `${sourcePart}${intentPart} 默认按 ${pptPageCount} 页、${pptRatio} 比例生成。`
+        : `${sourcePart}${intentPart} Default: ${pptPageCount} slides at ${pptRatio}.`;
     }
     if (manualIntent === "video") {
-      return `${sourcePart}${intentPart} Default: ${videoStoryboardCount} storyboard frames (~${
-        videoStoryboardCount * 10
-      }s) at ${videoRatio}.`;
+      return isZhOutput
+        ? `${sourcePart}${intentPart} 默认按 ${videoStoryboardCount} 个分镜（约 ${
+            videoStoryboardCount * 10
+          } 秒）、${videoRatio} 比例生成。`
+        : `${sourcePart}${intentPart} Default: ${videoStoryboardCount} storyboard frames (~${
+            videoStoryboardCount * 10
+          }s) at ${videoRatio}.`;
     }
     if (manualIntent === "poster") {
       const sizeLabel = posterSizeOptions.find((item) => item.id === posterSizeId)?.label ?? tr("Size not selected", "未选尺寸");
-      return `${sourcePart}${intentPart} Default: ${posterCount} poster(s), size ${sizeLabel}.`;
+      return isZhOutput
+        ? `${sourcePart}${intentPart} 默认生成 ${posterCount} 张，尺寸 ${sizeLabel}。`
+        : `${sourcePart}${intentPart} Default: ${posterCount} poster(s), size ${sizeLabel}.`;
     }
     return `${sourcePart}${intentPart}`;
   }, [
     contextPrompt,
     entrySources.length,
+    isZhOutput,
     manualIntent,
     posterCount,
     posterSizeId,
@@ -1670,7 +1836,7 @@ export default function WorkspacePage() {
     if (effectiveIntent !== "poster" || !basePosterDraft || !configConfirmed) {
       return [] as PosterPlanItem[];
     }
-    const base = isZhContent
+    const base = isZhOutput
       ? [
           { title: `${topic} · 核心问题`, focus: "用一句话提出问题并建立兴趣" },
           { title: `${topic} · 关键机制`, focus: "拆解机制过程，突出因果关系" },
@@ -1701,7 +1867,7 @@ export default function WorkspacePage() {
       title: item.title,
       focus: item.focus,
     }));
-  }, [basePosterDraft, configConfirmed, effectiveIntent, isZhContent, posterCount, topic]);
+  }, [basePosterDraft, configConfirmed, effectiveIntent, isZhOutput, posterCount, topic]);
 
   const [editableOutlineItems, setEditableOutlineItems] = useState<string[]>([]);
   const [editableSlideDrafts, setEditableSlideDrafts] = useState<SlideDraft[]>([]);
@@ -2049,15 +2215,7 @@ export default function WorkspacePage() {
               const nonRetryableErrorCode = (result?.errorCode || "").toUpperCase();
               const shouldStopRetry =
                 nonRetryableErrorCode === "IMAGE_PROVIDER_KEY_MISSING" ||
-                nonRetryableErrorCode === "GENERATION_TASKS_REQUIRED" ||
-                /^IMAGE2_HTTP_4\d\d$/.test(nonRetryableErrorCode) ||
-                /^DUOMI_HTTP_4\d\d$/.test(nonRetryableErrorCode) ||
-                /^GPTSAPI_HTTP_4\d\d$/.test(nonRetryableErrorCode) ||
-                nonRetryableErrorCode === "IMAGE2_NO_URL" ||
-                nonRetryableErrorCode === "DUOMI_NO_URL" ||
-                nonRetryableErrorCode === "GPTSAPI_NO_URL" ||
-                nonRetryableErrorCode === "DUOMI_MISSING_TASK_ID" ||
-                nonRetryableErrorCode === "GPTSAPI_MISSING_RESULT_URL";
+                nonRetryableErrorCode === "GENERATION_TASKS_REQUIRED";
               lastError = nextError || lastError;
               upsertImageErrorCard(task, nextError || tr("Generation failed.", "生成失败。"));
               if (shouldStopRetry) {
@@ -2148,16 +2306,13 @@ export default function WorkspacePage() {
     }
     return tr("Step 1/7 · Input", "第 1/7 步 · 输入");
   }, [flowStage, tr]);
-  const projectTitle = `${topicHintText(topic, outputLanguage)} · Intent Summary`;
-  const topicSuggestionsToShow = useMemo(
-    () => {
-      const fallbackSuggestions = buildFallbackTopicSuggestions(topic, isZhContent);
-      return topicSuggestionsOverride && topicSuggestionsOverride.length
-        ? topicSuggestionsOverride
-        : fallbackSuggestions;
-    },
-    [isZhContent, topic, topicSuggestionsOverride],
-  );
+  const projectTitle = isZhOutput
+    ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
+    : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
+  const topicSuggestions = useMemo(() => {
+    const suggestionSeed = topicContextPrompt || topic;
+    return buildSpecificTopicSuggestions(suggestionSeed, outputLanguage);
+  }, [outputLanguage, topic, topicContextPrompt]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2393,40 +2548,6 @@ export default function WorkspacePage() {
       return;
     }
     setSelectedTopicSuggestion(text);
-  }
-
-  async function requestIntentTriage(inputText: string) {
-    try {
-      const response = await fetch("/api/workspace/intent-triage", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          input: inputText,
-          outputLanguage,
-          sources: entrySources.map((item) => ({
-            kind: item.kind,
-            name: item.name,
-            origin: item.origin,
-            excerpt: item.excerpt,
-          })),
-        }),
-      });
-      if (!response.ok) {
-        return null;
-      }
-      const data = (await response.json()) as {
-        ok?: boolean;
-        triage?: IntentTriageResult;
-      };
-      if (!data?.ok || !data.triage) {
-        return null;
-      }
-      return data.triage;
-    } catch {
-      return null;
-    }
   }
 
   async function handleConfirmTopicSuggestion() {
@@ -2795,7 +2916,7 @@ export default function WorkspacePage() {
   async function handleConfirmBilling() {
     if (credits < billingCost) {
       pushAssistantMessage(
-        isZhContent
+        isZhOutput
           ? `当前积分不足（余额 ${credits}，需要 ${billingCost}）。请先升级后再继续。`
           : `Insufficient credits (balance: ${credits}, required: ${billingCost}). Please upgrade first.`,
         tr("Billing Check", "账单确认"),
@@ -2830,7 +2951,7 @@ export default function WorkspacePage() {
 
     appendCreditRecord({
       type: "consume",
-      description: isZhContent
+      description: isZhOutput
         ? `${selectedProject?.title ?? "生成项目"} · ${
             effectiveIntent === "poster" ? "海报生成" : "分镜生成"
           }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
@@ -2977,58 +3098,6 @@ export default function WorkspacePage() {
       setWeakPromptResolved(true);
     }
 
-    const triageResult = await requestIntentTriage(value);
-    if (triageResult) {
-      setIntentTriageResult(triageResult);
-      if (triageResult.suggestions?.length) {
-        setTopicSuggestionsOverride(
-          sanitizeSuggestionList(triageResult.suggestions.slice(0, 4), triageResult.topic || topic, outputLanguage),
-        );
-      } else {
-        setTopicSuggestionsOverride(null);
-      }
-      if (
-        triageResult.classification === "explicit_direction_intent" &&
-        (triageResult.direction === "video" || triageResult.direction === "ppt" || triageResult.direction === "poster")
-      ) {
-        if (manualIntent !== triageResult.direction) {
-          setManualIntent(triageResult.direction);
-          resetToConfigStage("direction-change");
-        } else if (flowStage === "intent") {
-          setFlowStage("config");
-        }
-        pushAssistantMessage(
-          triageResult.direction === "video"
-            ? tr("Video intent is clear. Please confirm storyboard count and ratio, then click Next.", "已识别为视频需求。请先确认分镜数量和比例，再点击下一步。")
-            : triageResult.direction === "ppt"
-              ? tr("PPT intent is clear. Please confirm slide count and ratio, then click Next.", "已识别为 PPT 需求。请先确认页数和比例，再点击下一步。")
-              : tr("Poster intent is clear. Please confirm poster count and size, then click Next.", "已识别为海报需求。请先确认张数和尺寸，再点击下一步。"),
-          tr("Requirement Check", "需求确认"),
-        );
-        stopThinking();
-        setIsSending(false);
-        return;
-      }
-      if (triageResult.classification === "pure_text_incomplete" || triageResult.classification === "invalid") {
-        pushAssistantMessage(
-          tr(
-            "Your request is still incomplete. Pick one related suggestion below, or type a more specific request.",
-            "你的需求还不够完整。你可以选择下方相关建议，或重新输入更具体的需求。",
-          ),
-          tr("Requirement Check", "需求确认"),
-        );
-        stopThinking();
-        setIsSending(false);
-        return;
-      }
-    }
-
-    if (triageResult?.classification === "pure_text_incomplete" && triageResult.suggestions.length) {
-      setTopicSuggestionsOverride(
-        sanitizeSuggestionList(triageResult.suggestions.slice(0, 4), triageResult.topic || topic, outputLanguage),
-      );
-    }
-
     if (weakPrompt && !hasDirectionHint) {
       if (inputSource === "suggestion") {
         stopThinking();
@@ -3136,7 +3205,7 @@ export default function WorkspacePage() {
               : tr("updated based on your extra requirement", "已按补充要求调整");
         next[cmd.target.index] = {
           ...next[cmd.target.index],
-          focus: isZhContent
+          focus: isZhOutput
             ? `${next[cmd.target.index].focus}（${focusPatch}）`
             : `${next[cmd.target.index].focus} (${focusPatch})`,
         };
@@ -3347,7 +3416,7 @@ export default function WorkspacePage() {
   }, []);
 
   return (
-    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800">
+    <div className="h-dvh overflow-hidden bg-[#f7f7f8] text-zinc-800 workspace-shell">
       <TopBar
         title={projectTitle}
         stageLabel={stageLabel}
@@ -3376,19 +3445,19 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
-      <main className="mx-auto mt-[56px] flex h-[calc(100dvh-56px)] min-h-0 max-w-none flex-col overflow-hidden px-2 pb-1 pt-3 sm:px-3">
+      <main className="workspace-page-scroll mx-auto mt-[56px] flex h-[calc(100dvh-56px)] max-w-none min-h-0 flex-col overflow-y-auto overflow-x-hidden px-2 pb-1 pt-3 sm:px-3 [scrollbar-gutter:stable]">
         <div
-          className={`grid h-full min-h-0 flex-1 gap-2 overflow-hidden ${
+          className={`grid min-h-0 flex-1 gap-2 ${
             hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
           }`}
         >
           <section
             className={`min-h-0 ${
               hasCanvasPanel ? "" : "lg:mx-auto lg:w-full lg:max-w-[980px]"
-            } ${showChatPanelInLayout ? "overflow-hidden" : "hidden"}`}
+            } ${showChatPanelInLayout ? "" : "hidden"}`}
           >
-            <div className="flex h-full min-h-0 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 overflow-hidden pr-1.5 pt-4 lg:pr-1.5">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="min-h-0 flex-1 pr-1.5 pb-36 pt-4 lg:pr-1.5">
                 <ChatPanel
                   outputLanguage={uiLanguage}
                   userPrompt={entryPrompt}
@@ -3398,8 +3467,8 @@ export default function WorkspacePage() {
                   analysisText={analysisText}
                   showDirectionGuide={showDirectionGuide}
                   shouldClarifyIntent={shouldClarifyIntent}
-                  showWeakPromptSuggestions={showWeakPromptSuggestions}
-                  topicSuggestions={topicSuggestionsToShow}
+                  showWeakPromptSuggestions={showDirectionGuide && shouldClarifyIntent && waitingTopicSuggestionConfirm}
+                  topicSuggestions={topicSuggestions}
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
                   lockedTopicSuggestion={lockedTopicSuggestion}
@@ -3468,7 +3537,7 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="z-30 mt-auto shrink-0 pt-2">
+              <div className="sticky bottom-0 z-30 mt-auto pt-2">
                 <div className="pointer-events-none px-2 pb-2 sm:px-3">
                   <div
                     className={`mx-auto ${
@@ -3513,7 +3582,7 @@ export default function WorkspacePage() {
           {showStoryboard && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-full overflow-y-auto overflow-x-hidden lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-full overflow-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">
@@ -3547,7 +3616,7 @@ export default function WorkspacePage() {
           {showPosterCanvas && showCanvasPanelInLayout ? (
             <section
               ref={storyboardPanelRef}
-              className="workspace-canvas-shell relative min-h-0 h-full overflow-y-auto overflow-x-hidden lg:h-full"
+              className="workspace-canvas-shell relative min-h-0 h-full overflow-hidden lg:h-full"
             >
               {isMobileViewport ? (
                 <div className="absolute left-3 top-3 z-20">

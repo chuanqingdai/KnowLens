@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Check, LoaderCircle, Sparkles } from "lucide-react";
 
@@ -80,8 +80,10 @@ function styleCoverCandidates(coverImage?: string) {
     return [];
   }
   const normalized = coverImage.trim();
-  const jpgCandidate = normalized.replace(/\.(png|webp|jpeg)$/i, ".jpg");
-  return Array.from(new Set([jpgCandidate, normalized]));
+  const [path, query = ""] = normalized.split("?");
+  const jpgPath = path.replace(/\.(png|webp|jpeg|jpg)$/i, ".jpg");
+  const finalSrc = query ? `${jpgPath}?${query}` : jpgPath;
+  return [finalSrc];
 }
 
 function StyleCover({ style }: { style: StyleOption }) {
@@ -352,6 +354,10 @@ export function ChatPanel({
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
   const stylePreloadRefs = useRef<Record<string, boolean>>({});
+  const previousCardVisibilityRef = useRef({
+    billingShown: false,
+    draftShown: false,
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -380,21 +386,13 @@ export function ChatPanel({
   const [supportsHoverDescription, setSupportsHoverDescription] = useState(false);
   const [introPhase, setIntroPhase] = useState<"analyzing" | "planning" | "ask">("analyzing");
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const scrollContainerRef = useRef<HTMLElement | null>(null);
   const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(updates), [updates]);
 
-  const scrollToLatestCard = () => {
+  const scrollToLatestCard = useCallback(() => {
     if (typeof window === "undefined") {
       return;
     }
     const run = () => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({
-          top: scrollContainerRef.current.scrollHeight + 120,
-          behavior: "smooth",
-        });
-        return;
-      }
       const doc = document.documentElement;
       const targetTop = Math.max(0, doc.scrollHeight - window.innerHeight + 80);
       window.scrollTo({ top: targetTop, behavior: "smooth" });
@@ -402,7 +400,7 @@ export function ChatPanel({
     window.requestAnimationFrame(run);
     window.setTimeout(run, 160);
     window.setTimeout(run, 420);
-  };
+  }, []);
 
   const handleTopicSuggestionNext = () => {
     onConfirmTopicSuggestion();
@@ -516,24 +514,41 @@ export function ChatPanel({
   const showPersistentDirectionSummary = !showDirectionGuide && Boolean(configConfirmed && selectedIntent);
   const showDirectionCard = showDirectionGuide || Boolean(selectedIntent);
   const showWorkflowSummaryCard = !(showWeakPromptSuggestions && showDirectionGuide) && !topicSuggestionLocked;
-  const resolvedTopicSuggestions = topicSuggestions.length
-    ? topicSuggestions
-    : [
-        "Explain the core concept with one clear mechanism.",
-        "Show one real-world case related to this topic.",
-        "Compare the main types or stages.",
-        "Turn it into a poster, PPT, or video workflow.",
-      ];
   const isDirectionLocked = configConfirmed && !showDirectionGuide;
   const shouldShowDraftConfirmAction = !showStyleStage && !showBillingConfirm && !styleConfirmed;
+  const hasDraftContentCard =
+    Boolean(posterDraft) ||
+    ((intent === "ppt" || intent === "video") && (outlineItems.length > 0 || slideDrafts.length > 0));
   const draftGenerationLoadingActive =
     thinkingState.active &&
     /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
-  const renderUpdateCard = (update: ChatTurn, idx: number) => {
-    if (update.role === "assistant" && update.meta?.kind === "image_error") {
-      return null;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
     }
-    const isErrorCard = update.role === "assistant" && update.meta?.kind === "llm_error";
+    const prev = previousCardVisibilityRef.current;
+    const billingJustShown = showBillingRecord && !prev.billingShown;
+    const draftJustShown = hasDraftContentCard && !prev.draftShown;
+
+    previousCardVisibilityRef.current = {
+      billingShown: showBillingRecord,
+      draftShown: hasDraftContentCard,
+    };
+
+    if (!billingJustShown && !draftJustShown) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      scrollToLatestCard();
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [hasDraftContentCard, scrollToLatestCard, showBillingRecord]);
+  const renderUpdateCard = (update: ChatTurn, idx: number) => {
+    const isErrorCard =
+      update.role === "assistant" &&
+      (update.meta?.kind === "llm_error" || update.meta?.kind === "image_error");
     if (isErrorCard) {
       const isRetrying = Boolean(retryingErrorTurnIds?.[update.id]);
       const errorCode = update.meta?.code?.trim();
@@ -578,10 +593,7 @@ export function ChatPanel({
 
   if (shouldUseEnglishUi) {
     return (
-      <section
-        ref={scrollContainerRef}
-        className="h-full space-y-5 overflow-y-auto px-1 py-4 text-[14px] leading-6 text-zinc-800"
-      >
+      <section className="space-y-5 px-1 py-4 text-[14px] leading-6 text-zinc-800">
         {userPrompt ? (
           <article className="ml-auto w-fit max-w-[78%] rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white">
             {userPrompt}
@@ -597,7 +609,7 @@ export function ChatPanel({
                 : "You continued with manual input. The previous options are now locked and kept for reference."}
             </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {resolvedTopicSuggestions.map((item) => {
+              {topicSuggestions.map((item) => {
                 const active = item === lockedTopicSuggestion;
                 return (
                   <button
@@ -630,12 +642,12 @@ export function ChatPanel({
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
             {showWeakPromptSuggestions ? (
               <div className="px-0.5 py-1">
-                <p className="text-sm font-medium text-zinc-900">Topic-related suggestions</p>
+                <p className="text-sm font-medium text-zinc-900">Need a clearer request</p>
                 <p className="mt-1 text-xs text-zinc-500">
-                  We detected a topic, but the request still needs one clearer direction. Pick one option to continue, or type a new request below.
+                  Your input is still too short for stable generation. Pick one option to continue, or type a new request below to replace these suggestions.
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {resolvedTopicSuggestions.map((item) => (
+                  {topicSuggestions.map((item) => (
                     <button
                       key={`weak-en-${item}`}
                       type="button"
@@ -1017,7 +1029,7 @@ export function ChatPanel({
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
             <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
             <p className="mt-1 text-[11px] leading-5 text-zinc-400">Style selection is confirmed for this generation.</p>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
               {styleOptions.map((style) => {
                 const active = style.id === selectedStyleId;
                 return (
@@ -1068,7 +1080,7 @@ export function ChatPanel({
             <p className="mt-1 text-[11px] leading-5 text-zinc-400">
               Select one style card. Hover each card to preview the visual tone and best-fit use cases.
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
               {styleOptions.map((style) => (
                 <button
                   key={`style-en-${style.id}`}
@@ -1116,7 +1128,7 @@ export function ChatPanel({
                   type="button"
                   disabled={isPlanningStyleStep}
                   onClick={handleStyleNext}
-                  className="inline-flex items-center justify-center gap-2 self-end rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
                 >
                   {isPlanningStyleStep ? (
                     <>
@@ -1173,7 +1185,7 @@ export function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className={`inline-flex items-center justify-center gap-2 self-end rounded-xl px-4 py-2 text-sm font-medium text-white ${
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
                     !canConfirmBilling
                       ? "bg-amber-600 hover:bg-amber-500"
                       : "bg-zinc-900 hover:bg-zinc-700"
@@ -1193,7 +1205,7 @@ export function ChatPanel({
                   )}
                 </button>
               ) : (
-                <span className="inline-flex items-center justify-center self-end rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700">
+                <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
                   Confirmed
                 </span>
               )}
@@ -1206,10 +1218,7 @@ export function ChatPanel({
   }
 
   return (
-    <section
-      ref={scrollContainerRef}
-      className="h-full space-y-5 overflow-y-auto px-1 py-4 text-[14px] leading-6 text-zinc-800"
-    >
+    <section className="space-y-5 px-1 py-4 text-[14px] leading-6 text-zinc-800">
       {userPrompt ? (
         <article className="ml-auto w-fit max-w-[78%] rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white">
           {userPrompt}
@@ -1221,7 +1230,7 @@ export function ChatPanel({
           <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · Topic Selection</div>
           <p className="text-sm leading-6 text-zinc-700">Topic selected and locked for this session:</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {resolvedTopicSuggestions.map((item) => {
+            {topicSuggestions.map((item) => {
               const active = item === lockedTopicSuggestion;
               return (
                 <button
@@ -1457,10 +1466,10 @@ export function ChatPanel({
 
               {showWeakPromptSuggestions ? (
                 <div className="mt-3 px-0.5 py-1">
-                  <p className="text-sm font-medium text-zinc-900">Topic-related suggestions</p>
-                  <p className="mt-1 text-xs text-zinc-500">Pick one to continue with guided next steps, or type a new request to replace them.</p>
+                  <p className="text-sm font-medium text-zinc-900">Try These Topics</p>
+                  <p className="mt-1 text-xs text-zinc-500">Pick one to continue with guided next steps.</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {resolvedTopicSuggestions.map((item) => (
+                    {topicSuggestions.map((item) => (
                       <button
                         key={item}
                         type="button"
@@ -2045,7 +2054,7 @@ export function ChatPanel({
           <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
           <p className="mt-1 text-[11px] leading-5 text-zinc-400">Style selection is confirmed for this generation.</p>
 
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3">
             {styleOptions.map((style) => {
               const active = style.id === selectedStyleId;
               return (
@@ -2064,7 +2073,7 @@ export function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
+                    <div className="relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none">
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2095,7 +2104,7 @@ export function ChatPanel({
             Select one style card. Hover each card to preview the visual tone and best-fit use cases.
           </p>
 
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3">
             {styleOptions.map((style) => (
               <button
                 key={style.id}
@@ -2115,7 +2124,7 @@ export function ChatPanel({
                     <Check size={12} />
                   </span>
                 ) : null}
-                <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
+                  <div className="relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none">
                   <StyleCover style={style} />
                   {supportsHoverDescription ? (
                     <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2144,7 +2153,7 @@ export function ChatPanel({
                 type="button"
                 disabled={isPlanningStyleStep}
                 onClick={handleStyleNext}
-                className="inline-flex items-center justify-center gap-2 self-end rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
               >
                 {isPlanningStyleStep ? (
                   <>
@@ -2203,7 +2212,7 @@ export function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className={`inline-flex items-center justify-center gap-2 self-end rounded-xl px-4 py-2 text-sm font-medium text-white ${
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
                     !canConfirmBilling
                       ? "bg-amber-600 hover:bg-amber-500"
                       : "bg-zinc-900 hover:bg-zinc-700"
@@ -2223,7 +2232,7 @@ export function ChatPanel({
                 )}
               </button>
             ) : (
-              <span className="inline-flex items-center justify-center self-end rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700">
+              <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
                 Confirmed
               </span>
             )}

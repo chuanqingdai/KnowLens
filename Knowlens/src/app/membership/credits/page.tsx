@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, Minus, Plus, RotateCcw, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  getCreditRecords,
-  syncCreditRecordsFromServer,
-  type CreditRecord,
-} from "@/lib/billing";
+import { getCreditRecords, type CreditRecord } from "@/lib/billing";
 
 function formatDate(input: string) {
   return new Date(input).toLocaleString("en-US", {
@@ -26,12 +22,10 @@ function parseModelCreditSummary(description: string) {
   if (en) {
     return { lm: Number(en[1]), image: Number(en[2]) };
   }
-
   const zh = description.match(/语言模型\s*(\d+)\s*积分\s*\+\s*图像模型\s*(\d+)\s*积分/i);
   if (zh) {
     return { lm: Number(zh[1]), image: Number(zh[2]) };
   }
-
   return null;
 }
 
@@ -40,60 +34,26 @@ function simplifyRecordDescription(record: CreditRecord) {
   if (!raw) {
     return "-";
   }
-
   if (record.type !== "consume") {
-    if (/subscription|充值|top[- ]?up/i.test(raw)) {
-      return "Membership top-up";
-    }
-    return raw.length > 48 ? `${raw.slice(0, 48)}...` : raw;
+    return raw;
   }
 
   const isPoster = /poster generation|海报生成/i.test(raw);
   const isStoryboard = /storyboard generation|分镜生成/i.test(raw);
   const creditSummary = parseModelCreditSummary(raw);
 
-  const action = isPoster
-    ? "Poster generation"
-    : isStoryboard
-      ? "Storyboard generation"
-      : "Generation";
-
-  if (!creditSummary) {
-    return action;
+  const action = isPoster ? "Poster generation" : isStoryboard ? "Storyboard generation" : "Generation";
+  if (creditSummary) {
+    return `${action} (LM ${creditSummary.lm} + IMG ${creditSummary.image})`;
   }
-
-  return `${action} (LM ${creditSummary.lm} + IMG ${creditSummary.image})`;
+  return action;
 }
 
 export default function CreditRecordsPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const records = useMemo<CreditRecord[]>(() => {
-    void refreshVersion;
-    return getCreditRecords(currentEmail);
-  }, [currentEmail, refreshVersion]);
-
-  useEffect(() => {
-    if (!currentEmail) {
-      return;
-    }
-    let canceled = false;
-    void syncCreditRecordsFromServer(currentEmail)
-      .then(() => {
-        if (canceled) {
-          return;
-        }
-        setRefreshVersion((prev) => prev + 1);
-      })
-      .catch(() => {
-        // Keep cached records if sync fails.
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [currentEmail]);
+  const records = useMemo<CreditRecord[]>(() => getCreditRecords(currentEmail), [currentEmail]);
 
   const summary = useMemo(() => {
     const income = records.filter((r) => r.delta > 0).reduce((sum, r) => sum + r.delta, 0);
@@ -108,13 +68,7 @@ export default function CreditRecordsPage() {
         <div className="mx-auto flex h-full w-full max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
           <button
             type="button"
-            onClick={() => {
-              if (window.history.length > 1) {
-                router.back();
-                return;
-              }
-              router.push("/app");
-            }}
+            onClick={() => router.push("/membership")}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             <ArrowLeft size={14} />
@@ -156,14 +110,14 @@ export default function CreditRecordsPage() {
           </div>
 
           <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
-            <table className="w-full table-fixed text-left text-sm">
+            <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500">
                 <tr>
                   <th className="px-3 py-2 font-medium">Time</th>
-                  <th className="w-28 px-3 py-2 font-medium">Action</th>
+                  <th className="px-3 py-2 font-medium">Action</th>
                   <th className="px-3 py-2 font-medium">Description</th>
-                  <th className="w-20 px-3 py-2 font-medium">Change</th>
-                  <th className="w-20 px-3 py-2 font-medium">Balance</th>
+                  <th className="px-3 py-2 font-medium">Change</th>
+                  <th className="px-3 py-2 font-medium">Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,20 +142,15 @@ export default function CreditRecordsPage() {
                         </span>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-zinc-700">{simplifyRecordDescription(record)}</td>
                     <td
-                      className="truncate px-3 py-2 text-zinc-700"
-                      title={record.description}
-                    >
-                      {simplifyRecordDescription(record)}
-                    </td>
-                    <td
-                      className={`px-3 py-2 text-right font-medium ${
+                      className={`px-3 py-2 font-medium ${
                         record.delta > 0 ? "text-emerald-700" : "text-red-700"
                       }`}
                     >
                       {record.delta > 0 ? `+${record.delta}` : record.delta}
                     </td>
-                    <td className="px-3 py-2 text-right text-zinc-700">{record.balance}</td>
+                    <td className="px-3 py-2 text-zinc-700">{record.balance}</td>
                   </tr>
                 ))}
               </tbody>

@@ -40,7 +40,7 @@ import { SidebarNav } from "@/components/app-shell/SidebarNav";
 import { getProjectsByUser } from "@/lib/admin";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
-import { getCreditRecords, getSubscriptionByUser, syncCreditRecordsFromServer } from "@/lib/billing";
+import { getCreditRecords, getSubscriptionByUser } from "@/lib/billing";
 import {
   getCaseMetrics,
   incrementCaseView,
@@ -735,7 +735,7 @@ export default function Home() {
     const subscription = getSubscriptionByUser(currentEmail);
     return !!subscription && (subscription.status === "active" || subscription.status === "canceling");
   }, [currentEmail]);
-  const [currentCredits, setCurrentCredits] = useState(80);
+  const currentCredits = useMemo(() => getCreditRecords(currentEmail)[0]?.balance ?? 80, [currentEmail]);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");
@@ -763,52 +763,6 @@ export default function Home() {
   const dragDepthRef = useRef(0);
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
-  const startedWorkspaceNavigationRef = useRef(false);
-  const creditSyncInFlightRef = useRef(false);
-  const creditSyncedEmailRef = useRef("");
-
-  useEffect(() => {
-    if (sessionStatus !== "authenticated" || !currentEmail) {
-      return;
-    }
-    if (creditSyncedEmailRef.current === currentEmail) {
-      return;
-    }
-    if (creditSyncInFlightRef.current) {
-      return;
-    }
-    creditSyncInFlightRef.current = true;
-    let canceled = false;
-    void syncCreditRecordsFromServer(currentEmail)
-      .then((records) => {
-        if (canceled) {
-          return;
-        }
-        const nextBalance =
-          records[0]?.balance ??
-          getCreditRecords(currentEmail)[0]?.balance ??
-          80;
-        setCurrentCredits((prev) => (prev === nextBalance ? prev : nextBalance));
-        creditSyncedEmailRef.current = currentEmail;
-      })
-      .catch(() => {
-        if (canceled) {
-          return;
-        }
-        const fallbackBalance = getCreditRecords(currentEmail)[0]?.balance ?? 80;
-        setCurrentCredits((prev) => (prev === fallbackBalance ? prev : fallbackBalance));
-      })
-      .finally(() => {
-        if (canceled) {
-          return;
-        }
-        creditSyncInFlightRef.current = false;
-      });
-    return () => {
-      canceled = true;
-      creditSyncInFlightRef.current = false;
-    };
-  }, [currentEmail, sessionStatus]);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);
@@ -1518,7 +1472,6 @@ export default function Home() {
     if (isStartingWorkspace) {
       return;
     }
-    startedWorkspaceNavigationRef.current = false;
     setIsStartingWorkspace(true);
     trackAppEvent("generate_click", {
       from: "home",
@@ -1539,9 +1492,9 @@ export default function Home() {
         from: "home",
         model: resolvedTextModel,
       });
-      startedWorkspaceNavigationRef.current = true;
       router.prefetch("/workspace");
       router.push(`/auth?callbackUrl=${encodeURIComponent("/app?intent=generate")}`);
+      setIsStartingWorkspace(false);
       return;
     }
     const hasPremiumRequiredSource = sourceItems.some((item) => sourceItemNeedsPremium(item));
@@ -1594,7 +1547,6 @@ export default function Home() {
         });
         if (response.status >= 500 && typeof window !== "undefined") {
           persistHomeDraft(payload);
-          startedWorkspaceNavigationRef.current = true;
           router.prefetch("/workspace");
           router.push("/workspace");
           return;
@@ -1616,7 +1568,6 @@ export default function Home() {
         model: resolvedTextModel,
         source_count: payload.sources.length,
       });
-      startedWorkspaceNavigationRef.current = true;
       router.prefetch("/workspace");
       router.push("/workspace");
     } catch {
@@ -1628,13 +1579,10 @@ export default function Home() {
         code: "NETWORK_OR_RUNTIME",
         model: resolvedTextModel,
       });
-      startedWorkspaceNavigationRef.current = true;
       router.prefetch("/workspace");
       router.push("/workspace");
     } finally {
-      if (!startedWorkspaceNavigationRef.current) {
-        setIsStartingWorkspace(false);
-      }
+      setIsStartingWorkspace(false);
     }
   }
 
@@ -1749,7 +1697,7 @@ export default function Home() {
       title: formatRecentProjectTitle(project.title, locale, index),
       updatedAt: `Updated ${project.updatedAt}`,
       cover: covers[index % covers.length] || recentProjects[0].cover,
-      format: normalizeFormatLabel(project.format || "Poster"),
+      format: normalizeFormatLabel(project.format || "海报"),
       duration: project.duration,
     }));
   }, [currentEmail, locale]);
@@ -1894,25 +1842,25 @@ export default function Home() {
           <section className="relative z-20 mx-auto flex min-h-[48vh] w-full max-w-3xl flex-col justify-center sm:min-h-[56vh]">
             <div className="mb-6 flex flex-col items-center text-center">
               <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
-              <h1 className="mt-1 text-center text-[clamp(1.3rem,6vw,2.55rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900">
-                <span className="block whitespace-nowrap">AI Infographic</span>
-                <span className="block whitespace-nowrap">Generator for Learning</span>
+              <h1 className="mt-1 max-w-[14ch] text-center text-[clamp(1.55rem,4.15vw,2.45rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900 sm:max-w-none sm:text-[clamp(1.65rem,4.15vw,2.55rem)]">
+                <span className="block sm:inline">AI Infographic</span>{" "}
+                <span className="block sm:inline">Generator for Learning</span>
               </h1>
             </div>
 
-            <div
-              ref={menuLayerRef}
-              className="rounded-[30px] border border-zinc-200 bg-zinc-50 shadow-[0_20px_45px_rgba(15,23,42,0.08)]"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept={supportedUploadAccept}
-                onChange={handleUploadChange}
-                className="hidden"
-              />
-              <label className="block">
+              <div
+                ref={menuLayerRef}
+                className="rounded-[30px] border border-zinc-200 bg-zinc-50 shadow-[0_20px_45px_rgba(15,23,42,0.08)]"
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept={supportedUploadAccept}
+                  onChange={handleUploadChange}
+                  className="hidden"
+                />
+                <label className="block">
                   <span className="sr-only">Creation input</span>
                   <textarea
                     ref={composeRef}
