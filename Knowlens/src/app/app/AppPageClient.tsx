@@ -154,6 +154,12 @@ type HomeDraftPayload = {
   textModel?: string;
   imageModel?: string;
   sources?: Array<Partial<SourceItem>>;
+  project?: {
+    projectId?: string;
+    projectTraceId?: string;
+    projectUserId?: string;
+    projectTitle?: string;
+  };
 };
 
 type WorkspaceStartErrorPayload = {
@@ -946,6 +952,8 @@ export default function Home() {
   useEffect(() => {
     let isActive = true;
     let timer: number | undefined;
+    let retryDelayMs = 2500;
+    let consecutiveFailures = 0;
 
     async function syncJobs() {
       try {
@@ -954,12 +962,16 @@ export default function Home() {
           : "/api/upload/jobs";
         const response = await fetch(url, { cache: "no-store" });
         if (!response.ok) {
+          consecutiveFailures += 1;
+          retryDelayMs = Math.min(15000, 2500 * Math.min(consecutiveFailures + 1, 6));
           return;
         }
         const data = (await response.json()) as { jobs?: UploadJobRecord[] };
         if (!isActive || !Array.isArray(data.jobs)) {
           return;
         }
+        consecutiveFailures = 0;
+        retryDelayMs = 2500;
         const nextJobs = Object.fromEntries(data.jobs.map((job) => [job.id, job]));
         setUploadJobs(nextJobs);
         setSourceItems((prev) =>
@@ -1007,16 +1019,28 @@ export default function Home() {
           }, []),
         );
       } catch {
-        // ignore polling errors
+        consecutiveFailures += 1;
+        retryDelayMs = Math.min(15000, 2500 * Math.min(consecutiveFailures + 1, 6));
       }
     }
 
-    syncJobs();
-    timer = window.setInterval(syncJobs, 2500);
+    const scheduleNext = () => {
+      if (!isActive) {
+        return;
+      }
+      timer = window.setTimeout(async () => {
+        await syncJobs();
+        scheduleNext();
+      }, retryDelayMs);
+    };
+
+    void syncJobs().finally(() => {
+      scheduleNext();
+    });
     return () => {
       isActive = false;
       if (timer) {
-        window.clearInterval(timer);
+        window.clearTimeout(timer);
       }
     };
   }, [currentEmail]);

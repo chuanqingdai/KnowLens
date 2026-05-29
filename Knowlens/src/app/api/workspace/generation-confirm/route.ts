@@ -9,6 +9,8 @@ export const runtime = "nodejs";
 
 type GenerationConfirmPayload = {
   intent?: string;
+  projectId?: string;
+  projectTraceId?: string;
   outputs?: number;
   ratio?: string;
   imageModel?: string;
@@ -123,6 +125,28 @@ function extractTaskIndexFromPayload(task: ImageGenerationTask, fallbackIndex: n
   return fallbackIndex;
 }
 
+function resolveImageFailureStage(code?: string) {
+  const normalized = (code || "").trim().toUpperCase();
+  if (normalized.startsWith("DUOMI_")) {
+    return "image_fallback_duomi";
+  }
+  if (normalized.startsWith("GPTSAPI_")) {
+    return "image_fallback_gptsapi";
+  }
+  if (normalized.startsWith("IMAGE2_")) {
+    return "image_primary_tuzi";
+  }
+  return "image_pipeline";
+}
+
+function normalizeProjectId(value?: string) {
+  return (value || "").trim().slice(0, 120) || null;
+}
+
+function normalizeProjectTraceId(value?: string) {
+  return (value || "").trim().slice(0, 200) || null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!ensureSafeOrigin(request)) {
@@ -170,8 +194,10 @@ export async function POST(request: NextRequest) {
       Number.isFinite(payload.outputs) && Number(payload.outputs) > 0
         ? Math.round(Number(payload.outputs))
         : 0;
+    const projectId = normalizeProjectId(payload.projectId);
+    const projectTraceId = normalizeProjectTraceId(payload.projectTraceId);
     const imageModel = normalizeImageModel(payload.imageModel);
-    const wantsImageProvider = /gpt-image-?2/i.test(imageModel);
+    const wantsImageProvider = taskCount > 0;
 
     if (wantsImageProvider && requestedOutputs > 0 && taskCount === 0) {
       logOpsEvent({
@@ -180,8 +206,13 @@ export async function POST(request: NextRequest) {
         status: "error",
         source: imageModel,
         userEmail: email,
+        projectId,
         code: "GENERATION_TASKS_REQUIRED",
         message: "Generation tasks are required before confirming image generation.",
+        details: {
+          stage: "image_pipeline",
+          projectTraceId,
+        },
       });
       return NextResponse.json(
         {
@@ -209,8 +240,13 @@ export async function POST(request: NextRequest) {
           status: "error",
           source: imageModel,
           userEmail: email,
+          projectId,
           code: "IMAGE_PROVIDER_KEY_MISSING",
           message: "Missing IMAGE2 provider API key.",
+          details: {
+            stage: "image_pipeline",
+            projectTraceId,
+          },
         });
         return NextResponse.json({ error: "Missing IMAGE2 provider API key." }, { status: 500 });
       }
@@ -230,8 +266,14 @@ export async function POST(request: NextRequest) {
             status: "error",
             source: imageModel,
             userEmail: email,
+            projectId,
             code: "EMPTY_GENERATION_PROMPT",
             message: `Empty generation prompt for task ${index}.`,
+            details: {
+              stage: "image_prompt_composition",
+              projectTraceId,
+              taskIndex: index,
+            },
           });
           continue;
         }
@@ -261,13 +303,18 @@ export async function POST(request: NextRequest) {
             status: "error",
             source: imageModel,
             userEmail: email,
+            projectId,
             code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
             message: generated.errorMessage || "Image generation failed.",
             details: {
+              stage: resolveImageFailureStage(generated.errorCode),
+              projectTraceId,
               intent: payload.intent ?? "unknown",
               taskIndex: index,
               ratio: task.aspectRatio || payload?.ratio || null,
               outputType: task.outputType || null,
+              providerDetail: generated.detail || null,
+              providerStatus: generated.status ?? null,
             },
           });
         }
@@ -280,8 +327,10 @@ export async function POST(request: NextRequest) {
           status: "ok",
           source: imageModel,
           userEmail: email,
+          projectId,
           message: `${successCount}/${taskResults.length} tasks succeeded`,
           details: {
+            projectTraceId,
             intent: payload.intent ?? "unknown",
             outputs: requestedOutputs,
             ratio: payload.ratio ?? "",
@@ -316,6 +365,9 @@ export async function POST(request: NextRequest) {
       source: "unknown",
       code: "IMAGE_CONFIRM_INTERNAL",
       message,
+      details: {
+        stage: "image_confirm_internal",
+      },
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }

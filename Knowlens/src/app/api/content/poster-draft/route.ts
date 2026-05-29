@@ -187,6 +187,10 @@ async function requestDraftFromGptsApi(input: {
         ],
       },
     ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.2,
+    },
   };
 
   const response = await fetch(
@@ -447,8 +451,8 @@ function buildFallbackPlanListByLanguage(topic: string, count: number, outputLan
 }
 
 function parseJsonContent(content: string) {
-  try {
-    return JSON.parse(content) as {
+  const parseTypedJson = (raw: string) => {
+    return JSON.parse(raw) as {
       headline?: string;
       subtitle?: string;
       body?: string;
@@ -482,9 +486,82 @@ function parseJsonContent(content: string) {
       slideDrafts?: PptSlideDraft[];
       storyboardDrafts?: VideoStoryboardDraft[];
     };
-  } catch {
-    return null;
+  };
+
+  const unwrapFence = (raw: string) =>
+    raw
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+  const extractJsonSlice = (raw: string) => {
+    const source = raw.trim();
+    const start = source.indexOf("{");
+    if (start < 0) {
+      return "";
+    }
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < source.length; i += 1) {
+      const char = source[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return source.slice(start, i + 1);
+        }
+      }
+    }
+    return "";
+  };
+
+  const candidates = [
+    content.trim(),
+    unwrapFence(content),
+    extractJsonSlice(content),
+    extractJsonSlice(unwrapFence(content)),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      return parseTypedJson(candidate);
+    } catch {
+      // try next candidate
+    }
   }
+
+  const loose = content
+    .replace(/\u201c|\u201d/g, '"')
+    .replace(/\u2018|\u2019/g, "'")
+    .trim();
+  const looseSlice = extractJsonSlice(loose);
+  if (looseSlice) {
+    try {
+      return parseTypedJson(looseSlice);
+    } catch {
+      // fall through
+    }
+  }
+
+  return null;
 }
 
 function normalizeTextItem(value: unknown) {
@@ -855,7 +932,7 @@ export async function POST(request: NextRequest) {
           userEmail: email,
           code: "FREE_MODEL_REQUEST_FAILED",
           message: freeResult.error,
-          details: { direction, outputCount },
+          details: { stage: "draft_model_request_free", direction, outputCount },
         });
         if (direction === "poster") {
           return NextResponse.json(
@@ -882,7 +959,7 @@ export async function POST(request: NextRequest) {
           userEmail: email,
           code: "PAID_MODEL_REQUEST_FAILED",
           message: paidResult.error,
-          details: { direction, outputCount },
+          details: { stage: "draft_model_request_paid", direction, outputCount },
         });
         if (direction === "poster") {
           return NextResponse.json(
@@ -909,7 +986,7 @@ export async function POST(request: NextRequest) {
         userEmail: email,
         code: "DRAFT_EMPTY_RESPONSE",
         message: "Model response is empty.",
-        details: { direction, outputCount },
+        details: { stage: "draft_response_empty", direction, outputCount },
       });
       if (direction === "poster") {
         return NextResponse.json(
@@ -935,7 +1012,12 @@ export async function POST(request: NextRequest) {
         userEmail: email,
         code: "DRAFT_INVALID_JSON",
         message: "Model response is not valid JSON.",
-        details: { direction, outputCount },
+        details: {
+          stage: "draft_response_parsing",
+          direction,
+          outputCount,
+          rawSnippet: content.slice(0, 1200),
+        },
       });
       if (direction !== "poster") {
         return NextResponse.json({ error: "Model response is not valid JSON." }, { status: 502 });

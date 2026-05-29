@@ -62,6 +62,12 @@ type HomeDraftPayload = {
   textModel?: string;
   imageModel?: string;
   sources?: HomeSourceItem[];
+  project?: {
+    projectId?: string;
+    projectTraceId?: string;
+    projectUserId?: string;
+    projectTitle?: string;
+  };
 };
 
 type SlideDraft = {
@@ -209,7 +215,7 @@ const styleCoverFileById: Record<string, string> = {
 
 function styleCoverById(styleId: string) {
   const filename = styleCoverFileById[styleId] ?? styleCoverFileById["clean-science-infographic"];
-  return `/style/${encodeURIComponent(filename)}?v=20260528b`;
+  return `/style/${encodeURIComponent(filename)}?v=20260529a`;
 }
 
 const styleOptions = [
@@ -1335,6 +1341,12 @@ function readHomeDraftPayload() {
     prompt: "",
     sources: [] as HomeSourceItem[],
     models: null as { textModel: string; imageModel: string } | null,
+    project: null as {
+      projectId: string;
+      projectTraceId: string;
+      projectUserId: string;
+      projectTitle: string;
+    } | null,
   };
 
   if (typeof window === "undefined") {
@@ -1383,6 +1395,17 @@ function readHomeDraftPayload() {
               textModel: payload.textModel ?? "gpt-4.1",
             imageModel: payload.imageModel ?? "gpt-image2",
           }
+          : null,
+      project:
+        payload.project &&
+        typeof payload.project === "object" &&
+        (payload.project.projectId || payload.project.projectTraceId)
+          ? {
+              projectId: (payload.project.projectId || "").trim(),
+              projectTraceId: (payload.project.projectTraceId || "").trim(),
+              projectUserId: (payload.project.projectUserId || "").trim(),
+              projectTitle: (payload.project.projectTitle || "").trim(),
+            }
           : null,
     };
     window.localStorage.setItem(WORKSPACE_DRAFT_CACHE_KEY, JSON.stringify(payload));
@@ -1658,6 +1681,7 @@ export default function WorkspacePage() {
   const storyboardPanelRef = useRef<HTMLElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const projectIdRef = useRef<string | null>(null);
+  const projectTraceIdRef = useRef<string | null>(null);
 
   const logClientEvent = useCallback(
     (input: {
@@ -1669,6 +1693,7 @@ export default function WorkspacePage() {
       message?: string;
       details?: unknown;
       projectId?: string | null;
+      projectTraceId?: string | null;
     }) => {
       void fetch("/api/telemetry/client-log", {
         method: "POST",
@@ -1683,12 +1708,26 @@ export default function WorkspacePage() {
           code: input.code,
           message: input.message,
           projectId: input.projectId ?? projectIdRef.current ?? undefined,
-          details: input.details,
+          details: {
+            ...(input.details && typeof input.details === "object"
+              ? (input.details as Record<string, unknown>)
+              : {}),
+            projectTraceId: input.projectTraceId ?? projectTraceIdRef.current ?? undefined,
+          },
         }),
       }).catch(() => undefined);
     },
     [],
   );
+
+  useEffect(() => {
+    if (initialEntry.project?.projectId) {
+      projectIdRef.current = initialEntry.project.projectId;
+    }
+    if (initialEntry.project?.projectTraceId) {
+      projectTraceIdRef.current = initialEntry.project.projectTraceId;
+    }
+  }, [initialEntry.project]);
 
   const openCreditsPaywall = useCallback(() => {
     setCreditsPaywallOpen(true);
@@ -2147,6 +2186,8 @@ export default function WorkspacePage() {
   const buildGenerationRequestPayload = useCallback(
     (tasks: ImageGenerationTask[]) => ({
       intent: effectiveIntent,
+      projectId: projectIdRef.current ?? undefined,
+      projectTraceId: projectTraceIdRef.current ?? undefined,
       outputs: standardOutputCount,
       style: {
         id: selectedStyle.id,
@@ -3204,6 +3245,21 @@ export default function WorkspacePage() {
     const ownerProjects = currentEmail ? getProjectsByUser(currentEmail) : [];
     const imageModel = initialEntry.models?.imageModel || "gpt-image-2";
     const selectedProject =
+      (initialEntry.project?.projectId
+        ? ownerProjects.find((item) => item.id === initialEntry.project?.projectId)
+        : null) ??
+      (initialEntry.project?.projectId
+        ? {
+            id: initialEntry.project.projectId,
+            userId: user?.id || initialEntry.project.projectUserId || "u-unknown",
+            title:
+              initialEntry.project.projectTitle ||
+              `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
+            status: "进行中" as const,
+            updatedAt: new Date().toISOString(),
+            format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
+          }
+        : null) ??
       ownerProjects[0] ??
       (currentEmail
         ? ensureUserProjectByEmail({
@@ -3214,6 +3270,9 @@ export default function WorkspacePage() {
           })
         : getAdminProjects()[0]);
     projectIdRef.current = selectedProject?.id ?? projectIdRef.current;
+    projectTraceIdRef.current =
+      initialEntry.project?.projectTraceId ||
+      (projectIdRef.current && user?.id ? `${user.id}_${projectIdRef.current}` : projectTraceIdRef.current);
 
     appendCreditRecord({
       type: "consume",
@@ -3803,7 +3862,7 @@ export default function WorkspacePage() {
         >
           <section
             className={`min-h-0 ${
-              hasCanvasPanel ? "" : "lg:mx-auto lg:w-full lg:max-w-[980px]"
+              hasCanvasPanel ? "" : "lg:w-full lg:max-w-none"
             } ${showChatPanelInLayout ? "" : "hidden"} workspace-left-shell`}
           >
             <div className="flex h-full min-h-0 flex-col">

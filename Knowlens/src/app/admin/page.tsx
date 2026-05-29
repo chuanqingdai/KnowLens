@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FolderKanban, Search, Users, X, Zap } from "lucide-react";
+import { Copy, Download, FolderKanban, Search, Users, X, Zap } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
 import {
   getAdminProjects,
@@ -76,6 +76,39 @@ function formatDate(input: string) {
   });
 }
 
+function parseDetailsJson(raw: string | null) {
+  if (!raw) {
+    return null as Record<string, unknown> | null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveFailureStage(item: UsageLogRow) {
+  const details = parseDetailsJson(item.detailsJson);
+  const explicitStage = typeof details?.stage === "string" ? details.stage.trim() : "";
+  if (explicitStage) {
+    return explicitStage;
+  }
+  const code = (item.code || "").toUpperCase();
+  if (code.startsWith("DRAFT_INVALID_JSON")) return "draft_response_parsing";
+  if (code.startsWith("FREE_MODEL_REQUEST_FAILED")) return "draft_model_request_free";
+  if (code.startsWith("PAID_MODEL_REQUEST_FAILED")) return "draft_model_request_paid";
+  if (code.startsWith("DUOMI_")) return "image_fallback_duomi";
+  if (code.startsWith("GPTSAPI_")) return "image_fallback_gptsapi";
+  if (code.startsWith("IMAGE2_")) return "image_primary_tuzi";
+  if (item.category === "image") return "image_pipeline";
+  if (item.category === "llm") return "draft_pipeline";
+  return "-";
+}
+
 export default function AdminDashboardPage() {
   const [users] = useState(() => getAdminUsers());
   const [projects] = useState(() => getAdminProjects());
@@ -102,6 +135,11 @@ export default function AdminDashboardPage() {
   const [projectLogsLoading, setProjectLogsLoading] = useState(false);
   const [projectLogsError, setProjectLogsError] = useState("");
   const [projectLogsLastRefresh, setProjectLogsLastRefresh] = useState("");
+  const [usageStatusFilter, setUsageStatusFilter] = useState<"all" | "ok" | "error" | "info">("all");
+  const [usageCategoryFilter, setUsageCategoryFilter] = useState("");
+  const [usageActionFilter, setUsageActionFilter] = useState("");
+  const [expandedUsageLogIds, setExpandedUsageLogIds] = useState<Record<string, boolean>>({});
+  const [adminActionHint, setAdminActionHint] = useState("");
 
   useEffect(() => {
     if (activeTab !== "overview") {
@@ -168,11 +206,35 @@ export default function AdminDashboardPage() {
   const normalizedEmailQuery = emailQuery.trim().toLowerCase();
   const normalizedProjectLogQuery = projectLogQuery.trim().toLowerCase();
 
+  function resetUsageLogsState() {
+    setUsageLogs([]);
+    setUsageLogsError("");
+    setUsageLogsLastRefresh("");
+  }
+
+  function resetProjectLogsState() {
+    setProjectLogs([]);
+    setProjectLogsError("");
+    setProjectLogsLastRefresh("");
+    setProjectLogsLoading(false);
+  }
+
+  function handleEmailQueryChange(value: string) {
+    setEmailQuery(value);
+    if (!value.trim()) {
+      resetUsageLogsState();
+    }
+  }
+
+  function handleProjectLogQueryChange(value: string) {
+    setProjectLogQuery(value);
+    if (!value.trim()) {
+      resetProjectLogsState();
+    }
+  }
+
   useEffect(() => {
     if (!normalizedEmailQuery) {
-      setUsageLogs([]);
-      setUsageLogsError("");
-      setUsageLogsLastRefresh("");
       return;
     }
     let cancelled = false;
@@ -215,10 +277,6 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!normalizedProjectLogQuery) {
-      setProjectLogs([]);
-      setProjectLogsError("");
-      setProjectLogsLastRefresh("");
-      setProjectLogsLoading(false);
       return;
     }
     let cancelled = false;
@@ -268,6 +326,33 @@ export default function AdminDashboardPage() {
     return users.filter((user) => user.email.toLowerCase().includes(normalizedEmailQuery));
   }, [normalizedEmailQuery, users]);
 
+  const usageCategories = useMemo(() => {
+    return Array.from(new Set(usageLogs.map((item) => item.category).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [usageLogs]);
+
+  const usageActions = useMemo(() => {
+    return Array.from(new Set(usageLogs.map((item) => item.action).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [usageLogs]);
+
+  const filteredUsageLogs = useMemo(() => {
+    return usageLogs.filter((item) => {
+      if (usageStatusFilter !== "all" && item.status !== usageStatusFilter) {
+        return false;
+      }
+      if (usageCategoryFilter && item.category !== usageCategoryFilter) {
+        return false;
+      }
+      if (usageActionFilter && item.action !== usageActionFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [usageActionFilter, usageCategoryFilter, usageLogs, usageStatusFilter]);
+
   const sortedProjects = useMemo(() => {
     const parseTime = (value: string) => {
       const normalized = value.replace(" ", "T");
@@ -306,6 +391,35 @@ export default function AdminDashboardPage() {
     }
     return null;
   }, [matchedUsers, normalizedEmailQuery, users]);
+
+  const selectedUserSummary = useMemo(() => {
+    if (!selectedUserForLedger) {
+      return null;
+    }
+    const targetEmail = selectedUserForLedger.email.trim().toLowerCase();
+    const userProjects = projects.filter((project) => {
+      const owner = usersById.get(project.userId);
+      return owner?.email.trim().toLowerCase() === targetEmail;
+    });
+    const latestProjectAt = userProjects
+      .map((item) => item.updatedAt)
+      .sort((a, b) => b.localeCompare(a))[0];
+    const userLogs = usageLogs.filter(
+      (item) => item.userEmail?.trim().toLowerCase() === targetEmail,
+    );
+    const errorCount = userLogs.filter((item) => item.status === "error").length;
+    const latestLogAt = userLogs.map((item) => item.createdAt).sort((a, b) => b.localeCompare(a))[0];
+    const currentBalance = getCreditRecords(targetEmail)[0]?.balance ?? selectedUserForLedger.credits;
+    return {
+      plan: selectedUserForLedger.plan,
+      role: selectedUserForLedger.role,
+      projectCount: userProjects.length,
+      currentBalance,
+      latestProjectAt: latestProjectAt ?? null,
+      errorCount,
+      latestLogAt: latestLogAt ?? null,
+    };
+  }, [projects, selectedUserForLedger, usageLogs, usersById]);
 
   const selectedUserLedger = useMemo(() => {
     if (!selectedUserForLedger) {
@@ -386,6 +500,86 @@ export default function AdminDashboardPage() {
     { id: "featured", label: "优秀案例配置", desc: "配置首页优秀案例的分类与排序" },
   ];
 
+  function clearLogFilters() {
+    setUsageStatusFilter("all");
+    setUsageCategoryFilter("");
+    setUsageActionFilter("");
+  }
+
+  function handleToggleUsageDetails(logId: string) {
+    setExpandedUsageLogIds((prev) => ({
+      ...prev,
+      [logId]: !prev[logId],
+    }));
+  }
+
+  async function handleCopyText(value: string, hint: string) {
+    if (!value.trim()) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setAdminActionHint(hint);
+    } catch {
+      setAdminActionHint("复制失败，请检查浏览器剪贴板权限");
+    }
+  }
+
+  function handleExportUsageLogs() {
+    const payload = filteredUsageLogs.map((item) => ({
+      id: item.id,
+      createdAt: item.createdAt,
+      userEmail: item.userEmail,
+      projectId: item.projectId,
+      category: item.category,
+      action: item.action,
+      status: item.status,
+      source: item.source,
+      code: item.code,
+      message: item.message,
+      detailsJson: item.detailsJson,
+    }));
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const emailSegment = normalizedEmailQuery ? normalizedEmailQuery.replace(/[^a-z0-9._-]+/gi, "_") : "all-users";
+    link.href = url;
+    link.download = `knowlens-usage-logs-${emailSegment}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setAdminActionHint("日志导出完成");
+  }
+
+  async function handleDownloadServerLogsByEmail() {
+    if (!normalizedEmailQuery) {
+      setAdminActionHint("请先输入邮箱后再下载服务端日志");
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/admin/logs/download?userEmail=${encodeURIComponent(normalizedEmailQuery)}&format=jsonl&limit=2000`,
+      );
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "服务端日志下载失败");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `knowlens-server-logs-${normalizedEmailQuery.replace(/[^a-z0-9._-]+/gi, "_")}.jsonl`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setAdminActionHint("服务端日志下载完成");
+    } catch (error) {
+      setAdminActionHint(error instanceof Error ? error.message : "服务端日志下载失败");
+    }
+  }
+
   function handleAddFeaturedCase() {
     const projectId = featuredProjectId.trim();
     if (!projectId) {
@@ -451,6 +645,348 @@ export default function AdminDashboardPage() {
 
       {activeTab === "overview" ? (
         <div className="mt-4 space-y-4">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">用户日志查询入口</h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  输入邮箱后查询该用户日志；支持筛选、详情展开、复制和导出。
+                </p>
+              </div>
+              <div className="relative w-full sm:max-w-md">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                />
+                <input
+                  value={emailQuery}
+                  onChange={(event) => handleEmailQueryChange(event.target.value)}
+                  placeholder="输入邮箱，例如 lin@example.com"
+                  className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+                {emailQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => handleEmailQueryChange("")}
+                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 transition hover:bg-zinc-100"
+                    aria-label="清空邮箱筛选"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {normalizedEmailQuery ? (
+              <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                匹配用户：
+                {matchedUsers.length > 0
+                  ? matchedUsers.map((user) => user.email).join("，")
+                  : "未找到对应邮箱用户"}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">请输入邮箱开始查询</p>
+            )}
+
+            {selectedUserForLedger && selectedUserSummary ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <p className="text-xs text-zinc-500">用户</p>
+                  <p className="mt-1 text-sm font-medium text-zinc-900">{selectedUserForLedger.email}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{selectedUserForLedger.name}</p>
+                </article>
+                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <p className="text-xs text-zinc-500">角色 / 计划</p>
+                  <p className="mt-1 text-sm font-medium text-zinc-900">
+                    {selectedUserSummary.role} / {selectedUserSummary.plan}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">当前积分 {selectedUserSummary.currentBalance}</p>
+                </article>
+                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <p className="text-xs text-zinc-500">项目总数</p>
+                  <p className="mt-1 text-xl font-semibold text-zinc-900">{selectedUserSummary.projectCount}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    最近项目更新：{selectedUserSummary.latestProjectAt ?? "-"}
+                  </p>
+                </article>
+                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <p className="text-xs text-zinc-500">日志报错数量</p>
+                  <p className="mt-1 text-xl font-semibold text-rose-600">{selectedUserSummary.errorCount}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    最近活跃：{selectedUserSummary.latestLogAt ? formatDate(selectedUserSummary.latestLogAt) : "-"}
+                  </p>
+                </article>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">用户使用日志</h2>
+                <p className="mt-1 text-xs text-zinc-500">按邮箱查看日志，并可按状态/分类/动作筛选。</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={clearLogFilters}
+                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                >
+                  清空筛选
+                </button>
+                <button
+                  type="button"
+                  disabled={!filteredUsageLogs.length}
+                  onClick={handleExportUsageLogs}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Download size={12} />
+                  导出 JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsageStatusFilter("error");
+                    setUsageCategoryFilter("llm");
+                    setUsageActionFilter("draft_generation_failed");
+                  }}
+                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                >
+                  LLM 失败
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsageStatusFilter("error");
+                    setUsageCategoryFilter("image");
+                    setUsageActionFilter("image_generation_failed");
+                  }}
+                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                >
+                  Image2 失败
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleDownloadServerLogsByEmail();
+                  }}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                >
+                  <Download size={12} />
+                  下载服务端日志
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              <select
+                value={usageStatusFilter}
+                onChange={(event) => setUsageStatusFilter(event.target.value as "all" | "ok" | "error" | "info")}
+                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="all">状态：全部</option>
+                <option value="ok">状态：ok</option>
+                <option value="error">状态：error</option>
+                <option value="info">状态：info</option>
+              </select>
+              <select
+                value={usageCategoryFilter}
+                onChange={(event) => setUsageCategoryFilter(event.target.value)}
+                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="">分类：全部</option>
+                {usageCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={usageActionFilter}
+                onChange={(event) => setUsageActionFilter(event.target.value)}
+                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="">动作：全部</option>
+                {usageActions.map((action) => (
+                  <option key={action} value={action}>
+                    {action}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {adminActionHint ? (
+              <p className="mt-2 text-xs text-zinc-500">{adminActionHint}</p>
+            ) : null}
+            {usageLogsLastRefresh ? (
+              <p className="mt-2 text-xs text-zinc-500">最后刷新：{formatDate(usageLogsLastRefresh)}</p>
+            ) : null}
+            {usageLogsLoading ? (
+              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
+            ) : usageLogsError ? (
+              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {usageLogsError}
+              </p>
+            ) : !normalizedEmailQuery ? (
+              <p className="mt-3 text-sm text-zinc-500">请输入邮箱后查看日志</p>
+            ) : !filteredUsageLogs.length ? (
+              <p className="mt-3 text-sm text-zinc-500">当前筛选条件下暂无日志</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs text-zinc-500">
+                    <tr>
+                      <th className="px-2 py-1.5 font-medium">时间</th>
+                      <th className="px-2 py-1.5 font-medium">分类</th>
+                      <th className="px-2 py-1.5 font-medium">动作</th>
+                      <th className="px-2 py-1.5 font-medium">失败环节</th>
+                      <th className="px-2 py-1.5 font-medium">状态</th>
+                      <th className="px-2 py-1.5 font-medium">来源</th>
+                      <th className="px-2 py-1.5 font-medium">错误码</th>
+                      <th className="px-2 py-1.5 font-medium">消息</th>
+                      <th className="px-2 py-1.5 font-medium">项目</th>
+                      <th className="px-2 py-1.5 font-medium">详情</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsageLogs.map((item) => {
+                      const expanded = Boolean(expandedUsageLogIds[item.id]);
+                      return (
+                        <tr key={item.id} className="border-t border-zinc-100 align-top">
+                          <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">{formatDate(item.createdAt)}</td>
+                          <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
+                          <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
+                          <td className="px-2 py-1.5 text-xs text-zinc-500">{resolveFailureStage(item)}</td>
+                          <td className={`px-2 py-1.5 text-xs font-medium ${
+                            item.status === "error" ? "text-rose-600" : item.status === "ok" ? "text-emerald-600" : "text-zinc-500"
+                          }`}>{item.status}</td>
+                          <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
+                          <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
+                          <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
+                          <td className="px-2 py-1.5 text-xs text-zinc-500">{item.projectId ?? "-"}</td>
+                          <td className="px-2 py-1.5 text-xs text-zinc-500">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleUsageDetails(item.id)}
+                                className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100"
+                              >
+                                {expanded ? "收起" : "展开"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!item.detailsJson}
+                                onClick={() => {
+                                  void handleCopyText(item.detailsJson ?? "", "日志详情已复制");
+                                }}
+                                className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+                              >
+                                <Copy size={10} />
+                              </button>
+                            </div>
+                            {expanded ? (
+                              <pre className="mt-1 max-w-[320px] whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-1.5 text-[11px] leading-4 text-zinc-600">
+                                {item.detailsJson ?? "-"}
+                              </pre>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">项目日志直查</h2>
+                <p className="mt-1 text-xs text-zinc-500">作为第二入口，按 projectId 定位单个项目链路。</p>
+              </div>
+              <div className="relative w-full sm:max-w-md">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                />
+                <input
+                  value={projectLogQuery}
+                  onChange={(event) => handleProjectLogQueryChange(event.target.value)}
+                  placeholder="输入 projectId，例如 p-admin-001"
+                  className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+                {projectLogQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => handleProjectLogQueryChange("")}
+                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 transition hover:bg-zinc-100"
+                    aria-label="清空项目筛选"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {projectLogsLastRefresh ? (
+              <p className="mt-2 text-xs text-zinc-500">最后刷新：{formatDate(projectLogsLastRefresh)}</p>
+            ) : null}
+            {projectLogsLoading ? (
+              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
+            ) : projectLogsError ? (
+              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {projectLogsError}
+              </p>
+            ) : !normalizedProjectLogQuery ? (
+              <p className="mt-3 text-sm text-zinc-500">请输入项目 ID 后查看日志</p>
+            ) : !projectLogs.length ? (
+              <p className="mt-3 text-sm text-zinc-500">暂无项目日志</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs text-zinc-500">
+                    <tr>
+                      <th className="px-2 py-1.5 font-medium">时间</th>
+                      <th className="px-2 py-1.5 font-medium">分类</th>
+                      <th className="px-2 py-1.5 font-medium">动作</th>
+                      <th className="px-2 py-1.5 font-medium">状态</th>
+                      <th className="px-2 py-1.5 font-medium">来源</th>
+                      <th className="px-2 py-1.5 font-medium">错误码</th>
+                      <th className="px-2 py-1.5 font-medium">消息</th>
+                      <th className="px-2 py-1.5 font-medium">详情</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectLogs.map((item) => (
+                      <tr key={item.id} className="border-t border-zinc-100 align-top">
+                        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">
+                          {formatDate(item.createdAt)}
+                        </td>
+                        <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
+                        <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
+                        <td
+                          className={`px-2 py-1.5 text-xs font-medium ${
+                            item.status === "error"
+                              ? "text-rose-600"
+                              : item.status === "ok"
+                                ? "text-emerald-600"
+                                : "text-zinc-500"
+                          }`}
+                        >
+                          {item.status}
+                        </td>
+                        <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
+                        <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
+                        <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
+                        <td className="max-w-[320px] whitespace-pre-wrap px-2 py-1.5 text-xs text-zinc-500">
+                          {item.detailsJson ?? "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
               <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-700">
@@ -784,63 +1320,9 @@ export default function AdminDashboardPage() {
           </section>
 
           <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">使用日志</h2>
-                <p className="mt-1 text-xs text-zinc-500">输入邮箱后查看该用户的输入、对话、项目、积分和接口日志。</p>
-              </div>
-              {usageLogsLastRefresh ? (
-                <p className="text-xs text-zinc-500">最后刷新：{formatDate(usageLogsLastRefresh)}</p>
-              ) : null}
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-600">
+              使用日志入口已迁移至「总览」首屏，便于管理员先按邮箱定位用户，再继续看项目与积分。
             </div>
-            {usageLogsLoading ? (
-              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
-            ) : usageLogsError ? (
-              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {usageLogsError}
-              </p>
-            ) : !normalizedEmailQuery ? (
-              <p className="mt-3 text-sm text-zinc-500">请输入邮箱后查看日志</p>
-            ) : !usageLogs.length ? (
-              <p className="mt-3 text-sm text-zinc-500">暂无日志</p>
-            ) : (
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs text-zinc-500">
-                    <tr>
-                      <th className="px-2 py-1.5 font-medium">时间</th>
-                      <th className="px-2 py-1.5 font-medium">分类</th>
-                      <th className="px-2 py-1.5 font-medium">动作</th>
-                      <th className="px-2 py-1.5 font-medium">状态</th>
-                      <th className="px-2 py-1.5 font-medium">来源</th>
-                      <th className="px-2 py-1.5 font-medium">错误码</th>
-                      <th className="px-2 py-1.5 font-medium">消息</th>
-                      <th className="px-2 py-1.5 font-medium">项目</th>
-                      <th className="px-2 py-1.5 font-medium">详情</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usageLogs.map((item) => (
-                      <tr key={item.id} className="border-t border-zinc-100 align-top">
-                        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">{formatDate(item.createdAt)}</td>
-                        <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
-                        <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
-                        <td className={`px-2 py-1.5 text-xs font-medium ${
-                          item.status === "error" ? "text-rose-600" : item.status === "ok" ? "text-emerald-600" : "text-zinc-500"
-                        }`}>{item.status}</td>
-                        <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
-                        <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
-                        <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
-                        <td className="px-2 py-1.5 text-xs text-zinc-500">{item.projectId ?? "-"}</td>
-                        <td className="max-w-[320px] whitespace-pre-wrap px-2 py-1.5 text-xs text-zinc-500">
-                          {item.detailsJson ?? "-"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
             {projectLogsLastRefresh || projectLogsLoading || projectLogsError || normalizedProjectLogQuery ? (
               <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { getDb } from "./db";
 
 type RateLimitResult = {
@@ -30,6 +32,20 @@ type OpsEventInput = {
   userEmail?: string;
   projectId?: string;
   details?: unknown;
+};
+
+export type OpsEventRow = {
+  id: string;
+  category: string;
+  action: string;
+  status: OpsEventStatus;
+  source: string | null;
+  code: string | null;
+  message: string | null;
+  userEmail: string | null;
+  projectId: string | null;
+  detailsJson: string | null;
+  createdAt: string;
 };
 
 function nowIso() {
@@ -547,6 +563,90 @@ function stringifyDetails(details: unknown) {
   }
 }
 
+function getOpsLogDir() {
+  const configured = (process.env.OPS_LOG_DIR || "").trim();
+  if (configured) {
+    return configured;
+  }
+  if (process.env.NODE_ENV === "production") {
+    return "/tmp/knowlens-ops-logs";
+  }
+  return path.join(process.cwd(), "runtime-logs", "ops-events");
+}
+
+function sanitizeFilePart(input: string) {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9@._-]+/g, "_")
+    .slice(0, 180);
+}
+
+function buildUserLogFilePath(userEmail?: string | null) {
+  const safeEmail = sanitizeFilePart(userEmail || "anonymous");
+  return path.join(getOpsLogDir(), "users", `${safeEmail}.jsonl`);
+}
+
+function appendOpsEventFileRow(input: {
+  id: string;
+  category: string;
+  action: string;
+  status: OpsEventStatus;
+  source: string | null;
+  code: string | null;
+  message: string | null;
+  userEmail: string | null;
+  projectId: string | null;
+  details: unknown;
+  createdAt: string;
+}) {
+  try {
+    const row = {
+      id: input.id,
+      ts: input.createdAt,
+      category: input.category,
+      action: input.action,
+      status: input.status,
+      source: input.source,
+      code: input.code,
+      message: input.message,
+      userEmail: input.userEmail,
+      projectId: input.projectId,
+      details: input.details,
+    };
+    const text = `${JSON.stringify(row)}\n`;
+    const allFile = path.join(getOpsLogDir(), "all-events.jsonl");
+    const userFile = buildUserLogFilePath(input.userEmail);
+    mkdirSync(path.dirname(allFile), { recursive: true });
+    mkdirSync(path.dirname(userFile), { recursive: true });
+    appendFileSync(allFile, text, "utf8");
+    appendFileSync(userFile, text, "utf8");
+  } catch {
+    // keep telemetry best-effort only
+  }
+}
+
+export function readOpsLogFileByUserEmail(userEmail: string, limit = 2000) {
+  const targetEmail = userEmail.trim().toLowerCase();
+  if (!targetEmail) {
+    return { path: "", lines: [] as string[] };
+  }
+  const filePath = buildUserLogFilePath(targetEmail);
+  if (!existsSync(filePath)) {
+    return { path: filePath, lines: [] as string[] };
+  }
+  const raw = readFileSync(filePath, "utf8");
+  const rows = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const safeLimit = Math.max(1, Math.min(5000, Math.round(limit)));
+  return {
+    path: filePath,
+    lines: rows.slice(-safeLimit),
+  };
+}
+
 export function logOpsEvent(input: OpsEventInput) {
   try {
     const { db } = getDb();
@@ -560,6 +660,7 @@ export function logOpsEvent(input: OpsEventInput) {
     const userEmail = clampText(input.userEmail, 160).toLowerCase() || null;
     const projectId = clampText(input.projectId, 120) || null;
     const detailsJson = stringifyDetails(input.details);
+    const createdAt = nowIso();
     db.prepare(
       `INSERT INTO ops_events (id, category, action, status, source, code, message, user_email, project_id, details_json, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -574,8 +675,21 @@ export function logOpsEvent(input: OpsEventInput) {
       userEmail,
       projectId,
       detailsJson,
-      nowIso(),
+      createdAt,
     );
+    appendOpsEventFileRow({
+      id,
+      category,
+      action,
+      status,
+      source,
+      code,
+      message,
+      userEmail,
+      projectId,
+      details: input.details,
+      createdAt,
+    });
     return id;
   } catch {
     return null;
@@ -702,4 +816,73 @@ export function getAdminOpsSummary(input?: { errorLimit?: number; checkoutDays?:
     },
     checkout: checkoutStats,
   };
+}
+
+export function listOpsEvents(input?: {
+  userEmail?: string;
+  projectId?: string;
+  category?: string;
+  action?: string;
+  status?: string;
+  source?: string;
+  code?: string;
+  limit?: number;
+}) {
+  const { db } = getDb();
+  const filters: string[] = [];
+  const params: Array<string | number> = [];
+
+  const pushFilter = (column: string, value?: string) => {
+    const normalized = clampText(value, 160);
+    if (!normalized) {
+      return;
+    }
+    filters.push(`${column} LIKE ?`);
+    params.push(`%${normalized.toLowerCase()}%`);
+  };
+
+  pushFilter("LOWER(COALESCE(user_email, ''))", input?.userEmail);
+  pushFilter("LOWER(COALESCE(project_id, ''))", input?.projectId);
+  pushFilter("LOWER(COALESCE(category, ''))", input?.category);
+  pushFilter("LOWER(COALESCE(action, ''))", input?.action);
+  pushFilter("LOWER(COALESCE(status, ''))", input?.status);
+  pushFilter("LOWER(COALESCE(source, ''))", input?.source);
+  pushFilter("LOWER(COALESCE(code, ''))", input?.code);
+
+  const limit = Math.min(500, Math.max(1, Math.round(input?.limit ?? 120)));
+  const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const rows = db
+    .prepare(
+      `SELECT
+         id,
+         category,
+         action,
+         status,
+         source,
+         code,
+         message,
+         user_email as userEmail,
+         project_id as projectId,
+         details_json as detailsJson,
+         created_at as createdAt
+       FROM ops_events
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: String(row.id ?? ""),
+    category: String(row.category ?? ""),
+    action: String(row.action ?? ""),
+    status: (String(row.status ?? "info") || "info") as OpsEventStatus,
+    source: row.source ? String(row.source) : null,
+    code: row.code ? String(row.code) : null,
+    message: row.message ? String(row.message) : null,
+    userEmail: row.userEmail ? String(row.userEmail) : null,
+    projectId: row.projectId ? String(row.projectId) : null,
+    detailsJson: row.detailsJson ? String(row.detailsJson) : null,
+    createdAt: String(row.createdAt ?? ""),
+  })) satisfies OpsEventRow[];
 }

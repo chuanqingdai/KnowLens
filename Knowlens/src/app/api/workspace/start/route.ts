@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { rateLimitOrThrow } from "@/lib/server/rate-limit";
 import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 import { incrementAndCheckUsageLimit } from "@/lib/server/guard";
+import { logOpsEvent, saveProject, upsertUser } from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,12 @@ type WorkspaceStartPayload = {
     excerpt?: string;
     contentText?: string;
   }>;
+  project?: {
+    projectId?: string;
+    projectTraceId?: string;
+    projectUserId?: string;
+    projectTitle?: string;
+  };
 };
 
 function parseIntEnv(name: string, fallback: number) {
@@ -36,6 +44,18 @@ function parseIntEnv(name: string, fallback: number) {
 
 function safeTrim(input: string | undefined, max = 2000) {
   return (input ?? "").trim().slice(0, max);
+}
+
+function buildProjectTitle(input: { prompt: string; sources: Array<{ name: string }> }) {
+  const prompt = input.prompt.trim();
+  if (prompt) {
+    return prompt.slice(0, 48);
+  }
+  const sourceName = input.sources[0]?.name?.trim();
+  if (sourceName) {
+    return `${sourceName.slice(0, 36)} · Workspace Draft`;
+  }
+  return "Workspace Draft";
 }
 
 function getScopeFromRequest(req: NextRequest, email: string) {
@@ -122,6 +142,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userId = upsertUser({
+      email,
+      name: session?.user?.name?.trim() || email.split("@")[0] || "User",
+      role: "user",
+    });
+    const projectRawId = `p-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const projectTraceId = `${userId}_${projectRawId}`;
+    const projectTitle = buildProjectTitle({
+      prompt: normalizedPrompt,
+      sources: normalizedSources.map((item) => ({ name: item.name })),
+    });
+    saveProject({
+      id: projectRawId,
+      userEmail: email,
+      title: projectTitle,
+      status: "进行中",
+      updatedAt: new Date().toISOString(),
+    });
+    logOpsEvent({
+      category: "project",
+      action: "workspace_project_started",
+      status: "ok",
+      source: "app_home",
+      userEmail: email,
+      projectId: projectRawId,
+      message: "Workspace project initialized from home generate flow.",
+      details: {
+        projectTraceId,
+        projectUserId: userId,
+        hasPrompt: Boolean(normalizedPrompt),
+        sourceCount: normalizedSources.length,
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       payload: {
@@ -129,6 +183,12 @@ export async function POST(request: NextRequest) {
         textModel: safeTrim(payload.textModel, 40),
         imageModel: safeTrim(payload.imageModel, 40),
         sources: normalizedSources,
+        project: {
+          projectId: projectRawId,
+          projectTraceId,
+          projectUserId: userId,
+          projectTitle,
+        },
       },
     });
   } catch (error) {
