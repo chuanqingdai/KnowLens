@@ -935,3 +935,47 @@ export function listOpsEvents(input?: {
     createdAt: String(row.createdAt ?? ""),
   })) satisfies OpsEventRow[];
 }
+
+export function saveGenerationImage(input: {
+  projectId: string;
+  taskIndex: number;
+  imageUrl: string;
+  rawImageUrl?: string;
+  provider?: string;
+}) {
+  const { db } = getDb();
+  const id = `gimg-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO generation_images (id, project_id, task_index, image_url, raw_image_url, provider, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(project_id, task_index) DO UPDATE SET
+       image_url = excluded.image_url,
+       raw_image_url = excluded.raw_image_url,
+       provider = excluded.provider,
+       created_at = excluded.created_at`,
+  ).run(
+    id,
+    input.projectId,
+    input.taskIndex,
+    input.imageUrl,
+    input.rawImageUrl ?? input.imageUrl,
+    input.provider ?? null,
+    nowIso(),
+  );
+  return id;
+}
+
+export function listGenerationImagesByProject(projectId: string) {
+  const { db } = getDb();
+  return db
+    .prepare(
+      "SELECT task_index, image_url, raw_image_url, provider, created_at FROM generation_images WHERE project_id = ? ORDER BY task_index ASC",
+    )
+    .all(projectId) as Array<{
+    task_index: number;
+    image_url: string;
+    raw_image_url: string | null;
+    provider: string | null;
+    created_at: string;
+  }>;
+}

@@ -1600,6 +1600,41 @@ export default function WorkspacePage() {
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
+  useEffect(() => {
+    const projectId = projectIdRef.current;
+    if (!projectId) {
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/workspace/generation-images?projectId=${encodeURIComponent(projectId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.images?.length) {
+          return;
+        }
+        setGenerationTaskStateByIndex((prev) => {
+          const next = { ...prev };
+          for (const img of data.images) {
+            const idx = img.taskIndex;
+            if (next[idx]?.status === "success" || next[idx]?.status === "generating") {
+              continue;
+            }
+            next[idx] = {
+              index: idx,
+              status: "success",
+              attempts: 1,
+              maxAttempts: 3,
+              imageUrl: img.imageUrl,
+              startedAt: new Date(img.createdAt).getTime(),
+              lastUpdatedAt: Date.now(),
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);

@@ -1216,101 +1216,63 @@ export async function requestImage2Generation(
   });
   const primaryIsDuomi = isDuomiGenerationsEndpoint(config.endpoint);
   const primaryIsGptsApi = /gptsapi\.net/i.test(config.endpoint);
-  const chain: Array<{
-    name: "tuzi" | "duomi" | "gptsapi";
-    run: () => Promise<Image2ProviderResult>;
-  }> = [];
+
+  let run: (() => Promise<Image2ProviderResult>) | null = null;
+  let providerName: "tuzi" | "duomi" | "gptsapi" = "tuzi";
 
   if (config.endpoint) {
     if (primaryIsDuomi) {
-      chain.push({
-        name: "duomi",
-        run: () =>
-          requestDuomiFallbackGeneration(
-            {
-              endpoint: config.endpoint,
-              apiKey: config.apiKey,
-              model: config.model,
-            },
-            {
-              prompt: input.prompt,
-              aspectRatio: fallbackAspectRatio,
-            },
-          ),
-      });
+      providerName = "duomi";
+      run = () =>
+        requestDuomiFallbackGeneration(
+          {
+            endpoint: config.endpoint,
+            apiKey: config.apiKey,
+            model: config.model,
+          },
+          { prompt: input.prompt, aspectRatio: fallbackAspectRatio },
+        );
     } else if (primaryIsGptsApi) {
-      chain.push({
-        name: "gptsapi",
-        run: () =>
-          requestGptsApiFallbackGeneration(
-            config.fallbackProvider ?? {
-              endpoint: config.endpoint,
-              apiKey: config.apiKey,
-              model: config.model,
-              resolution: "1K",
-            },
-            {
-              prompt: input.prompt,
-              aspectRatio: fallbackAspectRatio,
-            },
-          ),
-      });
+      providerName = "gptsapi";
+      run = () =>
+        requestGptsApiFallbackGeneration(
+          config.fallbackProvider ?? {
+            endpoint: config.endpoint,
+            apiKey: config.apiKey,
+            model: config.model,
+            resolution: "1K",
+          },
+          { prompt: input.prompt, aspectRatio: fallbackAspectRatio },
+        );
     } else {
-      chain.push({
-        name: "tuzi",
-        run: () => requestPrimaryImage2Generation(config, input),
-      });
+      providerName = "tuzi";
+      run = () => requestPrimaryImage2Generation(config, input);
     }
   }
 
-  if (!primaryIsDuomi && config.duomiProvider) {
-    chain.push({
-      name: "duomi",
-      run: () =>
-        requestDuomiFallbackGeneration(config.duomiProvider as Image2AsyncProviderConfig, {
-          prompt: input.prompt,
-          aspectRatio: fallbackAspectRatio,
-        }),
-    });
-  }
-
-  if (!primaryIsGptsApi && config.fallbackProvider) {
-    chain.push({
-      name: "gptsapi",
-      run: () =>
-        requestGptsApiFallbackGeneration(config.fallbackProvider as Image2FallbackProviderConfig, {
-          prompt: input.prompt,
-          aspectRatio: fallbackAspectRatio,
-        }),
-    });
-  }
-
-  let lastFailure: Image2ProviderFailure | null = null;
-  for (const step of chain) {
-    const result = await step.run();
-    if (result.ok) {
-      if (step.name === "tuzi") {
-        markPrimarySuccess();
-      }
-      return result;
-    }
-
-    const detailParts = [result.detail, `provider=${step.name}`];
-    lastFailure = {
-      ...result,
-      detail: detailParts.filter(Boolean).join(" | "),
+  if (!run) {
+    return {
+      ok: false,
+      errorCode: "IMAGE2_NO_PROVIDER",
+      errorMessage: "No image provider configured.",
     };
+  }
 
-    if (step.name === "tuzi") {
+  const result = await run();
+  if (result.ok) {
+    if (providerName === "tuzi") {
+      markPrimarySuccess();
+    }
+  } else {
+    if (providerName === "tuzi") {
       markPrimaryFailure();
     }
+    return {
+      ...result,
+      detail: [result.detail, `provider=${providerName}`].filter(Boolean).join(" | "),
+    };
   }
-
-  return lastFailure || {
-    ok: false,
-    errorCode: "IMAGE2_UNKNOWN",
-    errorMessage: "Image provider request failed.",
-  };
+  return result;
 }
 
 export function buildImage2ProviderConfig(choice: Image2ProviderChoice = "auto"): Image2ProviderConfig | null {

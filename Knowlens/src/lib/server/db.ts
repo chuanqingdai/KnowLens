@@ -227,6 +227,22 @@ function createTables(db: DatabaseSync) {
       }
     }
   }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS generation_images (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      task_index INTEGER NOT NULL,
+      image_url TEXT NOT NULL,
+      raw_image_url TEXT,
+      provider TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(project_id, task_index)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_generation_images_project_id
+      ON generation_images(project_id);
+  `);
 }
 
 export function getDb() {

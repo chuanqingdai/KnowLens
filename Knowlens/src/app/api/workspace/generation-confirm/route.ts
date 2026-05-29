@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { incrementUsageCounter } from "@/lib/server/guard";
-import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
+import { getLatestSubscriptionDb, logOpsEvent, saveGenerationImage } from "@/lib/server/store";
 import { buildImage2ProviderConfig, requestImage2Generation, resolveImage2Size } from "@/lib/server/image2";
 
 export const runtime = "nodejs";
@@ -290,6 +290,14 @@ export async function POST(request: NextRequest) {
             imageUrl: generated.imageUrl,
             rawImageUrl: generated.imageUrl,
           });
+          if (projectId) {
+            saveGenerationImage({
+              projectId,
+              taskIndex: extractTaskIndexFromPayload(task, index),
+              imageUrl: generated.imageUrl,
+              rawImageUrl: generated.imageUrl,
+            });
+          }
         } else {
           taskResults.push({
             index: extractTaskIndexFromPayload(task, index),
