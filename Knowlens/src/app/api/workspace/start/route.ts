@@ -46,6 +46,17 @@ function safeTrim(input: string | undefined, max = 2000) {
   return (input ?? "").trim().slice(0, max);
 }
 
+function normalizeProjectId(raw?: string) {
+  const value = (raw ?? "").trim().slice(0, 120);
+  if (!value) {
+    return "";
+  }
+  if (/^[a-zA-Z0-9._:-]+$/.test(value)) {
+    return value;
+  }
+  return "";
+}
+
 function buildProjectTitle(input: { prompt: string; sources: Array<{ name: string }> }) {
   const prompt = input.prompt.trim();
   if (prompt) {
@@ -147,7 +158,8 @@ export async function POST(request: NextRequest) {
       name: session?.user?.name?.trim() || email.split("@")[0] || "User",
       role: "user",
     });
-    const projectRawId = `p-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const requestedProjectId = normalizeProjectId(payload.project?.projectId);
+    const projectRawId = requestedProjectId || `p-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const projectTraceId = `${userId}_${projectRawId}`;
     const projectTitle = buildProjectTitle({
       prompt: normalizedPrompt,

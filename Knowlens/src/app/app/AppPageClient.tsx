@@ -760,6 +760,7 @@ export default function Home() {
   const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [, setMetricVersion] = useState(0);
+  const homeProjectIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -816,6 +817,7 @@ export default function Home() {
       const parsed = JSON.parse(raw) as HomeDraftPayload;
       const normalizedPrompt = String(parsed.prompt || "");
       const normalizedTextModel = String(parsed.textModel || "").trim();
+      const normalizedProjectId = String(parsed.project?.projectId || "").trim();
       const normalizedSources: SourceItem[] = Array.isArray(parsed.sources)
         ? parsed.sources
             .filter((item): item is Partial<SourceItem> => Boolean(item && typeof item === "object"))
@@ -853,6 +855,9 @@ export default function Home() {
           }
           return normalizedSources;
         });
+      }
+      if (normalizedProjectId) {
+        homeProjectIdRef.current = normalizedProjectId;
       }
     } catch {
       // ignore broken cached payload
@@ -1451,11 +1456,17 @@ export default function Home() {
 
   function buildWorkspacePayload() {
     const readySources = sourceItems.filter((item) => item.status === "ready");
+    if (!homeProjectIdRef.current) {
+      homeProjectIdRef.current = `p-${Date.now()}-${globalThis.crypto.randomUUID().slice(0, 8)}`;
+    }
     return {
       prompt: composeInput.trim(),
       textModel: resolvedTextModel,
       imageModel: "gpt-image2",
       sources: readySources,
+      project: {
+        projectId: homeProjectIdRef.current,
+      },
     };
   }
 
