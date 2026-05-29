@@ -631,19 +631,68 @@ export function readOpsLogFileByUserEmail(userEmail: string, limit = 2000) {
   if (!targetEmail) {
     return { path: "", lines: [] as string[] };
   }
-  const filePath = buildUserLogFilePath(targetEmail);
-  if (!existsSync(filePath)) {
-    return { path: filePath, lines: [] as string[] };
-  }
-  const raw = readFileSync(filePath, "utf8");
-  const rows = raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
   const safeLimit = Math.max(1, Math.min(5000, Math.round(limit)));
+  const filePath = buildUserLogFilePath(targetEmail);
+  if (existsSync(filePath)) {
+    const raw = readFileSync(filePath, "utf8");
+    const rows = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (rows.length > 0) {
+      return {
+        path: filePath,
+        lines: rows.slice(-safeLimit),
+      };
+    }
+  }
+
+  const safeEmailPart = sanitizeFilePart(targetEmail);
+  const fallbackDirs = Array.from(
+    new Set([
+      getOpsLogDir(),
+      path.join(process.cwd(), "runtime-logs", "ops-events"),
+      "/tmp/knowlens-ops-logs",
+    ]),
+  );
+  const fallbackFiles = fallbackDirs.flatMap((dir) => [
+    path.join(dir, "users", `${safeEmailPart}.jsonl`),
+    path.join(dir, "all-events.jsonl"),
+  ]);
+  for (const candidateFile of fallbackFiles) {
+    if (!existsSync(candidateFile)) {
+      continue;
+    }
+    const raw = readFileSync(candidateFile, "utf8");
+    const rows = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!rows.length) {
+      continue;
+    }
+    const filtered = rows.filter((line) => {
+      try {
+        const parsed = JSON.parse(line) as { userEmail?: unknown };
+        return (
+          typeof parsed.userEmail === "string" &&
+          parsed.userEmail.trim().toLowerCase() === targetEmail
+        );
+      } catch {
+        return false;
+      }
+    });
+    if (filtered.length > 0) {
+      return {
+        path: candidateFile,
+        lines: filtered.slice(-safeLimit),
+      };
+    }
+  }
+
   return {
     path: filePath,
-    lines: rows.slice(-safeLimit),
+    lines: [] as string[],
   };
 }
 

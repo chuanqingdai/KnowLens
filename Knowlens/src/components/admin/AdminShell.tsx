@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
-import { resolveRoleByEmail } from "@/lib/auth";
+import { isAdminEmail, resolveRoleByEmail } from "@/lib/auth";
 
 const navItems = [
   { label: "Home", icon: HomeIcon, href: "/app" },
@@ -43,6 +43,9 @@ export function AdminShell({ title, description, children }: AdminShellProps) {
     const email = session?.user?.email ?? "";
     return resolveRoleByEmail(email) === "admin";
   }, [session?.user?.email]);
+  const adminHintEmail = isAdminEmail("local@knowlens.ai")
+    ? "local@knowlens.ai"
+    : "chuanqingdai@gmail.com";
 
   const activeTab = useMemo(() => {
     return adminTabs.find((tab) => pathname === tab.href) ?? adminTabs[0];
@@ -60,8 +63,8 @@ export function AdminShell({ title, description, children }: AdminShellProps) {
             </p>
             <p className="mt-2 text-sm text-zinc-600">
               当前账号没有管理员权限。请使用
-              <span className="mx-1 font-medium text-zinc-900">chuanqingdai@gmail.com</span>
-              登录。
+              <span className="mx-1 font-medium text-zinc-900">{adminHintEmail}</span>
+              或本地测试邮箱登录。
             </p>
           </div>
         </main>

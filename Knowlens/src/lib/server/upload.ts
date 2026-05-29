@@ -4,8 +4,8 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createRequire } from "node:module";
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 import { fetchTranscript } from "youtube-transcript";
 import JSZip from "jszip";
 import ytdl from "ytdl-core";
@@ -15,6 +15,8 @@ import { createUploadJob, updateUploadJob } from "./store";
 
 const execFileAsync = promisify(execFile);
 const rssParser = new Parser();
+const require = createRequire(import.meta.url);
+let pdfParseModulePromise: Promise<typeof import("pdf-parse")> | null = null;
 
 export const MAX_UPLOAD_SIZE_BYTES = 80 * 1024 * 1024;
 export const MAX_TEXT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
@@ -46,8 +48,6 @@ type WorkerResult = {
 const allowedMimePrefixes = [
   "text/",
   "image/",
-  "audio/",
-  "video/",
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument",
@@ -100,6 +100,12 @@ function cleanText(value: string) {
     .trim();
 }
 
+async function loadPdfParseClass() {
+  pdfParseModulePromise ??= Promise.resolve(require("pdf-parse") as typeof import("pdf-parse"));
+  const pdfParsePackage = await pdfParseModulePromise;
+  return pdfParsePackage.PDFParse;
+}
+
 function ensureAudioMime(mimeType: string, fileName: string) {
   if (mimeType.startsWith("audio/")) {
     return mimeType;
@@ -131,16 +137,35 @@ function parseYoutubeVideoId(input: string) {
 
 export function validateUploadFile(file: { name: string; type: string; size: number }) {
   if (!file.name.trim()) {
-    return { ok: false, reason: "文件名不能为空" };
+    return { ok: false, reason: "File name is required." };
   }
   if (file.size <= 0) {
-    return { ok: false, reason: "文件内容为空" };
+    return { ok: false, reason: "File is empty." };
   }
   if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-    return { ok: false, reason: "文件过大，请压缩后再试" };
+    return { ok: false, reason: "File is too large." };
   }
-  if (!allowedMimePrefixes.some((prefix) => file.type.startsWith(prefix))) {
-    return { ok: false, reason: "暂不支持当前文件类型" };
+  const lowerName = file.name.toLowerCase();
+  if (/\.(mp4|mov|avi|mkv|webm|mp3|wav|m4a|flac|aac|ogg)$/i.test(lowerName)) {
+    return {
+      ok: false,
+      reason: "Video/audio uploads are temporarily disabled. Please upload images or documents.",
+    };
+  }
+  if (file.type.startsWith("audio/") || file.type.startsWith("video/")) {
+    return {
+      ok: false,
+      reason: "Video/audio uploads are temporarily disabled. Please upload images or documents.",
+    };
+  }
+  const mimeType = (file.type || "").toLowerCase();
+  const allowByMime = mimeType && allowedMimePrefixes.some((prefix) => mimeType.startsWith(prefix));
+  const allowByExt =
+    /\.(png|jpe?g|webp|gif|bmp|svg|pdf|doc|docx|rtf|epub|ppt|pptx|key|xls|xlsx|csv|tsv|json|xml|txt|md|srt|vtt)$/i.test(
+      lowerName,
+    );
+  if (!allowByMime && !allowByExt) {
+    return { ok: false, reason: "Unsupported file type. Please upload an image or document file." };
   }
   return { ok: true as const };
 }
@@ -368,6 +393,7 @@ async function extractFileText(input: { filePath: string; fileName: string; mime
   }
 
   if (input.mimeType === "application/pdf" || ext === ".pdf") {
+    const PDFParse = await loadPdfParseClass();
     const parser = new PDFParse({ data: await fs.readFile(input.filePath) });
     const result = await parser.getText();
     await parser.destroy();

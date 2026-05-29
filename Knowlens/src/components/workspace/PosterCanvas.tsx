@@ -55,6 +55,8 @@ type PosterCanvasProps = {
       maxAttempts: number;
       imageUrl?: string;
       error?: string;
+      startedAt?: number;
+      lastUpdatedAt?: number;
     }
   >;
   onRetryGenerationTask?: (index: number) => void;
@@ -67,12 +69,13 @@ type PosterCard = {
   copy: string;
   colorHex: string;
   imageSrc: string;
-  status: "queued" | "generating" | "retrying" | "ready" | "failed";
+  status: "idle" | "queued" | "generating" | "retrying" | "ready" | "failed";
   x: number;
   y: number;
   initialCopy: string;
   history: string[];
   errorMessage?: string;
+  timeoutAt?: number;
   archives: Array<{
     id: string;
     imageSrc: string;
@@ -494,7 +497,7 @@ export function PosterCanvas({
           copy,
           colorHex: POSTER_PLACEHOLDER_COLORS[idx % POSTER_PLACEHOLDER_COLORS.length],
           imageSrc: CASE_IMAGES[idx % CASE_IMAGES.length],
-          status: "queued" as const,
+          status: "idle" as const,
           x: idx * 468,
           y: 48,
           initialCopy: copy,
@@ -562,6 +565,7 @@ export function PosterCanvas({
             imageSrc: taskState.imageUrl,
             colorHex: POSTER_PLACEHOLDER_COLORS[(item.index + 2) % POSTER_PLACEHOLDER_COLORS.length],
             errorMessage: undefined,
+            timeoutAt: undefined,
           };
         }
         if (taskState.status === "failed") {
@@ -569,6 +573,7 @@ export function PosterCanvas({
             ...item,
             status: "failed",
             errorMessage: taskState.error || "Please retry from this card.",
+            timeoutAt: undefined,
           };
         }
         if (
@@ -580,6 +585,7 @@ export function PosterCanvas({
             ...item,
             status: taskState.status,
             errorMessage: undefined,
+            timeoutAt: taskState.startedAt,
           };
         }
         return item;
@@ -589,7 +595,9 @@ export function PosterCanvas({
 
   useEffect(() => {
     const hasFailed = cards.some((item) => item.status === "failed");
-    const hasProcessing = cards.some((item) => item.status === "queued" || item.status === "generating");
+    const hasProcessing = cards.some(
+      (item) => item.status === "queued" || item.status === "generating" || item.status === "retrying",
+    );
     if (hasFailed) {
       onSaveStateChange?.("error", true);
       return;
@@ -928,7 +936,7 @@ export function PosterCanvas({
             zoomable
             nodeColor={() => "#111827"}
             maskColor="rgba(15,23,42,0.14)"
-            className="!bottom-3 !right-3 !hidden !border !border-zinc-200 !bg-white md:!block"
+            className="!bottom-3 !right-3 !hidden !h-[96px] !w-[72px] !border !border-zinc-200 !bg-white md:!block"
           />
           <Controls showInteractive={false} className="!bottom-3 !left-3" />
           <Background color="#e5e7eb" gap={26} />

@@ -3,12 +3,6 @@ import { writeFile } from "node:fs/promises";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { listUploadJobs, normalizeScope, updateUploadJob } from "../../../../lib/server/store";
-import {
-  buildUploadWorkerResult,
-  enqueueUpload,
-  runUploadJob,
-  validateUploadFile,
-} from "../../../../lib/server/upload";
 import { rateLimitOrThrow } from "../../../../lib/server/rate-limit";
 import { RATE_LIMIT_CONFIG } from "../../../../lib/server/rate-limit-config";
 
@@ -56,14 +50,26 @@ function getScopeFromRequest(req: NextRequest, bodyUserEmail?: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const userEmail = request.nextUrl.searchParams.get("userEmail");
-  const scope = normalizeScope(userEmail);
-  const jobs = listUploadJobs(scope === "guest" ? undefined : scope);
-  return NextResponse.json({ jobs });
+  try {
+    const userEmail = request.nextUrl.searchParams.get("userEmail");
+    const scope = normalizeScope(userEmail);
+    const jobs = listUploadJobs(scope === "guest" ? undefined : scope);
+    return NextResponse.json({ jobs });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to list upload jobs.";
+    return NextResponse.json(
+      {
+        jobs: [],
+        error: message,
+      },
+      { status: 200 },
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const uploadModule = await import("../../../../lib/server/upload");
     const contentType = request.headers.get("content-type") ?? "";
     let body: UploadJobRequest;
     let uploadFile: File | null = null;
@@ -111,7 +117,7 @@ export async function POST(request: NextRequest) {
       if (!uploadFile && !body.inputPath?.trim()) {
         return NextResponse.json({ error: "Missing file payload." }, { status: 400 });
       }
-      const valid = validateUploadFile({
+      const valid = uploadModule.validateUploadFile({
         name: fileName,
         type: mimeType,
         size: fileSize,
@@ -149,7 +155,7 @@ export async function POST(request: NextRequest) {
       await writeFile(tempInputPath, Buffer.from(await uploadFile.arrayBuffer()));
     }
 
-    const job = enqueueUpload({
+    const job = uploadModule.enqueueUpload({
       userScope: normalizeScope(userEmail),
       fileName,
       mimeType,
@@ -161,9 +167,9 @@ export async function POST(request: NextRequest) {
     });
 
     after(async () => {
-      await runUploadJob(job.jobId, async () => {
+      await uploadModule.runUploadJob(job.jobId, async () => {
         try {
-          return await buildUploadWorkerResult({
+          return await uploadModule.buildUploadWorkerResult({
             jobId: job.jobId,
             fileName,
             mimeType,

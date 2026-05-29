@@ -1617,8 +1617,11 @@ export default function Home() {
         });
         if (response.status >= 500 && typeof window !== "undefined") {
           persistHomeDraft(payload);
-          router.prefetch("/workspace");
-          router.push("/workspace");
+          const nextProjectId = payload.project?.projectId || homeProjectIdRef.current;
+          const workspaceUrl =
+            nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
+          router.prefetch(workspaceUrl);
+          router.push(workspaceUrl);
           return;
         }
         setUploadToast(
@@ -1638,8 +1641,11 @@ export default function Home() {
         model: resolvedTextModel,
         source_count: payload.sources.length,
       });
-      router.prefetch("/workspace");
-      router.push("/workspace");
+      const nextProjectId = data.payload?.project?.projectId || payload.project?.projectId || homeProjectIdRef.current;
+      const workspaceUrl =
+        nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
+      router.prefetch(workspaceUrl);
+      router.push(workspaceUrl);
     } catch {
       if (typeof window !== "undefined") {
         persistHomeDraft(payload);
@@ -1649,8 +1655,11 @@ export default function Home() {
         code: "NETWORK_OR_RUNTIME",
         model: resolvedTextModel,
       });
-      router.prefetch("/workspace");
-      router.push("/workspace");
+      const nextProjectId = payload.project?.projectId || homeProjectIdRef.current;
+      const workspaceUrl =
+        nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
+      router.prefetch(workspaceUrl);
+      router.push(workspaceUrl);
     } finally {
       setIsStartingWorkspace(false);
     }

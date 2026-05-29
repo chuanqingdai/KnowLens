@@ -67,7 +67,19 @@ const FALLBACK_POLL_INTERVAL_MS = Number.parseInt(
   10,
 );
 const FALLBACK_POLL_MAX_ATTEMPTS = Number.parseInt(
-  process.env.IMAGE2_FALLBACK_POLL_MAX_ATTEMPTS || "60",
+  process.env.IMAGE2_FALLBACK_POLL_MAX_ATTEMPTS || "120",
+  10,
+);
+const FALLBACK_CREATE_TIMEOUT_MS = Number.parseInt(
+  process.env.IMAGE2_FALLBACK_CREATE_TIMEOUT_MS || "90000",
+  10,
+);
+const FALLBACK_POLL_REQUEST_TIMEOUT_MS = Number.parseInt(
+  process.env.IMAGE2_FALLBACK_POLL_REQUEST_TIMEOUT_MS || "20000",
+  10,
+);
+const FALLBACK_POLL_TOTAL_TIMEOUT_MS = Number.parseInt(
+  process.env.IMAGE2_FALLBACK_POLL_TOTAL_TIMEOUT_MS || "240000",
   10,
 );
 
@@ -102,6 +114,19 @@ function resolveGenerationsEndpoint(endpoint: string) {
     return endpoint.replace(/\/images\/edits(?=$|\?)/i, "/images/generations");
   }
   return endpoint;
+}
+
+function pickFirstString(...values: Array<unknown>) {
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return "";
 }
 
 function normalizeAspectRatioToken(value?: string): Image2AllowedAspectRatio {
@@ -330,6 +355,46 @@ export function extractImage2Url(data: unknown) {
     }
   }
 
+  const dataField = obj.data;
+  if (dataField && typeof dataField === "object" && !Array.isArray(dataField)) {
+    const dataObj = dataField as Record<string, unknown>;
+    const nestedImage = dataObj.image;
+    if (typeof nestedImage === "string" && nestedImage.trim()) {
+      return nestedImage.trim();
+    }
+    if (Array.isArray(nestedImage)) {
+      const first = nestedImage.find((entry) => typeof entry === "string" && entry.trim());
+      if (typeof first === "string") {
+        return first.trim();
+      }
+    }
+    const direct = pickFirstString(
+      dataObj.url,
+      dataObj.image_url,
+      dataObj.imageUrl,
+      dataObj.output_url,
+      dataObj.outputUrl,
+      dataObj.result_url,
+      dataObj.resultUrl,
+    );
+    if (direct) {
+      return direct;
+    }
+  }
+
+  const direct = pickFirstString(
+    obj.url,
+    obj.image_url,
+    obj.imageUrl,
+    obj.output_url,
+    obj.outputUrl,
+    obj.result_url,
+    obj.resultUrl,
+  );
+  if (direct) {
+    return direct;
+  }
+
   const choices = Array.isArray(obj.choices) ? obj.choices : [];
   const choiceContent = choices[0] && typeof choices[0] === "object"
     ? (choices[0] as Record<string, unknown>).message
@@ -508,6 +573,41 @@ function extractGptsApiPollUrl(body: unknown) {
   return "";
 }
 
+function extractGptsApiTaskId(body: unknown) {
+  if (!body || typeof body !== "object") {
+    return "";
+  }
+  const obj = body as Record<string, unknown>;
+  const rootId = typeof obj.id === "string" ? obj.id.trim() : "";
+  if (rootId) {
+    return rootId;
+  }
+  const data = obj.data;
+  if (data && typeof data === "object") {
+    const nestedId = typeof (data as Record<string, unknown>).id === "string"
+      ? ((data as Record<string, unknown>).id as string).trim()
+      : "";
+    if (nestedId) {
+      return nestedId;
+    }
+  }
+  return "";
+}
+
+function buildGptsApiPollCandidates(basePollUrl: string, taskId: string) {
+  const candidates = new Set<string>();
+  const trimmed = basePollUrl.trim();
+  if (trimmed) {
+    candidates.add(trimmed);
+    candidates.add(appendQueryParam(trimmed, "no_cache", `${Date.now()}`));
+  }
+  if (taskId) {
+    candidates.add(`https://api.gptsapi.net/api/v3/predictions/${encodeURIComponent(taskId)}/result`);
+    candidates.add(`https://api.gptsapi.net/api/v3/predictions/${encodeURIComponent(taskId)}`);
+  }
+  return Array.from(candidates).filter(Boolean);
+}
+
 function extractDuomiTaskId(body: unknown) {
   if (!body || typeof body !== "object") {
     return "";
@@ -597,7 +697,7 @@ async function requestDuomiFallbackGeneration(
 ): Promise<Image2ProviderResult> {
   const createEndpoint = appendQueryParam(duomi.endpoint, "async", "true");
   const createController = new AbortController();
-  const createTimeout = setTimeout(() => createController.abort(), 120000);
+  const createTimeout = setTimeout(() => createController.abort(), Math.max(1000, FALLBACK_CREATE_TIMEOUT_MS));
   let taskId = "";
   let createRaw = "";
 
@@ -662,10 +762,17 @@ async function requestDuomiFallbackGeneration(
   }
 
   const pollCandidates = buildDuomiPollCandidates(duomi.endpoint, taskId, duomi.pollEndpoint);
+  const pollStartedAt = Date.now();
   for (let attempt = 1; attempt <= Math.max(3, FALLBACK_POLL_MAX_ATTEMPTS); attempt += 1) {
+    if (Date.now() - pollStartedAt >= Math.max(10_000, FALLBACK_POLL_TOTAL_TIMEOUT_MS)) {
+      break;
+    }
     for (const candidate of pollCandidates) {
       const pollController = new AbortController();
-      const pollTimeout = setTimeout(() => pollController.abort(), 120000);
+      const pollTimeout = setTimeout(
+        () => pollController.abort(),
+        Math.max(3000, FALLBACK_POLL_REQUEST_TIMEOUT_MS),
+      );
       try {
         const pollResponse = await fetch(candidate, {
           method: "GET",
@@ -745,8 +852,9 @@ async function requestGptsApiFallbackGeneration(
   },
 ): Promise<Image2ProviderResult> {
   const createController = new AbortController();
-  const createTimeout = setTimeout(() => createController.abort(), 120000);
+  const createTimeout = setTimeout(() => createController.abort(), Math.max(1000, FALLBACK_CREATE_TIMEOUT_MS));
   let pollUrl = "";
+  let taskId = "";
 
   try {
     const createResponse = await fetch(fallback.endpoint, {
@@ -786,6 +894,7 @@ async function requestGptsApiFallbackGeneration(
     }
 
     pollUrl = extractGptsApiPollUrl(createBody);
+    taskId = extractGptsApiTaskId(createBody);
     if (!pollUrl) {
       return {
         ok: false,
@@ -809,83 +918,102 @@ async function requestGptsApiFallbackGeneration(
     clearTimeout(createTimeout);
   }
 
+  const pollCandidates = buildGptsApiPollCandidates(pollUrl, taskId);
+  const pollStartedAt = Date.now();
+  let doneWithoutUrlCount = 0;
+
   for (let attempt = 1; attempt <= Math.max(3, FALLBACK_POLL_MAX_ATTEMPTS); attempt += 1) {
-    const pollController = new AbortController();
-    const pollTimeout = setTimeout(() => pollController.abort(), 120000);
-    try {
-      const pollResponse = await fetch(pollUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${fallback.apiKey}`,
-        },
-        signal: pollController.signal,
-      });
-      const pollRaw = await pollResponse.text();
-      const pollBody = parseJsonBody(pollRaw);
-      if (!pollResponse.ok) {
-        return {
-          ok: false,
-          errorCode: `GPTSAPI_POLL_HTTP_${pollResponse.status}`,
-          errorMessage: "Fallback provider polling failed.",
-          detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
-          status: pollResponse.status,
-          rawText: pollRaw,
-        };
-      }
+    if (Date.now() - pollStartedAt >= Math.max(10_000, FALLBACK_POLL_TOTAL_TIMEOUT_MS)) {
+      break;
+    }
+    for (const candidate of pollCandidates) {
+      const pollController = new AbortController();
+      const pollTimeout = setTimeout(
+        () => pollController.abort(),
+        Math.max(3000, FALLBACK_POLL_REQUEST_TIMEOUT_MS),
+      );
+      try {
+        const pollResponse = await fetch(candidate, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${fallback.apiKey}`,
+          },
+          signal: pollController.signal,
+        });
+        const pollRaw = await pollResponse.text();
+        const pollBody = parseJsonBody(pollRaw);
+        if (!pollResponse.ok) {
+          if (pollResponse.status >= 500 || pollResponse.status === 429) {
+            continue;
+          }
+          return {
+            ok: false,
+            errorCode: `GPTSAPI_POLL_HTTP_${pollResponse.status}`,
+            errorMessage: "Fallback provider polling failed.",
+            detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
+            status: pollResponse.status,
+            rawText: pollRaw,
+          };
+        }
 
-      const imageUrl = extractImage2Url(pollBody);
-      if (imageUrl) {
-        return {
-          ok: true,
-          imageUrl,
-          rawText: pollRaw,
-        };
-      }
+        const imageUrl = extractImage2Url(pollBody);
+        if (imageUrl) {
+          return {
+            ok: true,
+            imageUrl,
+            rawText: pollRaw,
+          };
+        }
 
-      const rootStatus =
-        pollBody && typeof pollBody === "object"
-          ? (pollBody as Record<string, unknown>).status
-          : null;
-      const dataStatus =
-        pollBody && typeof pollBody === "object"
-          ? (pollBody as Record<string, unknown>).data &&
-            typeof (pollBody as Record<string, unknown>).data === "object"
-            ? ((pollBody as Record<string, unknown>).data as Record<string, unknown>).status
-            : null
-          : null;
-      const currentStatus = dataStatus ?? rootStatus;
-      if (isGptsApiFailedStatus(currentStatus)) {
-        return {
-          ok: false,
-          errorCode: "GPTSAPI_RESULT_FAILED",
-          errorMessage: "Fallback provider returned failed status.",
-          detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
-          rawText: pollRaw,
-        };
+        const rootStatus =
+          pollBody && typeof pollBody === "object"
+            ? (pollBody as Record<string, unknown>).status
+            : null;
+        const dataStatus =
+          pollBody && typeof pollBody === "object"
+            ? (pollBody as Record<string, unknown>).data &&
+              typeof (pollBody as Record<string, unknown>).data === "object"
+              ? ((pollBody as Record<string, unknown>).data as Record<string, unknown>).status
+              : null
+            : null;
+        const currentStatus = dataStatus ?? rootStatus;
+        if (isGptsApiFailedStatus(currentStatus)) {
+          return {
+            ok: false,
+            errorCode: "GPTSAPI_RESULT_FAILED",
+            errorMessage: "Fallback provider returned failed status.",
+            detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
+            rawText: pollRaw,
+          };
+        }
+        if (isGptsApiDoneStatus(currentStatus)) {
+          doneWithoutUrlCount += 1;
+          if (doneWithoutUrlCount >= 4) {
+            return {
+              ok: false,
+              errorCode: "GPTSAPI_NO_URL",
+              errorMessage: "Fallback provider completed but image URL is empty.",
+              detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
+              rawText: pollRaw,
+            };
+          }
+        }
+      } catch (error) {
+        if (attempt >= Math.max(3, FALLBACK_POLL_MAX_ATTEMPTS)) {
+          return {
+            ok: false,
+            errorCode:
+              error instanceof DOMException && error.name === "AbortError" ? "GPTSAPI_TIMEOUT" : "GPTSAPI_FETCH_ERROR",
+            errorMessage:
+              error instanceof DOMException && error.name === "AbortError"
+                ? "Fallback provider polling timed out."
+                : "Fallback provider polling failed.",
+            detail: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
+      } finally {
+        clearTimeout(pollTimeout);
       }
-      if (isGptsApiDoneStatus(currentStatus)) {
-        return {
-          ok: false,
-          errorCode: "GPTSAPI_NO_URL",
-          errorMessage: "Fallback provider completed but image URL is empty.",
-          detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
-          rawText: pollRaw,
-        };
-      }
-    } catch (error) {
-      if (attempt >= Math.max(3, FALLBACK_POLL_MAX_ATTEMPTS)) {
-        return {
-          ok: false,
-          errorCode: error instanceof DOMException && error.name === "AbortError" ? "GPTSAPI_TIMEOUT" : "GPTSAPI_FETCH_ERROR",
-          errorMessage:
-            error instanceof DOMException && error.name === "AbortError"
-              ? "Fallback provider polling timed out."
-              : "Fallback provider polling failed.",
-          detail: error instanceof Error ? error.message : "Unknown error",
-        };
-      }
-    } finally {
-      clearTimeout(pollTimeout);
     }
 
     await new Promise((resolve) => setTimeout(resolve, Math.max(600, FALLBACK_POLL_INTERVAL_MS)));
@@ -1082,169 +1210,107 @@ export async function requestImage2Generation(
     aspectRatio?: string;
   },
 ): Promise<Image2ProviderResult> {
-  const primaryIsDuomi = isDuomiGenerationsEndpoint(config.endpoint);
-  const duomiPrimaryConfig = primaryIsDuomi
-    ? {
-        endpoint: config.endpoint,
-        apiKey: config.apiKey,
-        model: config.model,
-      }
-    : null;
-  const duomi =
-    config.duomiProvider &&
-    !(
-      primaryIsDuomi &&
-      config.duomiProvider.endpoint === config.endpoint &&
-      config.duomiProvider.apiKey === config.apiKey &&
-      config.duomiProvider.model === config.model
-    )
-      ? config.duomiProvider
-      : undefined;
-  const fallback = config.fallbackProvider;
   const fallbackAspectRatio = resolveFallbackAspectRatio({
     aspectRatio: input.aspectRatio,
     size: input.size,
   });
-  const requestPrimary = () =>
-    duomiPrimaryConfig
-      ? requestDuomiFallbackGeneration(duomiPrimaryConfig, {
+  const primaryIsDuomi = isDuomiGenerationsEndpoint(config.endpoint);
+  const primaryIsGptsApi = /gptsapi\.net/i.test(config.endpoint);
+  const chain: Array<{
+    name: "tuzi" | "duomi" | "gptsapi";
+    run: () => Promise<Image2ProviderResult>;
+  }> = [];
+
+  if (config.endpoint) {
+    if (primaryIsDuomi) {
+      chain.push({
+        name: "duomi",
+        run: () =>
+          requestDuomiFallbackGeneration(
+            {
+              endpoint: config.endpoint,
+              apiKey: config.apiKey,
+              model: config.model,
+            },
+            {
+              prompt: input.prompt,
+              aspectRatio: fallbackAspectRatio,
+            },
+          ),
+      });
+    } else if (primaryIsGptsApi) {
+      chain.push({
+        name: "gptsapi",
+        run: () =>
+          requestGptsApiFallbackGeneration(
+            config.fallbackProvider ?? {
+              endpoint: config.endpoint,
+              apiKey: config.apiKey,
+              model: config.model,
+              resolution: "1K",
+            },
+            {
+              prompt: input.prompt,
+              aspectRatio: fallbackAspectRatio,
+            },
+          ),
+      });
+    } else {
+      chain.push({
+        name: "tuzi",
+        run: () => requestPrimaryImage2Generation(config, input),
+      });
+    }
+  }
+
+  if (!primaryIsDuomi && config.duomiProvider) {
+    chain.push({
+      name: "duomi",
+      run: () =>
+        requestDuomiFallbackGeneration(config.duomiProvider as Image2AsyncProviderConfig, {
           prompt: input.prompt,
           aspectRatio: fallbackAspectRatio,
-        })
-      : requestPrimaryImage2Generation(config, input);
-  const now = Date.now();
-  const fallbackMode = fallback && isFallbackModeActive(now);
-  const shouldTryPrimary =
-    !fallbackMode || shouldProbePrimaryDuringFallback(now);
-
-  if (shouldTryPrimary) {
-    image2CircuitState.lastPrimaryProbeAt = now;
-    const primaryResult = await requestPrimary();
-    if (primaryResult.ok) {
-      markPrimarySuccess();
-      return primaryResult;
-    }
-    markPrimaryFailure();
-    if (!fallback) {
-      if (duomi) {
-        const duomiResult = await requestDuomiFallbackGeneration(duomi, {
-          prompt: input.prompt,
-          aspectRatio: fallbackAspectRatio,
-        });
-        if (duomiResult.ok) {
-          image2CircuitState.fallbackModeUntil =
-            Date.now() + Math.max(60_000, FALLBACK_MODE_DURATION_MS);
-          return duomiResult;
-        }
-        return {
-          ...duomiResult,
-          detail: [
-            duomiResult.detail,
-            `Primary provider failed: ${primaryResult.errorCode}`,
-          ]
-            .filter(Boolean)
-            .join(" | "),
-        };
-      }
-      return primaryResult;
-    }
-
-    if (duomi) {
-      const duomiResult = await requestDuomiFallbackGeneration(duomi, {
-        prompt: input.prompt,
-        aspectRatio: fallbackAspectRatio,
-      });
-      if (duomiResult.ok) {
-        image2CircuitState.fallbackModeUntil =
-          Date.now() + Math.max(60_000, FALLBACK_MODE_DURATION_MS);
-        return duomiResult;
-      }
-      const fallbackResult = await requestGptsApiFallbackGeneration(fallback, {
-        prompt: input.prompt,
-        aspectRatio: fallbackAspectRatio,
-      });
-      if (fallbackResult.ok) {
-        image2CircuitState.fallbackModeUntil =
-          Date.now() + Math.max(60_000, FALLBACK_MODE_DURATION_MS);
-        return fallbackResult;
-      }
-      return {
-        ...fallbackResult,
-        detail: [
-          fallbackResult.detail,
-          `Duomi fallback failed: ${duomiResult.errorCode}`,
-          `Primary provider failed: ${primaryResult.errorCode}`,
-        ]
-          .filter(Boolean)
-          .join(" | "),
-      };
-    }
-
-    const fallbackResult = await requestGptsApiFallbackGeneration(fallback, {
-      prompt: input.prompt,
-      aspectRatio: fallbackAspectRatio,
+        }),
     });
-    if (fallbackResult.ok) {
-      image2CircuitState.fallbackModeUntil =
-        Date.now() + Math.max(60_000, FALLBACK_MODE_DURATION_MS);
-      return fallbackResult;
+  }
+
+  if (!primaryIsGptsApi && config.fallbackProvider) {
+    chain.push({
+      name: "gptsapi",
+      run: () =>
+        requestGptsApiFallbackGeneration(config.fallbackProvider as Image2FallbackProviderConfig, {
+          prompt: input.prompt,
+          aspectRatio: fallbackAspectRatio,
+        }),
+    });
+  }
+
+  let lastFailure: Image2ProviderFailure | null = null;
+  for (const step of chain) {
+    const result = await step.run();
+    if (result.ok) {
+      if (step.name === "tuzi") {
+        markPrimarySuccess();
+      }
+      return result;
     }
-    return {
-      ...fallbackResult,
-      detail: [
-        fallbackResult.detail,
-        `Primary provider failed: ${primaryResult.errorCode}`,
-      ]
-        .filter(Boolean)
-        .join(" | "),
+
+    const detailParts = [result.detail, `provider=${step.name}`];
+    lastFailure = {
+      ...result,
+      detail: detailParts.filter(Boolean).join(" | "),
     };
-  }
 
-  if (duomi) {
-    const duomiResult = await requestDuomiFallbackGeneration(duomi, {
-      prompt: input.prompt,
-      aspectRatio: fallbackAspectRatio,
-    });
-    if (duomiResult.ok) {
-      return duomiResult;
-    }
-    if (fallback) {
-      const fallbackResult = await requestGptsApiFallbackGeneration(fallback, {
-        prompt: input.prompt,
-        aspectRatio: fallbackAspectRatio,
-      });
-      if (fallbackResult.ok) {
-        return fallbackResult;
-      }
-      return {
-        ...fallbackResult,
-        detail: [
-          fallbackResult.detail,
-          `Duomi fallback failed: ${duomiResult.errorCode}`,
-        ]
-          .filter(Boolean)
-          .join(" | "),
-      };
+    if (step.name === "tuzi") {
+      markPrimaryFailure();
     }
   }
 
-  if (fallback) {
-    const fallbackResult = await requestGptsApiFallbackGeneration(fallback, {
-      prompt: input.prompt,
-      aspectRatio: fallbackAspectRatio,
-    });
-    if (fallbackResult.ok) {
-      return fallbackResult;
-    }
-  }
-
-  const primaryResult = await requestPrimary();
-  if (primaryResult.ok) {
-    markPrimarySuccess();
-    return primaryResult;
-  }
-  markPrimaryFailure();
-  return primaryResult;
+  return lastFailure || {
+    ok: false,
+    errorCode: "IMAGE2_UNKNOWN",
+    errorMessage: "Image provider request failed.",
+  };
 }
 
 export function buildImage2ProviderConfig(choice: Image2ProviderChoice = "auto"): Image2ProviderConfig | null {
@@ -1317,43 +1383,55 @@ export function buildImage2ProviderConfig(choice: Image2ProviderChoice = "auto")
     };
   }
 
-  const configuredEndpoint = (process.env.IMAGE2_PROVIDER_ENDPOINT || "").trim();
-  const allowTuziPrimary = process.env.IMAGE2_ALLOW_TUZI_PRIMARY === "true";
-  const isLegacyTuziConfigured =
-    Boolean(configuredEndpoint) &&
-    /api\.tu-zi\.com\/v1\/images\/(edits|generations)(?:$|\?)/i.test(configuredEndpoint);
-  const endpoint =
-    configuredEndpoint && !(isLegacyTuziConfigured && !allowTuziPrimary)
-      ? configuredEndpoint
-      : duomiEndpoint;
-  const endpointIsDuomi = isDuomiGenerationsEndpoint(endpoint);
-  const apiKey = endpointIsDuomi
-    ? duomiApiKey ||
-      process.env.IMAGE2_PROVIDER_API_KEY ||
-      process.env.PAID_IMAGE_API_KEY ||
-      process.env.PAID_LLM_API_KEY ||
-      ""
-    : process.env.IMAGE2_PROVIDER_API_KEY ||
-      process.env.PAID_IMAGE_API_KEY ||
-      process.env.PAID_LLM_API_KEY ||
-      "";
-  const model = process.env.IMAGE2_PROVIDER_MODEL || duomiModel;
+  const resolvedTuziKey =
+    tuziApiKey ||
+    process.env.IMAGE2_PROVIDER_API_KEY ||
+    process.env.PAID_IMAGE_API_KEY ||
+    process.env.PAID_LLM_API_KEY ||
+    "";
+  const resolvedDuomiKey =
+    duomiApiKey ||
+    process.env.IMAGE2_PROVIDER_API_KEY ||
+    process.env.PAID_IMAGE_API_KEY ||
+    process.env.PAID_LLM_API_KEY ||
+    "";
   const fallbackResolutionRaw = (process.env.IMAGE2_FALLBACK_RESOLUTION || "1K").trim().toUpperCase();
   const fallbackResolution: "1K" | "2K" | "4K" =
     fallbackResolutionRaw === "2K" || fallbackResolutionRaw === "4K"
       ? fallbackResolutionRaw
       : "1K";
 
-  if (!apiKey) {
+  const primaryProvider =
+    resolvedTuziKey
+      ? {
+          endpoint: tuziEndpoint,
+          apiKey: resolvedTuziKey,
+          model: tuziModel,
+        }
+      : resolvedDuomiKey
+        ? {
+            endpoint: duomiEndpoint,
+            apiKey: resolvedDuomiKey,
+            model: duomiModel,
+        }
+        : fallbackApiKey
+          ? {
+              endpoint: fallbackEndpoint,
+              apiKey: fallbackApiKey,
+              model: fallbackModel,
+            }
+          : null;
+
+  if (!primaryProvider) {
     return null;
   }
 
   const duomiProvider =
-    duomiApiKey || (isDuomiGenerationsEndpoint(endpoint) ? apiKey : "")
+    resolvedDuomiKey
       ? {
           endpoint: duomiEndpoint,
           pollEndpoint: duomiPollEndpoint || undefined,
-          apiKey: duomiApiKey || apiKey,
+          apiKey: resolvedDuomiKey,
           model: duomiModel,
         }
       : undefined;
@@ -1365,13 +1443,13 @@ export function buildImage2ProviderConfig(choice: Image2ProviderChoice = "auto")
           apiKey: fallbackApiKey,
           model: fallbackModel,
           resolution: fallbackResolution,
-        }
+      }
       : undefined;
 
   return {
-    endpoint,
-    apiKey,
-    model,
+    endpoint: primaryProvider.endpoint,
+    apiKey: primaryProvider.apiKey,
+    model: primaryProvider.model,
     duomiProvider,
     fallbackProvider,
   };

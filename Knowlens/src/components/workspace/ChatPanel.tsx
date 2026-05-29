@@ -75,15 +75,36 @@ type StyleOption = {
 };
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
+
+const STYLE_COVER_JPG_ALLOWLIST = new Set([
+  "Clean Science Infographic Style.jpg",
+  "Premium Editorial Infographic Style.jpg",
+  "Hero Science Cover Style.jpg",
+  "Minimal Line Art Style.jpg",
+  "Hand-drawn Explainer Style.jpg",
+  "Cute 3D Educational Style.jpg",
+  "3D Isometric Tech Style.jpg",
+  "Dark Premium Tech Style.jpg",
+  "Technical Blueprint Style.jpg",
+  "Medical Educational Illustration Style.jpg",
+  "Cinematic Science Illustration Style.jpg",
+  "Premium Sketchnote Science Style.jpg",
+]);
+
 function styleCoverCandidates(coverImage?: string) {
   if (!coverImage) {
     return [];
   }
   const normalized = coverImage.trim();
   const [path, query = ""] = normalized.split("?");
-  const jpgPath = path.replace(/\.(png|webp|jpeg|jpg)$/i, ".jpg");
-  const finalSrc = query ? `${jpgPath}?${query}` : jpgPath;
-  return [finalSrc];
+  if (!path.startsWith("/style/") || !path.toLowerCase().endsWith(".jpg")) {
+    return [];
+  }
+  const filename = decodeURIComponent(path.slice("/style/".length));
+  if (!STYLE_COVER_JPG_ALLOWLIST.has(filename)) {
+    return [];
+  }
+  return [query ? `${path}?${query}` : path];
 }
 
 function StyleCover({ style }: { style: StyleOption }) {

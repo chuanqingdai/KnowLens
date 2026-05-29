@@ -119,13 +119,15 @@ input[type="reset"]:disabled {
 }
 
 .workspace-left-shell {
+  min-height: 0;
+  overflow: hidden;
   scrollbar-width: thin;
   scrollbar-color: #a1a1aa transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 *::-webkit-scrollbar-track {
@@ -145,13 +147,13 @@ input[type="reset"]:disabled {
 }
 
 .workspace-canvas-shell ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 .workspace-left-shell ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 .workspace-canvas-shell ::-webkit-scrollbar-track {

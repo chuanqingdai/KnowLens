@@ -80,15 +80,21 @@ export function TopBar({
             <ArrowLeft size={16} />
           </button>
           <div className="min-w-0">
-            <p className="truncate text-[15px] font-semibold leading-5 text-zinc-800">
+            <p
+              suppressHydrationWarning
+              className="truncate text-[15px] font-semibold leading-5 text-zinc-800"
+            >
               {title}
             </p>
-            <p className="mt-0.5 text-[12px] text-zinc-500">{stageLabel}</p>
+            <p suppressHydrationWarning className="mt-0.5 text-[12px] text-zinc-500">
+              {stageLabel}
+            </p>
           </div>
         </div>
 
         <div className="hidden min-w-0 flex-1 items-center justify-end gap-3 sm:flex">
           <span
+            suppressHydrationWarning
             className={`text-xs ${
               saveState === "error" ? "text-red-600" : "text-zinc-500"
             }`}
@@ -118,7 +124,9 @@ export function TopBar({
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             <Zap size={15} className="text-zinc-500" />
-            <span className="font-medium text-zinc-800">{credits}</span>
+            <span suppressHydrationWarning className="font-medium text-zinc-800">
+              {credits}
+            </span>
             <span className="text-zinc-500">|</span>
             <span className="font-medium">Upgrade</span>
           </button>

@@ -106,11 +106,28 @@ function buildTopic(input: string) {
 
 function buildTopicRelatedSuggestions(topic: string) {
   const seed = cleanTopicText(topic) || "this topic";
+  const lower = seed.toLowerCase();
+  if (/(volcano|eruption|火山|喷发)/i.test(seed)) {
+    return [
+      "Why does pressure keep building inside a magma chamber?",
+      "What signals appear before a volcanic eruption starts?",
+      "What is the difference between explosive and effusive eruptions?",
+      "How do ash, lava, and volcanic gases affect daily life?",
+    ];
+  }
+  if (/(black\s*hole|黑洞)/i.test(seed)) {
+    return [
+      "Why can light not escape beyond the event horizon?",
+      "How does an accretion disk form around a black hole?",
+      "What is the difference between stellar-mass and supermassive black holes?",
+      "How are black-hole mergers detected through gravitational waves?",
+    ];
+  }
   return [
-    `What is the core concept of ${seed}?`,
-    `What are the key stages or steps of ${seed}?`,
-    `How is ${seed} used in real life?`,
-    `Explain ${seed} with one real-world case.`,
+    `What are the formation conditions and triggering mechanisms of ${lower}?`,
+    `Which scientific process is the key step in ${lower}?`,
+    `What real-world impacts or applications does ${lower} have?`,
+    `Explain ${lower} with one concrete case.`,
   ];
 }
 

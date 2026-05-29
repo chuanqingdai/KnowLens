@@ -186,6 +186,8 @@ function createTables(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_ops_events_created_at ON ops_events(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_ops_events_category_status ON ops_events(category, status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_ops_events_source ON ops_events(source, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ops_events_user_email ON ops_events(user_email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ops_events_project_id ON ops_events(project_id, created_at DESC);
   `);
 
   const uploadJobColumns = [

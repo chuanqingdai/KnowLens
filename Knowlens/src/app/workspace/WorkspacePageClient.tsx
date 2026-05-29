@@ -152,6 +152,8 @@ type GenerationTaskUiState = {
   maxAttempts: number;
   imageUrl?: string;
   error?: string;
+  startedAt?: number;
+  lastUpdatedAt?: number;
 };
 
 type GenerationConfirmResponse = {
@@ -183,6 +185,7 @@ const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const GENERATION_REQUEST_TIMEOUT_MS = 180000;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
+const GENERATION_UI_HARD_TIMEOUT_MS = 210000;
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {
@@ -1729,6 +1732,23 @@ export default function WorkspacePage() {
     }
   }, [initialEntry.project]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const currentProjectId = projectIdRef.current?.trim();
+    if (!currentProjectId) {
+      return;
+    }
+    const url = new URL(window.location.href);
+    const existingProjectId = (url.searchParams.get("projectId") || "").trim();
+    if (existingProjectId === currentProjectId) {
+      return;
+    }
+    url.searchParams.set("projectId", currentProjectId);
+    router.replace(`${url.pathname}?${url.searchParams.toString()}`, { scroll: false });
+  }, [router, initialEntry.project?.projectId, initialEntry.project?.projectTraceId]);
+
   const openCreditsPaywall = useCallback(() => {
     setCreditsPaywallOpen(true);
   }, []);
@@ -2230,12 +2250,16 @@ export default function WorkspacePage() {
       setGenerationConfirmError(null);
       setGenerationTaskStateByIndex((prev) => {
         const next = { ...prev };
+        const now = Date.now();
         tasks.forEach((task) => {
+          const prevState = prev[task.index];
           next[task.index] = {
             index: task.index,
             status: isRetry ? "retrying" : "queued",
             attempts: 0,
             maxAttempts,
+            startedAt: prevState?.startedAt ?? now,
+            lastUpdatedAt: now,
           };
         });
         return next;
@@ -2261,6 +2285,8 @@ export default function WorkspacePage() {
               attempts: attempt + 1,
               maxAttempts,
               error: undefined,
+              startedAt: prev[task.index]?.startedAt ?? Date.now(),
+              lastUpdatedAt: Date.now(),
             },
           }));
 
@@ -2303,6 +2329,8 @@ export default function WorkspacePage() {
                     attempts: attempt + 1,
                     maxAttempts,
                     error: failureMessage,
+                    startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                    lastUpdatedAt: Date.now(),
                   },
                 }));
                 upsertImageErrorCard(task, failureMessage);
@@ -2330,6 +2358,8 @@ export default function WorkspacePage() {
                   attempts: attempt + 1,
                   maxAttempts,
                   imageUrl: resolvedImageUrl,
+                  startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                  lastUpdatedAt: Date.now(),
                 },
               }));
               logClientEvent({
@@ -2379,6 +2409,8 @@ export default function WorkspacePage() {
                     attempts: attempt + 1,
                     maxAttempts,
                     error: nextError || tr("Generation failed.", "生成失败。"),
+                    startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                    lastUpdatedAt: Date.now(),
                   },
                 }));
               }
@@ -2430,6 +2462,8 @@ export default function WorkspacePage() {
               attempts: maxAttempts,
               maxAttempts,
               error: finalError,
+              startedAt: prev[task.index]?.startedAt ?? Date.now(),
+              lastUpdatedAt: Date.now(),
             };
           });
           return next;
@@ -2710,6 +2744,58 @@ export default function WorkspacePage() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (flowStage !== "generate") {
+      return;
+    }
+    if (!Object.keys(generationTaskStateByIndex).length) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      const timedOutTaskIndexes = Object.values(generationTaskStateByIndex)
+        .filter((item) => {
+          const active = item.status === "queued" || item.status === "generating" || item.status === "retrying";
+          if (!active) {
+            return false;
+          }
+          const startedAt = item.startedAt ?? item.lastUpdatedAt ?? now;
+          return now - startedAt > GENERATION_UI_HARD_TIMEOUT_MS;
+        })
+        .map((item) => item.index);
+      if (!timedOutTaskIndexes.length) {
+        return;
+      }
+      setGenerationTaskStateByIndex((prev) => {
+        const next = { ...prev };
+        timedOutTaskIndexes.forEach((index) => {
+          const taskState = next[index];
+          if (!taskState) {
+            return;
+          }
+          if (taskState.status === "success" || taskState.status === "failed") {
+            return;
+          }
+          next[index] = {
+            ...taskState,
+            status: "failed",
+            error: tr("Generation timed out. Please retry this card.", "生成超时，请重试该卡片。"),
+            lastUpdatedAt: now,
+          };
+          const task = imageGenerationTaskByIndex.get(index);
+          if (task) {
+            upsertImageErrorCard(
+              task,
+              tr("Generation timed out. Please retry this card.", "生成超时，请重试该卡片。"),
+            );
+          }
+        });
+        return next;
+      });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [flowStage, generationTaskStateByIndex, imageGenerationTaskByIndex, tr, upsertImageErrorCard]);
 
   function pushUserMessage(content: string, module = "内容改写") {
     setUpdates((prev) => [
@@ -3273,6 +3359,14 @@ export default function WorkspacePage() {
     projectTraceIdRef.current =
       initialEntry.project?.projectTraceId ||
       (projectIdRef.current && user?.id ? `${user.id}_${projectIdRef.current}` : projectTraceIdRef.current);
+    if (typeof window !== "undefined" && projectIdRef.current) {
+      const url = new URL(window.location.href);
+      const existingProjectId = (url.searchParams.get("projectId") || "").trim();
+      if (existingProjectId !== projectIdRef.current) {
+        url.searchParams.set("projectId", projectIdRef.current);
+        router.replace(`${url.pathname}?${url.searchParams.toString()}`, { scroll: false });
+      }
+    }
 
     appendCreditRecord({
       type: "consume",

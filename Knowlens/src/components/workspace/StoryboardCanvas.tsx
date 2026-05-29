@@ -30,8 +30,6 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 
-import { slideDrafts } from "./mockData";
-
 type SaveState = "saved" | "saving" | "error";
 
 type StoryboardCanvasProps = {
@@ -39,6 +37,8 @@ type StoryboardCanvasProps = {
   canvasModeExternal?: CanvasMode;
   onExportingPptChange?: (value: boolean) => void;
   onComposingVideoChange?: (value: boolean) => void;
+  generationSeedSlides?: CanvasSeedSlide[];
+  generationClearToken?: string;
   generationTaskStateByIndex?: Record<
     number,
     {
@@ -90,6 +90,14 @@ type HistoryState = {
   future: PersistedCanvasState[];
 };
 
+type CanvasSeedSlide = {
+  id: string;
+  page: number;
+  title: string;
+  body: string;
+  visual: string;
+};
+
 type ValidationIssue = {
   body?: string;
   visual?: string;
@@ -127,6 +135,7 @@ type ExportPhase = "prepare" | "images" | "slides" | "file" | "done";
 type PptExportStatus = "idle" | "running" | "success" | "error";
 
 const STORAGE_KEY = "knowlens.workspace.storyboard.v1";
+const STORAGE_CLEAR_TOKEN_KEY = "knowlens.workspace.storyboard.clear-token.v1";
 const HISTORY_LIMIT = 60;
 
 const LENS_MODES = ["广角建立镜头", "剖面特写", "流程箭头跟拍", "对比双画面"];
@@ -169,12 +178,11 @@ function buildPrompt(title: string, visual: string) {
   return `${title}，科普教学插画，构图清晰，知识图解风，16:9，重点表现：${visual}`;
 }
 
-function buildSlides(): SlideItem[] {
-  return slideDrafts.map((item) => ({
+function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
+  return seedSlides.map((item) => ({
     ...item,
-    id: `slide-${item.page}`,
-    coverTitle: item.page === 1 ? "火山喷发过程" : undefined,
-    coverSubtitle: item.page === 1 ? "中学生科普演示文稿" : undefined,
+    coverTitle: item.page === 1 ? item.title : undefined,
+    coverSubtitle: item.page === 1 ? "Waiting for generation" : undefined,
     coverTitleX: item.page === 1 ? 50 : undefined,
     coverTitleY: item.page === 1 ? 22 : undefined,
     coverTitleSize: item.page === 1 ? 50 : undefined,
@@ -184,8 +192,18 @@ function buildSlides(): SlideItem[] {
   }));
 }
 
-function createInitialCanvasState(): PersistedCanvasState {
-  const baseSlides = buildSlides();
+function buildSeedSlides(count: number): CanvasSeedSlide[] {
+  return Array.from({ length: Math.max(1, count) }, (_, idx) => ({
+    id: `slide-${idx + 1}`,
+    page: idx + 1,
+    title: `Slide ${idx + 1}`,
+    body: "",
+    visual: "",
+  }));
+}
+
+function createInitialCanvasState(seedCount = 6): PersistedCanvasState {
+  const baseSlides = buildSlides(buildSeedSlides(seedCount));
   return {
     version: 1,
     slides: baseSlides,
@@ -196,7 +214,7 @@ function createInitialCanvasState(): PersistedCanvasState {
       baseSlides.map((slide) => [slide.id, buildPrompt(slide.title, slide.visual)]),
     ),
     imageHistoryBySlideId: Object.fromEntries(
-      baseSlides.map((slide, idx) => [slide.id, [CASE_IMAGES[idx % CASE_IMAGES.length]]]),
+      baseSlides.map((slide) => [slide.id, []]),
     ),
     activeImageIndexBySlideId: Object.fromEntries(baseSlides.map((slide) => [slide.id, 0])),
     historyOpenBySlideId: Object.fromEntries(baseSlides.map((slide) => [slide.id, false])),
@@ -321,6 +339,8 @@ export function StoryboardCanvas({
   canvasModeExternal,
   onExportingPptChange,
   onComposingVideoChange,
+  generationSeedSlides,
+  generationClearToken,
   generationTaskStateByIndex,
   onRetryGenerationTask,
   onModeActionRegister,
@@ -331,7 +351,25 @@ export function StoryboardCanvas({
   const composedVideoUrlRef = useRef<string | null>(null);
   const exportedPptUrlRef = useRef<string | null>(null);
   const generatedAudioRef = useRef<Record<string, GeneratedAudioMeta>>({});
-  const initialPack = useMemo(() => createInitialPack(), []);
+  const initialPack = useMemo(() => {
+    if (typeof window === "undefined") {
+      return createInitialPack();
+    }
+    if (generationClearToken) {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+      const seedSlides = generationSeedSlides?.length ? generationSeedSlides : buildSeedSlides(6);
+      const seededState = createInitialCanvasState(seedSlides.length);
+      return {
+        state: seededState,
+        snapshot: JSON.stringify(seededState),
+      };
+    }
+    return createInitialPack();
+  }, [generationClearToken, generationSeedSlides]);
   const lastSavedSnapshotRef = useRef(initialPack.snapshot);
   const saveTimerRef = useRef<number | null>(null);
   const previewPauseRef = useRef(false);
