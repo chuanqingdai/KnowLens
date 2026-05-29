@@ -8,11 +8,28 @@ export type AuthUser = {
 };
 
 export const ADMIN_EMAIL = "chuanqingdai@gmail.com";
+export const LOCAL_ADMIN_EMAIL = "local@knowlens.ai";
+
+const LOCAL_TEST_ADMIN_EMAIL_PATTERN = /^local(?:\+.*)?@knowlens\.ai$/;
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+export function isAdminEmail(email: string) {
+  const normalized = normalizeEmail(email);
+  if (normalized === ADMIN_EMAIL) {
+    return true;
+  }
+  if (process.env.NODE_ENV !== "production" && LOCAL_TEST_ADMIN_EMAIL_PATTERN.test(normalized)) {
+    return true;
+  }
+  if (process.env.NODE_ENV !== "production" && normalized === LOCAL_ADMIN_EMAIL) {
+    return true;
+  }
+  return false;
+}
+
 export function resolveRoleByEmail(email: string): UserRole {
-  return normalizeEmail(email) === ADMIN_EMAIL ? "admin" : "user";
+  return isAdminEmail(email) ? "admin" : "user";
 }

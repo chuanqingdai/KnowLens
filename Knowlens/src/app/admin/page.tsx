@@ -49,6 +49,20 @@ type OpsSummaryResponse = {
   checkout: CheckoutStatRow[];
 };
 
+type UsageLogRow = {
+  id: string;
+  category: string;
+  action: string;
+  status: "ok" | "error" | "info";
+  source: string | null;
+  code: string | null;
+  message: string | null;
+  userEmail: string | null;
+  projectId: string | null;
+  detailsJson: string | null;
+  createdAt: string;
+};
+
 function formatDate(input: string) {
   const date = new Date(input);
   if (Number.isNaN(date.getTime())) {
@@ -79,6 +93,15 @@ export default function AdminDashboardPage() {
   const [opsError, setOpsError] = useState("");
   const [opsLastRefresh, setOpsLastRefresh] = useState("");
   const [opsReloadVersion, setOpsReloadVersion] = useState(0);
+  const [usageLogs, setUsageLogs] = useState<UsageLogRow[]>([]);
+  const [usageLogsLoading, setUsageLogsLoading] = useState(false);
+  const [usageLogsError, setUsageLogsError] = useState("");
+  const [usageLogsLastRefresh, setUsageLogsLastRefresh] = useState("");
+  const [projectLogQuery, setProjectLogQuery] = useState("");
+  const [projectLogs, setProjectLogs] = useState<UsageLogRow[]>([]);
+  const [projectLogsLoading, setProjectLogsLoading] = useState(false);
+  const [projectLogsError, setProjectLogsError] = useState("");
+  const [projectLogsLastRefresh, setProjectLogsLastRefresh] = useState("");
 
   useEffect(() => {
     if (activeTab !== "overview") {
@@ -143,6 +166,100 @@ export default function AdminDashboardPage() {
   }, [users]);
 
   const normalizedEmailQuery = emailQuery.trim().toLowerCase();
+  const normalizedProjectLogQuery = projectLogQuery.trim().toLowerCase();
+
+  useEffect(() => {
+    if (!normalizedEmailQuery) {
+      setUsageLogs([]);
+      setUsageLogsError("");
+      setUsageLogsLastRefresh("");
+      return;
+    }
+    let cancelled = false;
+    async function loadUsageLogs() {
+      setUsageLogsLoading(true);
+      setUsageLogsError("");
+      try {
+        const response = await fetch(`/api/admin/logs?userEmail=${encodeURIComponent(normalizedEmailQuery)}&limit=120`);
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          logs?: UsageLogRow[];
+          error?: string;
+          generatedAt?: string;
+        };
+        if (!response.ok || !data.ok || !Array.isArray(data.logs)) {
+          throw new Error(data.error || "Unable to load usage logs.");
+        }
+        if (cancelled) {
+          return;
+        }
+        setUsageLogs(data.logs);
+        setUsageLogsLastRefresh(data.generatedAt || new Date().toISOString());
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setUsageLogs([]);
+        setUsageLogsError(error instanceof Error ? error.message : "Unable to load usage logs.");
+      } finally {
+        if (!cancelled) {
+          setUsageLogsLoading(false);
+        }
+      }
+    }
+    void loadUsageLogs();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedEmailQuery, opsReloadVersion]);
+
+  useEffect(() => {
+    if (!normalizedProjectLogQuery) {
+      setProjectLogs([]);
+      setProjectLogsError("");
+      setProjectLogsLastRefresh("");
+      setProjectLogsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function loadProjectLogs() {
+      setProjectLogsLoading(true);
+      setProjectLogsError("");
+      try {
+        const response = await fetch(
+          `/api/admin/logs?projectId=${encodeURIComponent(normalizedProjectLogQuery)}&limit=120`,
+        );
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          logs?: UsageLogRow[];
+          error?: string;
+          generatedAt?: string;
+        };
+        if (!response.ok || !data.ok || !Array.isArray(data.logs)) {
+          throw new Error(data.error || "Unable to load project logs.");
+        }
+        if (cancelled) {
+          return;
+        }
+        setProjectLogs(data.logs);
+        setProjectLogsLastRefresh(data.generatedAt || new Date().toISOString());
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setProjectLogs([]);
+        setProjectLogsError(error instanceof Error ? error.message : "Unable to load project logs.");
+      } finally {
+        if (!cancelled) {
+          setProjectLogsLoading(false);
+        }
+      }
+    }
+    void loadProjectLogs();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedProjectLogQuery, opsReloadVersion]);
 
   const matchedUsers = useMemo(() => {
     if (!normalizedEmailQuery) {
@@ -631,6 +748,168 @@ export default function AdminDashboardPage() {
                 {matchedUsers.length > 0
                   ? matchedUsers.map((user) => user.email).join("，")
                   : "未找到对应邮箱用户"}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">项目日志直查</h2>
+                <p className="mt-1 text-xs text-zinc-500">输入 project ID，可以直接筛出该项目的前后端日志。</p>
+              </div>
+              <div className="relative w-full sm:max-w-md">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                />
+                <input
+                  value={projectLogQuery}
+                  onChange={(event) => setProjectLogQuery(event.target.value)}
+                  placeholder="输入 projectId，例如 p-admin-001"
+                  className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                />
+                {projectLogQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setProjectLogQuery("")}
+                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 transition hover:bg-zinc-100"
+                    aria-label="清空项目筛选"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">使用日志</h2>
+                <p className="mt-1 text-xs text-zinc-500">输入邮箱后查看该用户的输入、对话、项目、积分和接口日志。</p>
+              </div>
+              {usageLogsLastRefresh ? (
+                <p className="text-xs text-zinc-500">最后刷新：{formatDate(usageLogsLastRefresh)}</p>
+              ) : null}
+            </div>
+            {usageLogsLoading ? (
+              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
+            ) : usageLogsError ? (
+              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {usageLogsError}
+              </p>
+            ) : !normalizedEmailQuery ? (
+              <p className="mt-3 text-sm text-zinc-500">请输入邮箱后查看日志</p>
+            ) : !usageLogs.length ? (
+              <p className="mt-3 text-sm text-zinc-500">暂无日志</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs text-zinc-500">
+                    <tr>
+                      <th className="px-2 py-1.5 font-medium">时间</th>
+                      <th className="px-2 py-1.5 font-medium">分类</th>
+                      <th className="px-2 py-1.5 font-medium">动作</th>
+                      <th className="px-2 py-1.5 font-medium">状态</th>
+                      <th className="px-2 py-1.5 font-medium">来源</th>
+                      <th className="px-2 py-1.5 font-medium">错误码</th>
+                      <th className="px-2 py-1.5 font-medium">消息</th>
+                      <th className="px-2 py-1.5 font-medium">项目</th>
+                      <th className="px-2 py-1.5 font-medium">详情</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usageLogs.map((item) => (
+                      <tr key={item.id} className="border-t border-zinc-100 align-top">
+                        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">{formatDate(item.createdAt)}</td>
+                        <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
+                        <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
+                        <td className={`px-2 py-1.5 text-xs font-medium ${
+                          item.status === "error" ? "text-rose-600" : item.status === "ok" ? "text-emerald-600" : "text-zinc-500"
+                        }`}>{item.status}</td>
+                        <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
+                        <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
+                        <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
+                        <td className="px-2 py-1.5 text-xs text-zinc-500">{item.projectId ?? "-"}</td>
+                        <td className="max-w-[320px] whitespace-pre-wrap px-2 py-1.5 text-xs text-zinc-500">
+                          {item.detailsJson ?? "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {projectLogsLastRefresh || projectLogsLoading || projectLogsError || normalizedProjectLogQuery ? (
+              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-900">项目直查结果</h3>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {normalizedProjectLogQuery ? `projectId = ${projectLogQuery}` : "请输入 project ID"}
+                    </p>
+                  </div>
+                  {projectLogsLastRefresh ? (
+                    <p className="text-xs text-zinc-500">最后刷新：{formatDate(projectLogsLastRefresh)}</p>
+                  ) : null}
+                </div>
+                {projectLogsLoading ? (
+                  <p className="mt-3 text-sm text-zinc-500">加载中...</p>
+                ) : projectLogsError ? (
+                  <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {projectLogsError}
+                  </p>
+                ) : !normalizedProjectLogQuery ? (
+                  <p className="mt-3 text-sm text-zinc-500">请输入项目 ID 后查看日志</p>
+                ) : !projectLogs.length ? (
+                  <p className="mt-3 text-sm text-zinc-500">暂无项目日志</p>
+                ) : (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-xs text-zinc-500">
+                        <tr>
+                          <th className="px-2 py-1.5 font-medium">时间</th>
+                          <th className="px-2 py-1.5 font-medium">分类</th>
+                          <th className="px-2 py-1.5 font-medium">动作</th>
+                          <th className="px-2 py-1.5 font-medium">状态</th>
+                          <th className="px-2 py-1.5 font-medium">来源</th>
+                          <th className="px-2 py-1.5 font-medium">错误码</th>
+                          <th className="px-2 py-1.5 font-medium">消息</th>
+                          <th className="px-2 py-1.5 font-medium">详情</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectLogs.map((item) => (
+                          <tr key={item.id} className="border-t border-zinc-100 align-top">
+                            <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">
+                              {formatDate(item.createdAt)}
+                            </td>
+                            <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
+                            <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
+                            <td
+                              className={`px-2 py-1.5 text-xs font-medium ${
+                                item.status === "error"
+                                  ? "text-rose-600"
+                                  : item.status === "ok"
+                                    ? "text-emerald-600"
+                                    : "text-zinc-500"
+                              }`}
+                            >
+                              {item.status}
+                            </td>
+                            <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
+                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
+                            <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
+                            <td className="max-w-[320px] whitespace-pre-wrap px-2 py-1.5 text-xs text-zinc-500">
+                              {item.detailsJson ?? "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             ) : null}
           </section>
