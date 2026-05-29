@@ -185,7 +185,7 @@ const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const GENERATION_REQUEST_TIMEOUT_MS = 180000;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
-const GENERATION_UI_HARD_TIMEOUT_MS = 210000;
+const GENERATION_UI_HARD_TIMEOUT_MS = 540000;
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {
