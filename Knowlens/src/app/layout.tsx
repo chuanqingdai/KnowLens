@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
+import { GaPageTracker } from "@/components/analytics/GaPageTracker";
 
 const siteUrl = "https://knowlens.ai";
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "G-HZDH17R044";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -73,7 +75,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <head>
         <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-HZDH17R044"
+          src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
           strategy="afterInteractive"
         />
         <Script id="google-analytics" strategy="afterInteractive">
@@ -81,11 +83,12 @@ export default function RootLayout({
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', 'G-HZDH17R044');
+            gtag('config', '${gaMeasurementId}', { send_page_view: false });
           `}
         </Script>
       </head>
       <body className="min-h-full flex flex-col">
+        <GaPageTracker measurementId={gaMeasurementId} />
         <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>
     </html>
