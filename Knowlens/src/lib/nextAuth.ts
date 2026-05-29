@@ -189,7 +189,9 @@ export const nextAuthOptions: NextAuthOptions = {
         name: { label: "Name", type: "text", placeholder: "Your Name" },
       },
       async authorize(credentials) {
-        if (process.env.NEXTAUTH_ALLOW_DEV_LOGIN !== "true") {
+        // Local/dev bypass is always allowed outside production so teammates
+        // can sign in with a test account right after pulling the repo.
+        if (process.env.NODE_ENV === "production") {
           return null;
         }
         const email = (credentials?.email ?? "").trim().toLowerCase();
