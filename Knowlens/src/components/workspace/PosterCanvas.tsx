@@ -521,14 +521,54 @@ export function PosterCanvas({
       if (cancelled) {
         return;
       }
-      setCards(initialCards);
+      setCards(
+        generationTaskStateByIndex
+          ? initialCards.map((card) => {
+              const taskState = generationTaskStateByIndex[card.index];
+              if (!taskState) {
+                return card;
+              }
+              if (taskState.status === "success" && taskState.imageUrl) {
+                return {
+                  ...card,
+                  status: "ready" as const,
+                  imageSrc: taskState.imageUrl,
+                  colorHex: POSTER_PLACEHOLDER_COLORS[(card.index + 2) % POSTER_PLACEHOLDER_COLORS.length],
+                  errorMessage: undefined,
+                  timeoutAt: undefined,
+                };
+              }
+              if (taskState.status === "failed") {
+                return {
+                  ...card,
+                  status: "failed" as const,
+                  errorMessage: taskState.error || "Please retry from this card.",
+                  timeoutAt: undefined,
+                };
+              }
+              if (
+                taskState.status === "queued" ||
+                taskState.status === "generating" ||
+                taskState.status === "retrying"
+              ) {
+                return {
+                  ...card,
+                  status: taskState.status,
+                  errorMessage: undefined,
+                  timeoutAt: taskState.startedAt,
+                };
+              }
+              return card;
+            })
+          : initialCards,
+      );
     });
 
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [initKey, initialCards]);
+  }, [initKey, initialCards, generationTaskStateByIndex]);
 
   useEffect(() => {
     if (hasAutoFocusedFirstCardRef.current || !cards.length) {
