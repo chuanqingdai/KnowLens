@@ -24,7 +24,7 @@ body {
     "Avenir Next", "SF Pro Display", "PingFang SC", "Noto Sans SC",
     "Microsoft YaHei", sans-serif;
   scrollbar-width: thin;
-  scrollbar-color: #a1a1aa transparent;
+  scrollbar-color: #d4d4d8 transparent;
 }
 
 img {
@@ -115,19 +115,19 @@ input[type="reset"]:disabled {
 
 .workspace-canvas-shell {
   scrollbar-width: thin;
-  scrollbar-color: #a1a1aa transparent;
+  scrollbar-color: #d4d4d8 transparent;
 }
 
 .workspace-left-shell {
   min-height: 0;
   overflow: hidden;
   scrollbar-width: thin;
-  scrollbar-color: #a1a1aa transparent;
+  scrollbar-color: #d4d4d8 transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 *::-webkit-scrollbar-track {
@@ -137,8 +137,8 @@ input[type="reset"]:disabled {
 
 *::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: #a1a1aa;
-  border: 2px solid transparent;
+  background: rgba(161, 161, 170, 0.52);
+  border: 1px solid transparent;
   background-clip: content-box;
 }
 
@@ -147,13 +147,13 @@ input[type="reset"]:disabled {
 }
 
 .workspace-canvas-shell ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 .workspace-left-shell ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 .workspace-canvas-shell ::-webkit-scrollbar-track {
@@ -168,15 +168,15 @@ input[type="reset"]:disabled {
 
 .workspace-canvas-shell ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: #a1a1aa;
-  border: 2px solid transparent;
+  background: rgba(161, 161, 170, 0.52);
+  border: 1px solid transparent;
   background-clip: content-box;
 }
 
 .workspace-left-shell ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: #a1a1aa;
-  border: 2px solid transparent;
+  background: rgba(161, 161, 170, 0.52);
+  border: 1px solid transparent;
   background-clip: content-box;
 }
 
