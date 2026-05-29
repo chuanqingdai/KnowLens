@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
         status: "error",
         source: imageModel,
         userEmail: email,
-        projectId,
+        projectId: projectId ?? undefined,
         code: "GENERATION_TASKS_REQUIRED",
         message: "Generation tasks are required before confirming image generation.",
         details: {
@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
           status: "error",
           source: imageModel,
           userEmail: email,
-          projectId,
+          projectId: projectId ?? undefined,
           code: "IMAGE_PROVIDER_KEY_MISSING",
           message: "Missing IMAGE2 provider API key.",
           details: {
@@ -266,7 +266,7 @@ export async function POST(request: NextRequest) {
             status: "error",
             source: imageModel,
             userEmail: email,
-            projectId,
+            projectId: projectId ?? undefined,
             code: "EMPTY_GENERATION_PROMPT",
             message: `Empty generation prompt for task ${index}.`,
             details: {
@@ -303,7 +303,7 @@ export async function POST(request: NextRequest) {
             status: "error",
             source: imageModel,
             userEmail: email,
-            projectId,
+            projectId: projectId ?? undefined,
             code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
             message: generated.errorMessage || "Image generation failed.",
             details: {
@@ -327,7 +327,7 @@ export async function POST(request: NextRequest) {
           status: "ok",
           source: imageModel,
           userEmail: email,
-          projectId,
+          projectId: projectId ?? undefined,
           message: `${successCount}/${taskResults.length} tasks succeeded`,
           details: {
             projectTraceId,
