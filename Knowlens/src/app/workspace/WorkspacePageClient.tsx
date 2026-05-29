@@ -3857,11 +3857,11 @@ export default function WorkspacePage() {
       <main className="mx-auto flex h-full min-h-0 max-w-none flex-col overflow-hidden px-2 pb-1 pt-16 sm:px-3">
         <div
           className={`grid min-h-0 flex-1 gap-2 ${
-            hasCanvasPanel ? "lg:grid-cols-[416px_minmax(0,1fr)]" : "lg:grid-cols-1"
+            hasCanvasPanel ? "lg:grid-cols-[minmax(320px,960px)_minmax(0,1fr)]" : "lg:grid-cols-1"
           }`}
         >
           <section
-            className={`min-h-0 ${
+            className={`min-h-0 w-full min-w-0 max-w-[960px] ${
               hasCanvasPanel ? "" : "lg:w-full lg:max-w-none"
             } ${showChatPanelInLayout ? "" : "hidden"} workspace-left-shell`}
           >
