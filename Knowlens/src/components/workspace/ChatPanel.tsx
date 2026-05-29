@@ -207,6 +207,7 @@ function compactChatTurnsForDisplay(turns: ChatTurn[]) {
 }
 
 type ChatPanelProps = {
+  scrollContainerRef?: { current: HTMLDivElement | null } | null;
   outputLanguage?: "en" | "zh";
   userPrompt: string;
   entrySources: SourceItem[];
@@ -285,6 +286,7 @@ type ChatPanelProps = {
 };
 
 export function ChatPanel({
+  scrollContainerRef,
   outputLanguage = "en",
   userPrompt,
   entrySources,
@@ -393,6 +395,12 @@ export function ChatPanel({
       return;
     }
     const run = () => {
+      const container = scrollContainerRef?.current;
+      if (container) {
+        const targetTop = Math.max(0, container.scrollHeight - container.clientHeight + 80);
+        container.scrollTo({ top: targetTop, behavior: "smooth" });
+        return;
+      }
       const doc = document.documentElement;
       const targetTop = Math.max(0, doc.scrollHeight - window.innerHeight + 80);
       window.scrollTo({ top: targetTop, behavior: "smooth" });
@@ -400,7 +408,7 @@ export function ChatPanel({
     window.requestAnimationFrame(run);
     window.setTimeout(run, 160);
     window.setTimeout(run, 420);
-  }, []);
+  }, [scrollContainerRef]);
 
   const handleTopicSuggestionNext = () => {
     onConfirmTopicSuggestion();
@@ -546,9 +554,12 @@ export function ChatPanel({
     return () => window.clearTimeout(timer);
   }, [hasDraftContentCard, scrollToLatestCard, showBillingRecord]);
   const renderUpdateCard = (update: ChatTurn, idx: number) => {
+    if (update.role === "assistant" && update.meta?.kind === "image_error") {
+      return null;
+    }
     const isErrorCard =
       update.role === "assistant" &&
-      (update.meta?.kind === "llm_error" || update.meta?.kind === "image_error");
+      update.meta?.kind === "llm_error";
     if (isErrorCard) {
       const isRetrying = Boolean(retryingErrorTurnIds?.[update.id]);
       const errorCode = update.meta?.code?.trim();
