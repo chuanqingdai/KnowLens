@@ -465,7 +465,6 @@ export function StoryboardCanvas({
     return idx >= 0 ? idx : 0;
   }, [selectedSlideId, slides]);
 
-
   useEffect(() => {
     hasAutoFocusedFirstSlideRef.current = false;
     hasCenteredFirstSlideRef.current = false;
@@ -534,6 +533,48 @@ export function StoryboardCanvas({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!generationTaskStateByIndex) {
+      return;
+    }
+    const successfulResults = Object.entries(generationTaskStateByIndex)
+      .map(([indexText, state]) => ({
+        index: Number(indexText),
+        imageUrl: state.imageUrl?.trim() || "",
+        status: state.status,
+      }))
+      .filter((item) => Number.isFinite(item.index) && item.index > 0 && item.status === "success" && item.imageUrl)
+      .sort((a, b) => a.index - b.index);
+    if (!successfulResults.length) {
+      return;
+    }
+    commitChange((prev) => {
+      const next = cloneState(prev);
+      let changed = false;
+      successfulResults.forEach(({ index, imageUrl }) => {
+        const slide = next.slides[index - 1];
+        if (!slide) {
+          return;
+        }
+        const currentHistory = (next.imageHistoryBySlideId[slide.id] ?? []).filter(Boolean);
+        const lastUrl = currentHistory[currentHistory.length - 1] ?? "";
+        if (lastUrl === imageUrl) {
+          const activeIndex = currentHistory.length ? currentHistory.length - 1 : 0;
+          if (next.activeImageIndexBySlideId[slide.id] !== activeIndex) {
+            next.activeImageIndexBySlideId[slide.id] = activeIndex;
+            changed = true;
+          }
+          return;
+        }
+        const nextHistory = [...currentHistory, imageUrl].slice(-12);
+        next.imageHistoryBySlideId[slide.id] = nextHistory;
+        next.activeImageIndexBySlideId[slide.id] = nextHistory.length - 1;
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [commitChange, generationTaskStateByIndex]);
 
   const undo = useCallback(() => {
     setHistory((prev) => {
@@ -1027,6 +1068,17 @@ export function StoryboardCanvas({
       });
     },
     [commitChange],
+  );
+
+  const regenerateSlideImage = useCallback(
+    (slideId: string, page: number) => {
+      if (onRetryGenerationTask) {
+        onRetryGenerationTask(page);
+        return;
+      }
+      redrawImageForSlide(slideId, page);
+    },
+    [onRetryGenerationTask, redrawImageForSlide],
   );
 
   const selectHistoryImage = useCallback(
@@ -1873,7 +1925,7 @@ export function StoryboardCanvas({
                       </button>
                       <button
                         type="button"
-                        onClick={() => redrawImageForSlide(slide.id, slide.page)}
+                        onClick={() => regenerateSlideImage(slide.id, slide.page)}
                         className="nodrag nopan nowheel rounded-md border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
                       >
                         重新绘制
@@ -2402,7 +2454,7 @@ export function StoryboardCanvas({
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  redrawImageForSlide(slide.id, slide.page);
+                                  regenerateSlideImage(slide.id, slide.page);
                                 }}
                                 className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700"
                               >

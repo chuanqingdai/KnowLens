@@ -32,6 +32,13 @@ type PosterPlanItem = {
   index: number;
   title: string;
   focus: string;
+  role?: string;
+  keyFacts?: string[];
+  visualType?: string;
+  visualElements?: string[];
+  layoutHint?: string;
+  imagePrompt?: string;
+  imagePromptDraft?: string;
 };
 
 type PosterDraftRequest = {
@@ -41,6 +48,9 @@ type PosterDraftRequest = {
   posterCount?: number;
   posterSizeLabel?: string;
   direction?: "poster" | "ppt" | "video";
+  normalizedDirection?: "poster" | "ppt" | "video";
+  normalizedCount?: number;
+  normalizedRatio?: string;
   draftMode?: "mock" | "auto";
   outputLanguage?: OutputLanguage;
 };
@@ -53,6 +63,7 @@ type PptSlideDraft = {
   supportNote?: string;
   visual?: string;
   imagePrompt?: string;
+  imagePromptDraft?: string;
 };
 
 type VideoStoryboardDraft = {
@@ -63,6 +74,7 @@ type VideoStoryboardDraft = {
   visual?: string;
   onScreenText?: string;
   imagePrompt?: string;
+  imagePromptDraft?: string;
 };
 
 type GptsApiGenerateResponse = {
@@ -316,6 +328,27 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeDraftConfig(payload: PosterDraftRequest) {
+  const normalizedDirection = payload.normalizedDirection || payload.direction || "poster";
+  const normalizedCountRaw =
+    Number.isFinite(payload.normalizedCount) && Number(payload.normalizedCount) > 0
+      ? Number(payload.normalizedCount)
+      : Number(payload.posterCount || (normalizedDirection === "poster" ? 1 : 6));
+  const normalizedCount = clamp(
+    Math.round(normalizedCountRaw),
+    normalizedDirection === "poster" ? 1 : 6,
+    normalizedDirection === "poster" ? 10 : 24,
+  );
+  const normalizedRatio =
+    (payload.normalizedRatio || payload.posterSizeLabel || "").trim() ||
+    (normalizedDirection === "video" || normalizedDirection === "ppt" ? "16:9" : "9:16");
+  return {
+    normalizedDirection,
+    normalizedCount,
+    normalizedRatio,
+  } as const;
+}
+
 function cleanSentence(input: string) {
   return input.replace(/\s+/g, "").trim();
 }
@@ -386,10 +419,11 @@ function buildFallbackPosterDraft(
     };
   }
 
-  const tone = /生动|趣味|轻松/.test(prompt) ? "更生动" : /专业|严谨/.test(prompt) ? "更专业" : "更清晰";
   return {
     headline: `${topic}：关键机制与现实影响`,
-    subtitle: tone,
+    subtitle: isChineseLanguage(outputLanguage)
+      ? "一图梳理核心机制、关键变量与现实影响"
+      : "Key mechanisms, variables, and real-world impact",
     body: `${topic}会直接改变日常决策与成本结构。典型表现是同样预算下可获得资源减少、选择范围变窄，个体需要在效率、价格和风险之间重新平衡。`,
     points: [
       `${topic}的上游变量变化会先体现在成本端，并在短周期内传导到终端价格。`,
@@ -481,7 +515,18 @@ function parseJsonContent(content: string) {
         layoutSuggestion?: string;
         visualElements?: string[];
       };
-      planList?: Array<{ title?: string; focus?: string }>;
+      planList?: Array<{
+        index?: number;
+        role?: string;
+        title?: string;
+        focus?: string;
+        keyFacts?: string[];
+        visualType?: string;
+        visualElements?: string[];
+        layoutHint?: string;
+        imagePromptDraft?: string;
+        imagePrompt?: string;
+      }>;
       outlineItems?: string[];
       slideDrafts?: PptSlideDraft[];
       storyboardDrafts?: VideoStoryboardDraft[];
@@ -594,14 +639,17 @@ function normalizeSlideDrafts(raw: unknown, outlineItems: string[], count: numbe
       const body = normalizeTextItem(row.body);
       const support = normalizeTextItem(row.supportNote);
       const visual = normalizeTextItem(row.visual);
+      const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
       return {
         page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
         title,
         body: [body, support].filter(Boolean).join("\n"),
         visual,
+        imagePromptDraft,
+        imagePrompt: imagePromptDraft,
       };
     })
-    .filter((item): item is { page: number; title: string; body: string; visual: string } => Boolean(item));
+    .filter((item): item is { page: number; title: string; body: string; visual: string; imagePromptDraft: string; imagePrompt: string } => Boolean(item));
 
   if (drafts.length >= count) {
     return drafts.slice(0, count);
@@ -616,6 +664,8 @@ function normalizeSlideDrafts(raw: unknown, outlineItems: string[], count: numbe
       title,
       body: "",
       visual: "",
+      imagePromptDraft: "",
+      imagePrompt: "",
     };
   });
 }
@@ -632,14 +682,17 @@ function normalizeStoryboardDrafts(raw: unknown, outlineItems: string[], count: 
       const narration = normalizeTextItem(row.narration);
       const onScreenText = normalizeTextItem(row.onScreenText);
       const visual = normalizeTextItem(row.visual);
+      const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
       return {
         index: Number.isFinite(row.index) ? Number(row.index) : idx + 1,
         title,
         narration: [narration, onScreenText].filter(Boolean).join("\n"),
         visual,
+        imagePromptDraft,
+        imagePrompt: imagePromptDraft,
       };
     })
-    .filter((item): item is { index: number; title: string; narration: string; visual: string } => Boolean(item));
+    .filter((item): item is { index: number; title: string; narration: string; visual: string; imagePromptDraft: string; imagePrompt: string } => Boolean(item));
 
   if (drafts.length >= count) {
     return drafts.slice(0, count);
@@ -654,6 +707,8 @@ function normalizeStoryboardDrafts(raw: unknown, outlineItems: string[], count: 
       title,
       narration: "",
       visual: "",
+      imagePromptDraft: "",
+      imagePrompt: "",
     };
   });
 }
@@ -880,13 +935,10 @@ export async function POST(request: NextRequest) {
     const topic = (payload.topic ?? "Knowledge Topic").trim() || "Knowledge Topic";
     const prompt = (payload.prompt ?? "").trim();
     const textModel = (payload.textModel ?? "").trim().toLowerCase();
-    const direction = payload.direction ?? "poster";
-    const outputCount = clamp(
-      Math.round(payload.posterCount ?? (direction === "poster" ? 1 : 6)),
-      direction === "poster" ? 1 : 6,
-      direction === "poster" ? 10 : 24,
-    );
-    const posterSizeLabel = payload.posterSizeLabel?.trim();
+    const normalized = normalizeDraftConfig(payload);
+    const direction = normalized.normalizedDirection;
+    const outputCount = normalized.normalizedCount;
+    const posterSizeLabel = normalized.normalizedRatio;
     const outputLanguage = resolveOutputLanguage({
       userPrompt: prompt,
       sourceText: topic,
@@ -1044,6 +1096,9 @@ export async function POST(request: NextRequest) {
         const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount);
         return NextResponse.json({
           direction,
+          normalizedDirection: direction,
+          normalizedCount: outputCount,
+          normalizedRatio: posterSizeLabel,
           outlineItems,
           slideDrafts,
           outputLanguage,
@@ -1053,6 +1108,9 @@ export async function POST(request: NextRequest) {
       const storyboardDrafts = normalizeStoryboardDrafts(parsed.storyboardDrafts, outlineItems, outputCount);
       return NextResponse.json({
         direction,
+        normalizedDirection: direction,
+        normalizedCount: outputCount,
+        normalizedRatio: posterSizeLabel,
         outlineItems,
         storyboardDrafts,
         outputLanguage,
@@ -1122,13 +1180,35 @@ export async function POST(request: NextRequest) {
         ? Array.from({ length: outputCount }, (_, idx) => {
             const item = parsed.planList?.[idx] ?? parsed.planList?.[parsed.planList.length - 1];
             const fallback = fallbackPlan[idx];
+            const visualElements = Array.isArray(item?.visualElements)
+              ? item.visualElements.map((value) => String(value || "").trim()).filter(Boolean).slice(0, 6)
+              : [];
+            const keyFacts = Array.isArray(item?.keyFacts)
+              ? item.keyFacts.map((value) => String(value || "").trim()).filter(Boolean).slice(0, 5)
+              : [];
             return {
               index: idx + 1,
               title: item?.title?.trim() || fallback.title,
               focus: item?.focus?.trim() || fallback.focus,
+              role: item?.role?.trim() || (idx === 0 ? "cover" : idx === outputCount - 1 ? "summary" : "mechanism"),
+              keyFacts,
+              visualType: item?.visualType?.trim() || specificPosterDraft.visualType || fallbackDraft.visualType,
+              visualElements: visualElements.length ? visualElements : specificPosterDraft.visualElements ?? fallbackDraft.visualElements,
+              layoutHint: item?.layoutHint?.trim() || specificPosterDraft.layoutSuggestion || fallbackDraft.layoutSuggestion,
+              imagePromptDraft: item?.imagePromptDraft?.trim() || item?.imagePrompt?.trim() || "",
+              imagePrompt: item?.imagePromptDraft?.trim() || item?.imagePrompt?.trim() || "",
             };
           })
-        : fallbackPlan;
+        : fallbackPlan.map((item, idx) => ({
+            ...item,
+            role: idx === 0 ? "cover" : idx === outputCount - 1 ? "summary" : "mechanism",
+            keyFacts: specificPosterDraft.points.slice(0, 3),
+            visualType: specificPosterDraft.visualType || fallbackDraft.visualType,
+            visualElements: specificPosterDraft.visualElements ?? fallbackDraft.visualElements,
+            layoutHint: specificPosterDraft.layoutSuggestion || fallbackDraft.layoutSuggestion,
+            imagePromptDraft: "",
+            imagePrompt: "",
+          }));
 
     void renderSpec;
     void internalModelPrompt;
@@ -1143,6 +1223,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
+      direction,
+      normalizedDirection: direction,
+      normalizedCount: outputCount,
+      normalizedRatio: posterSizeLabel,
       posterDraft: specificPosterDraft,
       planList,
       outputLanguage,

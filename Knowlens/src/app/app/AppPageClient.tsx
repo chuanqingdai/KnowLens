@@ -88,37 +88,37 @@ const textModelOptions = [
   {
     value: "gemini-2.5",
     label: "Gemini 2.5",
-    desc: "Free model for quick drafting and daily content generation.",
+    desc: "Fast drafting for everyday topics and first-pass content planning.",
     premium: false,
   },
   {
     value: "deepseek-v4",
     label: "DeepSeek V4",
-    desc: "Free model with strong bilingual drafting quality.",
+    desc: "Reliable bilingual drafting for quick daily knowledge workflows.",
     premium: false,
   },
   {
     value: "gpt-5.5",
     label: "GPT-5.5",
-    desc: "Premium model for the highest-quality reasoning and writing.",
+    desc: "Best for deep reasoning and infographic-ready information architecture.",
     premium: true,
   },
   {
     value: "gpt-5.4",
     label: "GPT-5.4",
-    desc: "Premium model for stable high-quality generation.",
+    desc: "Strong structure stability for consistent multi-page explainers.",
     premium: true,
   },
   {
     value: "gemini-3.1-pro",
     label: "Gemini 3.1 Pro",
-    desc: "Premium model for complex long-context understanding.",
+    desc: "Strong at long-context synthesis for complex knowledge understanding.",
     premium: true,
   },
   {
     value: "claude-sonnet-4.6",
     label: "Claude Sonnet 4.6",
-    desc: "Premium model for polished language quality and refinement.",
+    desc: "Polished narrative quality for clear, concise visual storytelling copy.",
     premium: true,
   },
 ];

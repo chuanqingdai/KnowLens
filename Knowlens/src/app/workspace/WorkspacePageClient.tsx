@@ -43,10 +43,12 @@ import {
   type ImageBatchTaskResultLike,
 } from "@/lib/workspace/image-task-bridge";
 import {
-  buildTuziImagePrompt,
-  normalizeTuziAspectRatio,
-  resolveTuziImageSize,
-} from "@/lib/workspace/tuzi-image";
+  normalizeGenerationConfig,
+  buildGenerationTasksFromDraft,
+  type VisibleText,
+  type VisualDesign,
+  type SeriesStyle,
+} from "@/lib/workspace/generation-compiler";
 
 type HomeSourceKind = "file" | "web" | "youtube" | "podcast";
 type HomeSourceItem = {
@@ -85,6 +87,8 @@ type SlideDraft = {
   title: string;
   body: string;
   visual: string;
+  imagePrompt?: string;
+  imagePromptDraft?: string;
 };
 
 type PosterDraft = {
@@ -102,6 +106,13 @@ type PosterPlanItem = {
   index: number;
   title: string;
   focus: string;
+  role?: string;
+  keyFacts?: string[];
+  visualType?: string;
+  visualElements?: string[];
+  layoutHint?: string;
+  imagePrompt?: string;
+  imagePromptDraft?: string;
 };
 
 type FlowStage = "intent" | "config" | "content" | "style" | "billing" | "generate";
@@ -150,7 +161,13 @@ type ImageGenerationTask = {
   stylePrompt: string;
   contentTitle: string;
   contentBody: string;
+  visibleText: VisibleText;
+  visualDesign: VisualDesign;
+  factualRules: string[];
+  negativeRules: string[];
+  seriesStyle: SeriesStyle;
   visualHint: string;
+  imagePromptDraft: string;
   composedPrompt: string;
   model: string;
   provider: "tuzi";
@@ -1106,20 +1123,6 @@ function buildMissingHints(
   const hints: string[] = [];
   const text = normalizeText(prompt);
   const isZh = isChineseLanguage(outputLanguage);
-  const hasStyle = containsAny(text, [
-    "风格",
-    "语气",
-    "视觉",
-    "简洁",
-    "生动",
-    "专业",
-    "图解",
-    "style",
-    "tone",
-    "visual",
-    "clean",
-    "professional",
-  ]);
 
   if (intent === "unknown") {
     hints.push(
@@ -1130,9 +1133,6 @@ function buildMissingHints(
   if (intent === "ppt") {
     if (!extractPageCount(prompt)) {
       hints.push(isZh ? "建议补充页数（例如：10页）" : "Add slide count (e.g. 10 slides).");
-    }
-    if (!hasStyle) {
-      hints.push(isZh ? "建议补充风格偏好（例如：图解化、简洁）" : "Add a style preference (e.g. clean, explanatory).");
     }
   }
   if (intent === "video") {
@@ -1152,9 +1152,6 @@ function buildMissingHints(
           ? "请选择海报尺寸（1:1 / 9:16 / 16:9 / 4:3 / 3:4）"
           : "Choose poster size (1:1 / 9:16 / 16:9 / 4:3 / 3:4).",
       );
-    }
-    if (!hasStyle) {
-      hints.push(isZh ? "建议补充文案风格（例如：专业、简洁、生动）" : "Add content tone (e.g. professional, concise, vivid).");
     }
   }
   return hints;
@@ -1398,10 +1395,11 @@ function buildPosterDraft(
     };
   }
 
-  const tone = /生动|趣味|轻松/.test(prompt) ? "更生动" : /专业|严谨/.test(prompt) ? "更专业" : "更清晰";
   return {
     headline: `${topic}：关键机制与现实影响`,
-    subtitle: tone,
+    subtitle: isChineseLanguage(outputLanguage)
+      ? "一图梳理核心机制、关键变量与现实影响"
+      : "Key mechanisms, variables, and real-world impact",
     body: `${topic}会直接改变日常决策与成本结构。典型表现是同样预算下可获得资源减少、选择范围变窄，个体需要在效率、价格和风险之间重新平衡。`,
     points: [
       `${topic}的上游变量变化会先体现在成本端，并在短周期内传导到终端价格。`,
@@ -2049,7 +2047,7 @@ export default function WorkspacePage() {
     return buildGenericOutline(topic, effectiveIntent, targetSectionCount, outputLanguage);
   }, [effectiveIntent, outputLanguage, targetSectionCount, topic]);
 
-  const baseSlideDrafts = useMemo(() => {
+  const baseSlideDrafts = useMemo<SlideDraft[]>(() => {
     if (effectiveIntent !== "ppt" && effectiveIntent !== "video") {
       return [] as SlideDraft[];
     }
@@ -2143,7 +2141,7 @@ export default function WorkspacePage() {
     );
   }, [contextPrompt, entrySources.length, outputLanguage, topic, tr, weakPrompt]);
 
-  const basePosterPlanList = useMemo(() => {
+  const basePosterPlanList = useMemo<PosterPlanItem[]>(() => {
     if (effectiveIntent !== "poster" || !basePosterDraft || !configConfirmed) {
       return [] as PosterPlanItem[];
     }
@@ -2177,6 +2175,13 @@ export default function WorkspacePage() {
       index: idx + 1,
       title: item.title,
       focus: item.focus,
+      role: idx === 0 ? "cover" : idx === posterCount - 1 ? "summary" : "mechanism",
+      keyFacts: basePosterDraft.points.slice(0, 3),
+      visualType: basePosterDraft.visualType,
+      visualElements: basePosterDraft.visualElements,
+      layoutHint: basePosterDraft.layoutSuggestion,
+      imagePromptDraft: "",
+      imagePrompt: "",
     }));
   }, [basePosterDraft, configConfirmed, effectiveIntent, isZhOutput, posterCount, topic]);
 
@@ -2217,15 +2222,22 @@ export default function WorkspacePage() {
     });
   }, [configConfirmed, contextPrompt, effectiveIntent, topic]);
   const visualizationTypeHint = posterDraft?.visualType || visualizationRecommendation?.label || null;
+  const normalizedGenerationConfig = useMemo(
+    () =>
+      normalizeGenerationConfig({
+        direction: effectiveIntent === "unknown" ? "poster" : effectiveIntent,
+        posterCount,
+        posterSizeLabel: posterSizeLabel || "9:16",
+        pptPageCount,
+        pptRatio,
+        videoStoryboardCount,
+        videoRatio,
+      }),
+    [effectiveIntent, posterCount, posterSizeLabel, pptPageCount, pptRatio, videoStoryboardCount, videoRatio],
+  );
 
   const standardOutputCount =
-    effectiveIntent === "poster"
-      ? posterCount
-      : effectiveIntent === "ppt"
-        ? pptPageCount
-        : effectiveIntent === "video"
-          ? videoStoryboardCount
-          : 0;
+    effectiveIntent === "unknown" ? 0 : normalizedGenerationConfig.normalizedCount;
   const draftOutputCharCount = useMemo(() => {
     if (effectiveIntent === "poster" && posterDraft) {
       const posterText = [
@@ -2252,135 +2264,49 @@ export default function WorkspacePage() {
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const billingCost = languageModelCredits + imageModelCredits;
   const buildFreshImageGenerationTasks = useCallback(() => {
-    const isChineseOutput = isChineseLanguage(outputLanguage);
-    const styleName = selectedStyle.englishName ?? selectedStyle.name;
-    const stylePrompt = selectedStyle.prompt.trim();
-    const posterPlanList = editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList;
-
-    if (effectiveIntent === "poster" && posterDraft) {
-      const aspectRatio = normalizeTuziAspectRatio(posterSizeLabel) || normalizeTuziAspectRatio("9:16") || "9:16";
-      const size = resolveTuziImageSize(aspectRatio);
-      if (!size) {
-        throw new Error(`Unsupported poster aspect ratio: ${posterSizeLabel || "unknown"}`);
-      }
-      return Array.from({ length: Math.max(1, posterCount) }, (_, idx) => {
-        const plan = posterPlanList[idx];
-        const contentTitle = posterCount === 1
-          ? posterDraft.headline
-          : `${plan?.title || posterDraft.headline} (${idx + 1}/${posterCount})`;
-        const draftContent = [
-          posterDraft.subtitle,
-          posterDraft.body,
-          plan?.focus ? (isChineseOutput ? `聚焦要点：${plan.focus}` : `Focus: ${plan.focus}`) : "",
-          posterDraft.points.length
-            ? isChineseOutput
-              ? `关键要点：${posterDraft.points.join(" | ")}`
-              : `Key points: ${posterDraft.points.join(" | ")}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n");
-        const visualHint = [
-          posterDraft.visualType || "",
-          posterDraft.layoutSuggestion || "",
-          posterDraft.visualElements?.join(", ") || "",
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        const baseTask: Omit<ImageGenerationTask, "composedPrompt"> = {
-          index: idx + 1,
-          outputType: "poster",
-          aspectRatio,
-          size,
-          styleId: selectedStyle.id,
-          styleName,
-          stylePrompt,
-          contentTitle,
-          contentBody: draftContent,
-          visualHint,
-          model: "gpt-image-2",
-          provider: "tuzi",
-          quality: "standard",
-          response_format: "url",
-        };
-        return {
-          ...baseTask,
-          composedPrompt: buildTuziImagePrompt({
-            draftContent: [contentTitle, draftContent, visualHint].filter(Boolean).join("\n"),
-            selectedStyle: styleName || stylePrompt,
-            aspectRatio,
-            posterIndex: idx + 1,
-            totalCount: posterCount,
-          }),
-        } satisfies ImageGenerationTask;
-      });
+    if (effectiveIntent === "unknown") {
+      return [] as ImageGenerationTask[];
     }
-
-    if (effectiveIntent === "ppt" || effectiveIntent === "video") {
-      const requestedCount = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
-      const aspectRatioRaw = effectiveIntent === "ppt" ? pptRatio : videoRatio;
-      const aspectRatio = normalizeTuziAspectRatio(aspectRatioRaw);
-      const size = aspectRatio ? resolveTuziImageSize(aspectRatio) : null;
-      if (!aspectRatio || !size) {
-        throw new Error(`Unsupported aspect ratio: ${aspectRatioRaw || "unknown"}`);
-      }
-      return Array.from({ length: Math.max(1, requestedCount) }, (_, idx) => {
-        const slide = densityAdjustedSlideDrafts[idx];
-        const contentTitle =
-          slide?.title?.trim() ||
-          outlineItems[idx]?.trim() ||
-          `${effectiveIntent === "ppt" ? "Slide" : "Frame"} ${idx + 1}`;
-        const contentBody = slide?.body?.trim() || outlineItems[idx]?.trim() || contextPrompt;
-        const visualHint = slide?.visual?.trim() || "";
-        const baseTask: Omit<ImageGenerationTask, "composedPrompt"> = {
-          index: idx + 1,
-          outputType: effectiveIntent === "ppt" ? "ppt" : "video",
-          aspectRatio,
-          size,
-          styleId: selectedStyle.id,
-          styleName,
-          stylePrompt,
-          contentTitle,
-          contentBody,
-          visualHint,
-          model: "gpt-image-2",
-          provider: "tuzi",
-          quality: "standard",
-          response_format: "url",
-        };
-        return {
-          ...baseTask,
-          composedPrompt: buildTuziImagePrompt({
-            draftContent: [contentTitle, contentBody, visualHint].filter(Boolean).join("\n"),
-            selectedStyle: styleName || stylePrompt,
-            aspectRatio,
-            posterIndex: idx + 1,
-            totalCount: requestedCount,
-          }),
-        } satisfies ImageGenerationTask;
-      });
-    }
-
-    return [] as ImageGenerationTask[];
+    const compiled = buildGenerationTasksFromDraft({
+      topic,
+      outputLanguage,
+      config: normalizedGenerationConfig,
+      style: {
+        id: selectedStyle.id,
+        name: selectedStyle.englishName ?? selectedStyle.name,
+        prompt: selectedStyle.prompt.trim(),
+      },
+      visualizationTypeHint,
+      posterDraft: effectiveIntent === "poster" ? posterDraft : null,
+      posterPlanList: editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList,
+      outlineItems,
+      slideDrafts: densityAdjustedSlideDrafts,
+    });
+    return compiled.map((task) => ({
+      ...task,
+      styleId: selectedStyle.id,
+      styleName: selectedStyle.englishName ?? selectedStyle.name,
+      stylePrompt: selectedStyle.prompt.trim(),
+      model: "gpt-image-2",
+      provider: "tuzi",
+      quality: "standard",
+      response_format: "url",
+    })) as ImageGenerationTask[];
   }, [
     basePosterPlanList,
-    contextPrompt,
     densityAdjustedSlideDrafts,
     editablePosterPlanList,
     effectiveIntent,
+    normalizedGenerationConfig,
     outlineItems,
-    posterCount,
+    outputLanguage,
     posterDraft,
-    posterSizeLabel,
-    pptPageCount,
-    pptRatio,
     selectedStyle.englishName,
     selectedStyle.id,
     selectedStyle.name,
     selectedStyle.prompt,
-    outputLanguage,
-    videoRatio,
-    videoStoryboardCount,
+    topic,
+    visualizationTypeHint,
   ]);
   const imageGenerationTasks = useMemo(() => buildFreshImageGenerationTasks(), [buildFreshImageGenerationTasks]);
   const canConfirmBilling = credits >= billingCost || debugGoGenerateStepEnabled;
@@ -2539,33 +2465,30 @@ export default function WorkspacePage() {
   const buildGenerationRequestPayload = useCallback(
     (tasks: ImageGenerationTask[]) => ({
       intent: effectiveIntent,
+      normalizedDirection: normalizedGenerationConfig.normalizedDirection,
+      normalizedCount: normalizedGenerationConfig.normalizedCount,
+      normalizedRatio: normalizedGenerationConfig.normalizedRatio,
       projectId: projectIdRef.current ?? undefined,
       projectTraceId: projectTraceIdRef.current ?? undefined,
-      outputs: standardOutputCount,
+      outputs: normalizedGenerationConfig.normalizedCount,
       style: {
         id: selectedStyle.id,
         name: selectedStyle.englishName ?? selectedStyle.name,
         prompt: selectedStyle.prompt,
       },
-      ratio:
-        effectiveIntent === "poster"
-          ? posterSizeLabel || "9:16"
-          : effectiveIntent === "ppt"
-            ? pptRatio
-            : videoRatio,
+      ratio: normalizedGenerationConfig.normalizedRatio,
       imageModel: "gpt-image-2",
       tasks,
     }),
     [
       effectiveIntent,
-      posterSizeLabel,
-      pptRatio,
+      normalizedGenerationConfig.normalizedCount,
+      normalizedGenerationConfig.normalizedDirection,
+      normalizedGenerationConfig.normalizedRatio,
       selectedStyle.englishName,
       selectedStyle.id,
       selectedStyle.name,
       selectedStyle.prompt,
-      standardOutputCount,
-      videoRatio,
     ],
   );
   const runGenerationBatch = useCallback(
@@ -3793,6 +3716,9 @@ export default function WorkspacePage() {
             posterCount: count,
             posterSizeLabel: ratioOrSize,
             direction: effectiveIntent,
+            normalizedDirection: effectiveIntent,
+            normalizedCount: count,
+            normalizedRatio: ratioOrSize,
             outputLanguage,
             draftMode: "auto",
           }),
@@ -3811,12 +3737,14 @@ export default function WorkspacePage() {
         }
         const data = (await response.json()) as {
           outlineItems?: string[];
-          slideDrafts?: SlideDraft[];
+          slideDrafts?: Array<SlideDraft & { imagePromptDraft?: string }>;
           storyboardDrafts?: Array<{
             index: number;
             title: string;
             narration?: string;
             visual?: string;
+            imagePrompt?: string;
+            imagePromptDraft?: string;
           }>;
         };
         const nextOutline = Array.isArray(data.outlineItems) && data.outlineItems.length
@@ -3829,6 +3757,8 @@ export default function WorkspacePage() {
             title: item.title?.trim() || nextOutline[idx] || `Slide ${idx + 1}`,
             body: item.body?.trim() || "",
             visual: item.visual?.trim() || "",
+            imagePromptDraft: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+            imagePrompt: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
           }));
         } else if (
           effectiveIntent === "video" &&
@@ -3840,6 +3770,8 @@ export default function WorkspacePage() {
             title: item.title?.trim() || nextOutline[idx] || `Frame ${idx + 1}`,
             body: item.narration?.trim() || "",
             visual: item.visual?.trim() || "",
+            imagePromptDraft: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+            imagePrompt: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
           }));
         }
         setEditableOutlineItems(nextOutline.length ? nextOutline : baseOutlineItems);
@@ -3913,6 +3845,9 @@ export default function WorkspacePage() {
           posterCount,
           posterSizeLabel,
           direction: effectiveIntent,
+          normalizedDirection: effectiveIntent,
+          normalizedCount: posterCount,
+          normalizedRatio: posterSizeLabel,
           outputLanguage,
           draftMode: "auto",
         }),
