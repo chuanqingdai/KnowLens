@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowLeft, ArrowUp, LoaderCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   ChatPanel,
@@ -37,6 +37,16 @@ import {
   resolveOutputLanguage,
   type OutputLanguage,
 } from "@/lib/language";
+import {
+  buildGenerationTaskStateByIndexFromNormalized,
+  normalizeImageBatchTaskResults,
+  type ImageBatchTaskResultLike,
+} from "@/lib/workspace/image-task-bridge";
+import {
+  buildTuziImagePrompt,
+  normalizeTuziAspectRatio,
+  resolveTuziImageSize,
+} from "@/lib/workspace/tuzi-image";
 
 type HomeSourceKind = "file" | "web" | "youtube" | "podcast";
 type HomeSourceItem = {
@@ -134,6 +144,7 @@ type ImageGenerationTask = {
   index: number;
   outputType: "poster" | "ppt" | "video";
   aspectRatio: string;
+  size: string;
   styleId: string;
   styleName: string;
   stylePrompt: string;
@@ -141,6 +152,10 @@ type ImageGenerationTask = {
   contentBody: string;
   visualHint: string;
   composedPrompt: string;
+  model: string;
+  provider: "tuzi";
+  quality: "standard";
+  response_format: "url";
 };
 
 type GenerationTaskUiStatus = "queued" | "generating" | "retrying" | "success" | "failed";
@@ -151,6 +166,10 @@ type GenerationTaskUiState = {
   attempts: number;
   maxAttempts: number;
   imageUrl?: string;
+  rawImageUrl?: string;
+  runId?: string;
+  jobId?: string;
+  source?: "current-run";
   error?: string;
   startedAt?: number;
   lastUpdatedAt?: number;
@@ -172,6 +191,35 @@ type GenerationConfirmResponse = {
   };
 };
 
+type ImageGenerateBatchResponse = {
+  ok?: boolean;
+  reused?: boolean;
+  error?: string;
+  code?: string;
+  imageGenerationMode?: string;
+  attemptedProviders?: string[];
+  skippedProviders?: string[];
+  job?: {
+    id?: string;
+    runId?: string;
+    status?: string;
+  };
+  tasks?: Array<{
+    taskId?: string;
+    index?: number;
+    status?: string;
+    ok?: boolean;
+    imageUrl?: string;
+    renderUrl?: string;
+    rawImageUrl?: string;
+    image_url?: string;
+    render_url?: string;
+    raw_image_url?: string;
+    error?: string;
+    errorCode?: string;
+  }>;
+};
+
 type StructuredWorkspaceError = {
   userMessage: string;
   code?: string;
@@ -182,10 +230,110 @@ const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
-const GENERATION_REQUEST_TIMEOUT_MS = 180000;
+const GENERATION_REQUEST_TIMEOUT_MS = 420000;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
-const GENERATION_UI_HARD_TIMEOUT_MS = 210000;
+const GENERATION_UI_HARD_TIMEOUT_MS = 450000;
+const DEBUG_IMAGE_BRIDGE_MOCK_URL =
+  "https://apioss20.sydney-ai.com/img/174/t9il_0UNjpQmjxFqjxQAjxQnfx1m10kNt7TgYsFuksWxtvFN1a_ljpMm1xkmXaMV1aklX5oItaMm10ezjaQlX9hnX0-u1a_q103lX01TXpQAX4Tgkx1qfv24kAVmR8_=/gi2007i-144x144-1780044357126-ab388bbc.png";
+const WORKSPACE_IMAGE_DEBUG = process.env.NODE_ENV === "development";
+
+function logWorkspaceImageDebug(message: string, payload: Record<string, unknown>) {
+  if (!WORKSPACE_IMAGE_DEBUG) {
+    return;
+  }
+  console.log(message, payload);
+}
+
+function logGenerationCacheGuard(message: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+  console.info(`[GenerationCacheGuard] ${message}`, payload);
+}
+
+function normalizeIdempotencySegment(value: string | null | undefined, fallback: string) {
+  const raw = (value || "").trim();
+  if (!raw) {
+    return fallback;
+  }
+  return raw.replace(/[^a-zA-Z0-9._@:-]/g, "_").slice(0, 80) || fallback;
+}
+
+function stableHashString(input: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function buildStableGenerationIdempotencyKey(input: {
+  userEmail: string;
+  projectId: string | null;
+  projectTraceId: string | null;
+  tasks: ImageGenerationTask[];
+}) {
+  const normalizedTasks = [...input.tasks].sort((a, b) => a.index - b.index);
+  const taskIndexes = normalizedTasks.map((task) => task.index).join(",");
+  const promptHash = stableHashString(
+    normalizedTasks
+      .map((task) => `${task.index}:${(task.composedPrompt || "").trim()}`)
+      .join("||"),
+  );
+  const styleId = Array.from(new Set(normalizedTasks.map((task) => task.styleId.trim()).filter(Boolean)))
+    .sort()
+    .join(",");
+  const aspectRatio = Array.from(new Set(normalizedTasks.map((task) => task.aspectRatio.trim()).filter(Boolean)))
+    .sort()
+    .join(",");
+  const key = [
+    "imggen-v2",
+    `user=${normalizeIdempotencySegment(input.userEmail, "guest")}`,
+    `project=${normalizeIdempotencySegment(input.projectId, "no-project")}`,
+    `trace=${normalizeIdempotencySegment(input.projectTraceId, "no-trace")}`,
+    `tasks=${normalizeIdempotencySegment(taskIndexes, "none")}`,
+    `promptHash=${promptHash}`,
+    `style=${normalizeIdempotencySegment(styleId, "no-style")}`,
+    `ratio=${normalizeIdempotencySegment(aspectRatio, "no-ratio")}`,
+  ].join("|");
+  return key.slice(0, 220);
+}
+
+function appendKnowLensRenderAttemptToken(imageUrl: string, token: string) {
+  const trimmed = imageUrl.trim();
+  if (!trimmed || !token.trim()) {
+    return trimmed;
+  }
+  const isRelativeKnowLensAsset = trimmed.startsWith("/api/workspace/image/assets/");
+  const isAbsoluteKnowLensAsset = /^https?:\/\/[^/]+\/api\/workspace\/image\/assets\//i.test(trimmed);
+  if (!isRelativeKnowLensAsset && !isAbsoluteKnowLensAsset) {
+    return trimmed;
+  }
+  try {
+    const baseOrigin =
+      typeof window !== "undefined" && window.location?.origin ? window.location.origin : "http://localhost";
+    const parsed = new URL(trimmed, baseOrigin);
+    parsed.searchParams.set("rk", token.trim());
+    if (isRelativeKnowLensAsset) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return parsed.toString();
+  } catch {
+    const joiner = trimmed.includes("?") ? "&" : "?";
+    return `${trimmed}${joiner}rk=${encodeURIComponent(token.trim())}`;
+  }
+}
+
+function createGenerationRunId() {
+  return `run-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+}
+
+function normalizeGenerationRunId(value: string | null | undefined) {
+  const normalized = (value || "").trim();
+  return normalized ? normalized.slice(0, 120) : null;
+}
 
 type StyleDirection = "ppt" | "poster" | "video";
 type StyleOption = {
@@ -1553,6 +1701,7 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
 export default function WorkspacePage() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [initialEntry] = useState(() => readHomeDraftPayload());
@@ -1600,6 +1749,8 @@ export default function WorkspacePage() {
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
+  const [currentGenerationRunId, setCurrentGenerationRunId] = useState<string | null>(null);
+  const [currentGenerationJobId, setCurrentGenerationJobId] = useState<string | null>(null);
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
@@ -1657,6 +1808,7 @@ export default function WorkspacePage() {
   const [isPlanningStyleStep, setIsPlanningStyleStep] = useState(false);
   const [isPlanningBillingStep, setIsPlanningBillingStep] = useState(false);
   const [configConfirmed, setConfigConfirmed] = useState(false);
+  const [generationSessionSeed, setGenerationSessionSeed] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<"chat" | "canvas">("chat");
   const [confirmedConfigSnapshot, setConfirmedConfigSnapshot] = useState<ConfirmedConfigSnapshot | null>(null);
@@ -1685,6 +1837,12 @@ export default function WorkspacePage() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const projectIdRef = useRef<string | null>(null);
   const projectTraceIdRef = useRef<string | null>(null);
+  const generationRequestInFlightRef = useRef(false);
+  const currentGenerationRunIdRef = useRef<string | null>(null);
+  const currentGenerationJobIdRef = useRef<string | null>(null);
+  const autoGenerationTriggeredRunIdsRef = useRef<Record<string, boolean>>({});
+  const debugGoGenerateStepAppliedRef = useRef(false);
+  const debugImageBridgeAppliedRef = useRef(false);
 
   const logClientEvent = useCallback(
     (input: {
@@ -1721,6 +1879,27 @@ export default function WorkspacePage() {
       }).catch(() => undefined);
     },
     [],
+  );
+
+  const setGenerationRunContext = useCallback((runId: string | null, jobId?: string | null) => {
+    const normalizedRunId = normalizeGenerationRunId(runId);
+    const normalizedJobId = jobId?.trim() || null;
+    currentGenerationRunIdRef.current = normalizedRunId;
+    currentGenerationJobIdRef.current = normalizedJobId;
+    setCurrentGenerationRunId(normalizedRunId);
+    setCurrentGenerationJobId(normalizedJobId);
+  }, []);
+  const clearCurrentGenerationState = useCallback(
+    (reason: string) => {
+      generationRequestInFlightRef.current = false;
+      setIsPlanningBillingStep(false);
+      setGenerationConfirmError(null);
+      setGenerationTaskStateByIndex({});
+      setGenerationRunContext(null, null);
+      setGenerationSessionSeed((prev) => prev + 1);
+      logGenerationCacheGuard("clear-current-generation-state", { reason });
+    },
+    [setGenerationRunContext],
   );
 
   useEffect(() => {
@@ -1842,6 +2021,10 @@ export default function WorkspacePage() {
   const hasCanvasPanel = showStoryboard || showPosterCanvas;
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
   const showCanvasPanelInLayout = hasCanvasPanel && (!isMobileViewport || mobileWorkspaceView === "canvas");
+  const debugGoGenerateStepEnabled =
+    process.env.NODE_ENV === "development" && searchParams.get("debugGoGenerateStep") === "1";
+  const debugImageBridgeEnabled =
+    process.env.NODE_ENV === "development" && searchParams.get("debugImageBridge") === "1";
   const targetSectionCount =
     effectiveIntent === "poster" ? posterCount : effectiveIntent === "video" ? videoStoryboardCount : pptPageCount;
 
@@ -2014,10 +2197,13 @@ export default function WorkspacePage() {
     return slideDrafts;
   }, [effectiveIntent, slideDrafts]);
   const posterDraftRaw = editablePosterDraft ?? basePosterDraft;
-  const posterDraft =
-    posterDraftRaw && hasAbstractPosterDraft(posterDraftRaw, outputLanguage)
-      ? buildPosterDraft(topic, posterSizeLabel, contextPrompt, outputLanguage)
-      : posterDraftRaw;
+  const posterDraft = useMemo(
+    () =>
+      posterDraftRaw && hasAbstractPosterDraft(posterDraftRaw, outputLanguage)
+        ? buildPosterDraft(topic, posterSizeLabel, contextPrompt, outputLanguage)
+        : posterDraftRaw,
+    [contextPrompt, outputLanguage, posterDraftRaw, posterSizeLabel, topic],
+  );
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
   const visualizationRecommendation = useMemo(() => {
@@ -2065,52 +2251,24 @@ export default function WorkspacePage() {
   const languageModelCredits = Math.max(1, Math.ceil(outputTokenEstimate / 1000));
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const billingCost = languageModelCredits + imageModelCredits;
-  const imageGenerationTasks = useMemo(() => {
+  const buildFreshImageGenerationTasks = useCallback(() => {
     const isChineseOutput = isChineseLanguage(outputLanguage);
     const styleName = selectedStyle.englishName ?? selectedStyle.name;
     const stylePrompt = selectedStyle.prompt.trim();
     const posterPlanList = editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList;
-    const languageRule = isChineseOutput
-      ? "Language rule: Render all visible text in Simplified Chinese only. Do not mix with English."
-      : "Language rule: Render all visible text in English only. Do not use Chinese.";
-    const promptFieldLabels = isChineseOutput
-      ? {
-          style: "风格提示",
-          outputType: "输出类型",
-          aspectRatio: "画面比例",
-          title: "标题",
-          content: "内容",
-          visualHint: "视觉提示",
-        }
-      : {
-          style: "Style prompt",
-          outputType: "Output type",
-          aspectRatio: "Aspect ratio",
-          title: "Title",
-          content: "Content",
-          visualHint: "Visual hint",
-        };
-
-    const createComposedPrompt = (task: Omit<ImageGenerationTask, "composedPrompt">) =>
-      [
-        `${promptFieldLabels.style}: ${task.stylePrompt}`,
-        `${promptFieldLabels.outputType}: ${task.outputType}`,
-        `${promptFieldLabels.aspectRatio}: ${task.aspectRatio}`,
-        `${promptFieldLabels.title}: ${task.contentTitle}`,
-        `${promptFieldLabels.content}:`,
-        task.contentBody,
-        `${promptFieldLabels.visualHint}: ${task.visualHint}`,
-        languageRule,
-      ].join("\n");
 
     if (effectiveIntent === "poster" && posterDraft) {
-      const aspectRatio = posterSizeLabel || "9:16";
+      const aspectRatio = normalizeTuziAspectRatio(posterSizeLabel) || normalizeTuziAspectRatio("9:16") || "9:16";
+      const size = resolveTuziImageSize(aspectRatio);
+      if (!size) {
+        throw new Error(`Unsupported poster aspect ratio: ${posterSizeLabel || "unknown"}`);
+      }
       return Array.from({ length: Math.max(1, posterCount) }, (_, idx) => {
         const plan = posterPlanList[idx];
         const contentTitle = posterCount === 1
           ? posterDraft.headline
           : `${plan?.title || posterDraft.headline} (${idx + 1}/${posterCount})`;
-        const contentBody = [
+        const draftContent = [
           posterDraft.subtitle,
           posterDraft.body,
           plan?.focus ? (isChineseOutput ? `聚焦要点：${plan.focus}` : `Focus: ${plan.focus}`) : "",
@@ -2133,23 +2291,39 @@ export default function WorkspacePage() {
           index: idx + 1,
           outputType: "poster",
           aspectRatio,
+          size,
           styleId: selectedStyle.id,
           styleName,
           stylePrompt,
           contentTitle,
-          contentBody,
+          contentBody: draftContent,
           visualHint,
+          model: "gpt-image-2",
+          provider: "tuzi",
+          quality: "standard",
+          response_format: "url",
         };
         return {
           ...baseTask,
-          composedPrompt: createComposedPrompt(baseTask),
+          composedPrompt: buildTuziImagePrompt({
+            draftContent: [contentTitle, draftContent, visualHint].filter(Boolean).join("\n"),
+            selectedStyle: styleName || stylePrompt,
+            aspectRatio,
+            posterIndex: idx + 1,
+            totalCount: posterCount,
+          }),
         } satisfies ImageGenerationTask;
       });
     }
 
     if (effectiveIntent === "ppt" || effectiveIntent === "video") {
       const requestedCount = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
-      const aspectRatio = effectiveIntent === "ppt" ? pptRatio : videoRatio;
+      const aspectRatioRaw = effectiveIntent === "ppt" ? pptRatio : videoRatio;
+      const aspectRatio = normalizeTuziAspectRatio(aspectRatioRaw);
+      const size = aspectRatio ? resolveTuziImageSize(aspectRatio) : null;
+      if (!aspectRatio || !size) {
+        throw new Error(`Unsupported aspect ratio: ${aspectRatioRaw || "unknown"}`);
+      }
       return Array.from({ length: Math.max(1, requestedCount) }, (_, idx) => {
         const slide = densityAdjustedSlideDrafts[idx];
         const contentTitle =
@@ -2162,16 +2336,27 @@ export default function WorkspacePage() {
           index: idx + 1,
           outputType: effectiveIntent === "ppt" ? "ppt" : "video",
           aspectRatio,
+          size,
           styleId: selectedStyle.id,
           styleName,
           stylePrompt,
           contentTitle,
           contentBody,
           visualHint,
+          model: "gpt-image-2",
+          provider: "tuzi",
+          quality: "standard",
+          response_format: "url",
         };
         return {
           ...baseTask,
-          composedPrompt: createComposedPrompt(baseTask),
+          composedPrompt: buildTuziImagePrompt({
+            draftContent: [contentTitle, contentBody, visualHint].filter(Boolean).join("\n"),
+            selectedStyle: styleName || stylePrompt,
+            aspectRatio,
+            posterIndex: idx + 1,
+            totalCount: requestedCount,
+          }),
         } satisfies ImageGenerationTask;
       });
     }
@@ -2197,11 +2382,159 @@ export default function WorkspacePage() {
     videoRatio,
     videoStoryboardCount,
   ]);
-  const canConfirmBilling = credits >= billingCost;
+  const imageGenerationTasks = useMemo(() => buildFreshImageGenerationTasks(), [buildFreshImageGenerationTasks]);
+  const canConfirmBilling = credits >= billingCost || debugGoGenerateStepEnabled;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
   const imageGenerationTaskByIndex = useMemo(() => {
     return new Map(imageGenerationTasks.map((task) => [task.index, task] as const));
   }, [imageGenerationTasks]);
+  useEffect(() => {
+    const cachedImageTurns = readWorkspaceChatHistory(sessionPrefsScopeKey).filter((turn) =>
+      typeof turn.content === "string" &&
+      /(\/api\/workspace\/image\/assets\/|https?:\/\/\S+\.(png|jpe?g|webp))/i.test(turn.content),
+    );
+    if (cachedImageTurns.length) {
+      logGenerationCacheGuard("cached-images-detected", {
+        reason: "cached-image",
+        count: cachedImageTurns.length,
+        samples: cachedImageTurns.slice(0, 3).map((turn) => ({
+          id: turn.id,
+          module: turn.module,
+          preview: turn.content.slice(0, 220),
+        })),
+        scope: sessionPrefsScopeKey,
+      });
+    }
+    clearCurrentGenerationState("scope-init");
+    setGenerationTaskStateByIndex((prev) => {
+      const successEntries = Object.values(prev).filter((item) => item.status === "success" && item.imageUrl);
+      if (successEntries.length) {
+        logGenerationCacheGuard("reject-state-write", {
+          reason: "previous-result",
+          successEntries: successEntries.map((item) => ({
+            index: item.index,
+            imageUrl: item.imageUrl,
+            runId: item.runId || null,
+            jobId: item.jobId || null,
+          })),
+        });
+      }
+      return {};
+    });
+  }, [clearCurrentGenerationState, sessionPrefsScopeKey]);
+  useEffect(() => {
+    if (!debugGoGenerateStepEnabled) {
+      debugGoGenerateStepAppliedRef.current = false;
+      return;
+    }
+    if (debugGoGenerateStepAppliedRef.current) {
+      return;
+    }
+    console.info("[workspace-generation] debugGoGenerateStep applied", {
+      flowStage,
+      effectiveIntent,
+      imageGenerationTasksLength: imageGenerationTasks.length,
+    });
+    const timeoutId = window.setTimeout(() => {
+      if (debugGoGenerateStepAppliedRef.current) {
+        return;
+      }
+      debugGoGenerateStepAppliedRef.current = true;
+      generationRequestInFlightRef.current = false;
+      setManualIntent("poster");
+      setPosterCount(1);
+      setPosterSizeId((prev) => prev ?? "poster-9-16");
+      setWeakPromptResolved(true);
+      if (!topicContextPrompt.trim()) {
+        setTopicContextPrompt("QA mock poster generation smoke test");
+      }
+      setConfigConfirmed(true);
+      setBillingConfirmed(false);
+      clearCurrentGenerationState("debug-go-generate-step");
+      setFlowStage("billing");
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    debugGoGenerateStepEnabled,
+    effectiveIntent,
+    flowStage,
+    imageGenerationTasks.length,
+    clearCurrentGenerationState,
+    topicContextPrompt,
+  ]);
+  useEffect(() => {
+    if (!debugImageBridgeEnabled) {
+      if (debugImageBridgeAppliedRef.current) {
+        clearCurrentGenerationState("debug-source");
+        setBillingConfirmed(false);
+        if (flowStage === "generate") {
+          setFlowStage("billing");
+        }
+      }
+      debugImageBridgeAppliedRef.current = false;
+      return;
+    }
+    if (debugImageBridgeAppliedRef.current) {
+      return;
+    }
+    const requestedTaskIndexes = imageGenerationTasks.length
+      ? imageGenerationTasks.map((task) => task.index)
+      : [1];
+    if (!requestedTaskIndexes.length) {
+      return;
+    }
+    const mockImageUrl = DEBUG_IMAGE_BRIDGE_MOCK_URL;
+    const mockBatchResponseTasks: ImageBatchTaskResultLike[] = [
+      {
+        taskId: "debug-image-bridge-task-1",
+        index: 1,
+        ok: true,
+        status: "asset_ready",
+        imageUrl: mockImageUrl,
+        rawImageUrl: mockImageUrl,
+        renderUrl: mockImageUrl,
+        error: null,
+        errorCode: null,
+      },
+    ];
+    const normalizedResults = normalizeImageBatchTaskResults({
+      taskResults: mockBatchResponseTasks,
+      requestedTaskIndexes,
+    });
+    const normalizedStateByIndex = buildGenerationTaskStateByIndexFromNormalized({
+      normalizedResults,
+      maxAttempts: 1,
+    });
+    logWorkspaceImageDebug("[ImageRenderDebug][WorkspaceBridge] debugImageBridge normalized results:", {
+      requestedTaskIndexes,
+      normalizedResults,
+      normalizedStateByIndex,
+    });
+    const timeoutId = window.setTimeout(() => {
+      if (debugImageBridgeAppliedRef.current) {
+        return;
+      }
+      debugImageBridgeAppliedRef.current = true;
+      setManualIntent("poster");
+      setConfigConfirmed(true);
+      setBillingConfirmed(true);
+      setGenerationConfirmError(null);
+      setFlowStage("generate");
+      setGenerationTaskStateByIndex((prev) => {
+        const merged = {
+          ...prev,
+          ...normalizedStateByIndex,
+        };
+        logWorkspaceImageDebug("[ImageRenderDebug][WorkspaceBridge] debugImageBridge applied state:", {
+          previousState: prev,
+          nextDelta: normalizedStateByIndex,
+          mergedState: merged,
+        });
+        return merged;
+      });
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [clearCurrentGenerationState, debugImageBridgeEnabled, flowStage, imageGenerationTasks]);
   const imageModel = initialEntry.models?.imageModel || "gpt-image2";
   const buildGenerationRequestPayload = useCallback(
     (tasks: ImageGenerationTask[]) => ({
@@ -2220,12 +2553,11 @@ export default function WorkspacePage() {
           : effectiveIntent === "ppt"
             ? pptRatio
             : videoRatio,
-      imageModel,
+      imageModel: "gpt-image-2",
       tasks,
     }),
     [
       effectiveIntent,
-      imageModel,
       posterSizeLabel,
       pptRatio,
       selectedStyle.englishName,
@@ -2237,16 +2569,72 @@ export default function WorkspacePage() {
     ],
   );
   const runGenerationBatch = useCallback(
-    async (tasks: ImageGenerationTask[], isRetry = false) => {
+    async (tasks: ImageGenerationTask[], isRetry = false, runIdOverride?: string | null) => {
+      console.info("[workspace-generation] runGenerationBatch called", {
+        taskCount: tasks.length,
+        taskIndexes: tasks.map((task) => task.index),
+        isRetry,
+      });
       if (!tasks.length) {
-        return;
+        const message = tr("No generation tasks are ready.", "没有可生成的任务。");
+        setGenerationConfirmError(message);
+        console.error("[workspace-generation] runGenerationBatch aborted: empty tasks");
+        throw new Error(message);
       }
-
-      const maxAttempts = GENERATION_MAX_RETRY_ATTEMPTS;
-      const pendingTaskMap = new Map(tasks.map((task) => [task.index, task]));
-      let attempt = 0;
-      let lastError: string | null = null;
-
+      const activeRunId = normalizeGenerationRunId(runIdOverride ?? currentGenerationRunIdRef.current);
+      if (!activeRunId) {
+        const message = tr("No active generation run. Please confirm generation again.", "当前没有有效的生成批次，请重新确认生成。");
+        logGenerationCacheGuard("reject-state-write", {
+          reason: "missing-current-run",
+          taskIndexes: tasks.map((task) => task.index),
+          runIdOverride: runIdOverride ?? null,
+          currentGenerationRunId: currentGenerationRunIdRef.current,
+        });
+        setGenerationConfirmError(message);
+        throw new Error(message);
+      }
+      const maxAttempts = 1;
+      const renderAttemptToken = `${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+      const removeImageErrorTurnByTaskIndex = (taskIndex: number) => {
+        setUpdates((prev) =>
+          prev.filter(
+            (item) => !(item.meta?.kind === "image_error" && item.meta.taskIndex === taskIndex),
+          ),
+        );
+      };
+      const upsertImageErrorTurn = (task: ImageGenerationTask, errorText: string) => {
+        const codeMatch = errorText.match(/\(([A-Z0-9_:-]+)\)\s*$/);
+        const code = codeMatch?.[1] ?? undefined;
+        const nextMessage = `Image ${task.index} failed to generate. ${errorText}`;
+        setUpdates((prev) => {
+          const next = [...prev];
+          const foundIndex = next.findIndex(
+            (item) => item.meta?.kind === "image_error" && item.meta.taskIndex === task.index,
+          );
+          const nextTurn: ChatTurn = {
+            id:
+              foundIndex >= 0
+                ? next[foundIndex].id
+                : `err-img-${task.index}-${Date.now()}-${Math.round(Math.random() * 9999)}`,
+            role: "assistant",
+            module: "Image Generation Error",
+            content: nextMessage,
+            meta: {
+              kind: "image_error",
+              source: "image_generation",
+              code,
+              taskIndex: task.index,
+              retryable: true,
+            },
+          };
+          if (foundIndex >= 0) {
+            next[foundIndex] = nextTurn;
+          } else {
+            next.push(nextTurn);
+          }
+          return next;
+        });
+      };
       setGenerationConfirmError(null);
       setGenerationTaskStateByIndex((prev) => {
         const next = { ...prev };
@@ -2258,222 +2646,453 @@ export default function WorkspacePage() {
             status: isRetry ? "retrying" : "queued",
             attempts: 0,
             maxAttempts,
+            imageUrl: undefined,
+            rawImageUrl: undefined,
+            runId: activeRunId,
+            jobId: currentGenerationJobIdRef.current || undefined,
+            source: "current-run",
+            error: undefined,
             startedAt: prevState?.startedAt ?? now,
             lastUpdatedAt: now,
           };
         });
         return next;
       });
-
-      while (attempt < maxAttempts && pendingTaskMap.size > 0) {
-        const currentTasks = [...pendingTaskMap.values()];
-        for (const task of currentTasks) {
-          if (!pendingTaskMap.has(task.index)) {
-            continue;
-          }
-
-          setGenerationTaskStateByIndex((prev) => ({
-            ...prev,
-            [task.index]: {
-              ...(prev[task.index] ?? {
-                index: task.index,
-                status: "queued",
-                attempts: 0,
-                maxAttempts,
-              }),
-              status: attempt === 0 ? "generating" : "retrying",
-              attempts: attempt + 1,
+      const now = Date.now();
+      tasks.forEach((task) => {
+        setGenerationTaskStateByIndex((prev) => ({
+          ...prev,
+          [task.index]: {
+            ...(prev[task.index] ?? {
+              index: task.index,
+              status: "queued",
+              attempts: 0,
               maxAttempts,
-              error: undefined,
-              startedAt: prev[task.index]?.startedAt ?? Date.now(),
-              lastUpdatedAt: Date.now(),
-            },
-          }));
-
-          const controller = new AbortController();
-          const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
-          try {
-            const response = await fetch("/api/workspace/generation-confirm", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
+            }),
+            status: isRetry ? "retrying" : "generating",
+            attempts: 1,
+            maxAttempts,
+            imageUrl: undefined,
+            rawImageUrl: undefined,
+            runId: activeRunId,
+            jobId: currentGenerationJobIdRef.current || undefined,
+            source: "current-run",
+            error: undefined,
+            startedAt: prev[task.index]?.startedAt ?? now,
+            lastUpdatedAt: now,
+          },
+        }));
+      });
+      const idempotencyKey = buildStableGenerationIdempotencyKey({
+        userEmail: currentEmail || "guest",
+        projectId: projectIdRef.current,
+        projectTraceId: projectTraceIdRef.current,
+        tasks,
+      });
+      console.info("[workspace-generation] generate-batch request started", {
+        runId: activeRunId,
+        idempotencyKey,
+        taskCount: tasks.length,
+        taskIndexes: tasks.map((task) => task.index),
+      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch("/api/workspace/image/generate-batch", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...buildGenerationRequestPayload(tasks),
+            idempotencyKey,
+            runId: activeRunId,
+            imageModelPolicy: "tuzi",
+          }),
+          signal: controller.signal,
+        });
+        const payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
+        const responseJobId = (payload?.job?.id || "").trim() || null;
+        console.info("[workspace-generation] generate-batch response", {
+          ok: response.ok,
+          status: response.status,
+          responseOk: payload?.ok,
+          requestRunId: activeRunId,
+          responseRunId,
+          responseJobId,
+          imageGenerationMode: payload?.imageGenerationMode,
+          taskCount: payload?.tasks?.length ?? 0,
+          firstImageUrl: payload?.tasks?.[0]?.imageUrl,
+          attemptedProviders: payload?.attemptedProviders,
+          skippedProviders: payload?.skippedProviders,
+        });
+        logWorkspaceImageDebug("[ImageRenderDebug] generate-batch response:", {
+          payload,
+          ok: payload?.ok,
+          imageGenerationMode: payload?.imageGenerationMode,
+          tasks: payload?.tasks,
+        });
+        if (!responseRunId) {
+          const missingRunMessage = tr(
+            "Generation response is missing run identity. Please retry.",
+            "生成响应缺少 runId，请重试。",
+          );
+          logGenerationCacheGuard("reject-state-write", {
+            reason: "missing-response-run",
+            requestRunId: activeRunId,
+            responseRunId,
+            responseJobId,
+          });
+          tasks.forEach((task) => {
+            setGenerationTaskStateByIndex((prev) => ({
+              ...prev,
+              [task.index]: {
+                index: task.index,
+                status: "failed",
+                attempts: 1,
+                maxAttempts,
+                error: missingRunMessage,
+                runId: activeRunId,
+                jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
+                source: "current-run",
+                startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
               },
-              body: JSON.stringify(buildGenerationRequestPayload([task])),
-              signal: controller.signal,
-            });
-            const payload = (await response.json().catch(() => null)) as GenerationConfirmResponse | null;
-            if (!response.ok) {
-              const failureMessage = payload?.error || `generation confirm failed (${response.status})`;
-              const nonRetryable = response.status >= 400 && response.status < 500;
-              logClientEvent({
-                category: "image",
-                action: "image_generation_request_failed",
-                status: "error",
-                source: imageModel,
-                code: String(response.status),
-                message: failureMessage,
-                details: {
-                  taskIndex: task.index,
-                  statusCode: response.status,
-                  payload,
-                },
-              });
-              if (nonRetryable) {
-                pendingTaskMap.delete(task.index);
-                lastError = failureMessage;
-                setGenerationTaskStateByIndex((prev) => ({
-                  ...prev,
-                  [task.index]: {
-                    index: task.index,
-                    status: "failed",
-                    attempts: attempt + 1,
-                    maxAttempts,
-                    error: failureMessage,
-                    startedAt: prev[task.index]?.startedAt ?? Date.now(),
-                    lastUpdatedAt: Date.now(),
-                  },
-                }));
-                upsertImageErrorCard(task, failureMessage);
-                continue;
-              }
-              throw new Error(failureMessage);
-            }
-
-            const result = (payload?.generation?.results ?? []).find(
-              (item) => Number(item.index ?? 0) === task.index,
+            }));
+            upsertImageErrorTurn(task, missingRunMessage);
+          });
+          setGenerationConfirmError(missingRunMessage);
+          return;
+        } else if (responseRunId !== activeRunId) {
+          const staleMessage = tr(
+            "Ignored stale generation result from a previous run. Please retry.",
+            "已忽略旧批次生成结果，请重试。",
+          );
+          logGenerationCacheGuard("reject-state-write", {
+            reason: "stale-job",
+            requestRunId: activeRunId,
+            responseRunId,
+            responseJobId,
+          });
+          tasks.forEach((task) => {
+            setGenerationTaskStateByIndex((prev) => ({
+              ...prev,
+              [task.index]: {
+                index: task.index,
+                status: "failed",
+                attempts: 1,
+                maxAttempts,
+                error: staleMessage,
+                startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
+              },
+            }));
+            upsertImageErrorTurn(task, staleMessage);
+          });
+          setGenerationConfirmError(staleMessage);
+          return;
+        }
+        if (!responseJobId) {
+          const missingJobMessage = tr(
+            "Generation response is missing job identity. Please retry.",
+            "生成响应缺少 jobId，请重试。",
+          );
+          logGenerationCacheGuard("reject-state-write", {
+            reason: "job-id-mismatch",
+            requestRunId: activeRunId,
+            responseRunId,
+            responseJobId,
+          });
+          tasks.forEach((task) => {
+            setGenerationTaskStateByIndex((prev) => ({
+              ...prev,
+              [task.index]: {
+                index: task.index,
+                status: "failed",
+                attempts: 1,
+                maxAttempts,
+                error: missingJobMessage,
+                runId: activeRunId,
+                source: "current-run",
+                startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
+              },
+            }));
+            upsertImageErrorTurn(task, missingJobMessage);
+          });
+          setGenerationConfirmError(missingJobMessage);
+          return;
+        }
+        if (responseJobId) {
+          if (currentGenerationJobIdRef.current && currentGenerationJobIdRef.current !== responseJobId) {
+            const mismatchMessage = tr(
+              "Ignored generation result from mismatched job. Please retry.",
+              "已忽略不匹配的任务结果，请重试。",
             );
-            const resolvedImageUrl =
-              (typeof result?.imageUrl === "string" && result.imageUrl.trim()) ||
-              (typeof result?.rawImageUrl === "string" && result.rawImageUrl.trim()) ||
-              "";
-
-            if ((result?.ok || resolvedImageUrl) && resolvedImageUrl) {
-              pendingTaskMap.delete(task.index);
-              removeImageErrorCardByTaskIndex(task.index);
+            logGenerationCacheGuard("reject-state-write", {
+              reason: "job-id-mismatch",
+              requestRunId: activeRunId,
+              responseRunId,
+              currentJobId: currentGenerationJobIdRef.current,
+              responseJobId,
+            });
+            tasks.forEach((task) => {
               setGenerationTaskStateByIndex((prev) => ({
                 ...prev,
                 [task.index]: {
                   index: task.index,
-                  status: "success",
-                  attempts: attempt + 1,
+                  status: "failed",
+                  attempts: 1,
                   maxAttempts,
-                  imageUrl: resolvedImageUrl,
+                  error: mismatchMessage,
                   startedAt: prev[task.index]?.startedAt ?? Date.now(),
                   lastUpdatedAt: Date.now(),
                 },
               }));
-              logClientEvent({
-                category: "image",
-                action: "image_generation_success",
-                status: "ok",
-                source: imageModel,
-                message: "Image generation completed successfully.",
-                projectId: projectIdRef.current ?? null,
-                details: {
+              upsertImageErrorTurn(task, mismatchMessage);
+            });
+            setGenerationConfirmError(mismatchMessage);
+            return;
+          }
+          setGenerationRunContext(activeRunId, responseJobId);
+        }
+        if (!response.ok || !payload?.tasks?.length) {
+          const failureMessage =
+            payload?.error ||
+            (response.ok ? tr("Generation failed.", "生成失败。") : `generation batch failed (${response.status})`);
+          tasks.forEach((task) => {
+            setGenerationTaskStateByIndex((prev) => ({
+              ...prev,
+              [task.index]: {
+                index: task.index,
+                status: "failed",
+                attempts: 1,
+                maxAttempts,
+                error: failureMessage,
+                runId: activeRunId,
+                jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
+                source: "current-run",
+                startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
+              },
+            }));
+            upsertImageErrorTurn(task, failureMessage);
+          });
+          setGenerationConfirmError(failureMessage);
+          logClientEvent({
+            category: "image",
+            action: "image_generation_request_failed",
+            status: "error",
+            source: imageModel,
+            code: payload?.code || String(response.status),
+            message: failureMessage,
+            details: {
+              statusCode: response.status,
+              payload,
+            },
+          });
+          return;
+        }
+
+        const normalizedResults = normalizeImageBatchTaskResults({
+          taskResults: payload.tasks as ImageBatchTaskResultLike[],
+          requestedTaskIndexes: tasks.map((task) => task.index),
+        });
+
+        const normalizedResultMap = new Map<number, (typeof normalizedResults)[number]>();
+        normalizedResults.forEach((item) => {
+          logWorkspaceImageDebug("[ImageRenderDebug] response task parsed:", {
+            resultPosition: item.resultPosition,
+            backendTaskIndex: item.backendTaskIndex,
+            mappedStateIndex: item.mappedStateIndex,
+            backendStatus: item.task.status,
+            backendOk: item.task.ok,
+            imageUrl: item.task.imageUrl,
+            renderUrl: item.task.renderUrl,
+            rawImageUrl: item.task.rawImageUrl,
+            image_url: item.task.image_url,
+            render_url: item.task.render_url,
+            raw_image_url: item.task.raw_image_url,
+            finalImageUrl: item.finalImageUrl,
+          });
+          if (Number.isFinite(item.mappedStateIndex)) {
+            normalizedResultMap.set(item.mappedStateIndex as number, item);
+          }
+        });
+        let hasFailed = false;
+        tasks.forEach((task) => {
+          const normalizedResult = normalizedResultMap.get(task.index);
+          const result = normalizedResult?.task;
+          const finalImageUrl = normalizedResult?.finalImageUrl || "";
+          const renderImageUrl = appendKnowLensRenderAttemptToken(
+            finalImageUrl,
+            `${renderAttemptToken}-${task.index}`,
+          );
+          const normalizedStatus = normalizedResult?.normalizedStatus || "";
+          const shouldMarkSuccess = normalizedResult?.shouldMarkSuccess === true;
+          logWorkspaceImageDebug("[ImageRenderDebug] result normalized:", {
+            requestedTaskIndex: task.index,
+            backendTaskIndex: normalizedResult?.backendTaskIndex ?? result?.index,
+            normalizedStatus,
+            backendOk: result?.ok,
+            finalImageUrl,
+            renderImageUrl,
+          });
+          if (shouldMarkSuccess) {
+            removeImageErrorTurnByTaskIndex(task.index);
+            setGenerationTaskStateByIndex((prev) => {
+              if (!activeRunId) {
+                logGenerationCacheGuard("reject-state-write", {
+                  reason: "no-current-generation",
                   taskIndex: task.index,
-                  imageUrl: resolvedImageUrl,
-                  outputType: task.outputType,
-                },
-              });
-            } else {
-              const nextError = result?.errorCode
-                ? `${result.error || tr("Generation failed.", "生成失败。")} (${result.errorCode})`
-                : result?.error || tr("Generation failed.", "生成失败。");
-              const nonRetryableErrorCode = (result?.errorCode || "").toUpperCase();
-              const shouldStopRetry =
-                nonRetryableErrorCode === "IMAGE_PROVIDER_KEY_MISSING" ||
-                nonRetryableErrorCode === "GENERATION_TASKS_REQUIRED";
-              lastError = nextError || lastError;
-              logClientEvent({
-                category: "image",
-                action: "image_generation_result_failed",
-                status: "error",
-                source: imageModel,
-                code: result?.errorCode || undefined,
-                message: nextError || tr("Generation failed.", "生成失败。"),
-                projectId: projectIdRef.current ?? null,
-                details: {
-                  taskIndex: task.index,
-                  result,
-                  outputType: task.outputType,
-                },
-              });
-              upsertImageErrorCard(task, nextError || tr("Generation failed.", "生成失败。"));
-              if (shouldStopRetry) {
-                pendingTaskMap.delete(task.index);
-                setGenerationTaskStateByIndex((prev) => ({
-                  ...prev,
-                  [task.index]: {
-                    index: task.index,
-                    status: "failed",
-                    attempts: attempt + 1,
-                    maxAttempts,
-                    error: nextError || tr("Generation failed.", "生成失败。"),
-                    startedAt: prev[task.index]?.startedAt ?? Date.now(),
-                    lastUpdatedAt: Date.now(),
-                  },
-                }));
+                  finalImageUrl,
+                });
+                return prev;
               }
-            }
-          } catch (error) {
-            lastError =
-              error instanceof DOMException && error.name === "AbortError"
-                ? tr("Generation timed out.", "生成超时。")
-                : error instanceof Error
-                  ? error.message
-                  : tr("Generation failed.", "生成失败。");
+              const nextState: GenerationTaskUiState = {
+                index: task.index,
+                status: "success",
+                attempts: 1,
+                maxAttempts,
+                imageUrl: renderImageUrl || finalImageUrl,
+                rawImageUrl: result?.rawImageUrl || undefined,
+                runId: activeRunId,
+                jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
+                source: "current-run",
+                startedAt: prev[task.index]?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
+              };
+              const next = {
+                ...prev,
+                [task.index]: nextState,
+              };
+              logWorkspaceImageDebug("[ImageRenderDebug] state write before PosterCanvas (success):", {
+                index: task.index,
+                oldState: prev[task.index],
+                newState: nextState,
+                newStatus: nextState.status,
+                newImageUrl: nextState.imageUrl,
+              });
+              console.info("[workspace-generation] generationTaskStateByIndex success + imageUrl", {
+                index: task.index,
+                status: nextState.status,
+                imageUrl: nextState.imageUrl,
+              });
+              return next;
+            });
             logClientEvent({
               category: "image",
-              action: "image_generation_exception",
-              status: "error",
+              action: "image_generation_success",
+              status: "ok",
               source: imageModel,
-              message: lastError || tr("Generation failed.", "生成失败。"),
+              message: "Image generation completed successfully.",
               projectId: projectIdRef.current ?? null,
               details: {
                 taskIndex: task.index,
+                imageUrl: renderImageUrl || finalImageUrl,
                 outputType: task.outputType,
-                stack: error instanceof Error ? error.stack : undefined,
+                taskStatus: result?.status || null,
+                taskId: result?.taskId || null,
               },
             });
-            upsertImageErrorCard(task, lastError || tr("Generation failed.", "生成失败。"));
-          } finally {
-            window.clearTimeout(timeoutId);
+            return;
           }
-        }
-
-        if (attempt < maxAttempts - 1) {
-          const delay = GENERATION_RETRY_DELAYS_MS[Math.min(attempt, GENERATION_RETRY_DELAYS_MS.length - 1)];
-          await new Promise((resolve) => window.setTimeout(resolve, delay));
-        }
-        attempt += 1;
-      }
-
-      if (pendingTaskMap.size > 0) {
-        const finalError = lastError || tr("Generation failed.", "生成失败。");
-        pendingTaskMap.forEach((task) => {
-          upsertImageErrorCard(task, finalError);
-        });
-        setGenerationTaskStateByIndex((prev) => {
-          const next = { ...prev };
-          pendingTaskMap.forEach((task) => {
-            next[task.index] = {
+          hasFailed = true;
+          const nextError =
+            result?.error ||
+            tr("Generation failed.", "生成失败。");
+          setGenerationTaskStateByIndex((prev) => {
+            const nextState: GenerationTaskUiState = {
               index: task.index,
               status: "failed",
-              attempts: maxAttempts,
+              attempts: 1,
               maxAttempts,
-              error: finalError,
+              error: nextError,
+              imageUrl: undefined,
+              rawImageUrl: result?.rawImageUrl || undefined,
+              runId: activeRunId,
+              jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
+              source: "current-run",
               startedAt: prev[task.index]?.startedAt ?? Date.now(),
               lastUpdatedAt: Date.now(),
             };
+            const next = {
+              ...prev,
+              [task.index]: nextState,
+            };
+            logWorkspaceImageDebug("[ImageRenderDebug] state write before PosterCanvas (failed):", {
+              index: task.index,
+              oldState: prev[task.index],
+              newState: nextState,
+              newStatus: nextState.status,
+              newImageUrl: nextState.imageUrl,
+            });
+            return next;
           });
-          return next;
+          upsertImageErrorTurn(task, nextError);
+          logClientEvent({
+            category: "image",
+            action: "image_generation_result_failed",
+            status: "error",
+            source: imageModel,
+            code: result?.errorCode || "IMAGE_TASK_FAILED",
+            message: nextError,
+            projectId: projectIdRef.current ?? null,
+            details: {
+              taskIndex: task.index,
+              taskId: result?.taskId || null,
+              outputType: task.outputType,
+              taskStatus: result?.status || null,
+            },
+          });
         });
-        setGenerationConfirmError(finalError);
-      } else {
-        setGenerationConfirmError(null);
+        setGenerationConfirmError(hasFailed ? tr("Some tasks failed. Please retry failed cards.", "部分任务失败，请重试失败卡片。") : null);
+      } catch (error) {
+        const lastError =
+          error instanceof DOMException && error.name === "AbortError"
+            ? tr("Generation timed out.", "生成超时。")
+            : error instanceof Error
+              ? error.message
+              : tr("Generation failed.", "生成失败。");
+        tasks.forEach((task) => {
+          setGenerationTaskStateByIndex((prev) => ({
+            ...prev,
+            [task.index]: {
+              index: task.index,
+              status: "failed",
+              attempts: 1,
+              maxAttempts,
+              error: lastError,
+              imageUrl: undefined,
+              rawImageUrl: undefined,
+              runId: activeRunId,
+              jobId: currentGenerationJobIdRef.current || undefined,
+              source: "current-run",
+              startedAt: prev[task.index]?.startedAt ?? Date.now(),
+              lastUpdatedAt: Date.now(),
+            },
+          }));
+          upsertImageErrorTurn(task, lastError);
+        });
+        setGenerationConfirmError(lastError);
+        logClientEvent({
+          category: "image",
+          action: "image_generation_exception",
+          status: "error",
+          source: imageModel,
+          message: lastError || tr("Generation failed.", "生成失败。"),
+          projectId: projectIdRef.current ?? null,
+          details: {
+            taskIndexes: tasks.map((task) => task.index),
+            stack: error instanceof Error ? error.stack : undefined,
+          },
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     },
-    [buildGenerationRequestPayload, tr],
+    [buildGenerationRequestPayload, currentEmail, imageModel, setGenerationRunContext, tr],
   );
   const handleRetryGenerationTask = useCallback(
     (index: number) => {
@@ -2481,9 +3100,73 @@ export default function WorkspacePage() {
       if (!task) {
         return;
       }
-      void runGenerationBatch([task], true);
+      if (generationRequestInFlightRef.current) {
+        return;
+      }
+      const nextRunId = createGenerationRunId();
+      setGenerationRunContext(nextRunId, null);
+      generationRequestInFlightRef.current = true;
+      void runGenerationBatch([task], true, nextRunId).finally(() => {
+        generationRequestInFlightRef.current = false;
+      });
     },
-    [imageGenerationTaskByIndex, runGenerationBatch],
+    [imageGenerationTaskByIndex, runGenerationBatch, setGenerationRunContext],
+  );
+  const startGenerationFromCanvas = useCallback(
+    async (reason: "auto-generate-missing-current-run-image") => {
+      if (generationRequestInFlightRef.current) {
+        return;
+      }
+      let tasksToGenerate: ImageGenerationTask[] = [];
+      try {
+        tasksToGenerate = buildFreshImageGenerationTasks();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : tr("Generation tasks are invalid.", "生成任务参数无效。");
+        setGenerationConfirmError(message);
+        return;
+      }
+      if (!tasksToGenerate.length) {
+        const message = tr("No generation tasks are ready.", "没有可生成的任务。");
+        setGenerationConfirmError(message);
+        return;
+      }
+      const runId = normalizeGenerationRunId(currentGenerationRunIdRef.current) || createGenerationRunId();
+      if (autoGenerationTriggeredRunIdsRef.current[runId]) {
+        return;
+      }
+      autoGenerationTriggeredRunIdsRef.current[runId] = true;
+      setGenerationRunContext(runId, null);
+      generationRequestInFlightRef.current = true;
+      const startedAt = Date.now();
+      const pendingState: Record<number, GenerationTaskUiState> = {};
+      tasksToGenerate.forEach((task) => {
+        pendingState[task.index] = {
+          index: task.index,
+          status: "queued",
+          attempts: 0,
+          maxAttempts: 1,
+          runId,
+          source: "current-run",
+          startedAt,
+          lastUpdatedAt: startedAt,
+        };
+      });
+      setGenerationTaskStateByIndex(pendingState);
+      setGenerationConfirmError(null);
+      logGenerationCacheGuard("auto-run-triggered", {
+        reason,
+        runId,
+        taskCount: tasksToGenerate.length,
+        taskIndexes: tasksToGenerate.map((task) => task.index),
+      });
+      try {
+        await runGenerationBatch(tasksToGenerate, false, runId);
+      } finally {
+        generationRequestInFlightRef.current = false;
+      }
+    },
+    [buildFreshImageGenerationTasks, runGenerationBatch, setGenerationRunContext, tr],
   );
 
   const stageLabel = useMemo(() => {
@@ -2504,6 +3187,58 @@ export default function WorkspacePage() {
     }
     return tr("Step 1/7 · Input", "第 1/7 步 · 输入");
   }, [flowStage, tr]);
+  useEffect(() => {
+    if (debugGoGenerateStepEnabled || debugImageBridgeEnabled) {
+      return;
+    }
+    if (flowStage !== "generate" || !billingConfirmed || effectiveIntent !== "poster") {
+      return;
+    }
+    if (generationRequestInFlightRef.current || isPlanningBillingStep) {
+      return;
+    }
+
+    const currentRunId = normalizeGenerationRunId(currentGenerationRunIdRef.current);
+    const states = Object.values(generationTaskStateByIndex);
+    const currentRunStates = currentRunId
+      ? states.filter(
+          (item) =>
+            normalizeGenerationRunId(item.runId) === currentRunId &&
+            item.source === "current-run",
+        )
+      : [];
+    const hasCurrentRunSuccess = currentRunStates.some(
+      (item) => item.status === "success" && Boolean(item.imageUrl),
+    );
+    const hasCurrentRunProcessing = currentRunStates.some(
+      (item) =>
+        item.status === "queued" ||
+        item.status === "generating" ||
+        item.status === "retrying",
+    );
+    const hasCurrentRunFailed = currentRunStates.some((item) => item.status === "failed");
+
+    if (hasCurrentRunSuccess || hasCurrentRunProcessing || hasCurrentRunFailed) {
+      return;
+    }
+
+    const autoTriggerKey = currentRunId || `auto-seed-${generationSessionSeed}`;
+    if (autoGenerationTriggeredRunIdsRef.current[autoTriggerKey]) {
+      return;
+    }
+    autoGenerationTriggeredRunIdsRef.current[autoTriggerKey] = true;
+    void startGenerationFromCanvas("auto-generate-missing-current-run-image");
+  }, [
+    billingConfirmed,
+    debugGoGenerateStepEnabled,
+    debugImageBridgeEnabled,
+    effectiveIntent,
+    flowStage,
+    generationSessionSeed,
+    generationTaskStateByIndex,
+    isPlanningBillingStep,
+    startGenerationFromCanvas,
+  ]);
   const projectTitle = isZhOutput
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
@@ -2797,6 +3532,59 @@ export default function WorkspacePage() {
     return () => window.clearInterval(timer);
   }, [flowStage, generationTaskStateByIndex, imageGenerationTaskByIndex, tr, upsertImageErrorCard]);
 
+  useEffect(() => {
+    const entries = Object.entries(generationTaskStateByIndex).map(([index, state]) => ({
+      index: Number(index),
+      status: state.status,
+      imageUrl: state.imageUrl || null,
+      runId: state.runId || null,
+      jobId: state.jobId || null,
+      source: state.source || null,
+    }));
+    if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+      (
+        window as Window & {
+          __workspaceGenerationDebug?: unknown;
+        }
+      ).__workspaceGenerationDebug = {
+        entries,
+        imageGenerationTasksLength: imageGenerationTasks.length,
+        flowStage,
+        currentGenerationRunId,
+        currentGenerationJobId,
+      };
+    }
+    console.info("[workspace-generation] state snapshot", JSON.stringify({
+      entries,
+      imageGenerationTasksLength: imageGenerationTasks.length,
+      flowStage,
+      currentGenerationRunId,
+      currentGenerationJobId,
+    }));
+    logWorkspaceImageDebug("[ImageRenderDebug] generationTaskStateByIndex snapshot:", {
+      generationTaskStateByIndex,
+      entries,
+    });
+  }, [currentGenerationJobId, currentGenerationRunId, flowStage, generationTaskStateByIndex, imageGenerationTasks.length]);
+
+  useEffect(() => {
+    if (!showPosterCanvas) {
+      return;
+    }
+    const taskSummaries = imageGenerationTasks.map((task) => {
+      const taskState = generationTaskStateByIndex[task.index];
+      return {
+        index: task.index,
+        status: taskState?.status ?? "missing",
+        imageUrl: taskState?.imageUrl ?? null,
+      };
+    });
+    logWorkspaceImageDebug("[ImageRenderDebug] PosterCanvas props preview:", {
+      generationTaskStateByIndex,
+      taskSummaries,
+    });
+  }, [generationTaskStateByIndex, imageGenerationTasks, showPosterCanvas]);
+
   function pushUserMessage(content: string, module = "内容改写") {
     setUpdates((prev) => [
       ...prev,
@@ -2832,6 +3620,7 @@ export default function WorkspacePage() {
     setConfigConfirmed(false);
     setFlowStage("config");
     setBillingConfirmed(false);
+    clearCurrentGenerationState("reset-to-config-stage");
     setEditableOutlineItems([]);
     setEditableSlideDrafts([]);
     setEditablePosterDraft(null);
@@ -2868,6 +3657,7 @@ export default function WorkspacePage() {
     setFlowStage("intent");
     setConfigConfirmed(false);
     setBillingConfirmed(false);
+    clearCurrentGenerationState("topic-suggestion-confirmed");
     setEditableOutlineItems([]);
     setEditableSlideDrafts([]);
     setEditablePosterDraft(null);
@@ -3300,12 +4090,76 @@ export default function WorkspacePage() {
     await new Promise((resolve) => window.setTimeout(resolve, 420));
     setFlowStage("billing");
     setBillingConfirmed(false);
+    clearCurrentGenerationState("style-next-to-billing");
     stopThinking();
     setIsPlanningStyleStep(false);
   }
 
+  const handleSelectStyle = useCallback((styleId: string) => {
+    if (!styleId || styleId === selectedStyleId) {
+      return;
+    }
+    setSelectedStyleId(styleId);
+    const hasExistingGenerationState = Object.keys(generationTaskStateByIndex).length > 0;
+    if (!hasExistingGenerationState && !billingConfirmed && flowStage !== "generate") {
+      return;
+    }
+    setBillingConfirmed(false);
+    clearCurrentGenerationState("style-changed");
+    if (flowStage === "generate") {
+      setFlowStage("billing");
+    }
+  }, [
+    billingConfirmed,
+    clearCurrentGenerationState,
+    flowStage,
+    generationTaskStateByIndex,
+    selectedStyleId,
+  ]);
+
   async function handleConfirmBilling() {
-    if (credits < billingCost) {
+    let tasksToGenerate: ImageGenerationTask[] = [];
+    try {
+      tasksToGenerate = buildFreshImageGenerationTasks();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : tr("Generation tasks are invalid.", "生成任务参数无效。");
+      setGenerationConfirmError(message);
+      pushAssistantMessage(message, tr("Generation", "生成"));
+      return;
+    }
+    const expectedCount =
+      effectiveIntent === "poster" ? posterCount : effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
+    const invalidTask = tasksToGenerate.find(
+      (task) =>
+        !task.composedPrompt?.trim() ||
+        !task.aspectRatio?.trim() ||
+        !task.size?.trim(),
+    );
+    console.info("[workspace-generation] handleConfirmBilling called", {
+      flowStage,
+      credits,
+      billingCost,
+      canConfirmBilling,
+      isPlanningBillingStep,
+      generationRequestInFlight: generationRequestInFlightRef.current,
+      imageGenerationTasksLength: imageGenerationTasks.length,
+      freshTaskCount: tasksToGenerate.length,
+      freshTaskIndexes: tasksToGenerate.map((task) => task.index),
+      expectedTaskCount: expectedCount,
+      debugGoGenerateStepEnabled,
+    });
+    if (generationRequestInFlightRef.current) {
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "generationRequestInFlight",
+      });
+      return;
+    }
+    if (credits < billingCost && !debugGoGenerateStepEnabled) {
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "insufficientCredits",
+        credits,
+        billingCost,
+      });
       pushAssistantMessage(
         isZhOutput
           ? `当前积分不足（余额 ${credits}，需要 ${billingCost}）。请先升级后再继续。`
@@ -3315,116 +4169,186 @@ export default function WorkspacePage() {
       return;
     }
     if (isPlanningBillingStep) {
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "isPlanningBillingStep",
+      });
       return;
     }
+    if (flowStage !== "billing") {
+      const message = tr("Generation can only be confirmed at the billing step.", "仅可在账单确认步骤发起生成。");
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "invalidFlowStage",
+        flowStage,
+      });
+      setGenerationConfirmError(message);
+      pushAssistantMessage(message, tr("Generation", "生成"));
+      return;
+    }
+    if (!tasksToGenerate.length) {
+      const message = tr("No generation tasks are ready.", "没有可生成的任务。");
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "emptyGenerationTasks",
+      });
+      setGenerationConfirmError(message);
+      pushAssistantMessage(message, tr("Generation", "生成"));
+      return;
+    }
+    if (tasksToGenerate.length !== expectedCount) {
+      const message = tr("Task count does not match selected output quantity.", "任务数量与选择的输出数量不一致。");
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "taskCountMismatch",
+        expectedCount,
+        actualCount: tasksToGenerate.length,
+      });
+      setGenerationConfirmError(message);
+      pushAssistantMessage(message, tr("Generation", "生成"));
+      return;
+    }
+    if (invalidTask) {
+      const message = tr(
+        `Task ${invalidTask.index} is missing prompt or size.`,
+        `任务 ${invalidTask.index} 缺少提示词或尺寸配置。`,
+      );
+      console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "invalidTaskPayload",
+        invalidTaskIndex: invalidTask.index,
+      });
+      setGenerationConfirmError(message);
+      pushAssistantMessage(message, tr("Generation", "生成"));
+      return;
+    }
+    generationRequestInFlightRef.current = true;
     setIsPlanningBillingStep(true);
     setGenerationConfirmError(null);
+    setGenerationSessionSeed((prev) => prev + 1);
+    const nextRunId = createGenerationRunId();
+    setGenerationRunContext(nextRunId, null);
+    logGenerationCacheGuard("run-started", {
+      runId: nextRunId,
+      projectId: projectIdRef.current,
+      projectTraceId: projectTraceIdRef.current,
+      taskCount: tasksToGenerate.length,
+      taskIndexes: tasksToGenerate.map((task) => task.index),
+    });
+    const generationStartedAt = Date.now();
+    const pendingState: Record<number, GenerationTaskUiState> = {};
+    tasksToGenerate.forEach((task) => {
+      pendingState[task.index] = {
+        index: task.index,
+        status: "queued",
+        attempts: 0,
+        maxAttempts: 1,
+        runId: nextRunId,
+        source: "current-run",
+        startedAt: generationStartedAt,
+        lastUpdatedAt: generationStartedAt,
+      };
+    });
+    setGenerationTaskStateByIndex(pendingState);
+    setFlowStage("generate");
+    setBillingConfirmed(true);
+    requestAnimationFrame(() => {
+      storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    const imageModel = initialEntry.models?.imageModel || "gpt-image-2";
     startThinking(
       effectiveIntent === "poster" ? tr("Poster Generation", "海报生成") : tr("Storyboard Generation", "分镜生成"),
       effectiveIntent === "poster"
         ? tr("Generating poster structure and draft text...", "正在生成海报结构与文案...")
         : tr("Generating storyboard structure and syncing visual/audio fields...", "正在创建分镜结构，并同步画面与音轨字段..."),
     );
-    await new Promise((resolve) => window.setTimeout(resolve, 560));
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 560));
 
-    const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
-    const ownerProjects = currentEmail ? getProjectsByUser(currentEmail) : [];
-    const imageModel = initialEntry.models?.imageModel || "gpt-image-2";
-    const selectedProject =
-      (initialEntry.project?.projectId
-        ? ownerProjects.find((item) => item.id === initialEntry.project?.projectId)
-        : null) ??
-      (initialEntry.project?.projectId
-        ? {
-            id: initialEntry.project.projectId,
-            userId: user?.id || initialEntry.project.projectUserId || "u-unknown",
-            title:
-              initialEntry.project.projectTitle ||
-              `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
-            status: "进行中" as const,
-            updatedAt: new Date().toISOString(),
-            format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
-          }
-        : null) ??
-      ownerProjects[0] ??
-      (currentEmail
-        ? ensureUserProjectByEmail({
-            email: currentEmail,
-            name: session?.user?.name ?? undefined,
-            title: `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
-            format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
-          })
-        : getAdminProjects()[0]);
-    projectIdRef.current = selectedProject?.id ?? projectIdRef.current;
-    projectTraceIdRef.current =
-      initialEntry.project?.projectTraceId ||
-      (projectIdRef.current && user?.id ? `${user.id}_${projectIdRef.current}` : projectTraceIdRef.current);
-    if (typeof window !== "undefined" && projectIdRef.current) {
-      const url = new URL(window.location.href);
-      const existingProjectId = (url.searchParams.get("projectId") || "").trim();
-      if (existingProjectId !== projectIdRef.current) {
-        url.searchParams.set("projectId", projectIdRef.current);
-        router.replace(`${url.pathname}?${url.searchParams.toString()}`, { scroll: false });
+      const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
+      const ownerProjects = currentEmail ? getProjectsByUser(currentEmail) : [];
+      const selectedProject =
+        (initialEntry.project?.projectId
+          ? ownerProjects.find((item) => item.id === initialEntry.project?.projectId)
+          : null) ??
+        (initialEntry.project?.projectId
+          ? {
+              id: initialEntry.project.projectId,
+              userId: user?.id || initialEntry.project.projectUserId || "u-unknown",
+              title:
+                initialEntry.project.projectTitle ||
+                `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
+              status: "进行中" as const,
+              updatedAt: new Date().toISOString(),
+              format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
+            }
+          : null) ??
+        ownerProjects[0] ??
+        (currentEmail
+          ? ensureUserProjectByEmail({
+              email: currentEmail,
+              name: session?.user?.name ?? undefined,
+              title: `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
+              format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
+            })
+          : getAdminProjects()[0]);
+      projectIdRef.current = selectedProject?.id ?? projectIdRef.current;
+      projectTraceIdRef.current =
+        initialEntry.project?.projectTraceId ||
+        (projectIdRef.current && user?.id ? `${user.id}_${projectIdRef.current}` : projectTraceIdRef.current);
+      if (typeof window !== "undefined" && projectIdRef.current) {
+        const url = new URL(window.location.href);
+        const existingProjectId = (url.searchParams.get("projectId") || "").trim();
+        if (existingProjectId !== projectIdRef.current) {
+          url.searchParams.set("projectId", projectIdRef.current);
+          router.replace(`${url.pathname}?${url.searchParams.toString()}`, { scroll: false });
+        }
       }
-    }
 
-    appendCreditRecord({
-      type: "consume",
-      description: isZhOutput
-        ? `${selectedProject?.title ?? "生成项目"} · ${
-            effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-          }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
-        : `${selectedProject?.title ?? "Generation Project"} · ${
-            effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
-          } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
-      delta: -billingCost,
-      userId: user?.id,
-      userEmail: currentEmail || undefined,
-      projectId: selectedProject?.id,
-      projectTitle: selectedProject?.title,
-    }, currentEmail);
-    logClientEvent({
-      category: "billing",
-      action: "billing_confirmed",
-      status: "ok",
-      source: effectiveIntent,
-      message: `${selectedProject?.title ?? "project"} confirmed and consumed ${billingCost} credits.`,
-      projectId: selectedProject?.id ?? null,
-      details: {
-        creditsBefore: credits,
-        creditsAfter: Math.max(0, credits - billingCost),
-        billingCost,
-        effectiveIntent,
-      },
-    });
-
-    setCreditVersion((prev) => prev + 1);
-    setBillingConfirmed(true);
-
-    if (effectiveIntent === "ppt" || effectiveIntent === "video") {
-      setFlowStage("generate");
-      requestAnimationFrame(() => {
-        storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      appendCreditRecord({
+        type: "consume",
+        description: isZhOutput
+          ? `${selectedProject?.title ?? "生成项目"} · ${
+              effectiveIntent === "poster" ? "海报生成" : "分镜生成"
+            }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+          : `${selectedProject?.title ?? "Generation Project"} · ${
+              effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
+            } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+        delta: -billingCost,
+        userId: user?.id,
+        userEmail: currentEmail || undefined,
+        projectId: selectedProject?.id,
+        projectTitle: selectedProject?.title,
+      }, currentEmail);
+      logClientEvent({
+        category: "billing",
+        action: "billing_confirmed",
+        status: "ok",
+        source: effectiveIntent,
+        message: `${selectedProject?.title ?? "project"} confirmed and consumed ${billingCost} credits.`,
+        projectId: selectedProject?.id ?? null,
+        details: {
+          creditsBefore: credits,
+          creditsAfter: Math.max(0, credits - billingCost),
+          billingCost,
+          effectiveIntent,
+        },
       });
-    } else {
-      setFlowStage("generate");
-      requestAnimationFrame(() => {
-        storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      setCreditVersion((prev) => prev + 1);
+
+      logClientEvent({
+        category: "image",
+        action: "image_generation_started",
+        status: "info",
+        source: imageModel,
+        message: "Generation batch started from workspace confirmation.",
+        projectId: selectedProject?.id ?? null,
+        details: {
+          outputs: standardOutputCount,
+          intent: effectiveIntent,
+          taskCount: tasksToGenerate.length,
+          taskIndexes: tasksToGenerate.map((task) => task.index),
+        },
       });
-    }
-    logClientEvent({
-      category: "image",
-      action: "image_generation_started",
-      status: "info",
-      source: imageModel,
-      message: "Generation batch started from workspace confirmation.",
-      projectId: selectedProject?.id ?? null,
-      details: {
-        outputs: standardOutputCount,
-        intent: effectiveIntent,
-      },
-    });
-    void runGenerationBatch(imageGenerationTasks).catch((error) => {
+      await runGenerationBatch(tasksToGenerate, false, nextRunId);
+    } catch (error) {
+      setBillingConfirmed(false);
       setGenerationConfirmError(
         error instanceof Error ? error.message : tr("Generation failed.", "生成失败。"),
       );
@@ -3434,11 +4358,13 @@ export default function WorkspacePage() {
         status: "error",
         source: imageModel,
         message: error instanceof Error ? error.message : "Generation batch failed.",
-        projectId: selectedProject?.id ?? null,
+        projectId: projectIdRef.current ?? null,
       });
-    });
-    stopThinking();
-    setIsPlanningBillingStep(false);
+    } finally {
+      stopThinking();
+      setIsPlanningBillingStep(false);
+      generationRequestInFlightRef.current = false;
+    }
   }
 
   async function handleSendInput(
@@ -4023,6 +4949,7 @@ export default function WorkspacePage() {
                   isPlanningBillingStep={isPlanningBillingStep}
                   billingConfirmed={billingConfirmed}
                   canConfirmBilling={canConfirmBilling}
+                  generationConfirmError={generationConfirmError}
                   billingSummary={{
                     styleName: selectedStyle.englishName ?? selectedStyle.name,
                     languageModelCredits,
@@ -4035,7 +4962,7 @@ export default function WorkspacePage() {
                   }}
                   styleOptions={styleOptions}
                   selectedStyleId={selectedStyleId}
-                  onSelectStyle={setSelectedStyleId}
+                  onSelectStyle={handleSelectStyle}
                   onStyleNext={handleStyleNext}
                   onConfirmBilling={handleConfirmBilling}
                   onUpgradeForCredits={openCreditsPaywall}
@@ -4133,6 +5060,7 @@ export default function WorkspacePage() {
                 posterCount={posterCount}
                 posterDraft={posterDraft}
                 posterPlanList={editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList}
+                generationSessionSeed={generationSessionSeed}
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 onRetryGenerationTask={handleRetryGenerationTask}
                 onSaveStateChange={(nextState, unsaved) => {

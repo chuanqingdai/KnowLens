@@ -47,6 +47,7 @@ type PosterCanvasProps = {
   posterCount: number;
   posterDraft: PosterDraft | null;
   posterPlanList: PosterPlanItem[];
+  generationSessionSeed?: number;
   generationTaskStateByIndex?: Record<
     number,
     {
@@ -76,6 +77,8 @@ type PosterCard = {
   history: string[];
   errorMessage?: string;
   timeoutAt?: number;
+  imageLoading?: boolean;
+  imageLoadError?: string;
   archives: Array<{
     id: string;
     imageSrc: string;
@@ -104,8 +107,23 @@ const POSTER_PLACEHOLDER_COLORS = [
   "#F1F7E8",
   "#F3F4F6",
 ];
-const CASE_IMAGES = Array.from({ length: 36 }, (_, idx) => `/case/${idx + 1}.png`);
 const PENDING_POSTER_COLOR = "#e5e7eb";
+const IMAGE_RENDER_DEBUG = process.env.NODE_ENV === "development";
+const IMAGE_REVEAL_DELAY_MS = 420;
+
+function logImageRenderDebug(message: string, payload: Record<string, unknown>) {
+  if (!IMAGE_RENDER_DEBUG) {
+    return;
+  }
+  console.log(message, payload);
+}
+
+function warnImageRenderDebug(message: string, payload: Record<string, unknown>) {
+  if (!IMAGE_RENDER_DEBUG) {
+    return;
+  }
+  console.warn(message, payload);
+}
 
 function wrapText(source: string, maxLen: number) {
   const text = source.trim();
@@ -149,18 +167,6 @@ function buildPosterCardCopy(
   return [titleLine, subtitle, body, ...points.map((point) => `- ${point}`), focus ? `- ${focus}` : ""]
     .filter(Boolean)
     .join("\n");
-}
-
-function pickNextCaseImage(currentSrc: string, fallbackSeed: number) {
-  const matched = currentSrc.match(/\/case\/(\d+)\.png$/);
-  if (!matched) {
-    return CASE_IMAGES[(fallbackSeed + 1) % CASE_IMAGES.length];
-  }
-  const currentIdx = Number.parseInt(matched[1], 10) - 1;
-  if (!Number.isFinite(currentIdx)) {
-    return CASE_IMAGES[(fallbackSeed + 1) % CASE_IMAGES.length];
-  }
-  return CASE_IMAGES[(currentIdx + 1) % CASE_IMAGES.length];
 }
 
 function reportPosterDownloadEvent(input: {
@@ -290,9 +296,12 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
     onRestoreCopy,
     onDownload,
   } = data;
-  const canEdit = card.status === "ready";
+  const canEdit = card.status === "ready" && !card.imageLoading;
   const isGenerating =
     card.status === "queued" || card.status === "generating" || card.status === "retrying";
+  const isImageLoading = card.status === "ready" && Boolean(card.imageLoading);
+  const showImage = card.status === "ready" && Boolean(card.imageSrc);
+  const showPlaceholder = !showImage || isImageLoading;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -310,6 +319,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
 
   return (
     <div
+      data-testid={`poster-card-${Math.max(0, card.index - 1)}`}
       className={`w-[86vw] max-w-[420px] rounded-xl border bg-white p-3 shadow-[0_12px_24px_rgba(15,23,42,0.1)] transition ${
         isSelected ? "border-zinc-900 ring-2 ring-zinc-900/10" : "border-zinc-200"
       }`}
@@ -369,37 +379,90 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
       </div>
 
       <div className="relative mt-2 overflow-hidden rounded-lg border border-zinc-200">
-        {card.status === "ready" ? (
+        {showImage ? (
           <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100">
             <img
+              data-testid={`poster-image-${Math.max(0, card.index - 1)}`}
               src={card.imageSrc}
               alt={`Poster ${card.index}`}
-              className="block h-full w-full object-cover"
-              loading="lazy"
+              className={`block h-full w-full object-cover transition-opacity duration-200 ${
+                isImageLoading ? "opacity-0" : "opacity-100"
+              }`}
+              loading="eager"
               decoding="async"
               referrerPolicy="no-referrer"
-              onError={() => {
-                console.warn("[PosterCanvas] image load failed:", card.imageSrc);
+              onLoad={(event) => {
+                const img = event.currentTarget;
+                logImageRenderDebug("[ImageRenderDebug][PosterCanvas] img onLoad", {
+                  cardIndex: card.index,
+                  src: img.currentSrc || img.src,
+                  naturalWidth: img.naturalWidth,
+                  naturalHeight: img.naturalHeight,
+                });
+                if (!card.imageLoading) {
+                  return;
+                }
+                window.setTimeout(() => {
+                  onUpdate(card.id, {
+                    imageLoading: false,
+                    imageLoadError: undefined,
+                  });
+                }, IMAGE_REVEAL_DELAY_MS);
+              }}
+              onError={(event) => {
+                const img = event.currentTarget;
+                warnImageRenderDebug("[ImageRenderDebug][PosterCanvas] img onError", {
+                  cardIndex: card.index,
+                  src: img.currentSrc || img.src || card.imageSrc,
+                  naturalWidth: img.naturalWidth,
+                  naturalHeight: img.naturalHeight,
+                });
                 onUpdate(card.id, {
                   status: "failed",
-                  errorMessage: "Image failed to load from provider URL. Please retry.",
+                  imageLoading: false,
+                  imageLoadError: undefined,
+                  errorMessage: "Image URL was returned, but the browser could not load it. Please retry.",
                 });
               }}
             />
           </div>
-        ) : (
-          <div className="relative aspect-[9/16] w-full" style={{ backgroundColor: PENDING_POSTER_COLOR }} />
-        )}
+        ) : null}
+        {showPlaceholder ? (
+          <div
+            data-testid={`poster-placeholder-${Math.max(0, card.index - 1)}`}
+            className={`relative aspect-[9/16] w-full overflow-hidden bg-zinc-200 ${
+              showImage ? "absolute inset-0 z-10" : ""
+            }`}
+          >
+            <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-100" />
+            <div className="absolute inset-0 p-4">
+              <div className="h-full w-full rounded-md border border-zinc-300/60 bg-white/35 p-3">
+                <div className="h-2.5 w-2/3 rounded bg-zinc-300/85" />
+                <div className="mt-2 h-2.5 w-1/2 rounded bg-zinc-300/70" />
+                <div className="mt-6 h-2.5 w-3/4 rounded bg-zinc-300/70" />
+                <div className="mt-2 h-2.5 w-2/5 rounded bg-zinc-300/70" />
+              </div>
+            </div>
+          </div>
+        ) : null}
         {isGenerating ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
               <LoaderCircle size={12} className="animate-spin text-blue-500" />
               Rendering poster
             </div>
           </div>
         ) : null}
+        {isImageLoading ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
+              <LoaderCircle size={12} className="animate-spin text-blue-500" />
+              Loading poster image
+            </div>
+          </div>
+        ) : null}
         {card.status === "failed" ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
             <div className="max-w-[220px] rounded-lg border border-red-200 bg-white px-3 py-2 text-center shadow-sm">
               <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600">
                 <AlertCircle size={15} />
@@ -419,6 +482,11 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
             </div>
           </div>
         ) : null}
+        {card.imageLoadError ? (
+          <div className="absolute inset-x-0 bottom-0 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+            {card.imageLoadError}
+          </div>
+        ) : null}
         {card.status === "ready" && card.errorMessage ? (
           <div className="absolute inset-x-0 bottom-0 bg-red-50 px-3 py-2 text-[11px] text-red-700">
             {card.errorMessage}
@@ -436,7 +504,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
                   src={archive.imageSrc}
                   alt="Poster history"
                   className="block h-full w-full object-cover"
-                  loading="lazy"
+                  loading="eager"
                   decoding="async"
                   referrerPolicy="no-referrer"
                 />
@@ -453,6 +521,7 @@ export function PosterCanvas({
   posterCount,
   posterDraft,
   posterPlanList,
+  generationSessionSeed = 0,
   generationTaskStateByIndex,
   onRetryGenerationTask,
   onSaveStateChange,
@@ -476,8 +545,9 @@ export function PosterCanvas({
     const planPart = posterPlanList
       .map((item) => `${item.index}|${item.title}|${item.focus}`)
       .join("||");
-    return `${count}__${draftPart}__${planPart}`;
+    return `${generationSessionSeed}__${count}__${draftPart}__${planPart}`;
   }, [
+    generationSessionSeed,
     count,
     posterDraft?.body,
     posterDraft?.headline,
@@ -496,7 +566,7 @@ export function PosterCanvas({
           index: idx + 1,
           copy,
           colorHex: POSTER_PLACEHOLDER_COLORS[idx % POSTER_PLACEHOLDER_COLORS.length],
-          imageSrc: CASE_IMAGES[idx % CASE_IMAGES.length],
+          imageSrc: "",
           status: "idle" as const,
           x: idx * 468,
           y: 48,
@@ -516,18 +586,7 @@ export function PosterCanvas({
     setSelectedCardId(null);
     setHasPendingSave(false);
 
-    let cancelled = false;
-    const raf = window.requestAnimationFrame(() => {
-      if (cancelled) {
-        return;
-      }
-      setCards(initialCards);
-    });
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(raf);
-    };
+    setCards(initialCards);
   }, [initKey, initialCards]);
 
   useEffect(() => {
@@ -555,39 +614,96 @@ export function PosterCanvas({
     setCards((prev) =>
       prev.map((item) => {
         const taskState = generationTaskStateByIndex[item.index];
+        logImageRenderDebug("[ImageRenderDebug][PosterCanvas] taskState received:", {
+          cardIndex: item.index,
+          taskStateStatus: taskState?.status,
+          taskStateImageUrl: taskState?.imageUrl,
+        });
         if (!taskState) {
+          logImageRenderDebug("[ImageRenderDebug][PosterCanvas] branch=keep_previous_no_task_state", {
+            cardIndex: item.index,
+            cardStatus: item.status,
+            cardImageSrc: item.imageSrc,
+          });
           return item;
         }
         if (taskState.status === "success" && taskState.imageUrl) {
-          return {
+          if (
+            item.status === "ready" &&
+            item.imageSrc === taskState.imageUrl &&
+            !item.imageLoading &&
+            !item.imageLoadError
+          ) {
+            return item;
+          }
+          const nextCard: PosterCard = {
             ...item,
             status: "ready",
             imageSrc: taskState.imageUrl,
             colorHex: POSTER_PLACEHOLDER_COLORS[(item.index + 2) % POSTER_PLACEHOLDER_COLORS.length],
             errorMessage: undefined,
+            imageLoading: true,
+            imageLoadError: undefined,
             timeoutAt: undefined,
           };
+          logImageRenderDebug("[ImageRenderDebug][PosterCanvas] branch=ready", {
+            cardIndex: item.index,
+            taskStateStatus: taskState.status,
+            taskStateImageUrl: taskState.imageUrl,
+            computedCardStatus: nextCard.status,
+            computedCardImageSrc: nextCard.imageSrc,
+            enterReadyBranch: true,
+          });
+          return nextCard;
         }
         if (taskState.status === "failed") {
-          return {
+          const nextCard: PosterCard = {
             ...item,
             status: "failed",
+            imageSrc: "",
             errorMessage: taskState.error || "Please retry from this card.",
+            imageLoading: false,
+            imageLoadError: undefined,
             timeoutAt: undefined,
           };
+          logImageRenderDebug("[ImageRenderDebug][PosterCanvas] branch=failed", {
+            cardIndex: item.index,
+            taskStateStatus: taskState.status,
+            computedCardStatus: nextCard.status,
+            computedCardImageSrc: nextCard.imageSrc,
+            enterErrorBranch: true,
+          });
+          return nextCard;
         }
         if (
           taskState.status === "queued" ||
           taskState.status === "generating" ||
           taskState.status === "retrying"
         ) {
-          return {
+          const nextCard: PosterCard = {
             ...item,
             status: taskState.status,
+            imageSrc: "",
             errorMessage: undefined,
+            imageLoading: false,
+            imageLoadError: undefined,
             timeoutAt: taskState.startedAt,
           };
+          logImageRenderDebug("[ImageRenderDebug][PosterCanvas] branch=loading_or_placeholder", {
+            cardIndex: item.index,
+            taskStateStatus: taskState.status,
+            computedCardStatus: nextCard.status,
+            computedCardImageSrc: nextCard.imageSrc,
+            enterPlaceholderOrLoadingBranch: true,
+          });
+          return nextCard;
         }
+        logImageRenderDebug("[ImageRenderDebug][PosterCanvas] branch=keep_previous_default", {
+          cardIndex: item.index,
+          taskStateStatus: taskState.status,
+          computedCardStatus: item.status,
+          computedCardImageSrc: item.imageSrc,
+        });
         return item;
       }),
     );
@@ -596,7 +712,11 @@ export function PosterCanvas({
   useEffect(() => {
     const hasFailed = cards.some((item) => item.status === "failed");
     const hasProcessing = cards.some(
-      (item) => item.status === "queued" || item.status === "generating" || item.status === "retrying",
+      (item) =>
+        item.status === "queued" ||
+        item.status === "generating" ||
+        item.status === "retrying" ||
+        Boolean(item.imageLoading),
     );
     if (hasFailed) {
       onSaveStateChange?.("error", true);
@@ -689,6 +809,7 @@ export function PosterCanvas({
   }, [onRetryGenerationTask]);
 
   const handleRedrawCard = useCallback((id: string) => {
+    let triggerIndex: number | null = null;
     setCards((prev) =>
       prev.map((item) => {
         if (item.id !== id || item.status !== "ready") {
@@ -699,20 +820,22 @@ export function PosterCanvas({
           imageSrc: item.imageSrc,
           createdAt: Date.now(),
         };
+        triggerIndex = item.index;
         return {
           ...item,
           archives: [archived, ...item.archives].slice(0, 12),
-          imageSrc: pickNextCaseImage(item.imageSrc, item.index),
-          status: "generating",
+          imageSrc: "",
+          status: "retrying",
+          imageLoading: false,
+          imageLoadError: undefined,
+          errorMessage: undefined,
         };
       }),
     );
-    window.setTimeout(() => {
-      setCards((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, status: "ready" } : item)),
-      );
-    }, 860);
-  }, []);
+    if (triggerIndex != null) {
+      onRetryGenerationTask?.(triggerIndex);
+    }
+  }, [onRetryGenerationTask]);
 
   const handleDownloadCard = useCallback((card: PosterCard) => {
     void exportPosterImage(card);
@@ -722,7 +845,9 @@ export function PosterCanvas({
     if (isBulkDownloading) {
       return;
     }
-    const readyCards = cards.filter((item) => item.status === "ready").sort((a, b) => a.index - b.index);
+    const readyCards = cards
+      .filter((item) => item.status === "ready" && !item.imageLoading && !item.imageLoadError)
+      .sort((a, b) => a.index - b.index);
     if (!readyCards.length) {
       return;
     }
@@ -800,7 +925,16 @@ export function PosterCanvas({
 
   const edges = useMemo<Edge[]>(() => [], []);
   const nodeTypes = useMemo(() => ({ poster: PosterNode }), []);
-  const readyCount = cards.filter((item) => item.status === "ready").length;
+  const readyCount = cards.filter(
+    (item) => item.status === "ready" && !item.imageLoading && !item.imageLoadError,
+  ).length;
+  const loadingCount = cards.filter(
+    (item) =>
+      item.status === "queued" ||
+      item.status === "generating" ||
+      item.status === "retrying" ||
+      Boolean(item.imageLoading),
+  ).length;
   const failedCount = cards.filter((item) => item.status === "failed").length;
   const selectedCard = selectedCardId ? cards.find((item) => item.id === selectedCardId) : null;
   const showCanvasArrangeTools = false;
@@ -817,7 +951,10 @@ export function PosterCanvas({
   }
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-zinc-200 bg-white">
+    <section
+      data-testid="poster-canvas"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-zinc-200 bg-white"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-2.5 py-2">
         <div className="flex flex-wrap items-center gap-2">
           {showCanvasArrangeTools ? (
@@ -861,8 +998,9 @@ export function PosterCanvas({
               </div>
             </>
           ) : null}
-          <span className="text-xs text-zinc-500">
+          <span data-testid="poster-progress" className="text-xs text-zinc-500">
             Progress {readyCount}/{cards.length}
+            {loadingCount ? ` · Loading ${loadingCount}` : ""}
             {failedCount ? ` · Failed ${failedCount}` : ""}
           </span>
         </div>

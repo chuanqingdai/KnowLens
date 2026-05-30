@@ -280,6 +280,7 @@ type ChatPanelProps = {
   isPlanningBillingStep: boolean;
   billingConfirmed: boolean;
   canConfirmBilling: boolean;
+  generationConfirmError?: string | null;
   billingSummary: {
     styleName: string;
     languageModelCredits: number;
@@ -359,6 +360,7 @@ export function ChatPanel({
   isPlanningBillingStep,
   billingConfirmed,
   canConfirmBilling,
+  generationConfirmError,
   billingSummary,
   styleOptions,
   selectedStyleId,
@@ -551,6 +553,20 @@ export function ChatPanel({
   const draftGenerationLoadingActive =
     thinkingState.active &&
     /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
+  const billingMessageClass = generationConfirmError
+    ? "font-medium text-red-600"
+    : canConfirmBilling
+      ? "text-zinc-600"
+      : "font-medium text-red-600";
+  const billingMessageText = generationConfirmError
+    ? generationConfirmError
+    : billingConfirmed
+      ? isPlanningBillingStep
+        ? "Billing confirmed. Generation is in progress."
+        : "Billing confirmed. Check generation results on the canvas."
+      : canConfirmBilling
+        ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
+        : "Insufficient credits. Please upgrade before confirming this charge.";
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1205,15 +1221,10 @@ export function ChatPanel({
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className={`text-sm ${canConfirmBilling ? "text-zinc-600" : "font-medium text-red-600"}`}>
-                {billingConfirmed
-                  ? "Billing confirmed. Generation is in progress."
-                  : canConfirmBilling
-                  ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
-                  : "Insufficient credits. Please upgrade before confirming this charge."}
-              </p>
+              <p className={`text-sm ${billingMessageClass}`}>{billingMessageText}</p>
               {showBillingConfirm ? (
                 <button
+                  data-testid="confirm-generate-button"
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
@@ -2232,15 +2243,10 @@ export function ChatPanel({
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className={`text-sm ${canConfirmBilling ? "text-zinc-600" : "font-medium text-red-600"}`}>
-              {billingConfirmed
-                ? "Billing confirmed. Generation is in progress."
-                : canConfirmBilling
-                ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
-                : "Insufficient credits. Please upgrade before confirming this charge."}
-            </p>
+            <p className={`text-sm ${billingMessageClass}`}>{billingMessageText}</p>
             {showBillingConfirm ? (
                 <button
+                  data-testid="confirm-generate-button"
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}

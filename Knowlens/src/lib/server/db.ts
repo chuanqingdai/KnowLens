@@ -188,6 +188,58 @@ function createTables(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_ops_events_source ON ops_events(source, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_ops_events_user_email ON ops_events(user_email, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_ops_events_project_id ON ops_events(project_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS image_generation_jobs (
+      id TEXT PRIMARY KEY,
+      user_email TEXT NOT NULL,
+      project_id TEXT,
+      intent TEXT,
+      ratio TEXT,
+      image_model_policy TEXT,
+      idempotency_key TEXT,
+      run_id TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      error_code TEXT,
+      error_message TEXT,
+      request_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_image_generation_jobs_user_email
+      ON image_generation_jobs(user_email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_image_generation_jobs_project_id
+      ON image_generation_jobs(project_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_image_generation_jobs_idempotency
+      ON image_generation_jobs(user_email, idempotency_key, created_at DESC);
+    CREATE TABLE IF NOT EXISTS image_generation_tasks (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      task_index INTEGER NOT NULL,
+      output_type TEXT,
+      aspect_ratio TEXT,
+      prompt_text TEXT,
+      provider_order TEXT,
+      provider_used TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT,
+      error_message TEXT,
+      raw_image_url TEXT,
+      render_url TEXT,
+      asset_path TEXT,
+      mime_type TEXT,
+      width INTEGER,
+      height INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(job_id) REFERENCES image_generation_jobs(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_image_generation_tasks_job_id
+      ON image_generation_tasks(job_id, task_index ASC);
+    CREATE INDEX IF NOT EXISTS idx_image_generation_tasks_status
+      ON image_generation_tasks(status, updated_at DESC);
   `);
 
   const uploadJobColumns = [
@@ -225,6 +277,33 @@ function createTables(db: DatabaseSync) {
       if (!/duplicate column name/i.test(message)) {
         throw error;
       }
+    }
+  }
+
+  const imageGenerationJobColumns = [
+    "run_id TEXT",
+  ];
+
+  for (const columnDef of imageGenerationJobColumns) {
+    try {
+      db.exec(`ALTER TABLE image_generation_jobs ADD COLUMN ${columnDef}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate column name/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_image_generation_jobs_run_id
+        ON image_generation_jobs(user_email, run_id, created_at DESC);
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such column/i.test(message)) {
+      throw error;
     }
   }
 }

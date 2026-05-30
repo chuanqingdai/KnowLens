@@ -3,6 +3,16 @@ import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { incrementUsageCounter } from "@/lib/server/guard";
 import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
+import {
+  buildImageRenderUrl,
+  createImageGenerationJob,
+  findImageGenerationJobByIdempotency,
+  getImageGenerationJobById,
+  persistRemoteImageAsset,
+  syncImageGenerationJobFinalStatus,
+  updateImageGenerationJobStatus,
+  updateImageGenerationTask,
+} from "@/lib/server/image-generation-jobs";
 import { buildImage2ProviderConfig, requestImage2Generation, resolveImage2Size } from "@/lib/server/image2";
 
 export const runtime = "nodejs";
@@ -147,17 +157,24 @@ function normalizeProjectTraceId(value?: string) {
   return (value || "").trim().slice(0, 200) || null;
 }
 
+function getImageGenerationMockUrl() {
+  if (process.env.IMAGE_GENERATION_MOCK !== "true") {
+    return "";
+  }
+  return (process.env.IMAGE_GENERATION_MOCK_URL || "https://picsum.photos/1024/1024").trim();
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!ensureSafeOrigin(request)) {
       return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
     }
     const session = await getServerSession(nextAuthOptions);
-    const localBypassAllowed =
+    const allowDevLocalAuthBypass =
       process.env.NODE_ENV !== "production" &&
-      isLocalNetworkRequest(request) &&
-      (process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true" || process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN == null);
-    const email = session?.user?.email?.trim().toLowerCase() || (localBypassAllowed ? "local-dev@knowlens.ai" : "");
+      process.env.NEXTAUTH_ALLOW_DEV_LOGIN === "true" &&
+      isLocalNetworkRequest(request);
+    const email = session?.user?.email?.trim().toLowerCase() || (allowDevLocalAuthBypass ? "local-dev@knowlens.ai" : "");
     if (!email) {
       logOpsEvent({
         category: "image",
@@ -198,6 +215,7 @@ export async function POST(request: NextRequest) {
     const projectTraceId = normalizeProjectTraceId(payload.projectTraceId);
     const imageModel = normalizeImageModel(payload.imageModel);
     const wantsImageProvider = taskCount > 0;
+    const mockImageUrl = getImageGenerationMockUrl();
 
     if (wantsImageProvider && requestedOutputs > 0 && taskCount === 0) {
       logOpsEvent({
@@ -227,6 +245,49 @@ export async function POST(request: NextRequest) {
       scopeKey,
       metricKey: "workspace:generation_confirmed",
     });
+    if (mockImageUrl && wantsImageProvider) {
+      const taskResults = (payload.tasks ?? []).map((task, idx) => ({
+        index: extractTaskIndexFromPayload(task, idx + 1),
+        ok: true,
+        imageUrl: mockImageUrl,
+        rawImageUrl: mockImageUrl,
+      }));
+      logOpsEvent({
+        category: "image",
+        action: "image_generation_mocked",
+        status: "ok",
+        source: imageModel,
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        message: "IMAGE_GENERATION_MOCK=true; skipped real image provider call.",
+        details: {
+          projectTraceId,
+          intent: payload.intent ?? "unknown",
+          outputs: requestedOutputs,
+          ratio: payload.ratio ?? "",
+          taskCount,
+          mockImageUrl,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        count,
+        accepted: {
+          intent: payload.intent ?? "unknown",
+          outputs: requestedOutputs,
+          ratio: payload.ratio ?? "",
+          imageModel,
+          styleId: payload.style?.id ?? "",
+          styleName: payload.style?.name ?? "",
+          taskCount,
+        },
+        generation: {
+          providerCalled: false,
+          mocked: true,
+          results: taskResults,
+        },
+      });
+    }
     const isFreeUser = isFreeUserBySubscription(email);
     const image2ProviderConfig = buildImage2ProviderConfig();
 
