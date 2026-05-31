@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { Check, LoaderCircle, Sparkles } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 
 export type ChatTurn = {
   id: string;
@@ -56,6 +56,19 @@ type PosterDraft = {
   visualType?: string;
   layoutSuggestion?: string;
   visualElements?: string[];
+};
+
+type PosterPlanItem = {
+  index: number;
+  title: string;
+  focus: string;
+  role?: string;
+  keyFacts?: string[];
+  visualType?: string;
+  visualElements?: string[];
+  layoutHint?: string;
+  imagePrompt?: string;
+  imagePromptDraft?: string;
 };
 
 type IntentOption = {
@@ -170,6 +183,41 @@ function formatPosterPoint(text: string) {
   return text.replace(/^\s*[-•]\s*/, "").trim();
 }
 
+function formatPosterSubtitle(text?: string) {
+  const normalized = (text || "").trim();
+  if (!normalized || /^(更清晰|更生动|更专业)$/i.test(normalized)) {
+    return "";
+  }
+  return normalized;
+}
+
+function compactDraftLine(text: string, max = 160) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= max) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(32, max - 1)).trim()}…`;
+}
+
+function extractDraftLabels(text: string, max = 3) {
+  return text
+    .split(/\n+/)
+    .map((line) => formatPosterPoint(line))
+    .map((line) => compactDraftLine(line, 80))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+function normalizeSlashLineBreaks(text: string) {
+  return text
+    .replace(/\s*\/\s*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function compactChatTurnsForDisplay(turns: ChatTurn[]) {
   const transientModules = new Set([
     "Output Direction",
@@ -267,6 +315,7 @@ type ChatPanelProps = {
   outlineItems: string[];
   slideDrafts: SlideDraft[];
   posterDraft: PosterDraft | null;
+  posterPlanList: PosterPlanItem[];
   summaryText: string;
   updates: ChatTurn[];
   onConfirm: () => void;
@@ -286,7 +335,6 @@ type ChatPanelProps = {
     languageModelCredits: number;
     imageModelCredits: number;
     totalCost: number;
-    outputTokenEstimate: number;
     standardOutputCount: number;
     promoCreditsPerOutput: number;
     regularCreditsPerOutput: number;
@@ -347,6 +395,7 @@ export function ChatPanel({
   outlineItems,
   slideDrafts,
   posterDraft,
+  posterPlanList,
   summaryText,
   updates,
   onConfirm,
@@ -500,11 +549,6 @@ export function ChatPanel({
     }, 120);
   }, [selectedStyleId, showStyleStage]);
 
-  const recommendedLabel = useMemo(() => {
-    const uiIntent = selectedIntent ?? recommendedIntent;
-    const option = intentOptions.find((item) => item.id === uiIntent);
-    return option?.label ?? t("Generate PPT", "生成PPT");
-  }, [intentOptions, recommendedIntent, selectedIntent, isZh]);
   const configSummaryText = useMemo(() => {
     if (!configConfirmed) {
       return "";
@@ -636,6 +680,205 @@ export function ChatPanel({
         </div>
         <p className="whitespace-pre-line leading-6">{update.content}</p>
       </article>
+    );
+  };
+
+  const renderPosterDraftReview = ({
+    locked,
+  }: {
+    locked: boolean;
+  }) => {
+    if (!posterDraft) {
+      return null;
+    }
+    const visibleTitle = formatPosterHeadline(posterDraft.headline);
+    const visibleSubtitle = formatPosterSubtitle(posterDraft.subtitle);
+    const visibleLabels = posterDraft.points
+      .map((point) => compactDraftLine(formatPosterPoint(point), 80))
+      .filter(Boolean)
+      .slice(0, 4);
+    const pageFocus =
+      compactDraftLine(visibleLabels[0] || visibleSubtitle || visibleTitle, 120) ||
+      t("Define one clear page focus.", "先定义这一页的单一重点。");
+    const visualStructure =
+      compactDraftLine(visualizationTypeHint || "", 72) ||
+      compactDraftLine(posterDraft.layoutSuggestion || "", 100) ||
+      t("Single clean infographic structure.", "单一清晰的信息图结构。");
+    const planItems = posterPlanList
+      .slice()
+      .sort((a, b) => a.index - b.index)
+      .slice(0, posterCount);
+    const toNumberedLines = (lines: string[]) =>
+      lines
+        .map((line) => normalizeSlashLineBreaks(line))
+        .filter(Boolean)
+        .map((line, idx) => `${idx + 1}. ${line}`);
+    const normalizedTitle = normalizeSlashLineBreaks(visibleTitle || "-");
+    const normalizedSubtitle = visibleSubtitle ? normalizeSlashLineBreaks(visibleSubtitle) : "";
+    const normalizedLabels = toNumberedLines(visibleLabels);
+
+    return (
+      <>
+        {planItems.length > 1 ? (
+          <div className="mt-3 divide-y divide-zinc-200 text-sm">
+            {planItems.map((item) => {
+              const itemTitle = normalizeSlashLineBreaks(compactDraftLine(formatPosterHeadline(item.title), 80));
+              const itemFocus = normalizeSlashLineBreaks(compactDraftLine(formatPosterPoint(item.focus), 120));
+              const itemFacts = (item.keyFacts || [])
+                .map((fact) => normalizeSlashLineBreaks(compactDraftLine(formatPosterPoint(fact), 88)))
+                .filter(Boolean)
+                .slice(0, 3);
+              const numberedFacts = itemFacts.map((fact, idx) => `${idx + 1}. ${fact}`);
+              const itemStructure = normalizeSlashLineBreaks(
+                compactDraftLine(item.visualType || item.layoutHint || visualStructure, 72),
+              );
+              return (
+                <section key={`poster-plan-${item.index}-${itemTitle}`} className="py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                    {t("Poster", "海报")} {item.index}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line font-semibold text-zinc-900">{itemTitle}</p>
+                  <p className="mt-1 whitespace-pre-line text-zinc-800">
+                    {t("Page Focus", "本页重点")}: {itemFocus}
+                  </p>
+                  {itemFacts.length ? (
+                    <p className="mt-1 whitespace-pre-line text-zinc-700">
+                      {t("Content", "内容")}:
+                      {"\n"}
+                      {numberedFacts.join("\n")}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 whitespace-pre-line text-zinc-700">
+                    {t("Visual Structure", "画面结构")}: {itemStructure}
+                  </p>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 divide-y divide-zinc-200 text-sm">
+          <section className="py-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{t("Page Focus", "本页重点")}</p>
+            <p className="mt-1 whitespace-pre-line font-semibold text-zinc-900">{normalizeSlashLineBreaks(pageFocus)}</p>
+          </section>
+          <section className="py-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{t("On-screen Text", "画面文字")}</p>
+            <p className="mt-1 whitespace-pre-line text-zinc-900">{t("Title", "标题")}: {normalizedTitle}</p>
+            {normalizedSubtitle ? <p className="mt-1 whitespace-pre-line text-zinc-700">{t("Subtitle", "副标题")}: {normalizedSubtitle}</p> : null}
+            {normalizedLabels.length ? (
+              <p className="mt-1 whitespace-pre-line text-zinc-700">
+                {t("Content", "内容")}:
+                {"\n"}
+                {normalizedLabels.join("\n")}
+              </p>
+            ) : null}
+          </section>
+          <section className="py-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{t("Visual Structure", "画面结构")}</p>
+            <p className="mt-1 whitespace-pre-line text-zinc-700">{normalizeSlashLineBreaks(visualStructure)}</p>
+          </section>
+          </div>
+        )}
+        {!locked && shouldShowDraftConfirmAction ? (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              disabled={isPlanningNextStep || !canProceed}
+              onClick={handleDraftNext}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            >
+              {isPlanningNextStep ? (
+                <>
+                  <LoaderCircle size={14} className="animate-spin" />
+                  Thinking...
+                </>
+              ) : (
+                "Confirm Draft & Next"
+              )}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
+        )}
+      </>
+    );
+  };
+
+  const renderSlideDraftReview = ({
+    locked,
+  }: {
+    locked: boolean;
+  }) => {
+    if (intent !== "ppt" && intent !== "video") {
+      return null;
+    }
+    if (!outlineItems.length && !slideDrafts.length) {
+      return null;
+    }
+    return (
+      <>
+        {!!outlineItems.length ? (
+          <ol className="mt-3 divide-y divide-zinc-200 text-sm leading-6 text-zinc-700">
+            {outlineItems.map((item, index) => (
+              <li key={`outline-${index + 1}-${item}`} className="py-2.5">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                  {intent === "video" ? `Frame ${index + 1}` : `Page ${index + 1}`}
+                </p>
+                <p className="mt-1 font-semibold text-zinc-900">{compactDraftLine(item, 120)}</p>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        {!!slideDrafts.length ? (
+          <div className="mt-3 divide-y divide-zinc-200">
+            {slideDrafts.map((slide) => {
+              const labels = extractDraftLabels(slide.body, 3);
+              const narration = compactDraftLine(slide.body, 200);
+              return (
+                <section key={`${slide.page}-${slide.title}`} className="py-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                    {intent === "video" ? `Frame ${slide.page}` : `Page ${slide.page}`}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm font-semibold text-zinc-900">
+                    {normalizeSlashLineBreaks(compactDraftLine(slide.title, 120))}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                    {t("On-screen text", "画面文字")}: {normalizeSlashLineBreaks(compactDraftLine(slide.title, 72))}
+                    {labels.length ? `\n${labels.map((label) => normalizeSlashLineBreaks(label)).join("\n")}` : ""}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">{t("Visual structure", "画面结构")}: {normalizeSlashLineBreaks(compactDraftLine(slide.visual, 80))}</p>
+                  {intent === "video" ? (
+                    <p className="mt-1 whitespace-pre-line text-sm text-zinc-600">
+                      {t("Narration", "讲解文稿")}: {normalizeSlashLineBreaks(narration)}
+                    </p>
+                  ) : null}
+                </section>
+              );
+            })}
+          </div>
+        ) : null}
+        {!locked && shouldShowDraftConfirmAction ? (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              disabled={isPlanningNextStep || !canProceed}
+              onClick={onConfirm}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+            >
+              {isPlanningNextStep ? (
+                <>
+                  <LoaderCircle size={14} className="animate-spin" />
+                  Thinking...
+                </>
+              ) : (
+                "Confirm Draft & Next"
+              )}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
+        )}
+      </>
     );
   };
 
@@ -955,101 +1198,11 @@ export function ChatPanel({
 
         {!showDirectionGuide ? (
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
-            {intent === "poster" && posterDraft ? (
-              <>
-                <p className="text-[11px] leading-5 text-zinc-400">
-                  Poster final copy for generation. Please review before continuing.
-                </p>
-                <p className="mt-2 text-lg font-semibold leading-7 text-zinc-900">{formatPosterHeadline(posterDraft.headline)}</p>
-                <p className="mt-1 text-sm text-zinc-500">{posterDraft.subtitle}</p>
-                <p className="mt-3 text-sm leading-7 text-zinc-900">{posterDraft.body}</p>
-                <ul className="mt-2 space-y-1 text-sm text-zinc-500">
-                  {posterDraft.points.map((point) => (
-                    <li key={`en-poster-point-${point}`}>- {formatPosterPoint(point)}</li>
-                  ))}
-                </ul>
-                {shouldShowDraftConfirmAction ? (
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      disabled={isPlanningNextStep || !canProceed}
-                      onClick={handleDraftNext}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-                    >
-                      {isPlanningNextStep ? (
-                        <>
-                          <LoaderCircle size={14} className="animate-spin" />
-                          Thinking...
-                        </>
-                      ) : (
-                        "Confirm Draft & Next"
-                      )}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="mt-4 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
-                )}
-              </>
-            ) : null}
+            {intent === "poster" && posterDraft ? renderPosterDraftReview({ locked: false }) : null}
 
-            {(intent === "ppt" || intent === "video") && (outlineItems.length || slideDrafts.length) ? (
-              <>
-                <p className="text-[11px] leading-5 text-zinc-400">
-                  {intent === "video"
-                    ? "Video final outline and script copy for generation. Please review before continuing."
-                    : "PPT final outline and slide copy for generation. Please review before continuing."}
-                </p>
-                {!!outlineItems.length ? (
-                  <ol className="mt-2 space-y-1 text-sm leading-6 text-zinc-700">
-                    {outlineItems.map((item, index) => (
-                      <li key={`en-outline-${index + 1}-${item}`}>
-                        {index + 1}. {item}
-                      </li>
-                    ))}
-                  </ol>
-                ) : null}
-
-                {!!slideDrafts.length ? (
-                  <div className="mt-4 border-t border-zinc-200/80 pt-4">
-                    <h4 className="text-sm font-semibold text-zinc-900">
-                      {intent === "video" ? "Final Storyboard Copy" : "Final Slide Copy"}
-                    </h4>
-                    <div className="mt-2">
-                      {slideDrafts.map((slide) => (
-                        <section key={`en-slide-${slide.page}-${slide.title}`} className="border-b border-zinc-200/70 py-3 last:border-b-0">
-                          <p className="text-sm font-semibold text-zinc-900">
-                            Slide {slide.page}: {slide.title}
-                          </p>
-                          <p className="mt-1 whitespace-pre-line text-sm leading-6 text-zinc-700">{slide.body}</p>
-                          <p className="mt-1 text-sm text-zinc-500">Visual direction: {slide.visual}</p>
-                        </section>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {shouldShowDraftConfirmAction ? (
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      disabled={isPlanningNextStep || !canProceed}
-                      onClick={onConfirm}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-                    >
-                      {isPlanningNextStep ? (
-                        <>
-                          <LoaderCircle size={14} className="animate-spin" />
-                          Thinking...
-                        </>
-                      ) : (
-                        "Confirm Draft & Next"
-                      )}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="mt-4 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
-                )}
-              </>
-            ) : null}
+            {(intent === "ppt" || intent === "video") && (outlineItems.length || slideDrafts.length)
+              ? renderSlideDraftReview({ locked: false })
+              : null}
 
             {!configConfirmed ? (
               <p className="text-sm text-zinc-600">Confirm output settings first, then draft content will appear here.</p>
@@ -1207,7 +1360,6 @@ export function ChatPanel({
                 <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Language Model</p>
                 <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                   {billingSummary.languageModelCredits} credits
-                  <span className="ml-1 text-zinc-500">(est. {billingSummary.outputTokenEstimate} output tokens)</span>
                 </p>
                 <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Image Model</p>
                 <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
@@ -1476,12 +1628,6 @@ export function ChatPanel({
               <p className="text-sm leading-6 text-zinc-800">
                 {analysisText}
               </p>
-              {!showWeakPromptSuggestions ? (
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600">
-                  <Sparkles size={12} className="text-zinc-500" />
-                  Recommended first choice: {recommendedLabel}
-                </div>
-              ) : null}
               {!showWeakPromptSuggestions ? (
                 <div className="grid gap-2 sm:grid-cols-3">
                   {intentOptions.map((option) => {
@@ -1916,100 +2062,11 @@ export function ChatPanel({
           ) : null}
 
           {intent === "poster" && posterDraft ? (
-            <DraftContentCard>
-              <p className="text-[11px] leading-5 text-zinc-400">
-                Poster final copy for generation. Please review before continuing.
-              </p>
-              <p className="mt-2 text-lg font-semibold leading-7 text-zinc-900">{formatPosterHeadline(posterDraft.headline)}</p>
-              <p className="mt-1 text-sm text-zinc-500">{posterDraft.subtitle}</p>
-              <p className="mt-3 text-sm leading-7 text-zinc-900">{posterDraft.body}</p>
-              <ul className="mt-2 space-y-1 text-sm text-zinc-500">
-                {posterDraft.points.map((point) => (
-                  <li key={point}>- {formatPosterPoint(point)}</li>
-                ))}
-              </ul>
-              {visualizationTypeHint ? (
-                <p className="mt-3 text-xs text-zinc-500">Suggested visual type: {visualizationTypeHint}</p>
-              ) : null}
-              {posterDraft.layoutSuggestion ? (
-                <p className="mt-1 text-xs text-zinc-500">Suggested layout: {posterDraft.layoutSuggestion}</p>
-              ) : null}
-              {posterDraft.visualElements?.length ? (
-                <p className="mt-1 text-xs text-zinc-500">
-                  Visual elements: {posterDraft.visualElements.join(" / ")}
-                </p>
-              ) : null}
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  disabled={isPlanningNextStep || !canProceed}
-                      onClick={handleDraftNext}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-                >
-                  {isPlanningNextStep ? (
-                    <>
-                      <LoaderCircle size={14} className="animate-spin" />
-                      Thinking...
-                    </>
-                  ) : (
-                    "Confirm Draft & Next"
-                  )}
-                </button>
-              </div>
-            </DraftContentCard>
+            <DraftContentCard>{renderPosterDraftReview({ locked: false })}</DraftContentCard>
           ) : null}
 
           {(intent === "ppt" || intent === "video") ? (
-            <DraftContentCard>
-              <p className="text-[11px] leading-5 text-zinc-400">
-                {intent === "video"
-                  ? "Video final outline and script copy for generation. Please review before continuing."
-                  : "PPT final outline and slide copy for generation. Please review before continuing."}
-              </p>
-              <ol className="mt-2 space-y-1 text-sm leading-6 text-zinc-700">
-                {outlineItems.map((item, index) => (
-                  <li key={item}>
-                    {index + 1}. {item}
-                  </li>
-                ))}
-              </ol>
-
-              {!!slideDrafts.length ? (
-                <div className="mt-4 border-t border-zinc-200/80 pt-4">
-                  <h4 className="text-sm font-semibold text-zinc-900">
-                    {intent === "video" ? "Final Storyboard Copy" : "Final Slide Copy"}
-                  </h4>
-                  <div className="mt-2">
-                    {slideDrafts.map((slide) => (
-                      <section key={slide.page} className="border-b border-zinc-200/70 py-3 last:border-b-0">
-                        <p className="text-sm font-semibold text-zinc-900">
-                          Slide {slide.page}: {slide.title}
-                        </p>
-                        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-zinc-700">{slide.body}</p>
-                        <p className="mt-1 text-sm text-zinc-500">Visual direction: {slide.visual}</p>
-                      </section>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  disabled={isPlanningNextStep || !canProceed}
-                  onClick={onConfirm}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-                >
-                  {isPlanningNextStep ? (
-                    <>
-                      <LoaderCircle size={14} className="animate-spin" />
-                      Thinking...
-                    </>
-                  ) : (
-                    "Confirm Draft & Next"
-                  )}
-                </button>
-              </div>
-            </DraftContentCard>
+            <DraftContentCard>{renderSlideDraftReview({ locked: false })}</DraftContentCard>
           ) : null}
 
         </article>
@@ -2017,76 +2074,11 @@ export function ChatPanel({
 
       {!showMainSummaryBlock && configConfirmed ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-3 py-3">
-          {intent === "poster" && posterDraft ? (
-            <>
-              <p className="text-[11px] leading-5 text-zinc-400">
-                Poster final copy for generation.
-              </p>
-              <p className="mt-2 text-lg font-semibold leading-7 text-zinc-900">{formatPosterHeadline(posterDraft.headline)}</p>
-              <p className="mt-1 text-sm text-zinc-500">{posterDraft.subtitle}</p>
-              <p className="mt-3 text-sm leading-7 text-zinc-900">{posterDraft.body}</p>
-              <ul className="mt-2 space-y-1 text-sm text-zinc-500">
-                {posterDraft.points.map((point) => (
-                  <li key={`locked-poster-point-${point}`}>- {formatPosterPoint(point)}</li>
-                ))}
-              </ul>
-              {visualizationTypeHint ? (
-                <p className="mt-3 text-xs text-zinc-500">Suggested visual type: {visualizationTypeHint}</p>
-              ) : null}
-              {posterDraft.layoutSuggestion ? (
-                <p className="mt-1 text-xs text-zinc-500">Suggested layout: {posterDraft.layoutSuggestion}</p>
-              ) : null}
-              {posterDraft.visualElements?.length ? (
-                <p className="mt-1 text-xs text-zinc-500">Visual elements: {posterDraft.visualElements.join(" / ")}</p>
-              ) : null}
-              <p className="mt-3 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
-            </>
-          ) : null}
+          {intent === "poster" && posterDraft ? renderPosterDraftReview({ locked: true }) : null}
 
-          {(intent === "ppt" || intent === "video") && outlineItems.length ? (
-            <>
-              <p className="text-[11px] leading-5 text-zinc-400">
-                {intent === "video" ? "Video final outline and script copy for generation." : "PPT final outline and slide copy for generation."}
-              </p>
-              <ol className="mt-3 space-y-2 text-sm leading-6 text-zinc-700">
-                {outlineItems.map((item, index) => (
-                  <li key={`locked-outline-${index + 1}-${item}`} className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-                    <p className="font-medium text-zinc-900">
-                      {index + 1}. {item}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-zinc-500">
-                      {intent === "video"
-                        ? "This section will be expanded into camera action, main visual subject, text emphasis, and narration guidance."
-                        : "This section will be expanded into slide copy, key bullets, and visual emphasis."}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-
-              {!!slideDrafts.length ? (
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold text-zinc-900">
-                    {intent === "video" ? "Final Storyboard Copy" : "Final Slide Copy"}
-                  </h4>
-                  <div className="mt-3 space-y-2">
-                    {slideDrafts.map((slide) => (
-                      <section
-                        key={`locked-slide-${slide.page}-${slide.title}`}
-                        className="rounded-xl border border-zinc-200 bg-white px-3 py-3"
-                      >
-                        <p className="text-sm font-semibold text-zinc-900">
-                          Slide {slide.page}: {slide.title}
-                        </p>
-                        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-zinc-700">{slide.body}</p>
-                        <p className="mt-2 text-sm text-zinc-500">Visual direction: {slide.visual}</p>
-                      </section>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              <p className="mt-3 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
-            </>
-          ) : null}
+          {(intent === "ppt" || intent === "video") && outlineItems.length
+            ? renderSlideDraftReview({ locked: true })
+            : null}
         </article>
       ) : null}
 
@@ -2228,7 +2220,6 @@ export function ChatPanel({
               <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Language Model</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                 {billingSummary.languageModelCredits} credits
-                <span className="ml-1 text-zinc-500">(est. {billingSummary.outputTokenEstimate} output tokens)</span>
               </p>
               <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Image Model</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">

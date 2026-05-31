@@ -26,6 +26,9 @@ export type CreditRecord = {
 
 const SUBSCRIPTION_KEY = "knowlens_subscription_v1";
 const CREDIT_RECORDS_KEY = "knowlens_credit_records_v1";
+const LOCAL_DEV_EMAIL = "local@knowlens.ai";
+const LOCAL_DEV_CREDIT_TARGET = 500;
+const LOCAL_DEV_CREDIT_INIT_KEY = "knowlens_local_dev_credit_init_v1";
 
 function normalizeScope(email?: string | null) {
   const value = (email ?? "").trim().toLowerCase();
@@ -34,6 +37,10 @@ function normalizeScope(email?: string | null) {
 
 function scopedKey(base: string, email?: string | null) {
   return `${base}:${normalizeScope(email)}`;
+}
+
+function isLocalDevEmail(email?: string | null) {
+  return normalizeScope(email) === LOCAL_DEV_EMAIL;
 }
 
 function safeParse<T>(raw: string | null): T | null {
@@ -137,8 +144,30 @@ export function getCreditRecords(email?: string | null) {
     return [] as CreditRecord[];
   }
   const key = email ? scopedKey(CREDIT_RECORDS_KEY, email) : CREDIT_RECORDS_KEY;
-  const parsed = safeParse<CreditRecord[]>(window.localStorage.getItem(key));
-  if (parsed && parsed.length) {
+  const parsed = safeParse<CreditRecord[]>(window.localStorage.getItem(key)) ?? [];
+  const initKey = scopedKey(LOCAL_DEV_CREDIT_INIT_KEY, email);
+  const shouldInitLocalDevCredits =
+    Boolean(email) &&
+    isLocalDevEmail(email) &&
+    window.localStorage.getItem(initKey) !== "1";
+  if (shouldInitLocalDevCredits) {
+    const latestBalance = parsed[0]?.balance ?? 80;
+    const delta = LOCAL_DEV_CREDIT_TARGET - latestBalance;
+    const nextRecord: CreditRecord = {
+      id: `record-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      type: delta >= 0 ? "topup" : "refund",
+      description: "Local development credit alignment",
+      delta,
+      balance: LOCAL_DEV_CREDIT_TARGET,
+      userEmail: normalizeScope(email),
+    };
+    const nextRecords = [nextRecord, ...parsed];
+    window.localStorage.setItem(key, JSON.stringify(nextRecords));
+    window.localStorage.setItem(initKey, "1");
+    return nextRecords;
+  }
+  if (parsed.length) {
     return parsed;
   }
 
@@ -155,6 +184,9 @@ export function getCreditRecords(email?: string | null) {
     (item) => (item.userEmail ?? "").trim().toLowerCase() === normalizedEmail,
   );
   window.localStorage.setItem(key, JSON.stringify(filtered));
+  if (isLocalDevEmail(email)) {
+    window.localStorage.removeItem(scopedKey(LOCAL_DEV_CREDIT_INIT_KEY, email));
+  }
   return filtered;
 }
 

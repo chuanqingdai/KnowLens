@@ -14,6 +14,7 @@ Last updated: 2026-05-28
 |---|---|---|---|---|
 | `NEXTAUTH_URL` | `http://localhost:3000` | `https://staging.knowlens.ai` | `https://knowlens.ai` | Must match deployed domain |
 | `NEXTAUTH_SECRET` | required | required | required | 32+ random characters |
+| `AUTH_SECRET` | optional | optional | optional | Fallback alias for platforms using `AUTH_SECRET` |
 | `NEXT_PUBLIC_SITE_URL` | optional | required | required | Canonical and redirect base |
 | `GOOGLE_CLIENT_ID` | required | required | required | OAuth app config must include callback |
 | `GOOGLE_CLIENT_SECRET` | required | required | required | Never expose client secret |
@@ -41,6 +42,8 @@ Last updated: 2026-05-28
 | `NEXTAUTH_ALLOW_DEV_LOGIN` | `true` | `false` | `false` | Should be disabled in any public environment |
 | `NEXTAUTH_RELAX_OAUTH_CHECKS_LOCAL` | `true` | `false` | `false` | Only for localhost |
 | `NEXTAUTH_ONE_TAP_UNSAFE_LOCAL_FALLBACK` | `true` | `false` | `false` | Local troubleshooting only |
+| `NEXTAUTH_COOKIE_DOMAIN` | empty | optional | recommended | Set `.knowlens.ai` when serving both apex and subdomains |
+| `NEXTAUTH_SHARE_COOKIE_ACROSS_SUBDOMAINS` | `false` | optional | recommended | `true` enables auto domain sharing from `NEXTAUTH_URL` |
 
 ## 4) OAuth Callback Matrix
 
@@ -51,6 +54,11 @@ You must configure all callback URLs in Google Cloud Console:
 - Production: `https://knowlens.ai/api/auth/callback/google`
 
 If one callback is missing, that environment will fail with OAuth sign-in errors.
+
+Production callback hard rule:
+- Keep only apex callback for production: `https://knowlens.ai/api/auth/callback/google`
+- Do not keep `https://www.knowlens.ai/api/auth/callback/google` in production app config.
+- Rationale: runtime and middleware are locked to apex (`knowlens.ai`) and `www -> apex` redirect is enabled. Keeping mixed callback hosts can cause login loops or repeated sign-in.
 
 ## 5) Stripe Mode Matrix
 

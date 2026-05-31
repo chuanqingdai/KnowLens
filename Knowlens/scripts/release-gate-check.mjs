@@ -27,7 +27,13 @@ function normalizeBaseUrl(input) {
   if (!raw) {
     return "";
   }
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  try {
+    const parsed = new URL(raw);
+    const normalizedPath = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+    return `${parsed.protocol}//${parsed.host}${normalizedPath}`;
+  } catch {
+    return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  }
 }
 
 function parseEnvFile(content) {
@@ -164,6 +170,8 @@ const MATRIX = {
       "NEXTAUTH_URL",
       "NEXTAUTH_SECRET",
       "NEXT_PUBLIC_SITE_URL",
+      "NEXTAUTH_COOKIE_DOMAIN",
+      "NEXTAUTH_SHARE_COOKIE_ACROSS_SUBDOMAINS",
       "GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET",
       "NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID",
@@ -192,6 +200,110 @@ const MATRIX = {
     ],
   },
 };
+
+function isHttpsUrl(input) {
+  try {
+    return new URL(input).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validateAuthLock(stage, env) {
+  const failures = [];
+  const warnings = [];
+  const checks = [];
+  const nextAuthUrl = normalizeBaseUrl(env.NEXTAUTH_URL || "");
+  const siteUrl = normalizeBaseUrl(env.NEXT_PUBLIC_SITE_URL || "");
+  const authSecret = String(env.NEXTAUTH_SECRET || env.AUTH_SECRET || "").trim();
+  const cookieDomain = String(env.NEXTAUTH_COOKIE_DOMAIN || "").trim();
+  const shareAcross = String(env.NEXTAUTH_SHARE_COOKIE_ACROSS_SUBDOMAINS || "").trim().toLowerCase();
+
+  if (stage === "local") {
+    if (nextAuthUrl) {
+      checks.push(`NEXTAUTH_URL present: ${nextAuthUrl}`);
+    } else {
+      warnings.push("NEXTAUTH_URL is empty in local env.");
+    }
+    if (siteUrl) {
+      checks.push(`NEXT_PUBLIC_SITE_URL present: ${siteUrl}`);
+    } else {
+      warnings.push("NEXT_PUBLIC_SITE_URL is empty in local env.");
+    }
+  } else {
+    if (!nextAuthUrl) {
+      failures.push("NEXTAUTH_URL is empty.");
+    } else if (!isHttpsUrl(nextAuthUrl)) {
+      failures.push("NEXTAUTH_URL must be HTTPS.");
+    } else {
+      checks.push(`NEXTAUTH_URL locked: ${nextAuthUrl}`);
+    }
+
+    if (!siteUrl) {
+      failures.push("NEXT_PUBLIC_SITE_URL is empty.");
+    } else if (!isHttpsUrl(siteUrl)) {
+      failures.push("NEXT_PUBLIC_SITE_URL must be HTTPS.");
+    } else {
+      checks.push(`NEXT_PUBLIC_SITE_URL locked: ${siteUrl}`);
+    }
+
+    if (nextAuthUrl && siteUrl) {
+      if (nextAuthUrl !== siteUrl) {
+        failures.push("NEXTAUTH_URL and NEXT_PUBLIC_SITE_URL must match exactly.");
+      } else {
+        checks.push("NEXTAUTH_URL == NEXT_PUBLIC_SITE_URL");
+      }
+    }
+  }
+
+  if (!authSecret) {
+    failures.push("NEXTAUTH_SECRET (or AUTH_SECRET) is empty.");
+  } else if (authSecret.length < 32 || isPlaceholder(authSecret)) {
+    failures.push("NEXTAUTH_SECRET (or AUTH_SECRET) must be a real 32+ character value.");
+  } else {
+    checks.push("NEXTAUTH_SECRET length and format look valid");
+  }
+
+  if (stage === "production") {
+    if (nextAuthUrl && nextAuthUrl !== "https://knowlens.ai") {
+      failures.push(`Production NEXTAUTH_URL must be https://knowlens.ai (got ${nextAuthUrl}).`);
+    } else if (nextAuthUrl) {
+      checks.push("Production NEXTAUTH_URL fixed to https://knowlens.ai");
+    }
+    if (siteUrl && siteUrl !== "https://knowlens.ai") {
+      failures.push(`Production NEXT_PUBLIC_SITE_URL must be https://knowlens.ai (got ${siteUrl}).`);
+    } else if (siteUrl) {
+      checks.push("Production NEXT_PUBLIC_SITE_URL fixed to https://knowlens.ai");
+    }
+    if (cookieDomain !== ".knowlens.ai") {
+      failures.push(
+        `Production NEXTAUTH_COOKIE_DOMAIN must be .knowlens.ai (got ${cookieDomain || "(empty)"}).`,
+      );
+    } else {
+      checks.push("Production NEXTAUTH_COOKIE_DOMAIN fixed to .knowlens.ai");
+    }
+    if (shareAcross !== "true") {
+      failures.push(
+        `Production NEXTAUTH_SHARE_COOKIE_ACROSS_SUBDOMAINS must be true (got ${shareAcross || "(empty)"}).`,
+      );
+    } else {
+      checks.push("Production NEXTAUTH_SHARE_COOKIE_ACROSS_SUBDOMAINS fixed to true");
+    }
+    const hasWwwAuth = nextAuthUrl.includes("://www.");
+    const hasWwwSite = siteUrl.includes("://www.");
+    if (hasWwwAuth || hasWwwSite) {
+      failures.push("Production auth/site URL must use apex domain knowlens.ai (no www).");
+    } else {
+      checks.push("Production auth/site URL use apex domain (no www)");
+    }
+  } else {
+    if (cookieDomain && !cookieDomain.startsWith(".")) {
+      warnings.push("NEXTAUTH_COOKIE_DOMAIN usually should start with a dot, e.g. .example.com");
+    }
+  }
+
+  return { failures, warnings, checks };
+}
 
 function printSection(title) {
   process.stdout.write(`\n=== ${title} ===\n`);
@@ -231,6 +343,28 @@ async function runHttpChecks(baseUrl, runImage2Smoke) {
     failures.push(`GET /api/auth/providers failed (${providers.response.status})`);
   } else {
     checks.push("GET /api/auth/providers");
+    const providerMap = providers.data && typeof providers.data === "object" ? providers.data : null;
+    const googleProvider = providerMap && typeof providerMap.google === "object" ? providerMap.google : null;
+    if (!googleProvider) {
+      failures.push("Google provider is missing in /api/auth/providers response.");
+    } else {
+      const expectedCallback = `${baseUrl}/api/auth/callback/google`;
+      const actualCallback = String(googleProvider.callbackUrl || "").trim();
+      const actualSignin = String(googleProvider.signinUrl || "").trim();
+      if (actualCallback !== expectedCallback) {
+        failures.push(
+          `Google callbackUrl mismatch. expected=${expectedCallback} actual=${actualCallback || "(empty)"}`,
+        );
+      } else {
+        checks.push("Google callbackUrl matches /api/auth/callback/google");
+      }
+      if (actualSignin && actualSignin.startsWith("https://www.knowlens.ai")) {
+        failures.push(`Google signinUrl must not use www host: ${actualSignin}`);
+      }
+      if (actualCallback.startsWith("https://www.knowlens.ai")) {
+        failures.push(`Google callbackUrl must not use www host: ${actualCallback}`);
+      }
+    }
   }
 
   const redirect = await fetch(`${baseUrl}/api/billing/redirect?target=${encodeURIComponent("https://checkout.stripe.com/pay/test_gate")}`, {
@@ -339,6 +473,19 @@ async function main() {
     ok(`optional env ready: ${key}`);
   }
 
+  printSection("Auth Lock Validation");
+  const authLock = validateAuthLock(stage, mergedEnv);
+  for (const item of authLock.checks) {
+    ok(item);
+  }
+  for (const item of authLock.warnings) {
+    warn(item);
+  }
+  for (const item of authLock.failures) {
+    fail(item);
+    hasFailure = true;
+  }
+
   if (runHttp) {
     printSection("HTTP Gate Checks");
     if (!baseUrl) {
@@ -381,4 +528,3 @@ main().catch((error) => {
   process.stderr.write(`\n[release-gate-check] crashed: ${message}\n`);
   process.exit(1);
 });
-

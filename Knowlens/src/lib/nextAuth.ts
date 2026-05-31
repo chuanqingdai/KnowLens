@@ -3,6 +3,11 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { resolveRoleByEmail } from "@/lib/auth";
 import { logOpsEvent, upsertUser } from "@/lib/server/store";
+import {
+  assertProductionAuthConfigLock,
+  getAuthEnvSnapshot,
+  resolveAuthCookieDomain,
+} from "@/lib/authEnv";
 import { OAuth2Client } from "google-auth-library";
 import https from "node:https";
 import crypto from "node:crypto";
@@ -12,6 +17,46 @@ const googleHttpsAgent = new https.Agent({
   keepAlive: true,
   family: 4,
 });
+
+const AUTH_ENV = getAuthEnvSnapshot();
+assertProductionAuthConfigLock(AUTH_ENV);
+const AUTH_SECRET = AUTH_ENV.authSecret;
+const AUTH_COOKIE_DOMAIN = resolveAuthCookieDomain(AUTH_ENV);
+const AUTH_USE_SECURE_COOKIES = AUTH_ENV.useSecureCookies;
+
+const AUTH_COOKIES = AUTH_COOKIE_DOMAIN
+  ? {
+      sessionToken: {
+        name: `${AUTH_USE_SECURE_COOKIES ? "__Secure-" : ""}next-auth.session-token`,
+        options: {
+          httpOnly: true,
+          sameSite: "lax" as const,
+          path: "/",
+          secure: AUTH_USE_SECURE_COOKIES,
+          domain: AUTH_COOKIE_DOMAIN,
+        },
+      },
+      callbackUrl: {
+        name: `${AUTH_USE_SECURE_COOKIES ? "__Secure-" : ""}next-auth.callback-url`,
+        options: {
+          sameSite: "lax" as const,
+          path: "/",
+          secure: AUTH_USE_SECURE_COOKIES,
+          domain: AUTH_COOKIE_DOMAIN,
+        },
+      },
+      csrfToken: {
+        name: `${AUTH_USE_SECURE_COOKIES ? "__Secure-" : ""}next-auth.csrf-token`,
+        options: {
+          httpOnly: true,
+          sameSite: "lax" as const,
+          path: "/",
+          secure: AUTH_USE_SECURE_COOKIES,
+          domain: AUTH_COOKIE_DOMAIN,
+        },
+      },
+    }
+  : undefined;
 
 function getOneTapClient() {
   if (oneTapClient) {
@@ -69,6 +114,7 @@ function safeLogAuthEvent(input: Parameters<typeof logOpsEvent>[0]) {
 }
 
 export const nextAuthOptions: NextAuthOptions = {
+  secret: AUTH_SECRET || undefined,
   debug: process.env.NODE_ENV !== "production",
   logger: {
     error(code, ...message) {
@@ -209,6 +255,7 @@ export const nextAuthOptions: NextAuthOptions = {
     maxAge: 90 * 24 * 60 * 60,
     updateAge: 24 * 60 * 60,
   },
+  ...(AUTH_COOKIES ? { cookies: AUTH_COOKIES } : {}),
   pages: {
     signIn: "/auth",
   },

@@ -2,7 +2,7 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowUpDown,
@@ -41,12 +41,16 @@ type PosterPlanItem = {
   index: number;
   title: string;
   focus: string;
+  keyFacts?: string[];
+  visualType?: string;
+  layoutHint?: string;
 };
 
 type PosterCanvasProps = {
   posterCount: number;
   posterDraft: PosterDraft | null;
   posterPlanList: PosterPlanItem[];
+  posterAspectRatio?: string;
   generationSessionSeed?: number;
   generationTaskStateByIndex?: Record<
     number,
@@ -61,6 +65,7 @@ type PosterCanvasProps = {
     }
   >;
   onRetryGenerationTask?: (index: number) => void;
+  onRedrawGenerationTask?: (index: number, copy: string) => void;
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
 };
 
@@ -89,6 +94,7 @@ type PosterCard = {
 type PosterNodeData = {
   card: PosterCard;
   isSelected: boolean;
+  frameAspectRatioCss: string;
   onUpdate: (id: string, patch: Partial<PosterCard>) => void;
   onRetry: (id: string) => void;
   onRedraw: (id: string) => void;
@@ -109,6 +115,7 @@ const POSTER_PLACEHOLDER_COLORS = [
 ];
 const PENDING_POSTER_COLOR = "#e5e7eb";
 const IMAGE_RENDER_DEBUG = process.env.NODE_ENV === "development";
+const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
 const IMAGE_REVEAL_DELAY_MS = 420;
 
 function logImageRenderDebug(message: string, payload: Record<string, unknown>) {
@@ -123,6 +130,13 @@ function warnImageRenderDebug(message: string, payload: Record<string, unknown>)
     return;
   }
   console.warn(message, payload);
+}
+
+function logWorkspaceFlowAudit(payload: Record<string, unknown>) {
+  if (!WORKSPACE_FLOW_AUDIT) {
+    return;
+  }
+  console.info("[WorkspaceFlowAudit]", payload);
 }
 
 function wrapText(source: string, maxLen: number) {
@@ -152,19 +166,73 @@ function splitCopy(copy: string, index: number) {
   return { title, subtitle, body };
 }
 
+function toConciseImageErrorMessage(message?: string) {
+  const raw = (message || "").trim();
+  if (!raw) {
+    return "Failed. Please retry.";
+  }
+  if (/timeout|timed out|budget/i.test(raw)) {
+    return "Timed out. Please retry.";
+  }
+  if (/aborted|network|fetch/i.test(raw)) {
+    return "Request interrupted. Please retry.";
+  }
+  if (/storage|persist|download/i.test(raw)) {
+    return "Save failed. Please retry.";
+  }
+  return "Failed. Please retry.";
+}
+
+function resolvePosterAspectRatio(input?: string) {
+  const raw = (input || "").trim();
+  const match = raw.match(/(\d+)\s*[:/]\s*(\d+)/);
+  if (!match) {
+    return { width: 9, height: 16, css: "9 / 16", label: "9:16" };
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { width: 9, height: 16, css: "9 / 16", label: "9:16" };
+  }
+  return {
+    width,
+    height,
+    css: `${width} / ${height}`,
+    label: `${width}:${height}`,
+  };
+}
+
 function buildPosterCardCopy(
   posterDraft: PosterDraft | null | undefined,
   plan: PosterPlanItem | undefined,
   index: number,
   posterCount: number,
 ) {
-  const headline = posterDraft?.headline?.trim() || plan?.title?.trim() || `Poster ${index}`;
-  const subtitle = posterDraft?.subtitle?.trim() || posterDraft?.visualType?.trim() || "Knowledge visual poster";
-  const body = posterDraft?.body?.trim() || "Add the core explanation for this poster.";
-  const points = (posterDraft?.points ?? []).map((point) => point.trim()).filter(Boolean);
-  const focus = plan?.focus?.trim() || "";
-  const titleLine = posterCount > 1 ? `${headline} (${index}/${posterCount})` : headline;
-  return [titleLine, subtitle, body, ...points.map((point) => `- ${point}`), focus ? `- ${focus}` : ""]
+  const titleLine =
+    plan?.title?.trim() ||
+    posterDraft?.headline?.trim() ||
+    (posterCount > 1 ? `Poster ${index}` : "Poster");
+  const pageFocus = plan?.focus?.trim() || posterDraft?.subtitle?.trim() || "Define one clear page focus.";
+  const keyFacts = (plan?.keyFacts ?? posterDraft?.points ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  const numberedFacts = keyFacts.map((item, idx) => `${idx + 1}. ${item}`);
+  const visualStructure =
+    plan?.visualType?.trim() ||
+    plan?.layoutHint?.trim() ||
+    posterDraft?.visualType?.trim() ||
+    "Single clean infographic structure";
+  return [
+    titleLine,
+    "",
+    `本页重点: ${pageFocus}`,
+    "",
+    "内容:",
+    ...(numberedFacts.length ? numberedFacts : ["1. 补充该页核心内容"]),
+    "",
+    `画面结构: ${visualStructure}`,
+  ]
     .filter(Boolean)
     .join("\n");
 }
@@ -193,6 +261,28 @@ function reportPosterDownloadEvent(input: {
 }
 
 async function exportPosterImage(card: PosterCard) {
+  if (card.status === "ready" && card.imageSrc) {
+    try {
+      const response = await fetch(card.imageSrc, { cache: "no-store" });
+      if (response.ok) {
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `KnowLens-poster-${card.index}.${ext}`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1200);
+        reportPosterDownloadEvent({
+          status: "ok",
+          cardIndex: card.index,
+        });
+        return;
+      }
+    } catch {
+      // Fallback to canvas export below.
+    }
+  }
   try {
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
@@ -285,10 +375,11 @@ async function exportPosterImage(card: PosterCard) {
   }
 }
 
-function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
+const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
   const {
     card,
     isSelected,
+    frameAspectRatioCss,
     onUpdate,
     onRetry,
     onRedraw,
@@ -378,17 +469,20 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
         </button>
       </div>
 
-      <div className="relative mt-2 overflow-hidden rounded-lg border border-zinc-200">
+      <div
+        className="relative mt-2 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+        style={{ aspectRatio: frameAspectRatioCss }}
+      >
         {showImage ? (
-          <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100">
+          <div className="absolute inset-0">
             <img
               data-testid={`poster-image-${Math.max(0, card.index - 1)}`}
               src={card.imageSrc}
               alt={`Poster ${card.index}`}
-              className={`block h-full w-full object-cover transition-opacity duration-200 ${
+              className={`block h-full w-full object-contain transition-opacity duration-200 ${
                 isImageLoading ? "opacity-0" : "opacity-100"
               }`}
-              loading="eager"
+              loading={card.index <= 2 ? "eager" : "lazy"}
               decoding="async"
               referrerPolicy="no-referrer"
               onLoad={(event) => {
@@ -398,6 +492,19 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
                   src: img.currentSrc || img.src,
                   naturalWidth: img.naturalWidth,
                   naturalHeight: img.naturalHeight,
+                });
+                logWorkspaceFlowAudit({
+                  stage: "11.poster-canvas-dom",
+                  currentStep: "generate",
+                  status: "img-onload",
+                  decision: "image-rendered-in-dom",
+                  reason: "img-load-success",
+                  keyFields: {
+                    cardIndex: card.index,
+                    src: img.currentSrc || img.src,
+                    naturalWidth: img.naturalWidth,
+                    naturalHeight: img.naturalHeight,
+                  },
                 });
                 if (!card.imageLoading) {
                   return;
@@ -417,11 +524,22 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
                   naturalWidth: img.naturalWidth,
                   naturalHeight: img.naturalHeight,
                 });
+                logWorkspaceFlowAudit({
+                  stage: "11.poster-canvas-dom",
+                  currentStep: "generate",
+                  status: "img-onerror",
+                  decision: "image-render-failed-in-dom",
+                  reason: "img-load-error",
+                  keyFields: {
+                    cardIndex: card.index,
+                    src: img.currentSrc || img.src || card.imageSrc,
+                  },
+                });
                 onUpdate(card.id, {
                   status: "failed",
                   imageLoading: false,
                   imageLoadError: undefined,
-                  errorMessage: "Image URL was returned, but the browser could not load it. Please retry.",
+                  errorMessage: "Image not available. Please retry.",
                 });
               }}
             />
@@ -430,9 +548,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
         {showPlaceholder ? (
           <div
             data-testid={`poster-placeholder-${Math.max(0, card.index - 1)}`}
-            className={`relative aspect-[9/16] w-full overflow-hidden bg-zinc-200 ${
-              showImage ? "absolute inset-0 z-10" : ""
-            }`}
+            className={`absolute inset-0 bg-zinc-200 ${showImage ? "z-10" : ""}`}
           >
             <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-100" />
             <div className="absolute inset-0 p-4">
@@ -449,7 +565,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
               <LoaderCircle size={12} className="animate-spin text-blue-500" />
-              Rendering poster
+              Generating image (2-3 min)
             </div>
           </div>
         ) : null}
@@ -457,7 +573,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
               <LoaderCircle size={12} className="animate-spin text-blue-500" />
-              Loading poster image
+              Loading image
             </div>
           </div>
         ) : null}
@@ -469,7 +585,7 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
               </div>
               <p className="text-xs font-medium text-zinc-800">Generation failed</p>
               <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
-                {card.errorMessage || "Please retry from this card."}
+                {toConciseImageErrorMessage(card.errorMessage)}
               </p>
               <button
                 type="button"
@@ -499,7 +615,11 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
           <p className="mb-1 text-[11px] text-zinc-500">History (before redraw)</p>
           <div className="grid grid-cols-4 gap-1.5">
             {card.archives.map((archive) => (
-              <div key={archive.id} className="relative aspect-[9/16] overflow-hidden rounded-md border border-zinc-200">
+              <div
+                key={archive.id}
+                className="relative overflow-hidden rounded-md border border-zinc-200"
+                style={{ aspectRatio: frameAspectRatioCss }}
+              >
                 <img
                   src={archive.imageSrc}
                   alt="Poster history"
@@ -515,18 +635,39 @@ function PosterNode({ data }: NodeProps<Node<PosterNodeData>>) {
       ) : null}
     </div>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.data.card === next.data.card &&
+    prev.data.isSelected === next.data.isSelected &&
+    prev.data.frameAspectRatioCss === next.data.frameAspectRatioCss
+  );
+});
 
 export function PosterCanvas({
   posterCount,
   posterDraft,
   posterPlanList,
+  posterAspectRatio,
   generationSessionSeed = 0,
   generationTaskStateByIndex,
   onRetryGenerationTask,
+  onRedrawGenerationTask,
   onSaveStateChange,
 }: PosterCanvasProps) {
   const count = Math.max(1, Math.min(10, posterCount));
+  const resolvedAspectRatio = useMemo(
+    () => resolvePosterAspectRatio(posterAspectRatio),
+    [posterAspectRatio],
+  );
+  const frameAspectRatioCss = resolvedAspectRatio.css;
+  const estimatedCardHeight = useMemo(
+    () => 340 + Math.round((420 * resolvedAspectRatio.height) / resolvedAspectRatio.width),
+    [resolvedAspectRatio.height, resolvedAspectRatio.width],
+  );
+  const focusCenterYOffset = useMemo(
+    () => Math.round(estimatedCardHeight / 2),
+    [estimatedCardHeight],
+  );
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [zoomLabel, setZoomLabel] = useState("100%");
   const [hasPendingSave, setHasPendingSave] = useState(false);
@@ -600,17 +741,27 @@ export function PosterCanvas({
     hasAutoFocusedFirstCardRef.current = true;
     setSelectedCardId(firstCard.id);
     window.requestAnimationFrame(() => {
-      flowRef.current?.setCenter(firstCard.x + 210, firstCard.y + 380, {
+      flowRef.current?.setCenter(firstCard.x + 210, firstCard.y + focusCenterYOffset, {
         zoom: 0.86,
         duration: 220,
       });
     });
-  }, [cards]);
+  }, [cards, focusCenterYOffset]);
 
   useEffect(() => {
     if (!generationTaskStateByIndex) {
       return;
     }
+    logWorkspaceFlowAudit({
+      stage: "11.poster-canvas-props",
+      currentStep: "generate",
+      status: "received-task-state",
+      decision: "apply-generationTaskStateByIndex",
+      reason: "props-updated",
+      keyFields: {
+        taskStateIndexes: Object.keys(generationTaskStateByIndex),
+      },
+    });
     setCards((prev) =>
       prev.map((item) => {
         const taskState = generationTaskStateByIndex[item.index];
@@ -661,7 +812,7 @@ export function PosterCanvas({
             ...item,
             status: "failed",
             imageSrc: "",
-            errorMessage: taskState.error || "Please retry from this card.",
+            errorMessage: toConciseImageErrorMessage(taskState.error),
             imageLoading: false,
             imageLoadError: undefined,
             timeoutAt: undefined,
@@ -728,6 +879,44 @@ export function PosterCanvas({
     }
     onSaveStateChange?.("saved", false);
   }, [cards, hasPendingSave, onSaveStateChange]);
+
+  useEffect(() => {
+    const readyCount = cards.filter(
+      (item) => item.status === "ready" && !item.imageLoading && !item.imageLoadError,
+    ).length;
+    const loadingCount = cards.filter(
+      (item) =>
+        item.status === "queued" ||
+        item.status === "generating" ||
+        item.status === "retrying" ||
+        Boolean(item.imageLoading),
+    ).length;
+    const failedCount = cards.filter((item) => item.status === "failed").length;
+    const readyCards = cards.filter((item) => item.status === "ready");
+    const readyWithoutImage = readyCards.filter((item) => !item.imageSrc.trim());
+    logWorkspaceFlowAudit({
+      stage: "12.progress-download",
+      currentStep: "generate",
+      status: "observed",
+      decision: "poster-canvas-progress-calculated",
+      reason: "cards-state-updated",
+      keyFields: {
+        posterCount: cards.length,
+        readyCount,
+        loadingCount,
+        failedCount,
+        downloadEnabled: readyCount > 0 && !isBulkDownloading,
+        readyWithoutImageCount: readyWithoutImage.length,
+        readyCards: readyCards.map((item) => ({
+          index: item.index,
+          imageSrc: item.imageSrc || null,
+          status: item.status,
+          imageLoading: Boolean(item.imageLoading),
+          imageLoadError: item.imageLoadError || null,
+        })),
+      },
+    });
+  }, [cards, isBulkDownloading]);
 
   const handleUpdateCard = useCallback((id: string, patch: Partial<PosterCard>) => {
     setCards((prev) =>
@@ -809,6 +998,7 @@ export function PosterCanvas({
   }, [onRetryGenerationTask]);
 
   const handleRedrawCard = useCallback((id: string) => {
+    let triggerCopy = "";
     let triggerIndex: number | null = null;
     setCards((prev) =>
       prev.map((item) => {
@@ -821,6 +1011,7 @@ export function PosterCanvas({
           createdAt: Date.now(),
         };
         triggerIndex = item.index;
+        triggerCopy = item.copy;
         return {
           ...item,
           archives: [archived, ...item.archives].slice(0, 12),
@@ -833,9 +1024,13 @@ export function PosterCanvas({
       }),
     );
     if (triggerIndex != null) {
-      onRetryGenerationTask?.(triggerIndex);
+      if (onRedrawGenerationTask) {
+        onRedrawGenerationTask(triggerIndex, triggerCopy);
+      } else {
+        onRetryGenerationTask?.(triggerIndex);
+      }
     }
-  }, [onRetryGenerationTask]);
+  }, [onRedrawGenerationTask, onRetryGenerationTask]);
 
   const handleDownloadCard = useCallback((card: PosterCard) => {
     void exportPosterImage(card);
@@ -891,8 +1086,8 @@ export function PosterCanvas({
     if (!target) {
       return;
     }
-    flowRef.current.setCenter(target.x + 210, target.y + 380, { zoom: 0.86, duration: 240 });
-  }, [cards, selectedCardId]);
+    flowRef.current.setCenter(target.x + 210, target.y + focusCenterYOffset, { zoom: 0.86, duration: 240 });
+  }, [cards, focusCenterYOffset, selectedCardId]);
 
   const nodes = useMemo<Node[]>(
     () =>
@@ -903,6 +1098,7 @@ export function PosterCanvas({
         data: {
           card,
           isSelected: selectedCardId === card.id,
+          frameAspectRatioCss,
           onUpdate: handleUpdateCard,
           onRetry: handleRetryCard,
           onRedraw: handleRedrawCard,
@@ -913,6 +1109,7 @@ export function PosterCanvas({
       })),
     [
       cards,
+      frameAspectRatioCss,
       selectedCardId,
       handleDownloadCard,
       handleRedrawCard,
@@ -1002,6 +1199,7 @@ export function PosterCanvas({
             Progress {readyCount}/{cards.length}
             {loadingCount ? ` · Loading ${loadingCount}` : ""}
             {failedCount ? ` · Failed ${failedCount}` : ""}
+            {loadingCount ? " · ~2-3 min/image" : ""}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">

@@ -1,75 +1,81 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Copy, Download, FolderKanban, Search, Users, X, Zap } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
+import {
+  ArrowDownUp,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  FileSearch,
+  Filter,
+  FolderKanban,
+  MessageSquareWarning,
+  Search,
+  Settings2,
+  ShieldAlert,
+  Sparkles,
+  UserRound,
+  X,
+} from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
 import {
-  getAdminProjects,
-  getAdminUsers,
-  getFeaturedCaseConfigs,
-  removeFeaturedCaseConfig,
-  upsertFeaturedCaseConfig,
-} from "@/lib/admin";
-import { getFeedbackRecords } from "@/lib/feedback";
-import { getCreditRecords } from "@/lib/billing";
+  createAdminConsoleMockData,
+  getLogById,
+  getOrderById,
+  searchAdminGlobal,
+  type AdminConsoleData,
+  type AdminMainTab,
+  type MockBillingAnomaly,
+  type MockCaseConfig,
+  type MockCreditRecord,
+  type MockLog,
+  type MockProject,
+  type MockTicket,
+  type MockTicketStatus,
+  type MockUser,
+  type TimeRangeKey,
+} from "@/lib/admin/adminConsoleMock";
 
-type DashboardTab = "overview" | "projectOps" | "featured";
+type SortOrder = "asc" | "desc";
 
-type CheckoutStatRow = {
-  day: string;
-  source: string;
-  attempts: number;
-  successes: number;
-  successRate: number;
-};
-
-type OpsErrorRow = {
+type ToastItem = {
   id: string;
-  category: string;
-  action: string;
-  source: string;
-  code: string | null;
   message: string;
-  userEmail: string | null;
-  projectId: string | null;
-  detailsJson: string | null;
-  createdAt: string;
 };
 
-type OpsSummaryResponse = {
-  projects: {
-    total: number;
-    active: number;
-  };
-  errors: {
-    total: number;
-    byCategory: Array<{ category: string; count: number }>;
-    recent: OpsErrorRow[];
-  };
-  checkout: CheckoutStatRow[];
+type ConfirmDialogState = {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmText: string;
+  onConfirm: null | (() => void);
 };
 
-type UsageLogRow = {
-  id: string;
-  category: string;
-  action: string;
-  status: "ok" | "error" | "info";
-  source: string | null;
-  code: string | null;
-  message: string | null;
-  userEmail: string | null;
-  projectId: string | null;
-  detailsJson: string | null;
-  createdAt: string;
-  stage?: string | null;
+type AdjustCreditState = {
+  open: boolean;
+  userId: string;
+  adjustmentType: "increase" | "decrease";
+  amount: string;
+  reason: string;
+  projectId: string;
+  notifyUser: boolean;
 };
 
-type UserQueryIdentity = {
-  userId: string | null;
-  email: string | null;
-};
+const MAIN_TABS: Array<{ id: AdminMainTab; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+  { id: "overview", label: "运营总览", icon: Sparkles },
+  { id: "logs", label: "故障与日志", icon: ShieldAlert },
+  { id: "projects", label: "项目管理", icon: FolderKanban },
+  { id: "users", label: "用户管理", icon: UserRound },
+  { id: "billing", label: "积分与订阅", icon: CreditCard },
+  { id: "tickets", label: "反馈工单", icon: MessageSquareWarning },
+  { id: "cases", label: "案例配置", icon: FileSearch },
+  { id: "settings", label: "系统设置", icon: Settings2 },
+];
 
-function formatDate(input: string) {
+const PAGE_SIZE = 8;
+
+function formatDateTime(input: string) {
   const date = new Date(input);
   if (Number.isNaN(date.getTime())) {
     return input;
@@ -82,1753 +88,2210 @@ function formatDate(input: string) {
   });
 }
 
-function parseDetailsJson(raw: string | null) {
-  if (!raw) {
-    return null as Record<string, unknown> | null;
+function formatDateOnly(input: string) {
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return input;
   }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function resolveFailureStage(item: UsageLogRow) {
-  const details = parseDetailsJson(item.detailsJson);
-  const explicitStage = typeof details?.stage === "string" ? details.stage.trim() : "";
-  if (explicitStage) {
-    return explicitStage;
-  }
-  const code = (item.code || "").toUpperCase();
-  if (code.startsWith("DRAFT_INVALID_JSON")) return "draft_response_parsing";
-  if (code.startsWith("FREE_MODEL_REQUEST_FAILED")) return "draft_model_request_free";
-  if (code.startsWith("PAID_MODEL_REQUEST_FAILED")) return "draft_model_request_paid";
-  if (code.startsWith("DUOMI_")) return "image_fallback_duomi";
-  if (code.startsWith("GPTSAPI_")) return "image_fallback_gptsapi";
-  if (code.startsWith("IMAGE2_")) return "image_primary_tuzi";
-  if (item.category === "image") return "image_pipeline";
-  if (item.category === "llm") return "draft_pipeline";
-  return "-";
-}
-
-function toPrettyJson(raw: string | null) {
-  if (!raw) {
-    return "-";
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return raw;
-  }
-}
-
-function buildMarkdownTimeline(rows: UsageLogRow[]) {
-  if (!rows.length) {
-    return "# User Timeline Logs\n\n_No logs found for current filters._\n";
-  }
-  const lines: string[] = [];
-  lines.push("# User Timeline Logs");
-  lines.push("");
-  rows.forEach((item, idx) => {
-    const title = `${idx + 1}. ${item.createdAt} | ${item.category}/${item.action} | ${item.status}`;
-    lines.push(`## ${title}`);
-    lines.push(`- userEmail: ${item.userEmail ?? "-"}`);
-    lines.push(`- projectId: ${item.projectId ?? "-"}`);
-    lines.push(`- source: ${item.source ?? "-"}`);
-    lines.push(`- code: ${item.code ?? "-"}`);
-    lines.push(`- stage: ${item.stage ?? resolveFailureStage(item)}`);
-    lines.push(`- message: ${item.message ?? "-"}`);
-    lines.push("- details:");
-    lines.push("```json");
-    lines.push(toPrettyJson(item.detailsJson));
-    lines.push("```");
-    lines.push("");
+  return date.toLocaleDateString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
   });
-  return lines.join("\n");
 }
 
-function parseUserIdentityInput(raw: string): UserQueryIdentity {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return { userId: null, email: null };
+function safeNumber(input: string | null, fallback: number) {
+  if (!input) {
+    return fallback;
   }
-  const lowered = trimmed.toLowerCase();
-  if (lowered.includes("@")) {
-    return { userId: null, email: lowered };
+  const parsed = Number(input);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function inTimeRange(input: string, range: TimeRangeKey, customStart?: string | null, customEnd?: string | null) {
+  const time = new Date(input).getTime();
+  if (Number.isNaN(time)) {
+    return false;
   }
-  if (/^u-[a-z0-9_-]+$/i.test(trimmed)) {
-    return { userId: trimmed, email: null };
+  const now = Date.now();
+  if (range === "today") {
+    const date = new Date();
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    return time >= start && time <= now;
   }
-  return { userId: null, email: lowered };
+  if (range === "7d") {
+    return time >= now - 7 * 24 * 60 * 60 * 1000 && time <= now;
+  }
+  if (range === "30d") {
+    return time >= now - 30 * 24 * 60 * 60 * 1000 && time <= now;
+  }
+  const startTime = customStart ? new Date(`${customStart}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+  const endTime = customEnd ? new Date(`${customEnd}T23:59:59`).getTime() : Number.POSITIVE_INFINITY;
+  return time >= startTime && time <= endTime;
+}
+
+function clampPage(page: number, total: number) {
+  if (total <= 0) {
+    return 1;
+  }
+  return Math.min(Math.max(page, 1), Math.ceil(total / PAGE_SIZE));
+}
+
+function paginate<T>(items: T[], page: number) {
+  const currentPage = clampPage(page, items.length);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  return {
+    pageItems: items.slice(start, end),
+    page: currentPage,
+    total: items.length,
+    totalPages: Math.max(1, Math.ceil(items.length / PAGE_SIZE)),
+  };
+}
+
+function statusBadgeClass(status: string) {
+  if (status.includes("fail") || status.includes("failed") || status.includes("frozen") || status.includes("past_due")) {
+    return "bg-red-50 text-red-700 border-red-200";
+  }
+  if (status.includes("process") || status.includes("generating") || status.includes("in_progress") || status.includes("pending")) {
+    return "bg-amber-50 text-amber-700 border-amber-200";
+  }
+  if (status.includes("active") || status.includes("ok") || status.includes("completed") || status.includes("resolved") || status.includes("handled")) {
+    return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  }
+  return "bg-zinc-100 text-zinc-700 border-zinc-200";
+}
+
+function toTicketStatusLabel(status: MockTicketStatus) {
+  const map: Record<MockTicketStatus, string> = {
+    pending: "待处理",
+    in_progress: "处理中",
+    resolved: "已解决",
+    closed: "已关闭",
+    no_action: "无需处理",
+  };
+  return map[status];
+}
+
+function sortBy<T>(items: T[], key: keyof T, order: SortOrder) {
+  const next = [...items];
+  next.sort((a, b) => {
+    const left = a[key];
+    const right = b[key];
+    const x = left == null ? "" : String(left).toLowerCase();
+    const y = right == null ? "" : String(right).toLowerCase();
+    if (x === y) {
+      return 0;
+    }
+    if (order === "asc") {
+      return x > y ? 1 : -1;
+    }
+    return x < y ? 1 : -1;
+  });
+  return next;
+}
+
+function Drawer(props: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const { open, title, onClose, children } = props;
+  if (!open) {
+    return null;
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
+      <button type="button" aria-label="关闭详情" className="h-full w-full cursor-default" onClick={onClose} />
+      <aside className="h-full w-full max-w-xl overflow-y-auto border-l border-zinc-200 bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-5 py-4">
+          <h3 className="text-base font-semibold text-zinc-900">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div className="space-y-4 p-5">{children}</div>
+      </aside>
+    </div>
+  );
+}
+
+function ConfirmDialog(props: {
+  state: ConfirmDialogState;
+  onCancel: () => void;
+}) {
+  const { state, onCancel } = props;
+  if (!state.open) {
+    return null;
+  }
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
+        <h3 className="text-base font-semibold text-zinc-900">{state.title}</h3>
+        <p className="mt-2 text-sm leading-6 text-zinc-600">{state.description}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-9 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-700 hover:bg-zinc-100"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={() => state.onConfirm?.()}
+            className="h-9 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700"
+          >
+            {state.confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Pagination(props: {
+  page: number;
+  totalPages: number;
+  onPageChange: (next: number) => void;
+  total: number;
+}) {
+  const { page, totalPages, onPageChange, total } = props;
+  return (
+    <div className="mt-3 flex items-center justify-between text-sm text-zinc-600">
+      <p>
+        共 <span className="font-medium text-zinc-900">{total}</span> 条
+      </p>
+      <div className="inline-flex items-center gap-2">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <span>
+          {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function AdminDashboardPage() {
-  const [users] = useState(() => getAdminUsers());
-  const [projects] = useState(() => getAdminProjects());
-  const [feedbacks] = useState(() => getFeedbackRecords());
-  const [creditRecords] = useState(() => getCreditRecords());
-  const [featuredConfigs, setFeaturedConfigs] = useState(() => getFeaturedCaseConfigs());
-  const [emailQuery, setEmailQuery] = useState("");
-  const [featuredProjectId, setFeaturedProjectId] = useState("");
-  const [featuredCategory, setFeaturedCategory] = useState("综合");
-  const [featuredOrder, setFeaturedOrder] = useState("100");
-  const [featuredError, setFeaturedError] = useState("");
-  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
-  const [opsSummary, setOpsSummary] = useState<OpsSummaryResponse | null>(null);
-  const [opsLoading, setOpsLoading] = useState(false);
-  const [opsError, setOpsError] = useState("");
-  const [opsLastRefresh, setOpsLastRefresh] = useState("");
-  const [opsReloadVersion, setOpsReloadVersion] = useState(0);
-  const [usageLogs, setUsageLogs] = useState<UsageLogRow[]>([]);
-  const [usageLogsLoading, setUsageLogsLoading] = useState(false);
-  const [usageLogsError, setUsageLogsError] = useState("");
-  const [usageLogsLastRefresh, setUsageLogsLastRefresh] = useState("");
-  const [projectLogQuery, setProjectLogQuery] = useState("");
-  const [projectLogs, setProjectLogs] = useState<UsageLogRow[]>([]);
-  const [projectLogsLoading, setProjectLogsLoading] = useState(false);
-  const [projectLogsError, setProjectLogsError] = useState("");
-  const [projectLogsLastRefresh, setProjectLogsLastRefresh] = useState("");
-  const [usageStatusFilter, setUsageStatusFilter] = useState<"all" | "ok" | "error" | "info">("all");
-  const [usageCategoryFilter, setUsageCategoryFilter] = useState("");
-  const [usageActionFilter, setUsageActionFilter] = useState("");
-  const [expandedUsageLogIds, setExpandedUsageLogIds] = useState<Record<string, boolean>>({});
-  const [adminActionHint, setAdminActionHint] = useState("");
-  const [showUsageMarkdownTimeline, setShowUsageMarkdownTimeline] = useState(true);
+  const [data, setData] = useState<AdminConsoleData>(() => createAdminConsoleMockData());
+  const [selectedLogId, setSelectedLogId] = useState<string>("");
+  const [selectedOrderId, setSelectedOrderId] = useState<string>("");
+  const [selectedTicketId, setSelectedTicketId] = useState<string>("");
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+    open: false,
+    title: "",
+    description: "",
+    confirmText: "确认",
+    onConfirm: null,
+  });
+  const [adjustCredit, setAdjustCredit] = useState<AdjustCreditState>({
+    open: false,
+    userId: "",
+    adjustmentType: "increase",
+    amount: "",
+    reason: "",
+    projectId: "",
+    notifyUser: true,
+  });
 
-  useEffect(() => {
-    if (activeTab !== "overview") {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const idCounterRef = useRef(1);
+
+  const activeTab = (searchParams.get("tab") as AdminMainTab) || "overview";
+  const globalQ = searchParams.get("globalQ") || "";
+  const globalResults = useMemo(() => searchAdminGlobal(data, globalQ), [data, globalQ]);
+  const userMap = useMemo(() => new Map(data.users.map((item) => [item.id, item])), [data.users]);
+
+  const selectedLog = selectedLogId ? getLogById(data, selectedLogId) : null;
+  const selectedOrder = selectedOrderId ? getOrderById(data, selectedOrderId) : null;
+  const selectedTicket = selectedTicketId
+    ? data.tickets.find((item) => item.id === selectedTicketId) || null
+    : null;
+
+  function pushToast(message: string) {
+    const id = `toast-${idCounterRef.current}`;
+    idCounterRef.current += 1;
+    setToasts((prev) => [...prev, { id, message }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 2600);
+  }
+
+  function setQuery(updates: Record<string, string | null | undefined>) {
+    const next = new URLSearchParams(searchParams.toString());
+    Object.entries(updates).forEach(([key, value]) => {
+      if (!value) {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+    });
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function askConfirm(title: string, description: string, confirmText: string, onConfirm: () => void) {
+    setConfirmDialog({
+      open: true,
+      title,
+      description,
+      confirmText,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmDialog((prev) => ({ ...prev, open: false, onConfirm: null }));
+      },
+    });
+  }
+
+  function setTab(tab: AdminMainTab) {
+    setQuery({ tab, page: "1" });
+  }
+
+  function openUserDetail(userId: string) {
+    router.push(`/admin/users/${userId}`);
+  }
+
+  function openProjectDetail(projectId: string) {
+    router.push(`/admin/projects/${projectId}`);
+  }
+
+  function jumpToLogsWithError(errorId: string) {
+    setQuery({ tab: "logs", l_error: errorId, l_page: "1" });
+  }
+
+  function copyText(value: string, label: string) {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => pushToast(`已复制 ${label}`))
+      .catch(() => pushToast(`复制 ${label} 失败`));
+  }
+
+  function runSort(
+    sortKeyName: string,
+    orderKeyName: string,
+    pageKeyName: string,
+    currentSort: string,
+    currentOrder: SortOrder,
+    nextSort: string,
+  ) {
+    const nextOrder = currentSort === nextSort && currentOrder === "desc" ? "asc" : "desc";
+    setQuery({
+      [sortKeyName]: nextSort,
+      [orderKeyName]: nextOrder,
+      [pageKeyName]: "1",
+    });
+  }
+
+  function handleGlobalResultClick(item: ReturnType<typeof searchAdminGlobal>[number]) {
+    if (item.kind === "user") {
+      openUserDetail(item.refId);
       return;
     }
-    let cancelled = false;
-    async function loadOpsSummary() {
-      setOpsLoading(true);
-      setOpsError("");
-      try {
-        const response = await fetch("/api/admin/ops-summary?checkoutDays=14&errorLimit=80", {
-          method: "GET",
-        });
-        const data = (await response.json().catch(() => ({}))) as {
-          ok?: boolean;
-          summary?: OpsSummaryResponse;
-          generatedAt?: string;
-          error?: string;
-        };
-        if (!response.ok || !data.ok || !data.summary) {
-          throw new Error(data.error || "Unable to load ops summary.");
-        }
-        if (cancelled) {
-          return;
-        }
-        setOpsSummary(data.summary);
-        setOpsLastRefresh(data.generatedAt || new Date().toISOString());
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : "Unable to load ops summary.";
-        setOpsError(message);
-      } finally {
-        if (!cancelled) {
-          setOpsLoading(false);
-        }
-      }
-    }
-    void loadOpsSummary();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, opsReloadVersion]);
-
-  const stats = useMemo(() => {
-    const activeProjects = projects.filter((p) => p.status === "进行中").length;
-    const totalCreditsUsed = creditRecords
-      .filter((record) => record.delta < 0)
-      .reduce((sum, record) => sum + Math.abs(record.delta), 0);
-    return {
-      users: users.length,
-      projects: projects.length,
-      activeProjects,
-      feedbacks: feedbacks.length,
-      totalCreditsUsed,
-    };
-  }, [users, projects, feedbacks, creditRecords]);
-
-  const usersById = useMemo(() => {
-    return new Map(users.map((user) => [user.id, user]));
-  }, [users]);
-
-  const normalizedEmailQuery = emailQuery.trim().toLowerCase();
-  const queryIdentity = useMemo(() => parseUserIdentityInput(emailQuery), [emailQuery]);
-  const normalizedUserIdQuery = queryIdentity.userId?.trim() || "";
-  const normalizedUserEmailQuery = queryIdentity.email?.trim().toLowerCase() || "";
-  const normalizedProjectLogQuery = projectLogQuery.trim().toLowerCase();
-
-  function resetUsageLogsState() {
-    setUsageLogs([]);
-    setUsageLogsError("");
-    setUsageLogsLastRefresh("");
-  }
-
-  function resetProjectLogsState() {
-    setProjectLogs([]);
-    setProjectLogsError("");
-    setProjectLogsLastRefresh("");
-    setProjectLogsLoading(false);
-  }
-
-  function handleEmailQueryChange(value: string) {
-    setEmailQuery(value);
-    if (!value.trim()) {
-      resetUsageLogsState();
-    }
-  }
-
-  function handleProjectLogQueryChange(value: string) {
-    setProjectLogQuery(value);
-    if (!value.trim()) {
-      resetProjectLogsState();
-    }
-  }
-
-  useEffect(() => {
-    const fallbackEmail = normalizedUserIdQuery
-      ? users.find((user) => user.id === normalizedUserIdQuery)?.email.trim().toLowerCase() || ""
-      : "";
-    const emailToLoad = normalizedUserEmailQuery || fallbackEmail;
-    if (!emailToLoad) {
+    if (item.kind === "project") {
+      openProjectDetail(item.refId);
       return;
     }
-    let cancelled = false;
-    async function loadUsageLogs() {
-      setUsageLogsLoading(true);
-      setUsageLogsError("");
-      try {
-        const response = await fetch(`/api/admin/logs?userEmail=${encodeURIComponent(emailToLoad)}&limit=120`);
-        const data = (await response.json().catch(() => ({}))) as {
-          ok?: boolean;
-          logs?: UsageLogRow[];
-          error?: string;
-          generatedAt?: string;
-        };
-        if (!response.ok || !data.ok || !Array.isArray(data.logs)) {
-          throw new Error(data.error || "Unable to load usage logs.");
-        }
-        if (cancelled) {
-          return;
-        }
-        setUsageLogs(data.logs);
-        setUsageLogsLastRefresh(data.generatedAt || new Date().toISOString());
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setUsageLogs([]);
-        setUsageLogsError(error instanceof Error ? error.message : "Unable to load usage logs.");
-      } finally {
-        if (!cancelled) {
-          setUsageLogsLoading(false);
-        }
-      }
-    }
-    void loadUsageLogs();
-    return () => {
-      cancelled = true;
-    };
-  }, [normalizedUserEmailQuery, normalizedUserIdQuery, opsReloadVersion, users]);
-
-  useEffect(() => {
-    if (!normalizedProjectLogQuery) {
+    if (item.kind === "order") {
+      setSelectedOrderId(item.refId);
       return;
     }
-    let cancelled = false;
-    async function loadProjectLogs() {
-      setProjectLogsLoading(true);
-      setProjectLogsError("");
-      try {
-        const response = await fetch(
-          `/api/admin/logs?projectId=${encodeURIComponent(normalizedProjectLogQuery)}&limit=120`,
-        );
-        const data = (await response.json().catch(() => ({}))) as {
-          ok?: boolean;
-          logs?: UsageLogRow[];
-          error?: string;
-          generatedAt?: string;
-        };
-        if (!response.ok || !data.ok || !Array.isArray(data.logs)) {
-          throw new Error(data.error || "Unable to load project logs.");
-        }
-        if (cancelled) {
-          return;
-        }
-        setProjectLogs(data.logs);
-        setProjectLogsLastRefresh(data.generatedAt || new Date().toISOString());
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setProjectLogs([]);
-        setProjectLogsError(error instanceof Error ? error.message : "Unable to load project logs.");
-      } finally {
-        if (!cancelled) {
-          setProjectLogsLoading(false);
-        }
-      }
+    if (item.kind === "log") {
+      setSelectedLogId(item.refId);
+      return;
     }
-    void loadProjectLogs();
-    return () => {
-      cancelled = true;
-    };
-  }, [normalizedProjectLogQuery, opsReloadVersion]);
-
-  const matchedUsers = useMemo(() => {
-    if (!normalizedEmailQuery) {
-      return [];
+    if (item.kind === "error") {
+      jumpToLogsWithError(item.refId);
     }
-    if (normalizedUserIdQuery) {
-      return users.filter((user) => user.id.toLowerCase() === normalizedUserIdQuery.toLowerCase());
-    }
-    return users.filter((user) => user.email.toLowerCase().includes(normalizedUserEmailQuery));
-  }, [normalizedEmailQuery, normalizedUserEmailQuery, normalizedUserIdQuery, users]);
+  }
 
-  const usageCategories = useMemo(() => {
-    return Array.from(new Set(usageLogs.map((item) => item.category).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [usageLogs]);
+  const ovRange = (searchParams.get("ov_range") as TimeRangeKey) || "7d";
+  const ovStart = searchParams.get("ov_start");
+  const ovEnd = searchParams.get("ov_end");
+  const overviewLogs = data.logs.filter((item) => inTimeRange(item.createdAt, ovRange, ovStart, ovEnd));
+  const todayUserCount = data.users.filter((item) => inTimeRange(item.registeredAt, "today")).length;
+  const todayProjectCount = data.projects.filter((item) => inTimeRange(item.createdAt, "today")).length;
+  const generatingCount = data.projects.filter((item) => item.status === "generating").length;
+  const failedTodayCount = data.projects.filter((item) => item.status === "failed" && inTimeRange(item.updatedAt, "today"))
+    .length;
+  const llmLogs = overviewLogs.filter((item) => item.type === "LLM");
+  const imageLogs = overviewLogs.filter((item) => item.type === "Image");
+  const llmSuccess = llmLogs.length
+    ? Math.round((llmLogs.filter((item) => item.status === "ok").length / llmLogs.length) * 100)
+    : 100;
+  const imageSuccess = imageLogs.length
+    ? Math.round((imageLogs.filter((item) => item.status === "ok").length / imageLogs.length) * 100)
+    : 100;
+  const todayCreditsUsed = Math.abs(
+    data.creditRecords
+      .filter((item) => item.delta < 0 && inTimeRange(item.createdAt, "today"))
+      .reduce((sum, item) => sum + item.delta, 0),
+  );
+  const paidOrders = data.orders.filter((item) => item.status === "paid");
+  const paymentSuccessRate = data.orders.length ? Math.round((paidOrders.length / data.orders.length) * 100) : 100;
+  const keyErrors = overviewLogs
+    .filter((item) => item.status === "failed")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 5);
+  const funnel = [
+    { id: "intent", label: "意图摘要", count: overviewLogs.filter((item) => item.action.includes("intent")).length, jump: { l_action: "intent_summary" } },
+    { id: "draft", label: "文稿生成", count: overviewLogs.filter((item) => item.action.includes("draft")).length, jump: { l_type: "LLM" } },
+    { id: "compile", label: "任务编译", count: overviewLogs.filter((item) => item.action.includes("compile")).length, jump: { l_action: "compile_tasks" } },
+    { id: "image", label: "画面生成", count: overviewLogs.filter((item) => item.type === "Image").length, jump: { l_type: "Image" } },
+    { id: "export", label: "导出", count: overviewLogs.filter((item) => item.type === "Export").length, jump: { l_type: "Export" } },
+  ];
 
-  const usageActions = useMemo(() => {
-    return Array.from(new Set(usageLogs.map((item) => item.action).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [usageLogs]);
-
-  const filteredUsageLogs = useMemo(() => {
-    return usageLogs.filter((item) => {
-      if (usageStatusFilter !== "all" && item.status !== usageStatusFilter) {
+  const lRange = (searchParams.get("l_range") as TimeRangeKey) || "7d";
+  const lStart = searchParams.get("l_start");
+  const lEnd = searchParams.get("l_end");
+  const lStatus = searchParams.get("l_status") || "";
+  const lType = searchParams.get("l_type") || "";
+  const lAction = searchParams.get("l_action") || "";
+  const lUser = searchParams.get("l_user") || "";
+  const lProject = searchParams.get("l_project") || "";
+  const lError = searchParams.get("l_error") || "";
+  const lSort = searchParams.get("l_sort") || "createdAt";
+  const lOrder = (searchParams.get("l_order") as SortOrder) || "desc";
+  const lPage = safeNumber(searchParams.get("l_page"), 1);
+  const filteredLogs = useMemo(() => {
+    const rows = data.logs.filter((item) => {
+      if (!inTimeRange(item.createdAt, lRange, lStart, lEnd)) {
         return false;
       }
-      if (usageCategoryFilter && item.category !== usageCategoryFilter) {
+      if (lStatus && item.status !== lStatus) {
         return false;
       }
-      if (usageActionFilter && item.action !== usageActionFilter) {
+      if (lType && item.type !== lType) {
+        return false;
+      }
+      if (lAction && !item.action.includes(lAction)) {
+        return false;
+      }
+      if (lUser && item.userId !== lUser) {
+        return false;
+      }
+      if (lProject && item.projectId !== lProject) {
+        return false;
+      }
+      if (lError && item.errorId !== lError) {
         return false;
       }
       return true;
     });
-  }, [usageActionFilter, usageCategoryFilter, usageLogs, usageStatusFilter]);
+    return sortBy(rows, lSort as keyof MockLog, lOrder);
+  }, [data.logs, lAction, lEnd, lError, lOrder, lProject, lRange, lSort, lStart, lStatus, lType, lUser]);
+  const pagedLogs = paginate(filteredLogs, lPage);
 
-  const usageTimelineMarkdown = useMemo(() => {
-    return buildMarkdownTimeline(filteredUsageLogs);
-  }, [filteredUsageLogs]);
-
-  const sortedProjects = useMemo(() => {
-    const parseTime = (value: string) => {
-      const normalized = value.replace(" ", "T");
-      const time = new Date(normalized).getTime();
-      return Number.isNaN(time) ? 0 : time;
-    };
-
-    return [...projects].sort((a, b) => parseTime(b.updatedAt) - parseTime(a.updatedAt));
-  }, [projects]);
-
+  const pRange = (searchParams.get("p_range") as TimeRangeKey) || "30d";
+  const pStart = searchParams.get("p_start");
+  const pEnd = searchParams.get("p_end");
+  const pType = searchParams.get("p_type") || "";
+  const pStatus = searchParams.get("p_status") || "";
+  const pStage = searchParams.get("p_stage") || "";
+  const pText = searchParams.get("p_text") || "";
+  const pImage = searchParams.get("p_image") || "";
+  const pUser = searchParams.get("p_user") || "";
+  const pSort = searchParams.get("p_sort") || "createdAt";
+  const pOrder = (searchParams.get("p_order") as SortOrder) || "desc";
+  const pPage = safeNumber(searchParams.get("p_page"), 1);
   const filteredProjects = useMemo(() => {
-    if (!normalizedEmailQuery) {
-      return sortedProjects;
-    }
-    if (normalizedUserIdQuery) {
-      return sortedProjects.filter((project) => project.userId === normalizedUserIdQuery);
-    }
-    return sortedProjects.filter((project) => {
-      const owner = usersById.get(project.userId);
-      if (!owner) {
+    const rows = data.projects.filter((item) => {
+      if (!inTimeRange(item.createdAt, pRange, pStart, pEnd)) {
         return false;
       }
-      return owner.email.toLowerCase().includes(normalizedUserEmailQuery);
+      if (pType && item.type !== pType) {
+        return false;
+      }
+      if (pStatus && item.status !== pStatus) {
+        return false;
+      }
+      if (pStage && item.stage !== pStage) {
+        return false;
+      }
+      if (pText && item.textModel !== pText) {
+        return false;
+      }
+      if (pImage && item.imageModel !== pImage) {
+        return false;
+      }
+      if (pUser && item.userId !== pUser) {
+        return false;
+      }
+      return true;
     });
-  }, [normalizedEmailQuery, normalizedUserEmailQuery, normalizedUserIdQuery, sortedProjects, usersById]);
+    return sortBy(rows, pSort as keyof MockProject, pOrder);
+  }, [data.projects, pEnd, pImage, pOrder, pRange, pSort, pStage, pStart, pStatus, pText, pType, pUser]);
+  const pagedProjects = paginate(filteredProjects, pPage);
 
-  const selectedUserForLedger = useMemo(() => {
-    if (!normalizedEmailQuery) {
-      return null;
-    }
-    if (normalizedUserIdQuery) {
-      const byId = users.find((user) => user.id === normalizedUserIdQuery);
-      if (byId) {
-        return byId;
+  const uRange = (searchParams.get("u_range") as TimeRangeKey) || "30d";
+  const uStart = searchParams.get("u_start");
+  const uEnd = searchParams.get("u_end");
+  const uSub = searchParams.get("u_sub") || "";
+  const uStatus = searchParams.get("u_status") || "";
+  const uCreditMin = safeNumber(searchParams.get("u_creditMin"), Number.NEGATIVE_INFINITY);
+  const uCreditMax = safeNumber(searchParams.get("u_creditMax"), Number.POSITIVE_INFINITY);
+  const uProjectsMin = safeNumber(searchParams.get("u_projects"), Number.NEGATIVE_INFINITY);
+  const uActive = searchParams.get("u_active") || "";
+  const uFailed = searchParams.get("u_failed") || "";
+  const uSort = searchParams.get("u_sort") || "registeredAt";
+  const uOrder = (searchParams.get("u_order") as SortOrder) || "desc";
+  const uPage = safeNumber(searchParams.get("u_page"), 1);
+  const filteredUsers = useMemo(() => {
+    const nowTs = new Date().getTime();
+    const rows = data.users.filter((item) => {
+      if (!inTimeRange(item.registeredAt, uRange, uStart, uEnd)) {
+        return false;
       }
-    }
-    const exact = users.find(
-      (user) => user.email.trim().toLowerCase() === normalizedUserEmailQuery,
-    );
-    if (exact) {
-      return exact;
-    }
-    if (matchedUsers.length === 1) {
-      return matchedUsers[0];
-    }
-    if (normalizedUserEmailQuery.includes("@")) {
-      return {
-        id: `synthetic-${normalizedUserEmailQuery}`,
-        name: normalizedUserEmailQuery.split("@")[0] || normalizedUserEmailQuery,
-        email: normalizedUserEmailQuery,
-        role: "user" as const,
-        plan: "free" as const,
-        credits: getCreditRecords(normalizedUserEmailQuery)[0]?.balance ?? 0,
-      };
-    }
-    return null;
-  }, [matchedUsers, normalizedEmailQuery, normalizedUserEmailQuery, normalizedUserIdQuery, users]);
-
-  const selectedUserSummary = useMemo(() => {
-    if (!selectedUserForLedger) {
-      return null;
-    }
-    const targetEmail = selectedUserForLedger.email.trim().toLowerCase();
-    const userProjects = projects.filter((project) => {
-      const owner = usersById.get(project.userId);
-      return owner?.email.trim().toLowerCase() === targetEmail;
+      if (uSub && item.subscriptionStatus !== uSub) {
+        return false;
+      }
+      if (uStatus && item.status !== uStatus) {
+        return false;
+      }
+      if (!(item.creditBalance >= uCreditMin && item.creditBalance <= uCreditMax)) {
+        return false;
+      }
+      if (item.projectCount < uProjectsMin) {
+        return false;
+      }
+      if (uActive) {
+        const activeDays = safeNumber(uActive, 9999);
+        const recentMs = new Date(item.recentActiveAt).getTime();
+        if (nowTs - recentMs > activeDays * 24 * 60 * 60 * 1000) {
+          return false;
+        }
+      }
+      if (uFailed === "yes" && item.failedProjectCount <= 0) {
+        return false;
+      }
+      return true;
     });
-    const latestProjectAt = userProjects
-      .map((item) => item.updatedAt)
-      .sort((a, b) => b.localeCompare(a))[0];
-    const userLogs = usageLogs.filter(
-      (item) => item.userEmail?.trim().toLowerCase() === targetEmail,
-    );
-    const errorCount = userLogs.filter((item) => item.status === "error").length;
-    const latestLogAt = userLogs.map((item) => item.createdAt).sort((a, b) => b.localeCompare(a))[0];
-    const currentBalance = getCreditRecords(targetEmail)[0]?.balance ?? selectedUserForLedger.credits;
-    return {
-      plan: selectedUserForLedger.plan,
-      role: selectedUserForLedger.role,
-      projectCount: userProjects.length,
-      currentBalance,
-      latestProjectAt: latestProjectAt ?? null,
-      errorCount,
-      latestLogAt: latestLogAt ?? null,
-    };
-  }, [projects, selectedUserForLedger, usageLogs, usersById]);
+    return sortBy(rows, uSort as keyof MockUser, uOrder);
+  }, [data.users, uActive, uCreditMax, uCreditMin, uEnd, uFailed, uOrder, uProjectsMin, uRange, uSort, uStart, uStatus, uSub]);
+  const pagedUsers = paginate(filteredUsers, uPage);
 
-  const selectedUserLedger = useMemo(() => {
-    if (!selectedUserForLedger) {
-      return [] as typeof creditRecords;
-    }
-    const targetEmail = selectedUserForLedger.email.trim().toLowerCase();
-    return creditRecords.filter((record) => {
-      if (record.userId && record.userId === selectedUserForLedger.id) {
-        return true;
-      }
-      if (record.userEmail && record.userEmail.trim().toLowerCase() === targetEmail) {
-        return true;
-      }
+  const bUser = searchParams.get("b_user") || "";
+  const bStatus = searchParams.get("b_status") || "";
+  const bPage = safeNumber(searchParams.get("b_page"), 1);
+  const billingView = searchParams.get("b_view") || "credits";
+  const filteredCredits = data.creditRecords.filter((item) => !bUser || item.userId === bUser);
+  const filteredOrders = data.orders.filter((item) => (!bUser || item.userId === bUser) && (!bStatus || item.status === bStatus));
+  const filteredSubscriptions = data.subscriptions.filter((item) => !bUser || item.userId === bUser);
+  const filteredWebhooks = data.webhookLogs.filter((item) => !bStatus || item.status === bStatus);
+  const filteredAnomalies = data.billingAnomalies.filter((item) => (!bUser || item.userId === bUser) && (!bStatus || item.status === bStatus));
+  const pagedCredits = paginate(filteredCredits, bPage);
+  const pagedOrders = paginate(filteredOrders, bPage);
+  const pagedSubs = paginate(filteredSubscriptions, bPage);
+  const pagedWebhooks = paginate(filteredWebhooks, bPage);
+  const pagedAnomalies = paginate(filteredAnomalies, bPage);
+
+  const tStatus = searchParams.get("t_status") || "";
+  const tPriority = searchParams.get("t_priority") || "";
+  const tType = searchParams.get("t_type") || "";
+  const tUser = searchParams.get("t_user") || "";
+  const tProject = searchParams.get("t_project") || "";
+  const tAssignee = searchParams.get("t_assignee") || "";
+  const tPage = safeNumber(searchParams.get("t_page"), 1);
+  const filteredTickets = data.tickets.filter((item) => {
+    if (tStatus && item.status !== tStatus) {
       return false;
-    });
-  }, [creditRecords, selectedUserForLedger]);
+    }
+    if (tPriority && item.priority !== tPriority) {
+      return false;
+    }
+    if (tType && item.type !== tType) {
+      return false;
+    }
+    if (tUser && item.userId !== tUser) {
+      return false;
+    }
+    if (tProject && item.projectId !== tProject) {
+      return false;
+    }
+    if (tAssignee && item.assignee !== tAssignee) {
+      return false;
+    }
+    return true;
+  });
+  const pagedTickets = paginate(filteredTickets, tPage);
 
-  const selectedUserTopups = useMemo(() => {
-    return selectedUserLedger.filter((record) => record.type === "topup" || record.delta > 0);
-  }, [selectedUserLedger]);
+  const cStatus = searchParams.get("c_status") || "";
+  const cPage = safeNumber(searchParams.get("c_page"), 1);
+  const filteredCases = data.cases
+    .filter((item) => (cStatus ? (cStatus === "online" ? item.online : !item.online) : true))
+    .sort((a, b) => a.order - b.order);
+  const pagedCases = paginate(filteredCases, cPage);
 
-  const selectedUserProjectConsumes = useMemo(() => {
-    return selectedUserLedger.filter(
-      (record) =>
-        record.delta < 0 &&
-        record.type === "consume" &&
-        Boolean(record.projectId || record.projectTitle),
+  function retryFromLog(log: MockLog) {
+    askConfirm(
+      "确认重试生成？",
+      `将基于 requestId=${log.requestId} 触发重试（mock）。`,
+      "确认重试",
+      () => {
+        setData((prev) => ({
+          ...prev,
+          logs: prev.logs.map((item) =>
+            item.id === log.id
+              ? { ...item, status: "processing", handled: false, errorSummary: undefined, errorId: undefined }
+              : item,
+          ),
+        }));
+        pushToast("已提交重试任务（mock）");
+      },
     );
-  }, [selectedUserLedger]);
+  }
 
-  const selectedUserConsumeByProject = useMemo(() => {
-    const grouped = new Map<
-      string,
-      { projectTitle: string; total: number; count: number; latestAt: string }
-    >();
-    selectedUserProjectConsumes.forEach((record) => {
-      const key = record.projectId || record.projectTitle || "unknown-project";
-      const prev = grouped.get(key);
-      const amount = Math.abs(record.delta);
-      if (!prev) {
-        grouped.set(key, {
-          projectTitle: record.projectTitle || key,
-          total: amount,
-          count: 1,
-          latestAt: record.createdAt,
-        });
-        return;
+  function refundFromLog(log: MockLog) {
+    if (!log.userId) {
+      pushToast("该日志未关联用户，无法退还积分");
+      return;
+    }
+    askConfirm("确认退还积分？", `将按日志 ${log.id} 退还 ${Math.abs(log.creditDelta)} 积分。`, "确认退还", () => {
+      setData((prev) => {
+        const user = prev.users.find((item) => item.id === log.userId);
+        const amount = Math.abs(log.creditDelta || 0);
+        const nextBalance = (user?.creditBalance ?? 0) + amount;
+        const creditRecord: MockCreditRecord = {
+          id: `cr-${idCounterRef.current}`,
+          userId: log.userId || "unknown",
+          projectId: log.projectId,
+          type: "refund",
+          delta: amount,
+          balanceAfter: nextBalance,
+          reason: `Refund by log ${log.id}`,
+          createdAt: new Date().toISOString(),
+        };
+        idCounterRef.current += 1;
+        return {
+          ...prev,
+          users: prev.users.map((item) =>
+            item.id === log.userId ? { ...item, creditBalance: item.creditBalance + amount } : item,
+          ),
+          logs: prev.logs.map((item) => (item.id === log.id ? { ...item, handled: true } : item)),
+          creditRecords: [creditRecord, ...prev.creditRecords],
+        };
+      });
+      pushToast("积分已退还并写入流水（mock）");
+    });
+  }
+
+  function markLogHandled(logId: string) {
+    setData((prev) => ({
+      ...prev,
+      logs: prev.logs.map((item) => (item.id === logId ? { ...item, handled: true, status: item.status === "failed" ? "handled" : item.status } : item)),
+    }));
+    pushToast("日志已标记为已处理");
+  }
+
+  function createTicketFromLog(log: MockLog) {
+    const ticket: MockTicket = {
+      id: `tk-${idCounterRef.current}`,
+      title: `来自日志 ${log.id} 的故障排查`,
+      content: log.errorSummary || `${log.type}/${log.action} 需要人工排查`,
+      userId: log.userId,
+      projectId: log.projectId,
+      logId: log.id,
+      status: "pending",
+      priority: "P1",
+      type: "bug",
+      assignee: "ops-li",
+      internalNotes: ["由日志详情创建"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    idCounterRef.current += 1;
+    setData((prev) => ({ ...prev, tickets: [ticket, ...prev.tickets] }));
+    pushToast("已创建反馈工单（mock）");
+  }
+
+  function closeTicket(ticketId: string) {
+    askConfirm("确认关闭工单？", "关闭后仍可在工单详情中查看历史处理记录。", "确认关闭", () => {
+      setData((prev) => ({
+        ...prev,
+        tickets: prev.tickets.map((item) =>
+          item.id === ticketId ? { ...item, status: "closed", updatedAt: new Date().toISOString() } : item,
+        ),
+      }));
+      pushToast("工单已关闭");
+    });
+  }
+
+  function deleteCase(caseItem: MockCaseConfig) {
+    askConfirm("确认删除案例？", `将删除案例「${caseItem.title}」并从首页案例位移除。`, "确认删除", () => {
+      setData((prev) => ({ ...prev, cases: prev.cases.filter((item) => item.id !== caseItem.id) }));
+      pushToast("案例已删除");
+    });
+  }
+
+  function toggleCaseOnline(caseId: string) {
+    setData((prev) => ({
+      ...prev,
+      cases: prev.cases.map((item) => (item.id === caseId ? { ...item, online: !item.online } : item)),
+    }));
+    pushToast("案例状态已更新");
+  }
+
+  function moveCase(caseId: string, direction: "up" | "down") {
+    setData((prev) => {
+      const rows = [...prev.cases].sort((a, b) => a.order - b.order);
+      const index = rows.findIndex((item) => item.id === caseId);
+      if (index < 0) {
+        return prev;
       }
-      grouped.set(key, {
-        projectTitle: prev.projectTitle,
-        total: prev.total + amount,
-        count: prev.count + 1,
-        latestAt: prev.latestAt > record.createdAt ? prev.latestAt : record.createdAt,
+      const target = direction === "up" ? index - 1 : index + 1;
+      if (target < 0 || target >= rows.length) {
+        return prev;
+      }
+      const temp = rows[index].order;
+      rows[index].order = rows[target].order;
+      rows[target].order = temp;
+      return { ...prev, cases: rows };
+    });
+    pushToast("案例排序已调整");
+  }
+
+  function toggleSystemSwitch(key: keyof AdminConsoleData["settings"]["switches"]) {
+    const nextValue = !data.settings.switches[key];
+    askConfirm("确认修改系统开关？", `将把 ${key} 设置为 ${nextValue ? "开启" : "关闭"}。`, "确认修改", () => {
+      setData((prev) => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          switches: {
+            ...prev.settings.switches,
+            [key]: nextValue,
+          },
+        },
+      }));
+      pushToast(`系统开关 ${key} 已更新`);
+    });
+  }
+
+  function submitAdjustCredit() {
+    const amount = Math.max(0, Number(adjustCredit.amount || "0"));
+    if (!adjustCredit.userId || !amount || !adjustCredit.reason.trim()) {
+      pushToast("请填写完整的积分调整参数");
+      return;
+    }
+    const delta = adjustCredit.adjustmentType === "increase" ? amount : -amount;
+    askConfirm("确认调整积分？", "该操作会写入积分流水，建议确认原因和关联项目。", "确认调整", () => {
+      setData((prev) => {
+        const user = prev.users.find((item) => item.id === adjustCredit.userId);
+        const nextBalance = (user?.creditBalance ?? 0) + delta;
+        const record: MockCreditRecord = {
+          id: `cr-${idCounterRef.current}`,
+          userId: adjustCredit.userId,
+          projectId: adjustCredit.projectId || undefined,
+          type: "adjustment",
+          delta,
+          balanceAfter: nextBalance,
+          reason: adjustCredit.reason.trim(),
+          createdAt: new Date().toISOString(),
+        };
+        idCounterRef.current += 1;
+        return {
+          ...prev,
+          users: prev.users.map((item) =>
+            item.id === adjustCredit.userId ? { ...item, creditBalance: item.creditBalance + delta } : item,
+          ),
+          creditRecords: [record, ...prev.creditRecords],
+        };
+      });
+      pushToast(adjustCredit.notifyUser ? "积分调整成功，已通知用户（mock）" : "积分调整成功（mock）");
+      setAdjustCredit({
+        open: false,
+        userId: "",
+        adjustmentType: "increase",
+        amount: "",
+        reason: "",
+        projectId: "",
+        notifyUser: true,
       });
     });
-    return Array.from(grouped.entries())
-      .map(([projectId, value]) => ({ projectId, ...value }))
-      .sort((a, b) => b.latestAt.localeCompare(a.latestAt));
-  }, [selectedUserProjectConsumes]);
-
-  const categories = useMemo(() => {
-    const presets = ["综合", "天文", "经济", "历史", "生物", "地理", "物理", "医学"];
-    const dynamic = featuredConfigs.map((item) => item.category);
-    return Array.from(new Set([...presets, ...dynamic]));
-  }, [featuredConfigs]);
-
-  const projectsById = useMemo(() => {
-    return new Map(projects.map((project) => [project.id, project]));
-  }, [projects]);
-
-  const recentCreditRecords = useMemo(() => {
-    return [...creditRecords].slice(0, 8);
-  }, [creditRecords]);
-
-  const tabs: { id: DashboardTab; label: string; desc: string }[] = [
-    { id: "overview", label: "总览", desc: "查看核心运营指标与最近动态" },
-    { id: "projectOps", label: "项目与积分", desc: "检索用户项目并查看充值/消耗明细" },
-    { id: "featured", label: "优秀案例配置", desc: "配置首页优秀案例的分类与排序" },
-  ];
-
-  function clearLogFilters() {
-    setUsageStatusFilter("all");
-    setUsageCategoryFilter("");
-    setUsageActionFilter("");
   }
 
-  function handleToggleUsageDetails(logId: string) {
-    setExpandedUsageLogIds((prev) => ({
+  function markAnomalyHandled(item: MockBillingAnomaly) {
+    setData((prev) => ({
       ...prev,
-      [logId]: !prev[logId],
+      billingAnomalies: prev.billingAnomalies.map((row) => (row.id === item.id ? { ...row, status: "handled" } : row)),
     }));
-  }
-
-  async function handleCopyText(value: string, hint: string) {
-    if (!value.trim()) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(value);
-      setAdminActionHint(hint);
-    } catch {
-      setAdminActionHint("复制失败，请检查浏览器剪贴板权限");
-    }
-  }
-
-  function handleExportUsageLogs() {
-    const payload = filteredUsageLogs.map((item) => ({
-      id: item.id,
-      createdAt: item.createdAt,
-      userEmail: item.userEmail,
-      projectId: item.projectId,
-      category: item.category,
-      action: item.action,
-      status: item.status,
-      source: item.source,
-      code: item.code,
-      message: item.message,
-      detailsJson: item.detailsJson,
-    }));
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const emailSegment = normalizedEmailQuery ? normalizedEmailQuery.replace(/[^a-z0-9._-]+/gi, "_") : "all-users";
-    link.href = url;
-    link.download = `knowlens-usage-logs-${emailSegment}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setAdminActionHint("日志导出完成");
-  }
-
-  async function handleDownloadServerLogsByEmail() {
-    const resolvedEmail = normalizedUserEmailQuery || selectedUserForLedger?.email.trim().toLowerCase() || "";
-    if (!resolvedEmail) {
-      setAdminActionHint("请先输入邮箱后再下载服务端日志（用户 ID 暂不支持直接下载）");
-      return;
-    }
-    try {
-      const response = await fetch(
-        `/api/admin/logs/download?userEmail=${encodeURIComponent(resolvedEmail)}&format=jsonl&limit=2000`,
-      );
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || "服务端日志下载失败");
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `knowlens-server-logs-${resolvedEmail.replace(/[^a-z0-9._-]+/gi, "_")}.jsonl`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setAdminActionHint("服务端日志下载完成");
-    } catch (error) {
-      setAdminActionHint(error instanceof Error ? error.message : "服务端日志下载失败");
-    }
-  }
-
-  function handleAddFeaturedCase() {
-    const projectId = featuredProjectId.trim();
-    if (!projectId) {
-      setFeaturedError("请输入项目 ID");
-      return;
-    }
-    if (!projectsById.has(projectId)) {
-      setFeaturedError("项目 ID 不存在，请先确认项目列表中的 ID");
-      return;
-    }
-    const orderValue = Number(featuredOrder);
-    if (!Number.isFinite(orderValue)) {
-      setFeaturedError("排序必须是数字");
-      return;
-    }
-    const next = upsertFeaturedCaseConfig({
-      projectId,
-      category: featuredCategory,
-      order: orderValue,
-    });
-    setFeaturedConfigs(next);
-    setFeaturedProjectId("");
-    setFeaturedOrder(String(orderValue + 10));
-    setFeaturedError("");
-  }
-
-  function handleRemoveFeaturedCase(id: string) {
-    const next = removeFeaturedCaseConfig(id);
-    setFeaturedConfigs(next);
+    pushToast("账务异常已标记处理");
   }
 
   return (
     <AdminShell
-      title="Dashboard"
-      description="总览用户、项目、反馈和积分消耗情况。"
+      title="运营后台"
+      description="单层主 Tab 架构，支持故障排查、对象定位和运营处理。当前数据为前端 mock，可直接替换 service 层接真实接口。"
     >
-      <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-zinc-900">页面视图</h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              {tabs.find((tab) => tab.id === activeTab)?.desc}
-            </p>
-          </div>
-        </div>
-        <div className="mt-3 inline-flex w-full flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex h-9 items-center rounded-lg border px-3 text-sm transition ${
-                activeTab === tab.id
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-transparent bg-transparent text-zinc-700 hover:border-zinc-300 hover:bg-white"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {activeTab === "overview" ? (
-        <div className="mt-4 space-y-4">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">用户查询入口</h2>
-                <p className="mt-1 text-xs text-zinc-500">
-                  支持输入用户邮箱或用户 ID（如 u-xxx），统一查看日志、项目与积分信息。
-                </p>
-              </div>
-              <div className="relative w-full sm:max-w-md">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                />
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex-1">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3">
+                <Search size={14} className="text-zinc-500" />
                 <input
-                  value={emailQuery}
-                  onChange={(event) => handleEmailQueryChange(event.target.value)}
-                  placeholder="输入邮箱或用户 ID，例如 pixfun.ai@gmail.com / u-admin"
-                  className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  value={globalQ}
+                  onChange={(event) => setQuery({ globalQ: event.target.value || null })}
+                  placeholder="全局搜索 email / userId / projectId / orderId / requestId / errorId"
+                  className="w-full bg-transparent text-sm text-zinc-700 outline-none placeholder:text-zinc-400"
                 />
-                {emailQuery ? (
-                  <button
-                    type="button"
-                    onClick={() => handleEmailQueryChange("")}
-                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 transition hover:bg-zinc-100"
-                    aria-label="清空邮箱筛选"
-                  >
-                    <X size={14} />
-                  </button>
-                ) : null}
               </div>
+              <p className="mt-1 text-xs text-zinc-500">点击结果可跳转详情页或打开 Drawer。</p>
             </div>
-
-            {normalizedEmailQuery ? (
-              <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-                匹配用户：
-                {matchedUsers.length > 0
-                  ? matchedUsers.map((user) => `${user.email} (${user.id})`).join("，")
-                  : "未找到用户（仍可继续查询服务端日志）"}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-zinc-500">请输入邮箱或用户 ID 开始查询</p>
-            )}
-
-            {selectedUserForLedger && selectedUserSummary ? (
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-xs text-zinc-500">用户</p>
-                  <p className="mt-1 text-sm font-medium text-zinc-900">{selectedUserForLedger.email}</p>
-                  <p className="mt-1 text-xs text-zinc-500">{selectedUserForLedger.name}</p>
-                </article>
-                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-xs text-zinc-500">角色 / 计划</p>
-                  <p className="mt-1 text-sm font-medium text-zinc-900">
-                    {selectedUserSummary.role} / {selectedUserSummary.plan}
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">当前积分 {selectedUserSummary.currentBalance}</p>
-                </article>
-                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-xs text-zinc-500">项目总数</p>
-                  <p className="mt-1 text-xl font-semibold text-zinc-900">{selectedUserSummary.projectCount}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    最近项目更新：{selectedUserSummary.latestProjectAt ?? "-"}
-                  </p>
-                </article>
-                <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-xs text-zinc-500">日志报错数量</p>
-                  <p className="mt-1 text-xl font-semibold text-rose-600">{selectedUserSummary.errorCount}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    最近活跃：{selectedUserSummary.latestLogAt ? formatDate(selectedUserSummary.latestLogAt) : "-"}
-                  </p>
-                </article>
-              </div>
-            ) : null}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">用户使用日志</h2>
-                <p className="mt-1 text-xs text-zinc-500">按邮箱查看日志，并可按状态/分类/动作筛选。</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={clearLogFilters}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  清空筛选
-                </button>
-                <button
-                  type="button"
-                  disabled={!filteredUsageLogs.length}
-                  onClick={handleExportUsageLogs}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Download size={12} />
-                  导出 JSON
-                </button>
-                <button
-                  type="button"
-                  disabled={!filteredUsageLogs.length}
-                  onClick={() => {
-                    void handleCopyText(usageTimelineMarkdown, "用户时间轴日志（Markdown）已复制");
-                  }}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Copy size={12} />
-                  复制时间轴
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsageStatusFilter("error");
-                    setUsageCategoryFilter("llm");
-                    setUsageActionFilter("draft_generation_failed");
-                  }}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  LLM 失败
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsageStatusFilter("error");
-                    setUsageCategoryFilter("image");
-                    setUsageActionFilter("image_generation_failed");
-                  }}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  Image2 失败
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleDownloadServerLogsByEmail();
-                  }}
-                  disabled={!normalizedUserEmailQuery}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Download size={12} />
-                  下载服务端日志
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUsageMarkdownTimeline((prev) => !prev)}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  {showUsageMarkdownTimeline ? "切换表格" : "切换 Markdown"}
-                </button>
-              </div>
+            <div className="inline-flex items-center gap-2 text-xs text-zinc-500">
+              <Filter size={13} />
+              筛选条件已同步 URL，可直接复制链接给开发排查
             </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
-              <select
-                value={usageStatusFilter}
-                onChange={(event) => setUsageStatusFilter(event.target.value as "all" | "ok" | "error" | "info")}
-                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              >
-                <option value="all">状态：全部</option>
-                <option value="ok">状态：ok</option>
-                <option value="error">状态：error</option>
-                <option value="info">状态：info</option>
-              </select>
-              <select
-                value={usageCategoryFilter}
-                onChange={(event) => setUsageCategoryFilter(event.target.value)}
-                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              >
-                <option value="">分类：全部</option>
-                {usageCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={usageActionFilter}
-                onChange={(event) => setUsageActionFilter(event.target.value)}
-                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              >
-                <option value="">动作：全部</option>
-                {usageActions.map((action) => (
-                  <option key={action} value={action}>
-                    {action}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {adminActionHint ? (
-              <p className="mt-2 text-xs text-zinc-500">{adminActionHint}</p>
-            ) : null}
-            {usageLogsLastRefresh ? (
-              <p className="mt-2 text-xs text-zinc-500">最后刷新：{formatDate(usageLogsLastRefresh)}</p>
-            ) : null}
-            {usageLogsLoading ? (
-              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
-            ) : usageLogsError ? (
-              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {usageLogsError}
-              </p>
-            ) : !normalizedEmailQuery ? (
-              <p className="mt-3 text-sm text-zinc-500">请输入邮箱或用户 ID 后查看日志</p>
-            ) : !filteredUsageLogs.length ? (
-              <p className="mt-3 text-sm text-zinc-500">当前筛选条件下暂无日志（可先清空筛选或下载服务端原始日志确认）</p>
-            ) : (
-              showUsageMarkdownTimeline ? (
-                <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                  <p className="mb-2 text-xs text-zinc-500">
-                    Markdown 时间轴（完整可复制）：按时间倒序，包含分类、动作、阶段、message、details。
-                  </p>
-                  <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-white p-3 text-[12px] leading-5 text-zinc-700">
-                    {usageTimelineMarkdown}
-                  </pre>
-                </div>
-              ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="text-xs text-zinc-500">
-                      <tr>
-                        <th className="px-2 py-1.5 font-medium">时间</th>
-                        <th className="px-2 py-1.5 font-medium">分类</th>
-                        <th className="px-2 py-1.5 font-medium">动作</th>
-                        <th className="px-2 py-1.5 font-medium">失败环节</th>
-                        <th className="px-2 py-1.5 font-medium">状态</th>
-                        <th className="px-2 py-1.5 font-medium">来源</th>
-                        <th className="px-2 py-1.5 font-medium">错误码</th>
-                        <th className="px-2 py-1.5 font-medium">消息</th>
-                        <th className="px-2 py-1.5 font-medium">项目</th>
-                        <th className="px-2 py-1.5 font-medium">详情</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsageLogs.map((item) => {
-                        const expanded = Boolean(expandedUsageLogIds[item.id]);
-                        return (
-                          <tr key={item.id} className="border-t border-zinc-100 align-top">
-                            <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">{formatDate(item.createdAt)}</td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.stage ?? resolveFailureStage(item)}</td>
-                            <td className={`px-2 py-1.5 text-xs font-medium ${
-                              item.status === "error" ? "text-rose-600" : item.status === "ok" ? "text-emerald-600" : "text-zinc-500"
-                            }`}>{item.status}</td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
-                            <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.projectId ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleUsageDetails(item.id)}
-                                  className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100"
-                                >
-                                  {expanded ? "收起" : "展开"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!item.detailsJson}
-                                  onClick={() => {
-                                    void handleCopyText(item.detailsJson ?? "", "日志详情已复制");
-                                  }}
-                                  className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                                >
-                                  <Copy size={10} />
-                                </button>
-                              </div>
-                              {expanded ? (
-                                <pre className="mt-1 max-w-[320px] whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-1.5 text-[11px] leading-4 text-zinc-600">
-                                  {item.detailsJson ?? "-"}
-                                </pre>
-                              ) : null}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">项目日志直查</h2>
-                <p className="mt-1 text-xs text-zinc-500">作为第二入口，按 projectId 定位单个项目链路。</p>
-              </div>
-              <div className="relative w-full sm:max-w-md">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                />
-                <input
-                  value={projectLogQuery}
-                  onChange={(event) => handleProjectLogQueryChange(event.target.value)}
-                  placeholder="输入 projectId，例如 p-admin-001"
-                  className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                />
-                {projectLogQuery ? (
-                  <button
-                    type="button"
-                    onClick={() => handleProjectLogQueryChange("")}
-                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 transition hover:bg-zinc-100"
-                    aria-label="清空项目筛选"
-                  >
-                    <X size={14} />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            {projectLogsLastRefresh ? (
-              <p className="mt-2 text-xs text-zinc-500">最后刷新：{formatDate(projectLogsLastRefresh)}</p>
-            ) : null}
-            {projectLogsLoading ? (
-              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
-            ) : projectLogsError ? (
-              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {projectLogsError}
-              </p>
-            ) : !normalizedProjectLogQuery ? (
-              <p className="mt-3 text-sm text-zinc-500">请输入项目 ID 后查看日志</p>
-            ) : !projectLogs.length ? (
-              <p className="mt-3 text-sm text-zinc-500">暂无项目日志</p>
-            ) : (
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs text-zinc-500">
-                    <tr>
-                      <th className="px-2 py-1.5 font-medium">时间</th>
-                      <th className="px-2 py-1.5 font-medium">分类</th>
-                      <th className="px-2 py-1.5 font-medium">动作</th>
-                      <th className="px-2 py-1.5 font-medium">状态</th>
-                      <th className="px-2 py-1.5 font-medium">来源</th>
-                      <th className="px-2 py-1.5 font-medium">错误码</th>
-                      <th className="px-2 py-1.5 font-medium">消息</th>
-                      <th className="px-2 py-1.5 font-medium">详情</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectLogs.map((item) => (
-                      <tr key={item.id} className="border-t border-zinc-100 align-top">
-                        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">
-                          {formatDate(item.createdAt)}
-                        </td>
-                        <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
-                        <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
-                        <td
-                          className={`px-2 py-1.5 text-xs font-medium ${
-                            item.status === "error"
-                              ? "text-rose-600"
-                              : item.status === "ok"
-                                ? "text-emerald-600"
-                                : "text-zinc-500"
-                          }`}
-                        >
-                          {item.status}
-                        </td>
-                        <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
-                        <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
-                        <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
-                        <td className="max-w-[320px] whitespace-pre-wrap px-2 py-1.5 text-xs text-zinc-500">
-                          {item.detailsJson ?? "-"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-700">
-                <Users size={14} />
-                用户总数
-              </p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-900">{stats.users}</p>
-            </article>
-            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-700">
-                <FolderKanban size={14} />
-                项目总数
-              </p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-900">{stats.projects}</p>
-              <p className="mt-1 text-xs text-zinc-500">进行中 {stats.activeProjects} 个</p>
-            </article>
-            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-zinc-700">反馈工单</p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-900">{stats.feedbacks}</p>
-            </article>
-            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-700">
-                <Zap size={14} />
-                累计消耗积分
-              </p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-900">
-                {stats.totalCreditsUsed}
-              </p>
-            </article>
           </div>
 
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">线上运行统计（服务端）</h2>
-                <p className="mt-1 text-xs text-zinc-500">
-                  项目规模、支付来源转化率、关键报错日志（登录 / LLM / Image / 下载）
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpsReloadVersion((prev) => prev + 1)}
-                className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-              >
-                刷新
-              </button>
-            </div>
-
-            {opsLoading ? (
-              <p className="mt-3 text-sm text-zinc-500">加载中...</p>
-            ) : opsError ? (
-              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {opsError}
-              </p>
-            ) : !opsSummary ? (
-              <p className="mt-3 text-sm text-zinc-500">暂无服务端统计数据</p>
-            ) : (
-              <div className="mt-3 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                    <p className="text-xs text-zinc-500">历史项目总数</p>
-                    <p className="mt-1 text-xl font-semibold text-zinc-900">{opsSummary.projects.total}</p>
-                  </article>
-                  <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                    <p className="text-xs text-zinc-500">当前项目数量</p>
-                    <p className="mt-1 text-xl font-semibold text-zinc-900">{opsSummary.projects.active}</p>
-                  </article>
-                  <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                    <p className="text-xs text-zinc-500">当前报错总数</p>
-                    <p className="mt-1 text-xl font-semibold text-rose-600">{opsSummary.errors.total}</p>
-                  </article>
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <article className="rounded-xl border border-zinc-200 bg-white p-3">
-                    <h3 className="text-sm font-medium text-zinc-900">支付来源转化（日）</h3>
-                    {!opsSummary.checkout.length ? (
-                      <p className="mt-2 text-sm text-zinc-500">暂无支付埋点数据</p>
-                    ) : (
-                      <div className="mt-2 overflow-x-auto">
-                        <table className="min-w-full text-left text-sm">
-                          <thead className="text-xs text-zinc-500">
-                            <tr>
-                              <th className="px-2 py-1.5 font-medium">日期</th>
-                              <th className="px-2 py-1.5 font-medium">来源</th>
-                              <th className="px-2 py-1.5 font-medium">出单次数</th>
-                              <th className="px-2 py-1.5 font-medium">成功数</th>
-                              <th className="px-2 py-1.5 font-medium">成功率</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {opsSummary.checkout.map((row) => (
-                              <tr key={`${row.day}-${row.source}`} className="border-t border-zinc-100">
-                                <td className="px-2 py-1.5 text-xs text-zinc-500">{row.day}</td>
-                                <td className="px-2 py-1.5 text-zinc-700">{row.source}</td>
-                                <td className="px-2 py-1.5 text-zinc-700">{row.attempts}</td>
-                                <td className="px-2 py-1.5 text-zinc-700">{row.successes}</td>
-                                <td className="px-2 py-1.5 font-medium text-zinc-900">{row.successRate}%</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </article>
-
-                  <article className="rounded-xl border border-zinc-200 bg-white p-3">
-                    <h3 className="text-sm font-medium text-zinc-900">报错类型分布</h3>
-                    {!opsSummary.errors.byCategory.length ? (
-                      <p className="mt-2 text-sm text-zinc-500">暂无报错</p>
-                    ) : (
-                      <ul className="mt-2 space-y-2">
-                        {opsSummary.errors.byCategory.map((item) => (
-                          <li
-                            key={item.category}
-                            className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-sm"
-                          >
-                            <span className="text-zinc-700">{item.category}</span>
-                            <span className="font-medium text-zinc-900">{item.count}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </article>
-                </div>
-
-                <article className="rounded-xl border border-zinc-200 bg-white p-3">
-                  <h3 className="text-sm font-medium text-zinc-900">最近关键报错日志</h3>
-                  {!opsSummary.errors.recent.length ? (
-                    <p className="mt-2 text-sm text-zinc-500">暂无关键报错日志</p>
-                  ) : (
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="min-w-full text-left text-sm">
-                        <thead className="text-xs text-zinc-500">
-                          <tr>
-                            <th className="px-2 py-1.5 font-medium">时间</th>
-                            <th className="px-2 py-1.5 font-medium">分类</th>
-                            <th className="px-2 py-1.5 font-medium">动作</th>
-                            <th className="px-2 py-1.5 font-medium">来源</th>
-                            <th className="px-2 py-1.5 font-medium">错误码</th>
-                            <th className="px-2 py-1.5 font-medium">错误描述</th>
-                            <th className="px-2 py-1.5 font-medium">用户</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {opsSummary.errors.recent.slice(0, 25).map((item) => (
-                            <tr key={item.id} className="border-t border-zinc-100 align-top">
-                              <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">
-                                {formatDate(item.createdAt)}
-                              </td>
-                              <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
-                              <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
-                              <td className="px-2 py-1.5 text-zinc-700">{item.source}</td>
-                              <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
-                              <td className="max-w-[420px] px-2 py-1.5 text-zinc-700">{item.message}</td>
-                              <td className="px-2 py-1.5 text-xs text-zinc-500">{item.userEmail ?? "-"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {opsLastRefresh ? (
-                    <p className="mt-2 text-xs text-zinc-500">最后刷新：{formatDate(opsLastRefresh)}</p>
-                  ) : null}
-                </article>
-              </div>
-            )}
-          </section>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-medium text-zinc-900">最近反馈</h2>
-              {!feedbacks.length ? (
-                <p className="mt-2 text-sm text-zinc-500">暂无反馈记录</p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {feedbacks.slice(0, 6).map((feedback) => (
-                    <li
-                      key={feedback.id}
-                      className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
-                    >
-                      <p className="text-sm font-medium text-zinc-900">{feedback.type}</p>
-                      <p className="mt-1 line-clamp-2 text-sm text-zinc-600">{feedback.detail}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-medium text-zinc-900">优秀案例预览（Top 6）</h2>
-              <ul className="mt-2 space-y-2">
-                {featuredConfigs.slice(0, 6).map((config) => {
-                  const project = projectsById.get(config.projectId);
-                  return (
-                    <li
-                      key={config.id}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
-                    >
-                      <span className="truncate text-sm text-zinc-700">
-                        [{config.category}] {project?.title ?? config.projectId}
-                      </span>
-                      <span className="text-xs text-zinc-500">#{config.order}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          </div>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-medium text-zinc-900">最近积分流水</h2>
-            {!recentCreditRecords.length ? (
-              <p className="mt-2 text-sm text-zinc-500">暂无积分记录</p>
-            ) : (
-              <div className="mt-2 overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-0 text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-zinc-500">
-                      <th className="rounded-l-xl border border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        时间
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        描述
-                      </th>
-                      <th className="rounded-r-xl border border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        变动
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentCreditRecords.map((record) => (
-                      <tr key={record.id}>
-                        <td className="border-b border-zinc-100 px-3 py-2.5 text-xs text-zinc-500">
-                          {record.createdAt}
-                        </td>
-                        <td className="border-b border-zinc-100 px-3 py-2.5 text-zinc-700">
-                          {record.description}
-                        </td>
-                        <td
-                          className={`border-b border-zinc-100 px-3 py-2.5 text-sm font-medium ${
-                            record.delta > 0 ? "text-emerald-600" : "text-rose-600"
-                          }`}
-                        >
-                          {record.delta > 0 ? `+${record.delta}` : record.delta}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </div>
-      ) : null}
-
-      {activeTab === "projectOps" ? (
-        <div className="mt-4 space-y-4">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">项目检索</h2>
-                <p className="mt-1 text-xs text-zinc-500">
-                  继承总览页的邮箱查询条件，查看某位用户的全部项目；留空则显示所有项目。
-                </p>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-                当前查询邮箱：{normalizedEmailQuery || "未设置（显示全部用户项目）"}
-              </div>
-            </div>
-
-            {normalizedEmailQuery ? (
-              <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-                匹配用户：
-                {matchedUsers.length > 0
-                  ? matchedUsers.map((user) => user.email).join("，")
-                  : "未找到对应邮箱用户"}
-              </div>
-            ) : null}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-medium text-zinc-900">项目日志直查</h2>
-                <p className="mt-1 text-xs text-zinc-500">输入 project ID，可以直接筛出该项目的前后端日志。</p>
-              </div>
-              <div className="relative w-full sm:max-w-md">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                />
-                <input
-                  value={projectLogQuery}
-                  onChange={(event) => setProjectLogQuery(event.target.value)}
-                  placeholder="输入 projectId，例如 p-admin-001"
-                  className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                />
-                {projectLogQuery ? (
-                  <button
-                    type="button"
-                    onClick={() => setProjectLogQuery("")}
-                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-500 transition hover:bg-zinc-100"
-                    aria-label="清空项目筛选"
-                  >
-                    <X size={14} />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-600">
-              使用日志入口已迁移至「总览」首屏，便于管理员先按邮箱定位用户，再继续看项目与积分。
-            </div>
-            {projectLogsLastRefresh || projectLogsLoading || projectLogsError || normalizedProjectLogQuery ? (
-              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-medium text-zinc-900">项目直查结果</h3>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {normalizedProjectLogQuery ? `projectId = ${projectLogQuery}` : "请输入 project ID"}
-                    </p>
-                  </div>
-                  {projectLogsLastRefresh ? (
-                    <p className="text-xs text-zinc-500">最后刷新：{formatDate(projectLogsLastRefresh)}</p>
-                  ) : null}
-                </div>
-                {projectLogsLoading ? (
-                  <p className="mt-3 text-sm text-zinc-500">加载中...</p>
-                ) : projectLogsError ? (
-                  <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                    {projectLogsError}
-                  </p>
-                ) : !normalizedProjectLogQuery ? (
-                  <p className="mt-3 text-sm text-zinc-500">请输入项目 ID 后查看日志</p>
-                ) : !projectLogs.length ? (
-                  <p className="mt-3 text-sm text-zinc-500">暂无项目日志</p>
-                ) : (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="text-xs text-zinc-500">
-                        <tr>
-                          <th className="px-2 py-1.5 font-medium">时间</th>
-                          <th className="px-2 py-1.5 font-medium">分类</th>
-                          <th className="px-2 py-1.5 font-medium">动作</th>
-                          <th className="px-2 py-1.5 font-medium">状态</th>
-                          <th className="px-2 py-1.5 font-medium">来源</th>
-                          <th className="px-2 py-1.5 font-medium">错误码</th>
-                          <th className="px-2 py-1.5 font-medium">消息</th>
-                          <th className="px-2 py-1.5 font-medium">详情</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectLogs.map((item) => (
-                          <tr key={item.id} className="border-t border-zinc-100 align-top">
-                            <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">
-                              {formatDate(item.createdAt)}
-                            </td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
-                            <td
-                              className={`px-2 py-1.5 text-xs font-medium ${
-                                item.status === "error"
-                                  ? "text-rose-600"
-                                  : item.status === "ok"
-                                    ? "text-emerald-600"
-                                    : "text-zinc-500"
-                              }`}
-                            >
-                              {item.status}
-                            </td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
-                            <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
-                            <td className="max-w-[320px] whitespace-pre-wrap px-2 py-1.5 text-xs text-zinc-500">
-                              {item.detailsJson ?? "-"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium text-zinc-900">用户充值与项目积分消耗</h2>
-              <p className="text-xs text-zinc-500">
-                输入完整邮箱可查看该用户充值记录和项目级消耗明细
-              </p>
-            </div>
-
-            {!normalizedEmailQuery ? (
-              <p className="mt-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 py-6 text-center text-sm text-zinc-500">
-                先在上方输入用户邮箱，再查看积分明细
-              </p>
-            ) : matchedUsers.length > 1 && !selectedUserForLedger ? (
-              <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-600">
-                匹配到多个用户，请输入更完整的邮箱：{matchedUsers
-                  .map((user) => user.email)
-                  .join("，")}
-              </p>
-            ) : !selectedUserForLedger ? (
-              <p className="mt-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 py-6 text-center text-sm text-zinc-500">
-                未找到该用户
-              </p>
-            ) : (
-              <div className="mt-3 space-y-4">
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-                  当前用户：{selectedUserForLedger.email}（{selectedUserForLedger.name}）
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <article className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
-                    <p className="text-xs text-zinc-500">累计充值</p>
-                    <p className="mt-1 text-lg font-semibold text-emerald-600">
-                      +
-                      {selectedUserTopups.reduce(
-                        (sum, record) => sum + Math.abs(record.delta),
-                        0,
-                      )}
-                    </p>
-                  </article>
-                  <article className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
-                    <p className="text-xs text-zinc-500">累计项目消耗</p>
-                    <p className="mt-1 text-lg font-semibold text-rose-600">
-                      -
-                      {selectedUserProjectConsumes.reduce(
-                        (sum, record) => sum + Math.abs(record.delta),
-                        0,
-                      )}
-                    </p>
-                  </article>
-                  <article className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
-                    <p className="text-xs text-zinc-500">涉及项目数</p>
-                    <p className="mt-1 text-lg font-semibold text-zinc-900">
-                      {selectedUserConsumeByProject.length}
-                    </p>
-                  </article>
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <article className="rounded-xl border border-zinc-200 bg-white p-3">
-                    <h3 className="text-sm font-medium text-zinc-900">充值记录</h3>
-                    {!selectedUserTopups.length ? (
-                      <p className="mt-2 text-sm text-zinc-500">暂无充值记录</p>
-                    ) : (
-                      <div className="mt-2 overflow-x-auto">
-                        <table className="min-w-full text-left text-sm">
-                          <thead className="text-xs text-zinc-500">
-                            <tr>
-                              <th className="px-2 py-1.5 font-medium">时间</th>
-                              <th className="px-2 py-1.5 font-medium">描述</th>
-                              <th className="px-2 py-1.5 font-medium">积分</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedUserTopups.map((record) => (
-                              <tr key={record.id} className="border-t border-zinc-100">
-                                <td className="px-2 py-1.5 text-xs text-zinc-500">
-                                  {formatDate(record.createdAt)}
-                                </td>
-                                <td className="px-2 py-1.5 text-zinc-700">
-                                  {record.description}
-                                </td>
-                                <td className="px-2 py-1.5 font-medium text-emerald-600">
-                                  +{Math.abs(record.delta)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </article>
-
-                  <article className="rounded-xl border border-zinc-200 bg-white p-3">
-                    <h3 className="text-sm font-medium text-zinc-900">项目积分消耗汇总</h3>
-                    {!selectedUserConsumeByProject.length ? (
-                      <p className="mt-2 text-sm text-zinc-500">暂无项目消耗记录</p>
-                    ) : (
-                      <div className="mt-2 overflow-x-auto">
-                        <table className="min-w-full text-left text-sm">
-                          <thead className="text-xs text-zinc-500">
-                            <tr>
-                              <th className="px-2 py-1.5 font-medium">项目</th>
-                              <th className="px-2 py-1.5 font-medium">累计消耗</th>
-                              <th className="px-2 py-1.5 font-medium">次数</th>
-                              <th className="px-2 py-1.5 font-medium">最近时间</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedUserConsumeByProject.map((item) => (
-                              <tr key={item.projectId} className="border-t border-zinc-100">
-                                <td className="px-2 py-1.5 text-zinc-700">{item.projectTitle}</td>
-                                <td className="px-2 py-1.5 font-medium text-rose-600">
-                                  -{item.total}
-                                </td>
-                                <td className="px-2 py-1.5 text-zinc-600">{item.count}</td>
-                                <td className="px-2 py-1.5 text-xs text-zinc-500">
-                                  {formatDate(item.latestAt)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </article>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium text-zinc-900">所有项目（按更新时间）</h2>
-              <p className="text-xs text-zinc-500">
-                共 {filteredProjects.length} 个项目
-                {normalizedEmailQuery ? "（已按邮箱筛选）" : ""}
-              </p>
-            </div>
-
-            {!filteredProjects.length ? (
-              <p className="mt-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 py-6 text-center text-sm text-zinc-500">
-                当前筛选下暂无项目
-              </p>
-            ) : (
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-0 text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-zinc-500">
-                      <th className="rounded-l-xl border border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        更新时间
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        项目名称
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        状态
-                      </th>
-                      <th className="rounded-r-xl border border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        用户邮箱
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProjects.map((project) => {
-                      const owner = usersById.get(project.userId);
-                      return (
-                        <tr key={project.id} className="text-zinc-700">
-                          <td className="border-b border-zinc-100 px-3 py-2.5 text-xs text-zinc-500">
-                            {project.updatedAt}
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5 text-zinc-900">
-                            {project.title}
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5">
-                            <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                project.status === "进行中"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-zinc-200 text-zinc-700"
-                              }`}
-                            >
-                              {project.status}
-                            </span>
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5 text-xs text-zinc-600">
-                            {owner?.email ?? "未知用户"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </div>
-      ) : null}
-
-      {activeTab === "featured" ? (
-        <div className="mt-4 space-y-4">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium text-zinc-900">首页优秀案例配置</h2>
-              <p className="text-xs text-zinc-500">
-                支持手动录入项目 ID，配置分类和排序（数字越小越靠前）
-              </p>
-            </div>
-
-            <div className="mt-3 grid gap-2 md:grid-cols-[1.2fr_0.9fr_0.6fr_auto]">
-              <input
-                value={featuredProjectId}
-                onChange={(event) => {
-                  setFeaturedProjectId(event.target.value);
-                  if (featuredError) {
-                    setFeaturedError("");
-                  }
-                }}
-                placeholder="项目 ID，例如 p-admin-001"
-                className="h-10 rounded-xl border border-zinc-300 px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              />
-              <select
-                value={featuredCategory}
-                onChange={(event) => setFeaturedCategory(event.target.value)}
-                className="h-10 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              >
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={featuredOrder}
-                onChange={(event) => {
-                  setFeaturedOrder(event.target.value);
-                  if (featuredError) {
-                    setFeaturedError("");
-                  }
-                }}
-                placeholder="排序"
-                className="h-10 rounded-xl border border-zinc-300 px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              />
-              <button
-                type="button"
-                onClick={handleAddFeaturedCase}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700"
-              >
-                添加/更新
-              </button>
-            </div>
-            {featuredError ? (
-              <p className="mt-2 text-xs text-red-600">{featuredError}</p>
-            ) : (
-              <p className="mt-2 text-xs text-zinc-500">
-                提示：重复添加同一个项目 ID 会更新分类与排序，不会新增重复项。
-              </p>
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-            {!featuredConfigs.length ? (
-              <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 py-4 text-sm text-zinc-500">
-                暂无优秀案例配置
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-0 text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-zinc-500">
-                      <th className="rounded-l-xl border border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        排序
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        分类
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        项目 ID
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        项目名称
-                      </th>
-                      <th className="border-y border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        用户
-                      </th>
-                      <th className="rounded-r-xl border border-zinc-200 bg-zinc-50 px-3 py-2 font-medium">
-                        操作
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {featuredConfigs.map((config) => {
-                      const project = projectsById.get(config.projectId);
-                      const owner = project ? usersById.get(project.userId) : null;
-                      return (
-                        <tr key={config.id} className="text-zinc-700">
-                          <td className="border-b border-zinc-100 px-3 py-2.5 text-xs text-zinc-500">
-                            {config.order}
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5">
-                            <span className="inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
-                              {config.category}
-                            </span>
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5 font-mono text-xs text-zinc-600">
-                            {config.projectId}
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5 text-zinc-900">
-                            {project?.title ?? "项目不存在"}
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5 text-xs text-zinc-600">
-                            {owner?.email ?? "未知用户"}
-                          </td>
-                          <td className="border-b border-zinc-100 px-3 py-2.5">
+          {globalQ ? (
+            <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-2">
+              {globalResults.length ? (
+                <div className="grid gap-2 md:grid-cols-2">
+                  {["用户", "项目", "订单", "日志", "错误"].map((group) => {
+                    const items = globalResults.filter((row) => row.group === group);
+                    if (!items.length) {
+                      return null;
+                    }
+                    return (
+                      <div key={group} className="rounded-lg border border-zinc-200 bg-white p-2">
+                        <p className="text-xs font-medium text-zinc-500">{group}</p>
+                        <div className="mt-1 space-y-1">
+                          {items.map((item) => (
                             <button
+                              key={item.id}
                               type="button"
-                              onClick={() => handleRemoveFeaturedCase(config.id)}
-                              className="inline-flex rounded-lg border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-600 transition hover:bg-zinc-100"
+                              onClick={() => handleGlobalResultClick(item)}
+                              className="block w-full rounded-md border border-transparent px-2 py-1.5 text-left hover:border-zinc-200 hover:bg-zinc-50"
                             >
-                              移除
+                              <p className="text-sm font-medium text-zinc-900">{item.title}</p>
+                              <p className="text-xs text-zinc-500">{item.subtitle}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-4 text-sm text-zinc-500">
+                  搜索无结果，请检查标识符是否正确。
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            {MAIN_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setTab(tab.id)}
+                  className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition ${
+                    active
+                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                  }`}
+                >
+                  <Icon size={14} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {activeTab === "overview" ? (
+          <section className="space-y-4">
+            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-medium text-zinc-800">时间范围</p>
+                <div className="inline-flex flex-wrap gap-2">
+                  {[
+                    { key: "today", label: "今天" },
+                    { key: "7d", label: "近 7 天" },
+                    { key: "30d", label: "近 30 天" },
+                    { key: "custom", label: "自定义" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setQuery({ ov_range: item.key, ov_start: null, ov_end: null })}
+                      className={`h-8 rounded-lg border px-3 text-xs ${
+                        ovRange === item.key
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-200 bg-white text-zinc-600"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {ovRange === "custom" ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <input
+                    type="date"
+                    value={ovStart || ""}
+                    onChange={(event) => setQuery({ ov_start: event.target.value || null })}
+                    className="h-9 rounded-lg border border-zinc-300 px-3 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={ovEnd || ""}
+                    onChange={(event) => setQuery({ ov_end: event.target.value || null })}
+                    className="h-9 rounded-lg border border-zinc-300 px-3 text-sm"
+                  />
+                </div>
+              ) : null}
+            </article>
+
+            <article className="grid gap-3 md:grid-cols-4">
+              {[
+                {
+                  label: "今日新增用户",
+                  value: todayUserCount,
+                  click: () => setQuery({ tab: "users", u_range: "today", u_page: "1" }),
+                },
+                {
+                  label: "今日项目数",
+                  value: todayProjectCount,
+                  click: () => setQuery({ tab: "projects", p_range: "today", p_page: "1" }),
+                },
+                {
+                  label: "当前进行中项目",
+                  value: generatingCount,
+                  click: () => setQuery({ tab: "projects", p_status: "generating", p_page: "1" }),
+                },
+                {
+                  label: "今日失败项目",
+                  value: failedTodayCount,
+                  click: () => setQuery({ tab: "logs", l_status: "failed", l_range: "today", l_page: "1" }),
+                },
+                {
+                  label: "LLM 成功率",
+                  value: `${llmSuccess}%`,
+                  click: () => setQuery({ tab: "logs", l_type: "LLM", l_page: "1" }),
+                },
+                {
+                  label: "Image 成功率",
+                  value: `${imageSuccess}%`,
+                  click: () => setQuery({ tab: "logs", l_type: "Image", l_page: "1" }),
+                },
+                {
+                  label: "今日消耗积分",
+                  value: todayCreditsUsed,
+                  click: () => setQuery({ tab: "billing", b_view: "credits", b_page: "1" }),
+                },
+                {
+                  label: "支付成功率",
+                  value: `${paymentSuccessRate}%`,
+                  click: () => setQuery({ tab: "billing", b_view: "orders", b_status: "paid", b_page: "1" }),
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.click}
+                  className="rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm hover:bg-zinc-50"
+                >
+                  <p className="text-xs text-zinc-500">{item.label}</p>
+                  <p className="mt-1 text-2xl font-semibold text-zinc-900">{item.value}</p>
+                </button>
+              ))}
+            </article>
+
+            <article className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-zinc-900">最近关键异常</p>
+                <div className="mt-3 space-y-2">
+                  {keyErrors.length ? (
+                    keyErrors.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedLogId(item.id)}
+                        className="block w-full rounded-lg border border-zinc-200 p-3 text-left hover:bg-zinc-50"
+                      >
+                        <p className="text-sm font-medium text-zinc-900">{item.errorSummary || `${item.type}/${item.action}`}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {formatDateTime(item.createdAt)} · {item.errorId || "-"} · {item.requestId}
+                        </p>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="rounded-lg border border-dashed border-zinc-300 px-3 py-6 text-center text-sm text-zinc-500">
+                      当前时间范围内无关键异常。
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-zinc-900">生成链路漏斗</p>
+                <div className="mt-3 space-y-2">
+                  {funnel.map((node) => (
+                    <button
+                      key={node.id}
+                      type="button"
+                      onClick={() => setQuery({ tab: "logs", ...node.jump, l_page: "1" })}
+                      className="flex w-full items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 hover:bg-zinc-50"
+                    >
+                      <span className="text-sm text-zinc-700">{node.label}</span>
+                      <span className="text-sm font-semibold text-zinc-900">{node.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </article>
+          </section>
+        ) : null}
+
+        {activeTab === "logs" ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-zinc-900">故障与日志</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <select value={lRange} onChange={(event) => setQuery({ l_range: event.target.value, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="today">今天</option>
+                <option value="7d">近7天</option>
+                <option value="30d">近30天</option>
+                <option value="custom">自定义</option>
+              </select>
+              <select value={lStatus} onChange={(event) => setQuery({ l_status: event.target.value || null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">状态（全部）</option>
+                <option value="ok">ok</option>
+                <option value="failed">failed</option>
+                <option value="processing">processing</option>
+                <option value="handled">handled</option>
+              </select>
+              <select value={lType} onChange={(event) => setQuery({ l_type: event.target.value || null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">类型（全部）</option>
+                {Array.from(new Set(data.logs.map((item) => item.type))).map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <input value={lAction} onChange={(event) => setQuery({ l_action: event.target.value || null, l_page: "1" })} placeholder="动作 action" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={lUser} onChange={(event) => setQuery({ l_user: event.target.value || null, l_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={lProject} onChange={(event) => setQuery({ l_project: event.target.value || null, l_page: "1" })} placeholder="projectId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={lError} onChange={(event) => setQuery({ l_error: event.target.value || null, l_page: "1" })} placeholder="errorId / errorCode" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <button type="button" onClick={() => setQuery({ l_status: null, l_type: null, l_action: null, l_user: null, l_project: null, l_error: null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100">
+                清空筛选
+              </button>
+            </div>
+            {lRange === "custom" ? (
+              <div className="mt-2 flex gap-2">
+                <input type="date" value={lStart || ""} onChange={(event) => setQuery({ l_start: event.target.value || null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+                <input type="date" value={lEnd || ""} onChange={(event) => setQuery({ l_end: event.target.value || null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              </div>
+            ) : null}
+
+            <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="min-w-[1200px] w-full text-left text-sm">
+                <thead className="bg-zinc-50 text-zinc-600">
+                  <tr>
+                    {[
+                      { key: "createdAt", label: "时间" },
+                      { key: "userId", label: "用户" },
+                      { key: "projectId", label: "项目" },
+                      { key: "type", label: "类型" },
+                      { key: "action", label: "动作" },
+                      { key: "status", label: "状态" },
+                      { key: "durationMs", label: "耗时" },
+                      { key: "creditDelta", label: "积分变化" },
+                      { key: "errorSummary", label: "错误摘要" },
+                    ].map((item) => (
+                      <th key={item.key} className="px-3 py-2 font-medium">
+                        <button type="button" onClick={() => runSort("l_sort", "l_order", "l_page", lSort, lOrder, item.key)} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                          {item.label}
+                          <ArrowDownUp size={12} />
+                        </button>
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedLogs.pageItems.length ? (
+                    pagedLogs.pageItems.map((item) => (
+                      <tr key={item.id} className="border-t border-zinc-200 align-top">
+                        <td className="px-3 py-2 text-zinc-700">{formatDateTime(item.createdAt)}</td>
+                        <td className="px-3 py-2">
+                          {item.userId ? (
+                            <button type="button" onClick={() => openUserDetail(item.userId || "")} className="text-zinc-900 underline underline-offset-2">
+                              {userMap.get(item.userId || "")?.email || item.userId}
+                            </button>
+                          ) : (
+                            <span className="text-zinc-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.projectId ? (
+                            <button type="button" onClick={() => openProjectDetail(item.projectId || "")} className="text-zinc-900 underline underline-offset-2">
+                              {item.projectId}
+                            </button>
+                          ) : (
+                            <span className="text-zinc-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{item.type}</td>
+                        <td className="px-3 py-2">{item.action}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
+                        </td>
+                        <td className="px-3 py-2">{item.durationMs}ms</td>
+                        <td className={`px-3 py-2 ${item.creditDelta < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                          {item.creditDelta > 0 ? `+${item.creditDelta}` : item.creditDelta}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.errorSummary ? (
+                            <button type="button" onClick={() => setSelectedLogId(item.id)} className="text-left text-red-700 underline underline-offset-2">
+                              {item.errorSummary}
+                            </button>
+                          ) : (
+                            <span className="text-zinc-400">-</span>
+                          )}
+                          {item.errorId ? (
+                            <button type="button" onClick={() => jumpToLogsWithError(item.errorId || "")} className="mt-1 block text-xs text-zinc-500 underline underline-offset-2">
+                              {item.errorId}
+                            </button>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1">
+                            <button type="button" onClick={() => setSelectedLogId(item.id)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                              查看详情
+                            </button>
+                            <button type="button" onClick={() => copyText(item.requestId, "requestId")} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                              复制 requestId
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="px-3 py-10 text-center text-sm text-zinc-500">
+                        当前筛选下没有日志数据。
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={pagedLogs.page} totalPages={pagedLogs.totalPages} total={pagedLogs.total} onPageChange={(next) => setQuery({ l_page: String(next) })} />
+          </section>
+        ) : null}
+
+        {activeTab === "projects" ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-zinc-900">项目管理</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <select value={pRange} onChange={(event) => setQuery({ p_range: event.target.value, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="today">今天</option>
+                <option value="7d">近7天</option>
+                <option value="30d">近30天</option>
+                <option value="custom">自定义</option>
+              </select>
+              <select value={pType} onChange={(event) => setQuery({ p_type: event.target.value || null, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">项目类型</option>
+                <option value="poster">poster</option>
+                <option value="ppt">ppt</option>
+                <option value="video">video</option>
+              </select>
+              <select value={pStatus} onChange={(event) => setQuery({ p_status: event.target.value || null, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">项目状态</option>
+                <option value="draft">draft</option>
+                <option value="generating">generating</option>
+                <option value="completed">completed</option>
+                <option value="failed">failed</option>
+              </select>
+              <input value={pStage} onChange={(event) => setQuery({ p_stage: event.target.value || null, p_page: "1" })} placeholder="当前阶段" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={pText} onChange={(event) => setQuery({ p_text: event.target.value || null, p_page: "1" })} placeholder="文本模型" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={pImage} onChange={(event) => setQuery({ p_image: event.target.value || null, p_page: "1" })} placeholder="图片模型" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={pUser} onChange={(event) => setQuery({ p_user: event.target.value || null, p_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <button type="button" onClick={() => setQuery({ p_type: null, p_status: null, p_stage: null, p_text: null, p_image: null, p_user: null, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 text-sm hover:bg-zinc-100">
+                清空筛选
+              </button>
+            </div>
+            {pRange === "custom" ? (
+              <div className="mt-2 flex gap-2">
+                <input type="date" value={pStart || ""} onChange={(event) => setQuery({ p_start: event.target.value || null, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+                <input type="date" value={pEnd || ""} onChange={(event) => setQuery({ p_end: event.target.value || null, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              </div>
+            ) : null}
+
+            <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="min-w-[1200px] w-full text-left text-sm">
+                <thead className="bg-zinc-50 text-zinc-600">
+                  <tr>
+                    {[
+                      { key: "id", label: "projectId" },
+                      { key: "userId", label: "用户" },
+                      { key: "type", label: "类型" },
+                      { key: "topic", label: "主题" },
+                      { key: "status", label: "状态" },
+                      { key: "stage", label: "当前阶段" },
+                      { key: "textModel", label: "模型" },
+                      { key: "consumedCredits", label: "消耗积分" },
+                      { key: "createdAt", label: "创建时间" },
+                    ].map((item) => (
+                      <th key={item.key} className="px-3 py-2 font-medium">
+                        <button type="button" onClick={() => runSort("p_sort", "p_order", "p_page", pSort, pOrder, item.key)} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                          {item.label}
+                          <ArrowDownUp size={12} />
+                        </button>
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedProjects.pageItems.length ? (
+                    pagedProjects.pageItems.map((item) => (
+                      <tr key={item.id} className="border-t border-zinc-200 align-top">
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => openProjectDetail(item.id)} className="text-zinc-900 underline underline-offset-2">
+                            {item.id}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => openUserDetail(item.userId)} className="text-zinc-900 underline underline-offset-2">
+                            {userMap.get(item.userId)?.email || item.userId}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">{item.type}</td>
+                        <td className="px-3 py-2 text-zinc-700">{item.topic}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
+                        </td>
+                        <td className="px-3 py-2">{item.stage}</td>
+                        <td className="px-3 py-2">
+                          <p>{item.textModel}</p>
+                          <p className="text-xs text-zinc-500">{item.imageModel}</p>
+                        </td>
+                        <td className="px-3 py-2">{item.consumedCredits}</td>
+                        <td className="px-3 py-2">{formatDateTime(item.createdAt)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1">
+                            <button type="button" onClick={() => openProjectDetail(item.id)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                              项目详情
+                            </button>
+                            <button type="button" onClick={() => setQuery({ tab: "logs", l_project: item.id, l_page: "1" })} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                              查看日志
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="px-3 py-10 text-center text-sm text-zinc-500">
+                        当前筛选下没有项目数据。
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={pagedProjects.page} totalPages={pagedProjects.totalPages} total={pagedProjects.total} onPageChange={(next) => setQuery({ p_page: String(next) })} />
+          </section>
+        ) : null}
+
+        {activeTab === "users" ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-zinc-900">用户管理</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <select value={uRange} onChange={(event) => setQuery({ u_range: event.target.value, u_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="today">今日注册</option>
+                <option value="7d">近7天注册</option>
+                <option value="30d">近30天注册</option>
+                <option value="custom">自定义</option>
+              </select>
+              <select value={uSub} onChange={(event) => setQuery({ u_sub: event.target.value || null, u_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">订阅状态</option>
+                <option value="free">free</option>
+                <option value="trial">trial</option>
+                <option value="active">active</option>
+                <option value="past_due">past_due</option>
+                <option value="expired">expired</option>
+              </select>
+              <select value={uStatus} onChange={(event) => setQuery({ u_status: event.target.value || null, u_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">用户状态</option>
+                <option value="active">active</option>
+                <option value="restricted">restricted</option>
+                <option value="frozen">frozen</option>
+              </select>
+              <input value={searchParams.get("u_creditMin") || ""} onChange={(event) => setQuery({ u_creditMin: event.target.value || null, u_page: "1" })} placeholder="最低积分" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={searchParams.get("u_creditMax") || ""} onChange={(event) => setQuery({ u_creditMax: event.target.value || null, u_page: "1" })} placeholder="最高积分" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={searchParams.get("u_projects") || ""} onChange={(event) => setQuery({ u_projects: event.target.value || null, u_page: "1" })} placeholder="项目数 >= n" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={uActive} onChange={(event) => setQuery({ u_active: event.target.value || null, u_page: "1" })} placeholder="最近活跃（天）" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <select value={uFailed} onChange={(event) => setQuery({ u_failed: event.target.value || null, u_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">失败项目</option>
+                <option value="yes">仅有失败项目</option>
+              </select>
+            </div>
+            {uRange === "custom" ? (
+              <div className="mt-2 flex gap-2">
+                <input type="date" value={uStart || ""} onChange={(event) => setQuery({ u_start: event.target.value || null, u_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+                <input type="date" value={uEnd || ""} onChange={(event) => setQuery({ u_end: event.target.value || null, u_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              </div>
+            ) : null}
+
+            <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="min-w-[1200px] w-full text-left text-sm">
+                <thead className="bg-zinc-50 text-zinc-600">
+                  <tr>
+                    {[
+                      { key: "email", label: "email" },
+                      { key: "id", label: "userId" },
+                      { key: "registeredAt", label: "注册时间" },
+                      { key: "subscriptionStatus", label: "订阅状态" },
+                      { key: "creditBalance", label: "剩余积分" },
+                      { key: "creditConsumed", label: "累计消耗" },
+                      { key: "projectCount", label: "项目数" },
+                      { key: "failedProjectCount", label: "失败数" },
+                      { key: "recentActiveAt", label: "最近活跃" },
+                    ].map((item) => (
+                      <th key={item.key} className="px-3 py-2 font-medium">
+                        <button type="button" onClick={() => runSort("u_sort", "u_order", "u_page", uSort, uOrder, item.key)} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                          {item.label}
+                          <ArrowDownUp size={12} />
+                        </button>
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedUsers.pageItems.length ? (
+                    pagedUsers.pageItems.map((item) => (
+                      <tr key={item.id} className="border-t border-zinc-200 align-top">
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => openUserDetail(item.id)} className="text-zinc-900 underline underline-offset-2">
+                            {item.email}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-zinc-700">{item.id}</td>
+                        <td className="px-3 py-2">{formatDateTime(item.registeredAt)}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.subscriptionStatus)}`}>{item.subscriptionStatus}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => setQuery({ tab: "billing", b_view: "credits", b_user: item.id, b_page: "1" })} className="underline underline-offset-2">
+                            {item.creditBalance}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">{item.creditConsumed}</td>
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => setQuery({ tab: "projects", p_user: item.id, p_page: "1" })} className="underline underline-offset-2">
+                            {item.projectCount}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => setQuery({ tab: "logs", l_user: item.id, l_status: "failed", l_page: "1" })} className="underline underline-offset-2 text-red-700">
+                            {item.failedProjectCount}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">{formatDateTime(item.recentActiveAt)}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAdjustCredit({
+                                open: true,
+                                userId: item.id,
+                                adjustmentType: "increase",
+                                amount: "",
+                                reason: "",
+                                projectId: "",
+                                notifyUser: true,
+                              })
+                            }
+                            className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                          >
+                            调整积分
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="px-3 py-10 text-center text-sm text-zinc-500">
+                        当前筛选下没有用户数据。
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={pagedUsers.page} totalPages={pagedUsers.totalPages} total={pagedUsers.total} onPageChange={(next) => setQuery({ u_page: String(next) })} />
+          </section>
+        ) : null}
+
+        {activeTab === "billing" ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-zinc-900">积分与订阅</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <select value={billingView} onChange={(event) => setQuery({ b_view: event.target.value, b_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="credits">积分流水</option>
+                <option value="orders">Stripe 订单</option>
+                <option value="subscriptions">订阅列表</option>
+                <option value="webhooks">Webhook 日志</option>
+                <option value="anomalies">账务异常</option>
+              </select>
+              <input value={bUser} onChange={(event) => setQuery({ b_user: event.target.value || null, b_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={bStatus} onChange={(event) => setQuery({ b_status: event.target.value || null, b_page: "1" })} placeholder="status" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <button type="button" onClick={() => setQuery({ b_user: null, b_status: null, b_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm hover:bg-zinc-100">
+                清空筛选
+              </button>
+            </div>
+
+            {billingView === "credits" ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+                <table className="min-w-[960px] w-full text-left text-sm">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">时间</th>
+                      <th className="px-3 py-2 font-medium">用户</th>
+                      <th className="px-3 py-2 font-medium">类型</th>
+                      <th className="px-3 py-2 font-medium">变化</th>
+                      <th className="px-3 py-2 font-medium">余额</th>
+                      <th className="px-3 py-2 font-medium">关联对象</th>
+                      <th className="px-3 py-2 font-medium">原因</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedCredits.pageItems.length ? (
+                      pagedCredits.pageItems.map((item) => (
+                        <tr key={item.id} className="border-t border-zinc-200">
+                          <td className="px-3 py-2">{formatDateTime(item.createdAt)}</td>
+                          <td className="px-3 py-2">
+                            <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
+                              {item.userId}
                             </button>
                           </td>
+                          <td className="px-3 py-2">{item.type}</td>
+                          <td className={`px-3 py-2 ${item.delta < 0 ? "text-red-700" : "text-emerald-700"}`}>{item.delta > 0 ? `+${item.delta}` : item.delta}</td>
+                          <td className="px-3 py-2">{item.balanceAfter}</td>
+                          <td className="px-3 py-2">
+                            {item.orderId ? (
+                              <button type="button" onClick={() => setSelectedOrderId(item.orderId || "")} className="underline underline-offset-2">
+                                {item.orderId}
+                              </button>
+                            ) : item.projectId ? (
+                              <button type="button" onClick={() => openProjectDetail(item.projectId || "")} className="underline underline-offset-2">
+                                {item.projectId}
+                              </button>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">{item.reason}</td>
                         </tr>
-                      );
-                    })}
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-10 text-center text-sm text-zinc-500">
+                          当前筛选下没有积分流水。
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
+                <div className="p-3">
+                  <Pagination page={pagedCredits.page} totalPages={pagedCredits.totalPages} total={pagedCredits.total} onPageChange={(next) => setQuery({ b_page: String(next) })} />
+                </div>
               </div>
-            )}
+            ) : null}
+
+            {billingView === "orders" ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+                <table className="min-w-[900px] w-full text-left text-sm">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">orderId</th>
+                      <th className="px-3 py-2 font-medium">用户</th>
+                      <th className="px-3 py-2 font-medium">金额</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">套餐</th>
+                      <th className="px-3 py-2 font-medium">时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedOrders.pageItems.length ? (
+                      pagedOrders.pageItems.map((item) => (
+                        <tr key={item.id} className="border-t border-zinc-200">
+                          <td className="px-3 py-2">
+                            <button type="button" onClick={() => setSelectedOrderId(item.id)} className="underline underline-offset-2">
+                              {item.id}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">
+                            <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
+                              {item.userId}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">
+                            {item.amount} {item.currency}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
+                          </td>
+                          <td className="px-3 py-2">{item.plan}</td>
+                          <td className="px-3 py-2">{formatDateTime(item.createdAt)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-10 text-center text-sm text-zinc-500">
+                          当前筛选下没有订单。
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <div className="p-3">
+                  <Pagination page={pagedOrders.page} totalPages={pagedOrders.totalPages} total={pagedOrders.total} onPageChange={(next) => setQuery({ b_page: String(next) })} />
+                </div>
+              </div>
+            ) : null}
+
+            {billingView === "subscriptions" ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+                <table className="min-w-[860px] w-full text-left text-sm">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">subscriptionId</th>
+                      <th className="px-3 py-2 font-medium">用户</th>
+                      <th className="px-3 py-2 font-medium">计划</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">开始</th>
+                      <th className="px-3 py-2 font-medium">续费</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedSubs.pageItems.length ? (
+                      pagedSubs.pageItems.map((item) => (
+                        <tr key={item.id} className="border-t border-zinc-200">
+                          <td className="px-3 py-2">{item.id}</td>
+                          <td className="px-3 py-2">
+                            <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
+                              {item.userId}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">{item.plan}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
+                          </td>
+                          <td className="px-3 py-2">{formatDateOnly(item.startedAt)}</td>
+                          <td className="px-3 py-2">{formatDateOnly(item.renewAt)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-10 text-center text-sm text-zinc-500">
+                          当前筛选下没有订阅数据。
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <div className="p-3">
+                  <Pagination page={pagedSubs.page} totalPages={pagedSubs.totalPages} total={pagedSubs.total} onPageChange={(next) => setQuery({ b_page: String(next) })} />
+                </div>
+              </div>
+            ) : null}
+
+            {billingView === "webhooks" ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+                <table className="min-w-[860px] w-full text-left text-sm">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Webhook ID</th>
+                      <th className="px-3 py-2 font-medium">事件</th>
+                      <th className="px-3 py-2 font-medium">订单</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">错误信息</th>
+                      <th className="px-3 py-2 font-medium">时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedWebhooks.pageItems.length ? (
+                      pagedWebhooks.pageItems.map((item) => (
+                        <tr key={item.id} className="border-t border-zinc-200">
+                          <td className="px-3 py-2">{item.id}</td>
+                          <td className="px-3 py-2">{item.eventType}</td>
+                          <td className="px-3 py-2">
+                            {item.orderId ? (
+                              <button type="button" onClick={() => setSelectedOrderId(item.orderId || "")} className="underline underline-offset-2">
+                                {item.orderId}
+                              </button>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-zinc-700">{item.errorMessage || "-"}</td>
+                          <td className="px-3 py-2">{formatDateTime(item.createdAt)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-10 text-center text-sm text-zinc-500">
+                          当前筛选下没有 webhook 数据。
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <div className="p-3">
+                  <Pagination page={pagedWebhooks.page} totalPages={pagedWebhooks.totalPages} total={pagedWebhooks.total} onPageChange={(next) => setQuery({ b_page: String(next) })} />
+                </div>
+              </div>
+            ) : null}
+
+            {billingView === "anomalies" ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+                <table className="min-w-[1100px] w-full text-left text-sm">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">异常类型</th>
+                      <th className="px-3 py-2 font-medium">摘要</th>
+                      <th className="px-3 py-2 font-medium">用户</th>
+                      <th className="px-3 py-2 font-medium">项目</th>
+                      <th className="px-3 py-2 font-medium">订单</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedAnomalies.pageItems.length ? (
+                      pagedAnomalies.pageItems.map((item) => (
+                        <tr key={item.id} className="border-t border-zinc-200 align-top">
+                          <td className="px-3 py-2">{item.type}</td>
+                          <td className="px-3 py-2 text-zinc-700">{item.summary}</td>
+                          <td className="px-3 py-2">
+                            {item.userId ? (
+                              <button type="button" onClick={() => openUserDetail(item.userId || "")} className="underline underline-offset-2">
+                                {item.userId}
+                              </button>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {item.projectId ? (
+                              <button type="button" onClick={() => openProjectDetail(item.projectId || "")} className="underline underline-offset-2">
+                                {item.projectId}
+                              </button>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {item.orderId ? (
+                              <button type="button" onClick={() => setSelectedOrderId(item.orderId || "")} className="underline underline-offset-2">
+                                {item.orderId}
+                              </button>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-1">
+                              <button type="button" onClick={() => markAnomalyHandled(item)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                                标记已处理
+                              </button>
+                              <button type="button" onClick={() => {
+                                if (item.userId) {
+                                  setAdjustCredit({
+                                    open: true,
+                                    userId: item.userId,
+                                    adjustmentType: "increase",
+                                    amount: "20",
+                                    reason: `Billing anomaly fix ${item.id}`,
+                                    projectId: item.projectId || "",
+                                    notifyUser: true,
+                                  });
+                                }
+                              }} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                                修复积分
+                              </button>
+                              <button type="button" onClick={() => {
+                                const ticket: MockTicket = {
+                                  id: `tk-${idCounterRef.current}`,
+                                  title: `账务异常 ${item.id}`,
+                                  content: item.summary,
+                                  userId: item.userId,
+                                  projectId: item.projectId,
+                                  status: "pending",
+                                  priority: "P1",
+                                  type: "billing",
+                                  assignee: "ops-finance",
+                                  internalNotes: ["由账务异常创建工单"],
+                                  createdAt: new Date().toISOString(),
+                                  updatedAt: new Date().toISOString(),
+                                };
+                                idCounterRef.current += 1;
+                                setData((prev) => ({ ...prev, tickets: [ticket, ...prev.tickets] }));
+                                pushToast("已创建工单");
+                              }} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                                创建工单
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-10 text-center text-sm text-zinc-500">
+                          当前筛选下没有账务异常。
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <div className="p-3">
+                  <Pagination page={pagedAnomalies.page} totalPages={pagedAnomalies.totalPages} total={pagedAnomalies.total} onPageChange={(next) => setQuery({ b_page: String(next) })} />
+                </div>
+              </div>
+            ) : null}
           </section>
+        ) : null}
+
+        {activeTab === "tickets" ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-zinc-900">反馈工单</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <select value={tStatus} onChange={(event) => setQuery({ t_status: event.target.value || null, t_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">状态</option>
+                <option value="pending">待处理</option>
+                <option value="in_progress">处理中</option>
+                <option value="resolved">已解决</option>
+                <option value="closed">已关闭</option>
+                <option value="no_action">无需处理</option>
+              </select>
+              <select value={tPriority} onChange={(event) => setQuery({ t_priority: event.target.value || null, t_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">优先级</option>
+                <option value="P0">P0</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+                <option value="P3">P3</option>
+              </select>
+              <select value={tType} onChange={(event) => setQuery({ t_type: event.target.value || null, t_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">类型</option>
+                <option value="bug">bug</option>
+                <option value="billing">billing</option>
+                <option value="feature">feature</option>
+                <option value="quality">quality</option>
+                <option value="other">other</option>
+              </select>
+              <input value={tUser} onChange={(event) => setQuery({ t_user: event.target.value || null, t_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={tProject} onChange={(event) => setQuery({ t_project: event.target.value || null, t_page: "1" })} placeholder="projectId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={tAssignee} onChange={(event) => setQuery({ t_assignee: event.target.value || null, t_page: "1" })} placeholder="处理人 assignee" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <button type="button" onClick={() => setQuery({ t_status: null, t_priority: null, t_type: null, t_user: null, t_project: null, t_assignee: null, t_page: "1" })} className="h-9 rounded-lg border border-zinc-300 text-sm hover:bg-zinc-100">
+                清空筛选
+              </button>
+            </div>
+            <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="min-w-[1080px] w-full text-left text-sm">
+                <thead className="bg-zinc-50 text-zinc-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">工单</th>
+                    <th className="px-3 py-2 font-medium">状态</th>
+                    <th className="px-3 py-2 font-medium">优先级</th>
+                    <th className="px-3 py-2 font-medium">类型</th>
+                    <th className="px-3 py-2 font-medium">用户</th>
+                    <th className="px-3 py-2 font-medium">项目</th>
+                    <th className="px-3 py-2 font-medium">处理人</th>
+                    <th className="px-3 py-2 font-medium">更新时间</th>
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedTickets.pageItems.length ? (
+                    pagedTickets.pageItems.map((item) => (
+                      <tr key={item.id} className="border-t border-zinc-200">
+                        <td className="px-3 py-2">
+                          <button type="button" onClick={() => setSelectedTicketId(item.id)} className="text-left underline underline-offset-2">
+                            {item.title}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{toTicketStatusLabel(item.status)}</span>
+                        </td>
+                        <td className="px-3 py-2">{item.priority}</td>
+                        <td className="px-3 py-2">{item.type}</td>
+                        <td className="px-3 py-2">
+                          {item.userId ? (
+                            <button type="button" onClick={() => openUserDetail(item.userId || "")} className="underline underline-offset-2">
+                              {item.userId}
+                            </button>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.projectId ? (
+                            <button type="button" onClick={() => openProjectDetail(item.projectId || "")} className="underline underline-offset-2">
+                              {item.projectId}
+                            </button>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{item.assignee}</td>
+                        <td className="px-3 py-2">{formatDateTime(item.updatedAt)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1">
+                            <button type="button" onClick={() => setSelectedTicketId(item.id)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                              详情
+                            </button>
+                            <button type="button" onClick={() => closeTicket(item.id)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                              关闭工单
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={9} className="px-3 py-10 text-center text-sm text-zinc-500">
+                        当前筛选下没有工单数据。
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={pagedTickets.page} totalPages={pagedTickets.totalPages} total={pagedTickets.total} onPageChange={(next) => setQuery({ t_page: String(next) })} />
+          </section>
+        ) : null}
+
+        {activeTab === "cases" ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-zinc-900">案例配置</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <select value={cStatus} onChange={(event) => setQuery({ c_status: event.target.value || null, c_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="">全部状态</option>
+                <option value="online">已上线</option>
+                <option value="offline">已下线</option>
+              </select>
+              <button type="button" onClick={() => {
+                const source = data.projects[0];
+                if (!source) return;
+                const item: MockCaseConfig = {
+                  id: `case-${idCounterRef.current}`,
+                  projectId: source.id,
+                  title: `${source.topic}（复制）`,
+                  description: "从真实项目复制生成的案例",
+                  tags: ["new"],
+                  order: (Math.max(...data.cases.map((row) => row.order), 0) || 0) + 10,
+                  online: false,
+                  coverUrl: "/picture/0207e54b-cd89-4f61-99b2-3d5041609e73.png",
+                };
+                idCounterRef.current += 1;
+                setData((prev) => ({ ...prev, cases: [...prev.cases, item] }));
+                pushToast("已从真实项目复制为案例（mock）");
+              }} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm hover:bg-zinc-100">
+                从真实项目复制案例
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {pagedCases.pageItems.length ? (
+                pagedCases.pageItems.map((item) => (
+                  <article key={item.id} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900">{item.title}</p>
+                        <p className="text-xs text-zinc-500">{item.projectId}</p>
+                      </div>
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${item.online ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-zinc-100 text-zinc-700 border-zinc-200"}`}>
+                        {item.online ? "上线中" : "已下线"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-700">{item.description}</p>
+                    <p className="mt-2 text-xs text-zinc-500">{item.tags.join(" · ")}</p>
+                    <p className="mt-2 text-xs text-zinc-500">排序：{item.order}</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button type="button" onClick={() => moveCase(item.id, "up")} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-white">
+                        上移
+                      </button>
+                      <button type="button" onClick={() => moveCase(item.id, "down")} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-white">
+                        下移
+                      </button>
+                      <button type="button" onClick={() => toggleCaseOnline(item.id)} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-white">
+                        上/下线
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => openProjectDetail(item.projectId)} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-white">
+                        关联项目
+                      </button>
+                      <button type="button" onClick={() => deleteCase(item)} className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-red-700 hover:bg-white">
+                        删除案例
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="col-span-full rounded-xl border border-dashed border-zinc-300 bg-white px-4 py-8 text-center text-sm text-zinc-500">
+                  当前筛选下没有案例数据。
+                </div>
+              )}
+            </div>
+            <Pagination page={pagedCases.page} totalPages={pagedCases.totalPages} total={pagedCases.total} onPageChange={(next) => setQuery({ c_page: String(next) })} />
+          </section>
+        ) : null}
+
+        {activeTab === "settings" ? (
+          <section className="grid gap-4 lg:grid-cols-2">
+            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <p className="text-sm font-semibold text-zinc-900">模型配置</p>
+              <div className="mt-3 space-y-2 text-sm">
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  默认文本模型：<span className="font-medium text-zinc-900">{data.settings.defaultTextModel}</span>
+                </p>
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  默认图片模型：<span className="font-medium text-zinc-900">{data.settings.defaultImageModel}</span>
+                </p>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <p className="text-sm font-semibold text-zinc-900">积分规则</p>
+              <div className="mt-3 space-y-2 text-sm text-zinc-700">
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">Poster 基础扣点：{data.settings.creditRules.posterBase}</p>
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">PPT 单页扣点：{data.settings.creditRules.pptPerPage}</p>
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">Video 单分镜扣点：{data.settings.creditRules.videoPerFrame}</p>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <p className="text-sm font-semibold text-zinc-900">管理员权限</p>
+              <div className="mt-3 space-y-2 text-sm">
+                {data.settings.adminRoles.map((item) => (
+                  <div key={`${item.userId}-${item.role}`} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                    <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
+                      {item.userId}
+                    </button>
+                    <span className="uppercase text-zinc-600">{item.role}</span>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <p className="text-sm font-semibold text-zinc-900">系统开关</p>
+              <div className="mt-3 space-y-2 text-sm">
+                {[
+                  { key: "pauseImageGeneration", label: "暂停图片生成" },
+                  { key: "pausePptExport", label: "暂停 PPT 导出" },
+                  { key: "pauseVideoGeneration", label: "暂停视频生成" },
+                  { key: "maintenanceMode", label: "维护模式" },
+                ].map((item) => {
+                  const active = data.settings.switches[item.key as keyof AdminConsoleData["settings"]["switches"]];
+                  return (
+                    <div key={item.key} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                      <p className="text-zinc-700">{item.label}</p>
+                      <button
+                        type="button"
+                        onClick={() => toggleSystemSwitch(item.key as keyof AdminConsoleData["settings"]["switches"])}
+                        className={`inline-flex h-7 items-center rounded-full border px-3 text-xs ${active ? "border-amber-300 bg-amber-50 text-amber-700" : "border-zinc-300 bg-white text-zinc-600"}`}
+                      >
+                        {active ? "已开启" : "已关闭"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          </section>
+        ) : null}
+      </div>
+
+      <Drawer open={Boolean(selectedLog)} title={`日志详情 ${selectedLog?.id ?? ""}`} onClose={() => setSelectedLogId("")}>
+        {selectedLog ? (
+          <>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
+              <p className="font-medium text-zinc-900">{selectedLog.type} / {selectedLog.action}</p>
+              <p className="mt-1 text-zinc-600">
+                requestId：
+                <button type="button" onClick={() => copyText(selectedLog.requestId, "requestId")} className="underline underline-offset-2">
+                  {selectedLog.requestId}
+                </button>
+              </p>
+              {selectedLog.errorId ? (
+                <p className="mt-1 text-zinc-600">
+                  errorId：
+                  <button type="button" onClick={() => jumpToLogsWithError(selectedLog.errorId || "")} className="underline underline-offset-2 text-red-700">
+                    {selectedLog.errorId}
+                  </button>
+                </p>
+              ) : null}
+              <p className="mt-1 text-zinc-600">状态：{selectedLog.status}</p>
+              <p className="mt-1 text-zinc-600">时间：{formatDateTime(selectedLog.createdAt)}</p>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
+              <p className="text-sm font-medium text-zinc-900">关联对象</p>
+              <div className="text-sm text-zinc-700">
+                <p>
+                  用户：
+                  {selectedLog.userId ? (
+                    <button type="button" onClick={() => openUserDetail(selectedLog.userId || "")} className="underline underline-offset-2">
+                      {selectedLog.userId}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </p>
+                <p>
+                  项目：
+                  {selectedLog.projectId ? (
+                    <button type="button" onClick={() => openProjectDetail(selectedLog.projectId || "")} className="underline underline-offset-2">
+                      {selectedLog.projectId}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </p>
+                <p>
+                  订单：
+                  {selectedLog.relatedOrderId ? (
+                    <button type="button" onClick={() => setSelectedOrderId(selectedLog.relatedOrderId || "")} className="underline underline-offset-2">
+                      {selectedLog.relatedOrderId}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-zinc-200 p-3">
+              <p className="text-sm font-medium text-zinc-900">请求配置</p>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">{selectedLog.configSnapshot}</pre>
+            </div>
+
+            <div className="rounded-xl border border-zinc-200 p-3">
+              <p className="text-sm font-medium text-zinc-900">链路状态</p>
+              <p className="mt-2 text-sm text-zinc-700">{selectedLog.pipelineState}</p>
+            </div>
+
+            {selectedLog.errorSummary ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <p className="font-medium">错误信息</p>
+                <p className="mt-1">{selectedLog.errorSummary}</p>
+                <p className="mt-1 text-xs">{selectedLog.errorCode || "-"}</p>
+              </div>
+            ) : null}
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => copyText(JSON.stringify(selectedLog, null, 2), "完整日志")} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                复制完整日志
+              </button>
+              <button type="button" onClick={() => copyText(selectedLog.requestId, "requestId")} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                复制 requestId
+              </button>
+              <button type="button" onClick={() => retryFromLog(selectedLog)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                重试当前步骤
+              </button>
+              <button type="button" onClick={() => refundFromLog(selectedLog)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                退还积分
+              </button>
+              <button type="button" onClick={() => createTicketFromLog(selectedLog)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                创建反馈工单
+              </button>
+              <button type="button" onClick={() => markLogHandled(selectedLog.id)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                标记已处理
+              </button>
+            </div>
+          </>
+        ) : null}
+      </Drawer>
+
+      <Drawer open={Boolean(selectedOrder)} title={`订单详情 ${selectedOrder?.id ?? ""}`} onClose={() => setSelectedOrderId("")}>
+        {selectedOrder ? (
+          <>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
+              <p className="font-medium text-zinc-900">{selectedOrder.id}</p>
+              <p className="mt-1 text-zinc-600">
+                用户：
+                <button type="button" onClick={() => openUserDetail(selectedOrder.userId)} className="underline underline-offset-2">
+                  {selectedOrder.userId}
+                </button>
+              </p>
+              <p className="mt-1 text-zinc-600">计划：{selectedOrder.plan}</p>
+              <p className="mt-1 text-zinc-600">
+                金额：{selectedOrder.amount} {selectedOrder.currency}
+              </p>
+              <p className="mt-1 text-zinc-600">状态：{selectedOrder.status}</p>
+              <p className="mt-1 text-zinc-600">时间：{formatDateTime(selectedOrder.createdAt)}</p>
+              <p className="mt-1 text-zinc-600">stripe event：{selectedOrder.stripeEventId}</p>
+            </div>
+            <button type="button" onClick={() => copyText(JSON.stringify(selectedOrder, null, 2), "订单详情")} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+              复制订单详情
+            </button>
+          </>
+        ) : null}
+      </Drawer>
+
+      <Drawer open={Boolean(selectedTicket)} title={`工单详情 ${selectedTicket?.id ?? ""}`} onClose={() => setSelectedTicketId("")}>
+        {selectedTicket ? (
+          <>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
+              <p className="font-medium text-zinc-900">{selectedTicket.title}</p>
+              <p className="mt-1 text-zinc-700">{selectedTicket.content}</p>
+              <p className="mt-2 text-zinc-600">优先级：{selectedTicket.priority}</p>
+              <p className="mt-1 text-zinc-600">状态：{toTicketStatusLabel(selectedTicket.status)}</p>
+              <p className="mt-1 text-zinc-600">类型：{selectedTicket.type}</p>
+              <p className="mt-1 text-zinc-600">处理人：{selectedTicket.assignee}</p>
+            </div>
+
+            <div className="rounded-xl border border-zinc-200 p-3 text-sm text-zinc-700">
+              <p>关联用户：
+                {selectedTicket.userId ? (
+                  <button type="button" onClick={() => openUserDetail(selectedTicket.userId || "")} className="ml-1 underline underline-offset-2">
+                    {selectedTicket.userId}
+                  </button>
+                ) : (
+                  <span className="ml-1">-</span>
+                )}
+              </p>
+              <p className="mt-1">关联项目：
+                {selectedTicket.projectId ? (
+                  <button type="button" onClick={() => openProjectDetail(selectedTicket.projectId || "")} className="ml-1 underline underline-offset-2">
+                    {selectedTicket.projectId}
+                  </button>
+                ) : (
+                  <span className="ml-1">-</span>
+                )}
+              </p>
+              <p className="mt-1">关联日志：
+                {selectedTicket.logId ? (
+                  <button type="button" onClick={() => setSelectedLogId(selectedTicket.logId || "")} className="ml-1 underline underline-offset-2">
+                    {selectedTicket.logId}
+                  </button>
+                ) : (
+                  <span className="ml-1">-</span>
+                )}
+              </p>
+              <p className="mt-1">关联积分流水：{selectedTicket.creditRecordId || "-"}</p>
+            </div>
+
+            <div className="rounded-xl border border-zinc-200 p-3 text-sm">
+              <p className="font-medium text-zinc-900">处理记录 / 备注</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
+                {selectedTicket.internalNotes.map((note, idx) => (
+                  <li key={`${selectedTicket.id}-note-${idx}`}>{note}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <select
+                value={selectedTicket.status}
+                onChange={(event) => {
+                  const next = event.target.value as MockTicketStatus;
+                  setData((prev) => ({
+                    ...prev,
+                    tickets: prev.tickets.map((item) =>
+                      item.id === selectedTicket.id ? { ...item, status: next, updatedAt: new Date().toISOString() } : item,
+                    ),
+                  }));
+                  pushToast("工单状态已更新");
+                }}
+                className="h-9 w-full rounded-lg border border-zinc-300 px-2 text-sm"
+              >
+                <option value="pending">待处理</option>
+                <option value="in_progress">处理中</option>
+                <option value="resolved">已解决</option>
+                <option value="closed">已关闭</option>
+                <option value="no_action">无需处理</option>
+              </select>
+              <button type="button" onClick={() => closeTicket(selectedTicket.id)} className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100">
+                关闭工单
+              </button>
+            </div>
+          </>
+        ) : null}
+      </Drawer>
+
+      {adjustCredit.open ? (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
+            <h3 className="text-base font-semibold text-zinc-900">调整积分</h3>
+            <p className="mt-1 text-sm text-zinc-600">危险操作：将写入积分流水，建议核对用户和原因。</p>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <select value={adjustCredit.adjustmentType} onChange={(event) => setAdjustCredit((prev) => ({ ...prev, adjustmentType: event.target.value as "increase" | "decrease" }))} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
+                <option value="increase">增加积分</option>
+                <option value="decrease">扣减积分</option>
+              </select>
+              <input value={adjustCredit.amount} onChange={(event) => setAdjustCredit((prev) => ({ ...prev, amount: event.target.value }))} placeholder="积分数量" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={adjustCredit.reason} onChange={(event) => setAdjustCredit((prev) => ({ ...prev, reason: event.target.value }))} placeholder="原因（必填）" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm sm:col-span-2" />
+              <input value={adjustCredit.projectId} onChange={(event) => setAdjustCredit((prev) => ({ ...prev, projectId: event.target.value }))} placeholder="关联 projectId（可选）" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm sm:col-span-2" />
+              <label className="inline-flex items-center gap-2 text-sm text-zinc-700 sm:col-span-2">
+                <input type="checkbox" checked={adjustCredit.notifyUser} onChange={(event) => setAdjustCredit((prev) => ({ ...prev, notifyUser: event.target.checked }))} />
+                是否通知用户
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setAdjustCredit((prev) => ({ ...prev, open: false }))} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm hover:bg-zinc-100">
+                取消
+              </button>
+              <button type="button" onClick={submitAdjustCredit} className="h-9 rounded-lg bg-zinc-900 px-3 text-sm text-white hover:bg-zinc-700">
+                提交调整
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmDialog state={confirmDialog} onCancel={() => setConfirmDialog((prev) => ({ ...prev, open: false, onConfirm: null }))} />
+
+      {toasts.length ? (
+        <div className="pointer-events-none fixed right-5 top-5 z-[80] space-y-2">
+          {toasts.map((item) => (
+            <div key={item.id} className="rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white shadow-lg">
+              {item.message}
+            </div>
+          ))}
         </div>
       ) : null}
     </AdminShell>

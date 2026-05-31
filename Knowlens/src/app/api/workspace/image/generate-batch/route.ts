@@ -61,10 +61,35 @@ type GenerateBatchPayload = {
       mainVisual?: string;
       composition?: string;
       textDensity?: string;
+      informationStructure?: string;
+      pageRole?:
+        | "cover"
+        | "mechanism"
+        | "layered-diagram"
+        | "comparison"
+        | "misconception-fact"
+        | "checklist"
+        | "system-model";
       mapRegion?: string;
       chartType?: string;
       workflowType?: string;
     };
+    textStrategy?: {
+      mode?: "strict" | "guided" | "minimal";
+      titleIdea?: string;
+      keyConcepts?: string[];
+      language?: string;
+      density?: "low" | "medium" | "high" | string;
+      allowRewrite?: boolean;
+    };
+    pageRole?:
+      | "cover"
+      | "mechanism"
+      | "layered-diagram"
+      | "comparison"
+      | "misconception-fact"
+      | "checklist"
+      | "system-model";
     factualRules?: string[];
     negativeRules?: string[];
     visualHint?: string;
@@ -85,6 +110,14 @@ const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CAL
 const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "300000", 10);
 const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "150000", 10);
 const PROMPT_MAX_CHARS = Number.parseInt(process.env.IMAGE2_PROMPT_MAX_CHARS || "2000", 10);
+const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
+
+function logWorkspaceFlowAudit(payload: Record<string, unknown>) {
+  if (!WORKSPACE_FLOW_AUDIT) {
+    return;
+  }
+  console.info("[WorkspaceFlowAudit]", payload);
+}
 
 function getScopeFromRequest(req: NextRequest, email: string) {
   const forwardedFor = req.headers.get("x-forwarded-for") ?? "";
@@ -154,6 +187,15 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
   const mainVisual = compactPromptText(task.visualDesign?.mainVisual || "", 180);
   const composition = compactPromptText(task.visualDesign?.composition || "", 180);
   const textDensity = compactPromptText(task.visualDesign?.textDensity || "", 24);
+  const informationStructure = compactPromptText(task.visualDesign?.informationStructure || "", 80);
+  const pageRole = compactPromptText(task.pageRole || task.visualDesign?.pageRole || "", 24) || "mechanism";
+  const textMode = compactPromptText(task.textStrategy?.mode || "", 20) || "guided";
+  const textTitleIdea = compactPromptText(task.textStrategy?.titleIdea || "", 80);
+  const textConcepts = Array.isArray(task.textStrategy?.keyConcepts)
+    ? task.textStrategy?.keyConcepts.map((item) => compactPromptText(String(item || ""), 40)).filter(Boolean).slice(0, 5).join(" | ")
+    : "";
+  const textLanguage = compactPromptText(task.textStrategy?.language || "", 40) || "Simplified Chinese";
+  const textAllowRewrite = task.textStrategy?.allowRewrite;
   const draftHint = compactPromptText(task.imagePromptDraft || "", 220);
   const factualRules = Array.isArray(task.factualRules)
     ? task.factualRules.map((item) => compactPromptText(String(item || ""), 80)).filter(Boolean).join(" | ")
@@ -167,13 +209,25 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
     stylePrompt ? `Style direction: ${stylePrompt}` : "",
     title ? `Topic: ${title}` : "",
     contentBody ? `Core message: ${contentBody}` : "",
+    `Page role: ${pageRole}.`,
+    "Prefer structured infographic layout over scenic artwork unless explicitly requested.",
+    "Focus on mechanism visualization, comparison cards, variable framework, clear arrows, whitespace, and readable hierarchy.",
     visibleTitle ? `Visible title: ${visibleTitle}` : "",
     visibleSubtitle ? `Visible subtitle: ${visibleSubtitle}` : "",
     visibleLabels ? `Visible labels: ${visibleLabels}` : "",
     layout ? `Layout: ${layout}` : "",
     mainVisual ? `Main visual: ${mainVisual}` : "",
     composition ? `Composition: ${composition}` : "",
+    informationStructure ? `Information structure: ${informationStructure}` : "",
     textDensity ? `Text density: ${textDensity}` : "",
+    `Text strategy mode: ${textMode}.`,
+    textMode === "guided"
+      ? `Use concise ${textLanguage} labels around key concepts. Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity; do not add fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`
+      : textMode === "strict"
+        ? "Use provided visible text exactly when present; do not invent extra labels."
+        : "Use minimal on-image text; keep labels extremely short only when needed.",
+    textTitleIdea ? `Text title idea: ${textTitleIdea}` : "",
+    textConcepts ? `Text key concepts: ${textConcepts}` : "",
     draftHint ? `Draft visual hint (reference only): ${draftHint}` : "",
     factualRules ? `Factual rules: ${factualRules}` : "",
     negativeRules ? `Negative rules: ${negativeRules}` : "",
@@ -568,6 +622,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid generation payload." }, { status: 400 });
     }
 
+    logWorkspaceFlowAudit({
+      stage: "8.backend-generate-batch-receive",
+      status: "received",
+      decision: "parse-request-payload",
+      reason: "request-json-parsed",
+      keyFields: {
+        projectId: payload.projectId || null,
+        runId: payload.runId || null,
+        idempotencyKey: payload.idempotencyKey || null,
+        taskCount: Array.isArray(payload.tasks) ? payload.tasks.length : 0,
+      },
+    });
+
     const normalizedTasks = normalizeTasksFromPayload(payload);
     if (!normalizedTasks.length) {
       return NextResponse.json(
@@ -578,6 +645,19 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    logWorkspaceFlowAudit({
+      stage: "8.backend-generate-batch-validate",
+      status: "accepted",
+      decision: "normalized-tasks-ready",
+      reason: "payload-valid",
+      keyFields: {
+        projectId: payload.projectId || null,
+        runId: payload.runId || null,
+        normalizedTaskCount: normalizedTasks.length,
+        normalizedTaskIndexes: normalizedTasks.map((task) => task.index),
+        provider: "tuzi",
+      },
+    });
 
     const imageGenerationMode = resolveImageGenerationMode(request);
     if (process.env.NODE_ENV === "production" && imageGenerationMode === "mock") {
@@ -672,6 +752,19 @@ export async function POST(request: NextRequest) {
         })),
       });
     }
+
+    logWorkspaceFlowAudit({
+      stage: "8.backend-generate-batch-mode",
+      status: "running",
+      decision: "real-generation",
+      reason: "imageGenerationMode=real",
+      keyFields: {
+        projectId: payload.projectId || null,
+        runId: generationRunId,
+        imageGenerationMode,
+        providerPolicy,
+      },
+    });
     if (idempotencyKey) {
       const existingJob = await findImageGenerationJobByIdempotency({
         userEmail: email,
@@ -880,6 +973,22 @@ export async function POST(request: NextRequest) {
       const generated = generatedByPolicy.result;
       const providerUsed = generatedByPolicy.providerUsed || defaultProvider;
 
+      logWorkspaceFlowAudit({
+        stage: "8.backend-provider-call",
+        status: generated.ok ? "provider-ok" : "provider-failed",
+        decision: "request-tuzi",
+        reason: generated.ok ? "provider-returned-image-url" : "provider-failure",
+        keyFields: {
+          projectId: payload.projectId || null,
+          runId: generationRunId,
+          taskId: task.id,
+          taskIndex: task.taskIndex,
+          providerUsed,
+          errorCode: generated.ok ? null : generated.errorCode || null,
+          rawImageUrl: generated.ok ? generated.imageUrl || null : null,
+        },
+      });
+
       if (!generated.ok) {
         await updateImageGenerationTask({
           taskId: task.id,
@@ -937,6 +1046,23 @@ export async function POST(request: NextRequest) {
           timeoutMs: assetDownloadTimeoutMs,
         });
         const renderUrl = persisted.renderUrl || buildImageRenderUrl(task.id, Date.now());
+        logWorkspaceFlowAudit({
+          stage: "9.backend-asset-persist",
+          status: "persist-ok",
+          decision: "convert-raw-to-render-url",
+          reason: "asset-persisted",
+          keyFields: {
+            projectId: payload.projectId || null,
+            runId: generationRunId,
+            taskId: task.id,
+            taskIndex: task.taskIndex,
+            rawImageUrl: generated.imageUrl,
+            renderUrl,
+            mimeType: persisted.mimeType || null,
+            byteLength: persisted.byteLength || null,
+            storageKey: persisted.storageKey || persisted.assetPath || null,
+          },
+        });
         await updateImageGenerationTask({
           taskId: task.id,
           status: "asset_ready",
@@ -988,6 +1114,20 @@ export async function POST(request: NextRequest) {
           rawImageUrl: generated.imageUrl,
           errorCode: mappedCode,
           errorMessage: message,
+        });
+        logWorkspaceFlowAudit({
+          stage: "9.backend-asset-persist",
+          status: "persist-failed",
+          decision: "task-failed",
+          reason: mappedCode,
+          keyFields: {
+            projectId: payload.projectId || null,
+            runId: generationRunId,
+            taskId: task.id,
+            taskIndex: task.taskIndex,
+            rawImageUrl: generated.imageUrl,
+            error: message,
+          },
         });
         logOpsEvent({
           category: "image",
@@ -1065,6 +1205,20 @@ export async function POST(request: NextRequest) {
         { status: allStorageNotConfigured ? 503 : 502 },
       );
     }
+
+    logWorkspaceFlowAudit({
+      stage: "8.backend-generate-batch-complete",
+      status: "ok",
+      decision: "return-success-response",
+      reason: "at-least-one-success",
+      keyFields: {
+        projectId: payload.projectId || null,
+        runId: generationRunId,
+        successCount,
+        totalCount: resultTasks.length,
+        returnedTaskIndexes: resultTasks.map((task) => task.taskIndex),
+      },
+    });
 
     return NextResponse.json({
       ok: true,

@@ -21,6 +21,7 @@ Last updated: 2026-05-28
 - [ ] All required variables filled for target environment
 - [ ] No placeholder values (`replace-with-*`, `your_*`)
 - [ ] Google OAuth callback URL matches environment domain
+- [ ] Production uses apex callback only: `https://knowlens.ai/api/auth/callback/google` (no `www`)
 - [ ] Stripe keys and Price IDs are in correct mode (test/live)
 - [ ] Image2 endpoint/key/model are valid
 - [ ] Paid LLM + Free LLM keys both configured
@@ -135,4 +136,3 @@ Rollback actions:
 1. Disable canary traffic / revert deployment
 2. Keep payment pages accessible if possible, block new generation only if needed
 3. Post incident note with error code and affected window
-

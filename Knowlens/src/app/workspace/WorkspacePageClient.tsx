@@ -49,6 +49,7 @@ import {
   type VisualDesign,
   type SeriesStyle,
 } from "@/lib/workspace/generation-compiler";
+import { buildTuziImagePrompt } from "@/lib/workspace/tuzi-image";
 
 type HomeSourceKind = "file" | "web" | "youtube" | "podcast";
 type HomeSourceItem = {
@@ -115,6 +116,14 @@ type PosterPlanItem = {
   imagePromptDraft?: string;
 };
 
+type DraftLlmUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  source?: "provider" | "estimated";
+  model?: string;
+};
+
 type FlowStage = "intent" | "config" | "content" | "style" | "billing" | "generate";
 
 type ParsedContentEditCommand = {
@@ -166,6 +175,22 @@ type ImageGenerationTask = {
   factualRules: string[];
   negativeRules: string[];
   seriesStyle: SeriesStyle;
+  pageRole?:
+    | "cover"
+    | "mechanism"
+    | "layered-diagram"
+    | "comparison"
+    | "misconception-fact"
+    | "checklist"
+    | "system-model";
+  textStrategy?: {
+    mode: "strict" | "guided" | "minimal";
+    titleIdea?: string;
+    keyConcepts?: string[];
+    language: string;
+    density: "low" | "medium" | "high";
+    allowRewrite: boolean;
+  };
   visualHint: string;
   imagePromptDraft: string;
   composedPrompt: string;
@@ -240,6 +265,7 @@ type ImageGenerateBatchResponse = {
 type StructuredWorkspaceError = {
   userMessage: string;
   code?: string;
+  authRequired?: boolean;
 };
 
 const HOME_DRAFT_KEY = "knowlens-home-draft";
@@ -254,6 +280,20 @@ const GENERATION_UI_HARD_TIMEOUT_MS = 450000;
 const DEBUG_IMAGE_BRIDGE_MOCK_URL =
   "https://apioss20.sydney-ai.com/img/174/t9il_0UNjpQmjxFqjxQAjxQnfx1m10kNt7TgYsFuksWxtvFN1a_ljpMm1xkmXaMV1aklX5oItaMm10ezjaQlX9hnX0-u1a_q103lX01TXpQAX4Tgkx1qfv24kAVmR8_=/gi2007i-144x144-1780044357126-ab388bbc.png";
 const WORKSPACE_IMAGE_DEBUG = process.env.NODE_ENV === "development";
+const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
+const initializedWorkspaceScopeKeys = new Set<string>();
+const AUTH_REQUIRED_PATTERNS = [
+  /please sign in/i,
+  /sign[-\s]?in required/i,
+  /auth required/i,
+  /unauthorized/i,
+  /\b401\b/,
+];
+const REQUEST_GUARD_SIGNIN_PATTERN = /please sign in before sending chat requests\./i;
+const LLM_SIGNIN_ERROR_PATTERN = /language model draft generation failed\..*please sign in/i;
+const SOURCE_EVIDENCE_MAX_TOTAL_CHARS = 1600;
+const SOURCE_EVIDENCE_MAX_PER_SOURCE_CHARS = 420;
+const SOURCE_EVIDENCE_MAX_POINTS_PER_SOURCE = 5;
 
 function logWorkspaceImageDebug(message: string, payload: Record<string, unknown>) {
   if (!WORKSPACE_IMAGE_DEBUG) {
@@ -267,6 +307,122 @@ function logGenerationCacheGuard(message: string, payload: Record<string, unknow
     return;
   }
   console.info(`[GenerationCacheGuard] ${message}`, payload);
+}
+
+function logWorkspaceFlowAudit(payload: Record<string, unknown>) {
+  if (!WORKSPACE_FLOW_AUDIT) {
+    return;
+  }
+  console.info("[WorkspaceFlowAudit]", payload);
+}
+
+function isAuthRequiredErrorMessage(message: string) {
+  const normalized = (message || "").trim();
+  if (!normalized) {
+    return false;
+  }
+  return AUTH_REQUIRED_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function isAuthRelatedLlmErrorTurn(turn: ChatTurn) {
+  if (turn.meta?.kind !== "llm_error") {
+    return false;
+  }
+  return isAuthRequiredErrorMessage(turn.content) || LLM_SIGNIN_ERROR_PATTERN.test(turn.content);
+}
+
+function sanitizeAuthRelatedChatTurns(turns: ChatTurn[]) {
+  const withoutAuthLlmErrors = turns.filter((turn) => !isAuthRelatedLlmErrorTurn(turn));
+  const dedupedGuardTurns: ChatTurn[] = [];
+  let hasSignInGuard = false;
+  for (let i = 0; i < withoutAuthLlmErrors.length; i += 1) {
+    const turn = withoutAuthLlmErrors[i];
+    if (
+      turn.role === "assistant" &&
+      turn.module === "Request Guard" &&
+      REQUEST_GUARD_SIGNIN_PATTERN.test(turn.content)
+    ) {
+      if (hasSignInGuard) {
+        continue;
+      }
+      hasSignInGuard = true;
+    }
+    dedupedGuardTurns.push(turn);
+  }
+  return dedupedGuardTurns;
+}
+
+function normalizeEvidenceSentence(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function extractEvidencePoints(rawText: string, maxCount: number) {
+  const chunks = rawText
+    .replace(/\r/g, "\n")
+    .split(/[\n。！？!?；;]+/g)
+    .map((item) => normalizeEvidenceSentence(item))
+    .filter((item) => item.length >= 10)
+    .slice(0, 120);
+  const scored = chunks.map((text, idx) => {
+    let score = 0;
+    if (/\d/.test(text)) {
+      score += 3;
+    }
+    if (/%|亿元|万美元|km|kg|°c|m\/s|年|月|日|小时|分钟/i.test(text)) {
+      score += 2;
+    }
+    if (/因为|导致|影响|趋势|变化|增长|下降|机制|原因|结论|risk|impact|trend|cause/i.test(text)) {
+      score += 2;
+    }
+    if (text.length >= 18 && text.length <= 100) {
+      score += 1;
+    }
+    return { text, score, idx };
+  });
+  scored.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return a.idx - b.idx;
+  });
+  const selected: string[] = [];
+  for (const row of scored) {
+    if (selected.length >= maxCount) {
+      break;
+    }
+    const candidate = row.text.slice(0, 140);
+    if (!candidate) {
+      continue;
+    }
+    if (selected.includes(candidate)) {
+      continue;
+    }
+    selected.push(candidate);
+  }
+  return selected;
+}
+
+function buildSourceEvidencePack(sources: HomeSourceItem[]) {
+  const sections: string[] = [];
+  for (let i = 0; i < sources.length; i += 1) {
+    const source = sources[i];
+    const sourceText = (source.contentText || source.excerpt || "").trim();
+    if (!sourceText) {
+      continue;
+    }
+    const points = extractEvidencePoints(sourceText, SOURCE_EVIDENCE_MAX_POINTS_PER_SOURCE);
+    if (!points.length) {
+      continue;
+    }
+    const title = `Source ${i + 1} (${source.kind} · ${source.name}):`;
+    const body = points.map((item) => `- ${item}`).join("\n");
+    const section = `${title}\n${body}`.slice(0, SOURCE_EVIDENCE_MAX_PER_SOURCE_CHARS);
+    sections.push(section);
+    if (sections.join("\n\n").length >= SOURCE_EVIDENCE_MAX_TOTAL_CHARS) {
+      break;
+    }
+  }
+  return sections.join("\n\n").slice(0, SOURCE_EVIDENCE_MAX_TOTAL_CHARS).trim();
 }
 
 function normalizeIdempotencySegment(value: string | null | undefined, fallback: string) {
@@ -343,6 +499,14 @@ function appendKnowLensRenderAttemptToken(imageUrl: string, token: string) {
   }
 }
 
+function isMockAssetRenderUrl(imageUrl?: string | null) {
+  const value = (imageUrl || "").trim().toLowerCase();
+  if (!value) {
+    return false;
+  }
+  return value.includes("mock-imgtask-") || value.includes("v=mock");
+}
+
 function createGenerationRunId() {
   return `run-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
 }
@@ -391,9 +555,9 @@ const styleOptions = [
     id: "clean-science-infographic",
     name: "简洁科普信息图风",
     englishName: "Clean Science Infographic",
-    fit: "Clear structure and high readability, ideal for mechanism explainers and general science topics.",
+    fit: "Precise and polished scientific infographic style for broad educational explainers.",
     prompt:
-      "Clean scientific infographic aesthetic, bright neutral canvas, disciplined visual hierarchy, precise spacing system, restrained color contrast, crisp line quality, subtle depth separation, modular composition, high legibility, modern editorial clarity, polished professional finish.",
+      "Clean scientific infographic style with precise simplified diagrams, restrained colors, crisp vector shapes, clear arrows, subtle gradients, accurate educational icons, and polished scientific clarity.",
     suitableTopics: "通用科普、自然科学、物理、地理、人体、机制解释",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["科普", "自然", "物理", "地理", "人体", "机制", "原理", "解释"],
@@ -402,11 +566,11 @@ const styleOptions = [
   },
   {
     id: "youtube-science-thumbnail",
-    name: "大主体科普封面风",
-    englishName: "Hero Science Cover Style",
-    fit: "High-impact visual style, ideal for trending topics and attention-grabbing distribution.",
+    name: "科学剖面结构图风",
+    englishName: "Scientific Cutaway Diagram",
+    fit: "Textbook-like cutaway clarity for layered structures and mechanism internals.",
     prompt:
-      "Hero-cover visual direction, high-impact focal emphasis, cinematic contrast control, dramatic but clean tonal separation, bold negative space strategy, premium depth rendering, concise headline-safe layout zone, striking first-screen presence, polished contemporary finish.",
+      "Scientific cutaway diagram style with clear structural cross-sections, layered depth, accurate simplified components, clean labels, spatial explanation, and textbook-quality diagram clarity.",
     suitableTopics: "宇宙、AI、深海、灾难、人体、科技热点",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
@@ -416,10 +580,10 @@ const styleOptions = [
   {
     id: "cinematic-science-illustration",
     name: "电影级科普视觉风",
-    englishName: "Cinematic Science Illustration",
-    fit: "Immersive cinematic atmosphere, ideal for space, disaster, and large-scale science themes.",
+    englishName: "Cinematic Science Visual",
+    fit: "Dramatic but controlled science storytelling with explanatory overlays.",
     prompt:
-      "Cinematic scientific illustration direction, high-detail realism, atmospheric depth grading, dramatic light shaping, premium documentary-like finish, controlled dynamic range, elegant contrast transitions, immersive but clean composition, visually powerful professional polish.",
+      "Cinematic science visual style with dramatic but controlled lighting, realistic atmosphere, strong subject presence, documentary-quality composition, and educational visual overlays. Keep it explanatory and scientific, not like a disaster movie poster.",
     suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
@@ -428,11 +592,11 @@ const styleOptions = [
   },
   {
     id: "minimal-line-art",
-    name: "极简线稿风",
-    englishName: "Minimal Line Art",
-    fit: "Minimal linework with generous whitespace, ideal for core concepts and structural explanations.",
+    name: "极简扁平讲解风",
+    englishName: "Minimal Flat Explainer",
+    fit: "Simple geometric clarity and clean hierarchy for direct concept teaching.",
     prompt:
-      "Minimal line-art system, ultra-clean monochrome discipline, fine contour precision, generous negative space, low-noise layout, subtle tonal hierarchy, technical calmness, lightweight visual density, balanced geometric rhythm, understated professional clarity.",
+      "Minimal flat explainer style with simple geometric shapes, clean iconography, soft modern colors, clear hierarchy, uncluttered layout, and direct concept visualization.",
     suitableTopics: "基础概念、产品说明、AI原理、简单科学机制",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["基础", "概念", "产品", "ai原理", "机制", "结构", "说明"],
@@ -441,24 +605,24 @@ const styleOptions = [
   },
   {
     id: "hand-drawn-explainer",
-    name: "手绘教学风",
-    englishName: "Hand-drawn Explainer Style",
-    fit: "Friendly and approachable, ideal for kids and beginner-friendly educational content.",
+    name: "数据商业编辑风",
+    englishName: "Data Business Editorial Style",
+    fit: "Refined analytical infographic style for business, policy, and trend narratives.",
     prompt:
-      "Hand-drawn explainer aesthetic, organic stroke character, soft texture feel, approachable visual tone, loose-but-structured composition rhythm, warm contrast profile, lightweight annotation style, humanized educational polish, clean readability with relaxed visual energy.",
-    suitableTopics: "儿童科普、生活常识、健康知识、基础物理、心理学",
+      "Data-driven business editorial infographic style with refined charts, clean comparison modules, restrained colors, elegant typography, clear hierarchy, and professional analytical tone. Avoid flashy trading-dashboard aesthetics, excessive glow, and fake financial data.",
+    suitableTopics: "商业分析、经济趋势、政策解读、产业研究、社会议题",
     carrierPriority: ["video", "ppt", "poster"],
-    topicKeywords: ["儿童", "生活常识", "健康", "基础物理", "心理", "入门", "低龄"],
-    palette: ["#334155", "#f59e0b", "#fef3c7"],
+    topicKeywords: ["商业", "经济", "政策", "产业", "数据", "趋势", "研究", "分析"],
+    palette: ["#0f172a", "#3b82f6", "#e2e8f0"],
     coverImage: styleCoverById("hand-drawn-explainer"),
   },
   {
     id: "cute-3d-educational",
     name: "3D 可爱教育风",
     englishName: "Cute 3D Educational Style",
-    fit: "Rounded forms and playful tone, ideal for early-age health and animal education topics.",
+    fit: "Friendly rounded 3D visuals for approachable educational storytelling.",
     prompt:
-      "Soft 3D educational direction, rounded form language, gentle global illumination, warm pastel tonal environment, smooth material response, playful yet orderly composition, high-fidelity render polish, accessible emotional tone, clean and friendly visual communication.",
+      "Cute 3D educational style with soft rounded objects, friendly simplified forms, polished toy-like materials, gentle lighting, approachable visual storytelling, and clean explanatory structure.",
     suitableTopics: "儿童科普、动物、人体健康、营养、低龄教育",
     carrierPriority: ["video", "poster", "ppt"],
     topicKeywords: ["儿童", "动物", "人体健康", "营养", "低龄", "亲子", "启蒙"],
@@ -468,10 +632,10 @@ const styleOptions = [
   {
     id: "3d-isometric-tech",
     name: "3D 等距科技风",
-    englishName: "3D Isometric Tech Style",
-    fit: "Strong spatial clarity, ideal for systems, cities, and data infrastructure narratives.",
+    englishName: "3D Isometric Tech Explainer",
+    fit: "Structured isometric system visualization for technical mechanisms and architectures.",
     prompt:
-      "Isometric technology visualization style, precise spatial layering, clean modular geometry, structured depth mapping, cool futuristic palette control, luminous accent restraint, high-detail but organized composition, professional product-grade rendering, systematic visual logic.",
+      "3D isometric technology explainer style with clean spatial structure, miniature system components, precise icon-like objects, soft shadows, modern tech aesthetics, and clear system-level explanation.",
     suitableTopics: "AI系统、数据中心、芯片、城市系统、互联网、能源",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["ai系统", "数据中心", "芯片", "城市系统", "互联网", "能源", "架构", "模块"],
@@ -480,24 +644,24 @@ const styleOptions = [
   },
   {
     id: "dark-premium-tech",
-    name: "黑金高端科技风",
-    englishName: "Dark Premium Tech Style",
-    fit: "High-contrast and premium texture, ideal for fintech and future-tech storytelling.",
+    name: "玻璃拟态知识卡风",
+    englishName: "Glassmorphism Knowledge Card",
+    fit: "Subtle glass-layer polish for modern knowledge cards and UI-like explainers.",
     prompt:
-      "Dark premium tech visual language, deep low-key tonal base, controlled high-contrast highlights, sleek reflective finish, cinematic shadow sculpting, luxury-grade color accents, sharp edge definition, futuristic interface atmosphere, dramatic yet disciplined composition.",
-    suitableTopics: "AI、芯片、金融科技、机器人、数据、未来科技",
+      "Glassmorphism knowledge-card style with translucent layered surfaces, soft gradients, gentle glow, clean depth, elegant UI-inspired composition, and modern visual polish. Keep glass layers subtle and integrated, not like separate dashboard panels.",
+    suitableTopics: "产品机制、科技科普、商业分析、教育卡片、趋势解读",
     carrierPriority: ["poster", "ppt", "video"],
-    topicKeywords: ["ai", "芯片", "金融科技", "机器人", "数据", "未来科技", "前沿"],
-    palette: ["#09090b", "#f59e0b", "#1d4ed8"],
+    topicKeywords: ["ui", "产品", "科技", "商业", "机制", "卡片", "趋势", "信息图"],
+    palette: ["#0f172a", "#a78bfa", "#dbeafe"],
     coverImage: styleCoverById("dark-premium-tech"),
   },
   {
     id: "technical-blueprint",
     name: "科技蓝图风",
-    englishName: "Technical Blueprint Style",
-    fit: "Engineering-driven blueprint aesthetic, ideal for aerospace, mechanical, and structural topics.",
+    englishName: "Tech Blueprint Diagram",
+    fit: "Technical linework and annotation discipline for engineering-style explanations.",
     prompt:
-      "Technical blueprint aesthetic, engineered grid discipline, precision drafting linework, schematic layout logic, measurement-style visual cadence, cool monochromatic technical palette, clean annotation rhythm, industrial presentation rigor, high-clarity structural communication.",
+      "Tech blueprint diagram style with crisp technical lines, structured annotations, subtle grid texture, precise geometry, blueprint-inspired layout, and futuristic educational clarity.",
     suitableTopics: "航空航天、机械、潜艇、机器人、军事科技、工程结构",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["航天", "机械", "潜艇", "机器人", "军事", "工程", "结构", "蓝图"],
@@ -507,10 +671,10 @@ const styleOptions = [
   {
     id: "medical-educational-illustration",
     name: "医学科普插画风",
-    englishName: "Medical Educational Illustration",
-    fit: "Professional yet accessible, ideal for anatomy and disease-mechanism explainers.",
+    englishName: "Medical Biological Illustration",
+    fit: "Clinical clarity with calm precision for anatomy and biological mechanisms.",
     prompt:
-      "Clinical educational illustration style, sterile clean tonal environment, precise form definition, soft realistic shading, trusted professional visual tone, balanced informational clarity, restrained medical palette accents, calm and accurate presentation quality.",
+      "Professional medical and biological illustration style with clean anatomical clarity, soft clinical colors, accurate simplified structures, gentle depth, readable educational labeling, and calm scientific precision.",
     suitableTopics: "心血管、人体器官、代谢、疾病机制、营养健康",
     carrierPriority: ["ppt", "video", "poster"],
     topicKeywords: ["心血管", "器官", "代谢", "疾病", "营养", "医学", "健康", "人体"],
@@ -521,9 +685,9 @@ const styleOptions = [
     id: "premium-editorial-infographic",
     name: "高级报告信息图风",
     englishName: "Premium Editorial Infographic",
-    fit: "Professional report and magazine layout feel, ideal for business and trend analysis.",
+    fit: "High-end editorial infographic polish for premium knowledge publication feel.",
     prompt:
-      "Premium editorial information design, refined composition rhythm, elegant proportional balance, sophisticated typography tone, restrained luxury palette, soft micro-contrast, subtle shadow layering, high-end publication quality, minimalist but information-dense structure, calm professional visual authority.",
+      "Premium editorial infographic style with magazine-inspired composition, refined typography, elegant spacing, subtle sophistication, calm professional colors, and a high-end knowledge publication feel.",
     suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
@@ -534,9 +698,9 @@ const styleOptions = [
     id: "premium-sketchnote-science",
     name: "精致手账科普风",
     englishName: "Premium Sketchnote Science Style",
-    fit: "Refined sketchnote feel, ideal for visual notes, learning cards, and structured study content.",
+    fit: "Neat sketchnote educational style with structured visual-thinking flow.",
     prompt:
-      "Premium sketchnote aesthetic, refined sketch texture, controlled spontaneity, structured note-like layout rhythm, tasteful accent coloration, handcrafted but polished finish, balanced density, friendly professional tone, clear visual sequencing, elegant educational character.",
+      "Premium sketchnote science style with neat hand-drawn lines, structured annotations, warm educational charm, light sketch textures, visual-thinking flow, and carefully organized explanation.",
     suitableTopics: "心理学、健康、生活科学、儿童科普、学习方法、认知科学、经济学入门",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["心理学", "健康", "生活科学", "儿童科普", "学习方法", "认知科学", "经济学", "入门"],
@@ -546,9 +710,9 @@ const styleOptions = [
 ] as StyleOption[];
 
 const intentOptions: { id: "ppt" | "video" | "poster"; label: string; desc: string }[] = [
-  { id: "poster", label: "Generate Poster", desc: "Best for one-page visual explainers and social sharing." },
-  { id: "video", label: "Generate Video", desc: "Best for narration-based short-form content." },
-  { id: "ppt", label: "Generate PPT", desc: "Best for teaching, workshops, and presentations." },
+  { id: "poster", label: "Generate Poster", desc: "Best for one-page explainers." },
+  { id: "video", label: "Generate Video", desc: "Best for short narrated content." },
+  { id: "ppt", label: "Generate PPT", desc: "Best for teaching and presentations." },
 ];
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
@@ -560,6 +724,14 @@ const posterSizeOptions = [
   { id: "poster-4-3", label: "4:3 Landscape", desc: "Balanced for presentation and educational visuals." },
   { id: "poster-3-4", label: "3:4 Portrait", desc: "Balances readability and information density." },
 ];
+
+const POSTER_SIZE_ID_TO_RATIO: Record<string, string> = {
+  "poster-9-16": "9:16",
+  "poster-1-1": "1:1",
+  "poster-16-9": "16:9",
+  "poster-4-3": "4:3",
+  "poster-3-4": "3:4",
+};
 
 function normalizePosterSizeId(value: string | null | undefined) {
   if (!value) {
@@ -605,6 +777,68 @@ function cleanTopicText(input: string) {
     .replace(/\s+/g, " ")
     .trim();
   return withoutDirectionWords || withoutGreeting || trimmed;
+}
+
+function compactLineText(input: string | null | undefined) {
+  return (input || "").replace(/\s+/g, " ").trim();
+}
+
+function splitToShortLabels(input: string[], maxCount: number) {
+  return input
+    .map((item) => compactLineText(item))
+    .filter(Boolean)
+    .slice(0, maxCount);
+}
+
+type ParsedPosterCardCopy = {
+  title: string;
+  pageFocus: string;
+  contentLines: string[];
+  visualStructure: string;
+};
+
+function parsePosterCardCopy(copy: string, fallbackTitle: string): ParsedPosterCardCopy {
+  const lines = copy
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = compactLineText(lines[0] || fallbackTitle);
+  const pageFocus =
+    compactLineText(
+      lines.find((line) => /^本页重点[:：]/.test(line))?.replace(/^本页重点[:：]\s*/i, ""),
+    ) || title;
+  const visualStructure =
+    compactLineText(
+      lines.find((line) => /^画面结构[:：]/.test(line))?.replace(/^画面结构[:：]\s*/i, ""),
+    ) || "Structured infographic";
+
+  const contentStartIndex = lines.findIndex((line) => /^内容[:：]?$/i.test(line));
+  const extractedFromContent =
+    contentStartIndex >= 0
+      ? lines
+          .slice(contentStartIndex + 1)
+          .filter((line) => !/^画面结构[:：]/.test(line))
+          .map((line) => compactLineText(line.replace(/^\d+\.\s*/, "")))
+          .filter(Boolean)
+      : [];
+
+  const fallbackLines = lines
+    .slice(1)
+    .filter((line) => !/^本页重点[:：]/.test(line))
+    .filter((line) => !/^画面结构[:：]/.test(line))
+    .filter((line) => !/^内容[:：]?$/i.test(line))
+    .map((line) => compactLineText(line.replace(/^\d+\.\s*/, "")))
+    .filter(Boolean);
+
+  const contentLines = (extractedFromContent.length ? extractedFromContent : fallbackLines).slice(0, 4);
+
+  return {
+    title: title || fallbackTitle,
+    pageFocus,
+    contentLines,
+    visualStructure,
+  };
 }
 
 type SuggestionTheme =
@@ -709,20 +943,20 @@ function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: Output
   const lowSignalInput = isLowSignalSuggestionInput(seedTopic);
 
   if (!isZh) {
-    if (lowSignalInput) {
-      return [
-        "How plate tectonics drives both earthquakes and volcano distribution",
-        "How black holes bend light and change time near the event horizon",
-        "How the immune system identifies pathogens while protecting normal cells",
-        "How deep-sea organisms adapt to high pressure and low-temperature habitats",
-      ];
-    }
     if (theme === "volcano") {
       return [
-        "How pressure buildup in a magma chamber triggers eruption timing",
-        "Which precursor signals (seismicity, gas, ground uplift) are most reliable",
-        "Why some eruptions become explosive while others stay effusive",
-        "How ash, lava, and volcanic gases affect climate, health, and infrastructure",
+        "A clear explainer of how volcanoes form from mantle melting to eruption.",
+        "A clear explainer of how magma-chamber pressure buildup triggers eruptions.",
+        "A clear explainer of which precursor signals best predict volcanic eruption risk.",
+        "A clear explainer of explosive versus effusive eruptions and why they differ.",
+      ];
+    }
+    if (lowSignalInput) {
+      return [
+        "A clear explainer of how plate tectonics shapes major landforms.",
+        "A clear explainer of how photosynthesis converts light into stored energy.",
+        "A clear explainer of how the immune system identifies pathogens.",
+        "A clear explainer of how tides are driven by Moon-Sun gravity.",
       ];
     }
     if (theme === "black-hole") {
@@ -805,21 +1039,20 @@ function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: Output
     ];
   }
 
-  if (lowSignalInput) {
-    return [
-      "板块运动如何共同决定地震和火山的空间分布",
-      "黑洞的事件视界为什么会改变光与时间的行为",
-      "免疫系统如何识别病原体并避免攻击自身细胞",
-      "深海生物如何适应高压、低温与弱光环境",
-    ];
-  }
-
   if (theme === "volcano") {
     return [
-      "岩浆房压力如何累积到触发喷发阈值",
-      "地震活动、火山气体和地表隆起哪些最能预警喷发",
-      "爆炸式喷发和溢流式喷发的触发条件有什么差别",
-      "火山灰、熔岩和火山气体分别会造成哪些连锁影响",
+      "火山形成的过程讲解：从地幔熔融到岩浆上升再到喷发。",
+      "火山为什么会喷发的讲解：岩浆房压力如何累积并跨过阈值。",
+      "火山喷发前信号讲解：地震活动、气体异常和地表形变怎么看。",
+      "火山喷发类型讲解：爆炸式与溢流式喷发为什么会不同。",
+    ];
+  }
+  if (lowSignalInput) {
+    return [
+      "板块运动过程讲解：板块边界如何塑造地貌并触发地震。",
+      "光合作用过程讲解：光能如何转化为有机物并进入食物链。",
+      "免疫系统机制讲解：人体如何识别并清除外来病原体。",
+      "潮汐形成机制讲解：月球和太阳引力如何驱动潮位变化。",
     ];
   }
   if (theme === "black-hole") {
@@ -995,7 +1228,36 @@ function inferRecommendedIntent(
 }
 
 function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage: OutputLanguage) {
-  const trimmed = cleanTopicText(prompt) || prompt.trim();
+  const normalizeTopicCandidate = (value: string) => {
+    const compact = value
+      .trim()
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+      .replace(/^(?:主题是|主题为|主题|topic(?:\s*is)?|topic)\s*[:：]?\s*/i, "")
+      .replace(/^(?:请|请帮我|帮我|麻烦)?\s*(?:做成?|生成|输出|创建|制作|写)\s*/i, "")
+      .replace(/^(?:\d+\s*(?:页|张|个分镜|帧)\s*)/i, "")
+      .replace(/^(?:海报|PPT|视频|视频分镜|poster|ppt|video|storyboard)\s*/i, "")
+      .replace(/^(?:关于|围绕|讲解|解释)\s*/i, "")
+      .replace(/^\s*(?:成)\s*\d+\s*(?:页|张|个分镜|帧)\s*/i, "")
+      .replace(/^\s*(?:第\s*)?\d+\s*(?:页|张|个分镜|帧)\s*/i, "")
+      .replace(/[，,]\s*(?:做成?|生成|输出)\s*\d+\s*(?:页|张|个分镜|帧).*$/i, "")
+      .trim();
+
+    const firstSentence = compact
+      .split(/[。！？!?]/)
+      .map((part) => part.trim())
+      .filter(Boolean)[0];
+    const candidate = (firstSentence || compact).replace(/\s+/g, " ").trim();
+    if (!candidate) {
+      return "";
+    }
+    const safe = candidate
+      .replace(/^(?:成)\s*\d+\s*(?:页|张|个分镜|帧)\s*/i, "")
+      .replace(/^(?:做成?|生成|输出)\s*\d+\s*(?:页|张|个分镜|帧)\s*/i, "")
+      .trim();
+    return safe;
+  };
+
+  const trimmed = normalizeTopicCandidate(cleanTopicText(prompt) || prompt.trim());
   if (trimmed) {
     const cleaned = trimmed
       .replace(/^(please|help me|can you|i want to|need to|请|帮我|麻烦|我想|需要)?\s*(generate|create|make|build|生成|制作|做|创建)?/i, "")
@@ -1066,6 +1328,32 @@ function extractPageCount(prompt: string) {
   return clamp(Math.round(value), 6, 24);
 }
 
+function extractPosterCount(prompt: string) {
+  const text = normalizeText(prompt);
+  const directMatch = prompt.match(/(\d+)\s*(张|海报|posters?)/i);
+  if (directMatch) {
+    const value = Number(directMatch[1]);
+    if (Number.isFinite(value) && value > 0) {
+      return clamp(Math.round(value), 1, 10);
+    }
+  }
+  const pageAsPosterMatch = prompt.match(/(\d+)\s*页/i);
+  if (pageAsPosterMatch && /海报|poster|长图|infographic/i.test(prompt)) {
+    const value = Number(pageAsPosterMatch[1]);
+    if (Number.isFinite(value) && value > 0) {
+      return clamp(Math.round(value), 1, 10);
+    }
+  }
+  const compactMatch = text.match(/(\d+)\s*(张海报|海报)/i);
+  if (compactMatch) {
+    const value = Number(compactMatch[1]);
+    if (Number.isFinite(value) && value > 0) {
+      return clamp(Math.round(value), 1, 10);
+    }
+  }
+  return null;
+}
+
 function extractVideoStoryboardCount(prompt: string) {
   const text = normalizeText(prompt);
   const storyboardMatch = text.match(/(\d+)\s*(个?分镜|frames?|scenes?)/i);
@@ -1081,6 +1369,28 @@ function extractVideoStoryboardCount(prompt: string) {
     if (Number.isFinite(seconds) && seconds > 0) {
       return clamp(Math.max(1, Math.round(seconds / 10)), 6, 24);
     }
+  }
+  return null;
+}
+
+function extractPptRatio(prompt: string): "16:9" | "4:3" | null {
+  const text = normalizeText(prompt);
+  if (text.includes("4:3")) {
+    return "4:3";
+  }
+  if (text.includes("16:9")) {
+    return "16:9";
+  }
+  return null;
+}
+
+function extractVideoRatio(prompt: string): "16:9" | "9:16" | null {
+  const text = normalizeText(prompt);
+  if (text.includes("9:16") || text.includes("竖版") || text.includes("portrait")) {
+    return "9:16";
+  }
+  if (text.includes("16:9") || text.includes("横版") || text.includes("landscape")) {
+    return "16:9";
   }
   return null;
 }
@@ -1330,6 +1640,52 @@ function parseContentEditCommand(input: string, outputLanguage: OutputLanguage):
   return { target, action: "append", payload: raw };
 }
 
+function isBackNavigationCommand(normalized: string) {
+  return containsAny(normalized, [
+    "返回",
+    "返回上一步",
+    "上一步",
+    "back",
+    "go back",
+    "previous step",
+  ]);
+}
+
+function isDownloadCommand(normalized: string) {
+  return containsAny(normalized, [
+    "下载",
+    "导出",
+    "download",
+    "export",
+    "下载全部",
+    "导出全部",
+    "download all",
+  ]);
+}
+
+function isDraftEditIntentCommand(normalized: string) {
+  if (/(?:第\s*)?\d+\s*(?:页|张|个分镜|帧)/i.test(normalized)) {
+    return true;
+  }
+  return containsAny(normalized, [
+    "改",
+    "修改",
+    "重写",
+    "精简",
+    "缩短",
+    "补充",
+    "优化文稿",
+    "文稿",
+    "草稿",
+    "rewrite",
+    "update",
+    "edit",
+    "shorten",
+    "draft",
+    "copy",
+  ]);
+}
+
 function buildPosterDraft(
   topic: string,
   sizeLabel: string | undefined,
@@ -1376,6 +1732,25 @@ function buildPosterDraft(
     };
   }
 
+  if (/火山|岩浆|喷发/.test(topic)) {
+    return {
+      headline: "火山形成的过程讲解",
+      subtitle: "从地幔熔融到岩浆上升再到喷发",
+      body: "火山形成通常从地幔局部熔融开始，岩浆在压力和浮力作用下沿裂隙上升，并在岩浆房中持续演化。当压力超过围岩承受能力时，系统进入喷发阶段。",
+      points: [
+        "起点：板块俯冲、张裂或热点活动会触发地幔局部熔融。",
+        "上升：岩浆沿断裂通道向上运移，过程中成分与温度持续变化。",
+        "储集：岩浆房中的气体含量、黏度与补给速率共同决定压力累积速度。",
+        "触发：当压力跨过阈值并通道贯通时，喷发概率显著上升。",
+      ],
+      cta: "先看“熔融—上升—储集—触发”四步主线。",
+      size: sizeLabel,
+      visualType: "过程链路图",
+      layoutSuggestion: "上方标题 + 中部四阶段流程 + 下方触发条件总结",
+      visualElements: ["地幔熔融区", "岩浆上升通道", "岩浆房压力示意", "喷发触发阈值"],
+    };
+  }
+
   if (/通货膨胀/.test(topic)) {
     return {
       headline: "通货膨胀为什么会影响日常生活？",
@@ -1400,18 +1775,18 @@ function buildPosterDraft(
     subtitle: isChineseLanguage(outputLanguage)
       ? "一图梳理核心机制、关键变量与现实影响"
       : "Key mechanisms, variables, and real-world impact",
-    body: `${topic}会直接改变日常决策与成本结构。典型表现是同样预算下可获得资源减少、选择范围变窄，个体需要在效率、价格和风险之间重新平衡。`,
+    body: `${topic}可以通过“驱动因素—过程机制—可观测结果”这条主线来理解。先识别最先变化的变量，再追踪变量如何传导到结果，最后回到现实场景验证结论。`,
     points: [
-      `${topic}的上游变量变化会先体现在成本端，并在短周期内传导到终端价格。`,
-      "终端价格上行后，用户通常会从高弹性消费转向刚需消费，消费结构出现收缩。",
-      "当收入增速低于相关成本增速时，实际购买力下降，储蓄和消费决策会同步调整。",
-      "可跟踪一个核心指标作为判断基准，并结合连续周期变化评估趋势是否延续。",
+      `先明确 ${topic} 的关键驱动因素，并区分“必要条件”和“放大因素”。`,
+      "用 3-4 个步骤描述机制链路，确保每一步都有因果关系。",
+      "列出 2-3 个可观测指标，用来验证机制是否正在发生。",
+      "补充一个现实案例，把抽象机制落到可理解的具体场景。",
     ],
-    cta: "收藏这张图，1 分钟复习知识主线",
+    cta: "收藏这张图，1 分钟复习机制主线。",
     size: sizeLabel,
     visualType: "因果流图",
-    layoutSuggestion: "上方标题 + 中部机制链路 + 下方结论区",
-    visualElements: ["关键变量A", "关键变量B", "变化结果", "行动建议"],
+    layoutSuggestion: "上方标题 + 中部机制链路 + 下方指标与结论",
+    visualElements: ["驱动因素", "过程节点", "观测指标", "结论总结"],
   };
 }
 
@@ -1439,6 +1814,103 @@ function hasAbstractPosterDraft(draft: PosterDraft, outputLanguage: OutputLangua
     ),
   );
   return abstractBody || templateBody || abstractPoint;
+}
+
+function hasTopicMismatchPosterDraft(draft: PosterDraft, topic: string) {
+  const normalizedTopic = topic.replace(/\s+/g, "");
+  if (/火山|岩浆|喷发/.test(normalizedTopic)) {
+    const joined = [draft.headline, draft.subtitle, draft.body, ...(draft.points || [])]
+      .join(" ")
+      .replace(/\s+/g, "");
+    return /成本|价格|购买力|消费结构|刚需消费|CPI|预算/.test(joined);
+  }
+  return false;
+}
+
+function normalizePosterPlanFactLine(line: string) {
+  return line
+    .replace(/^[\s\-*•·\d]+[.)、\s-]*/, "")
+    .replace(
+      /^(?:起点|阶段|步骤|触发|上升|储集|触发点|机制|结论|对比|案例|误区|总结)\s*[：:]\s*/i,
+      "",
+    )
+    .trim();
+}
+
+function buildClientPosterPlanList(
+  topic: string,
+  posterCount: number,
+  posterDraft: PosterDraft,
+  outputLanguage: OutputLanguage,
+): PosterPlanItem[] {
+  const isZh = isChineseLanguage(outputLanguage);
+  const titleSeedsZh = ["整体框架", "触发条件", "机制路径", "关键变量", "对比变化", "案例验证", "误区澄清", "结论应用"];
+  const titleSeedsEn = [
+    "Overview",
+    "Trigger Conditions",
+    "Mechanism Path",
+    "Key Variables",
+    "Comparison",
+    "Case Validation",
+    "Misconception Check",
+    "Practical Takeaway",
+  ];
+  const visualSeedsZh = ["机制流程图", "分层结构图", "对比图", "路径示意图", "指标看板图", "总结图"];
+  const visualSeedsEn = [
+    "mechanism flow",
+    "layered structure",
+    "comparison view",
+    "pathway diagram",
+    "indicator panel",
+    "summary chart",
+  ];
+
+  const rawFacts = [posterDraft.subtitle, posterDraft.body, ...(posterDraft.points || [])]
+    .flatMap((entry) => String(entry || "").split(isZh ? /[。！？\n]/ : /[.!?\n]/))
+    .map((line) => normalizePosterPlanFactLine(line))
+    .filter(Boolean);
+  const dedupedFacts: string[] = [];
+  const seen = new Set<string>();
+  for (const fact of rawFacts) {
+    const key = fact.replace(/[，。,.!?！？;；:：\s]/g, "").toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    dedupedFacts.push(fact);
+  }
+  const facts =
+    dedupedFacts.length > 0
+      ? dedupedFacts
+      : [
+          isZh
+            ? `${topic}通常由触发条件、机制传导与结果呈现三段主线组成。`
+            : `${topic} is usually explained by triggers, propagation, and outcomes.`,
+        ];
+
+  return Array.from({ length: posterCount }, (_, idx) => {
+    const index = idx + 1;
+    const role = idx === 0 ? "cover" : idx === posterCount - 1 ? "system-model" : "mechanism";
+    const title = isZh
+      ? `${topic}：${titleSeedsZh[idx % titleSeedsZh.length]}`
+      : `${topic}: ${titleSeedsEn[idx % titleSeedsEn.length]}`;
+    const focus = facts[idx % facts.length];
+    const keyFacts = [facts[idx % facts.length], facts[(idx + 1) % facts.length], facts[(idx + 2) % facts.length]]
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return {
+      index,
+      title,
+      focus: isZh ? (/[。！？]$/.test(focus) ? focus : `${focus}。`) : /[.!?]$/.test(focus) ? focus : `${focus}.`,
+      role,
+      keyFacts,
+      visualType: posterDraft.visualType || (isZh ? visualSeedsZh[idx % visualSeedsZh.length] : visualSeedsEn[idx % visualSeedsEn.length]),
+      visualElements: posterDraft.visualElements,
+      layoutHint: posterDraft.layoutSuggestion,
+      imagePromptDraft: "",
+      imagePrompt: "",
+    };
+  });
 }
 
 function pickSmartStyle(prompt: string, sources: HomeSourceItem[]) {
@@ -1557,6 +2029,22 @@ function readHomeDraftPayload() {
             }
           : null,
     };
+    const queryProjectId = new URL(window.location.href).searchParams.get("projectId")?.trim() || "";
+    if (queryProjectId) {
+      if (!next.project) {
+        next.project = {
+          projectId: queryProjectId,
+          projectTraceId: "",
+          projectUserId: "",
+          projectTitle: "",
+        };
+      } else if (!next.project.projectId) {
+        next.project = {
+          ...next.project,
+          projectId: queryProjectId,
+        };
+      }
+    }
     window.localStorage.setItem(WORKSPACE_DRAFT_CACHE_KEY, JSON.stringify(payload));
     return next;
   } catch {
@@ -1564,13 +2052,22 @@ function readHomeDraftPayload() {
   }
 }
 
-function buildWorkspaceSessionScopeKey(entry: { prompt: string; sources: HomeSourceItem[] }) {
-  const base = `${entry.prompt}|${entry.sources.map((item) => `${item.kind}:${item.origin}`).join("|")}`;
+function buildWorkspaceSessionScopeKey(entry: {
+  prompt: string;
+  sources: HomeSourceItem[];
+  project?: {
+    projectId: string;
+    projectTraceId: string;
+  } | null;
+}) {
+  const projectSeed = `${entry.project?.projectId || ""}|${entry.project?.projectTraceId || ""}`.trim();
+  const contentSeed = `${entry.prompt}|${entry.sources.map((item) => `${item.kind}:${item.origin}`).join("|")}`;
+  const base = projectSeed ? `project:${projectSeed}` : `content:${contentSeed}`;
   let hash = 0;
   for (let i = 0; i < base.length; i += 1) {
     hash = (hash * 31 + base.charCodeAt(i)) >>> 0;
   }
-  return `${WORKSPACE_SESSION_PREFS_KEY}:${hash.toString(16)}`;
+  return `${WORKSPACE_SESSION_PREFS_KEY}:v2:${hash.toString(16)}`;
 }
 
 function formatSourceItemsForChat(sources: HomeSourceItem[]) {
@@ -1637,6 +2134,63 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
     .filter((turn) => turn.content.trim().length > 0);
 }
 
+function dedupeAdjacentChatTurns(turns: ChatTurn[]) {
+  const deduped: ChatTurn[] = [];
+  turns.forEach((turn) => {
+    const last = deduped[deduped.length - 1];
+    if (
+      last &&
+      last.role === turn.role &&
+      last.module === turn.module &&
+      last.content.trim() === turn.content.trim()
+    ) {
+      return;
+    }
+    deduped.push(turn);
+  });
+  return deduped;
+}
+
+function stringifyUnknownForStorage(value: unknown) {
+  const seen = new WeakSet<object>();
+  try {
+    return JSON.stringify(value, (_key, current) => {
+      if (current && typeof current === "object") {
+        if (seen.has(current as object)) {
+          return "[Circular]";
+        }
+        seen.add(current as object);
+      }
+      if (typeof current === "function") {
+        return "[Function]";
+      }
+      return current;
+    });
+  } catch {
+    return "";
+  }
+}
+
+function normalizeStorageText(value: unknown, fallback = "") {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value instanceof Error) {
+    return value.message || fallback;
+  }
+  if (value == null) {
+    return fallback;
+  }
+  const serialized = stringifyUnknownForStorage(value);
+  if (!serialized) {
+    return fallback;
+  }
+  return serialized.length > 8000 ? `${serialized.slice(0, 8000)}…` : serialized;
+}
+
 function readWorkspaceChatHistory(scopeKey: string) {
   if (typeof window === "undefined") {
     return [] as ChatTurn[];
@@ -1647,7 +2201,7 @@ function readWorkspaceChatHistory(scopeKey: string) {
     return [] as ChatTurn[];
   }
   try {
-    return normalizeChatHistory(JSON.parse(raw)).slice(-160);
+    return sanitizeAuthRelatedChatTurns(dedupeAdjacentChatTurns(normalizeChatHistory(JSON.parse(raw)))).slice(-160);
   } catch {
     return [] as ChatTurn[];
   }
@@ -1658,6 +2212,7 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
     return;
   }
   const key = buildWorkspaceChatHistoryStorageKey(scopeKey);
+  const normalizedUpdates = sanitizeAuthRelatedChatTurns(dedupeAdjacentChatTurns(updates)).slice(-160);
   const safeMeta = (meta: ChatTurnMeta | undefined) => {
     if (!meta || typeof meta !== "object") {
       return undefined;
@@ -1681,19 +2236,33 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
     }
     return undefined;
   };
-  const payload = JSON.stringify(
-    updates
-      .slice(-160)
-      .map((item) => ({
+  const normalizedPayload = normalizedUpdates.map((item, index) => ({
+    id: normalizeStorageText(item.id, `turn-${index}`),
+    role: item.role === "assistant" ? "assistant" : "user",
+    module: normalizeStorageText(item.module, "Workspace").slice(0, 120),
+    content: normalizeStorageText(item.content, "").slice(0, 8000),
+    meta: safeMeta(item.meta),
+  }));
+  try {
+    const payload = JSON.stringify(normalizedPayload);
+    window.sessionStorage.setItem(key, payload);
+    window.localStorage.setItem(key, payload);
+  } catch (error) {
+    console.warn("[WorkspaceChatHistory] write failed, fallback to minimal payload", {
+      scopeKey,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    const fallbackPayload = JSON.stringify(
+      normalizedPayload.map((item) => ({
         id: item.id,
         role: item.role,
-        module: item.module,
-        content: item.content,
-        meta: safeMeta(item.meta),
+        module: "Workspace",
+        content: typeof item.content === "string" ? item.content : "",
       })),
-  );
-  window.sessionStorage.setItem(key, payload);
-  window.localStorage.setItem(key, payload);
+    );
+    window.sessionStorage.setItem(key, fallbackPayload);
+    window.localStorage.setItem(key, fallbackPayload);
+  }
 }
 
 export default function WorkspacePage() {
@@ -1753,18 +2322,23 @@ export default function WorkspacePage() {
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
 
-  const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(
-    sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster"
-      ? sessionPrefs.intent
-      : "poster",
-  );
+  const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(() => {
+    if (sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster") {
+      return sessionPrefs.intent;
+    }
+    const detected = detectIntent(initialEntry.prompt, initialEntry.sources);
+    if (detected.intent === "ppt" || detected.intent === "video" || detected.intent === "poster") {
+      return detected.intent;
+    }
+    return inferRecommendedIntent(initialEntry.prompt, initialEntry.sources);
+  });
   const [posterSizeId, setPosterSizeId] = useState<string | null>(() =>
     normalizePosterSizeId(
       sessionPrefs?.posterSizeId ?? extractPosterSize(initialEntry.prompt) ?? "poster-9-16",
     ) ?? "poster-9-16",
   );
   const [posterCount, setPosterCount] = useState(() =>
-    clamp(sessionPrefs?.posterCount ?? 1, 1, 10),
+    clamp(sessionPrefs?.posterCount ?? extractPosterCount(initialEntry.prompt) ?? 1, 1, 10),
   );
   const [pptPageCount, setPptPageCount] = useState(() =>
     clamp(sessionPrefs?.pptPageCount ?? extractPageCount(initialEntry.prompt) ?? 10, 6, 24),
@@ -1802,6 +2376,7 @@ export default function WorkspacePage() {
     return pickSmartStyle(initialEntry.prompt, initialEntry.sources).id;
   });
   const [billingConfirmed, setBillingConfirmed] = useState(false);
+  const [draftLlmUsage, setDraftLlmUsage] = useState<DraftLlmUsage | null>(null);
   const [isPlanningNextStep, setIsPlanningNextStep] = useState(false);
   const [isPlanningStyleStep, setIsPlanningStyleStep] = useState(false);
   const [isPlanningBillingStep, setIsPlanningBillingStep] = useState(false);
@@ -1841,6 +2416,28 @@ export default function WorkspacePage() {
   const autoGenerationTriggeredRunIdsRef = useRef<Record<string, boolean>>({});
   const debugGoGenerateStepAppliedRef = useRef(false);
   const debugImageBridgeAppliedRef = useRef(false);
+
+  const emitFlowAudit = useCallback((
+    input: {
+      stage: string;
+      status: string;
+      decision: string;
+      reason: string;
+      keyFields?: Record<string, unknown>;
+    },
+  ) => {
+    logWorkspaceFlowAudit({
+      stage: input.stage,
+      projectId: projectIdRef.current ?? null,
+      currentStep: flowStage,
+      runId: currentGenerationRunIdRef.current ?? null,
+      jobId: currentGenerationJobIdRef.current ?? null,
+      status: input.status,
+      keyFields: input.keyFields ?? {},
+      decision: input.decision,
+      reason: input.reason,
+    });
+  }, [flowStage]);
 
   const logClientEvent = useCallback(
     (input: {
@@ -1940,28 +2537,13 @@ export default function WorkspacePage() {
   const entryPrompt = initialEntry.prompt;
   const contextPrompt = topicContextPrompt;
   const entrySources = initialEntry.sources;
-  const sourcePromptContext = useMemo(
-    () =>
-      entrySources
-        .map((item, index) => {
-          const sourceText = (item.contentText || item.excerpt || "").trim();
-          if (!sourceText) {
-            return "";
-          }
-          const clipped = sourceText.slice(0, 2400);
-          return `Source ${index + 1} (${item.kind} · ${item.name}):\n${clipped}`;
-        })
-        .filter(Boolean)
-        .join("\n\n")
-        .slice(0, 12000),
-    [entrySources],
-  );
+  const sourcePromptContext = useMemo(() => buildSourceEvidencePack(entrySources), [entrySources]);
   const draftPrompt = useMemo(() => {
     if (!sourcePromptContext) {
       return contextPrompt;
     }
-    const topicLine = contextPrompt.trim() || "Please process the uploaded source content.";
-    return `${topicLine}\n\n[Source content]\n${sourcePromptContext}`;
+    const topicLine = contextPrompt.trim() || "Please process the uploaded source evidence.";
+    return `${topicLine}\n\n[Source evidence pack]\n${sourcePromptContext}`;
   }, [contextPrompt, sourcePromptContext]);
   const sourceLanguageSeed = useMemo(
     () => entrySources.map((item) => `${item.name} ${item.contentText || item.excerpt}`).join("\n"),
@@ -1976,8 +2558,8 @@ export default function WorkspacePage() {
       }),
     [contextPrompt, sourceLanguageSeed],
   );
-  const uiLanguage: "en" | "zh" = "en";
-  const isZhOutput = false;
+  const uiLanguage: "en" | "zh" = outputLanguage === "zh" ? "zh" : "en";
+  const isZhOutput = uiLanguage === "zh";
   const tr = (en: string, _zh: string) => en;
 
   const detectedIntent = useMemo(
@@ -2145,45 +2727,8 @@ export default function WorkspacePage() {
     if (effectiveIntent !== "poster" || !basePosterDraft || !configConfirmed) {
       return [] as PosterPlanItem[];
     }
-    const base = isZhOutput
-      ? [
-          { title: `${topic} · 核心问题`, focus: "用一句话提出问题并建立兴趣" },
-          { title: `${topic} · 关键机制`, focus: "拆解机制过程，突出因果关系" },
-          { title: `${topic} · 结论与应用`, focus: "总结重点并给出应用场景" },
-          { title: `${topic} · 复习速记`, focus: "高密度关键词速查版" },
-          { title: `${topic} · 关键案例`, focus: "增加真实场景案例，提高理解与记忆" },
-          { title: `${topic} · 误区澄清`, focus: "澄清常见误解，避免概念混淆" },
-          { title: `${topic} · 图解总结`, focus: "将重点压缩成可视化结论" },
-          { title: `${topic} · 延展阅读`, focus: "补充延伸问题与探索方向" },
-          { title: `${topic} · 对比视角`, focus: "通过对比强化关键差异" },
-          { title: `${topic} · 快速复盘`, focus: "用一屏完成核心要点复习" },
-        ]
-      : [
-          { title: `${topic} · Core question`, focus: "Frame the central question in one line." },
-          { title: `${topic} · Key mechanism`, focus: "Explain the mechanism with clear causality." },
-          { title: `${topic} · Conclusion and use case`, focus: "Summarize takeaway and practical use." },
-          { title: `${topic} · Quick review`, focus: "Provide a high-density recap version." },
-          { title: `${topic} · Real-world case`, focus: "Add one realistic case to improve retention." },
-          { title: `${topic} · Misconceptions`, focus: "Clarify common misconceptions and correct framing." },
-          { title: `${topic} · Visual summary`, focus: "Compress key insights into visual conclusions." },
-          { title: `${topic} · Extended reading`, focus: "Add extension questions and exploration paths." },
-          { title: `${topic} · Comparison view`, focus: "Use contrast to reinforce critical differences." },
-          { title: `${topic} · Final recap`, focus: "Finish with a one-screen complete review." },
-        ];
-    const list = Array.from({ length: posterCount }, (_, idx) => base[idx % base.length]);
-    return list.map((item, idx) => ({
-      index: idx + 1,
-      title: item.title,
-      focus: item.focus,
-      role: idx === 0 ? "cover" : idx === posterCount - 1 ? "summary" : "mechanism",
-      keyFacts: basePosterDraft.points.slice(0, 3),
-      visualType: basePosterDraft.visualType,
-      visualElements: basePosterDraft.visualElements,
-      layoutHint: basePosterDraft.layoutSuggestion,
-      imagePromptDraft: "",
-      imagePrompt: "",
-    }));
-  }, [basePosterDraft, configConfirmed, effectiveIntent, isZhOutput, posterCount, topic]);
+    return buildClientPosterPlanList(topic, posterCount, basePosterDraft, outputLanguage);
+  }, [basePosterDraft, configConfirmed, effectiveIntent, outputLanguage, posterCount, topic]);
 
   const [editableOutlineItems, setEditableOutlineItems] = useState<string[]>([]);
   const [editableSlideDrafts, setEditableSlideDrafts] = useState<SlideDraft[]>([]);
@@ -2204,7 +2749,9 @@ export default function WorkspacePage() {
   const posterDraftRaw = editablePosterDraft ?? basePosterDraft;
   const posterDraft = useMemo(
     () =>
-      posterDraftRaw && hasAbstractPosterDraft(posterDraftRaw, outputLanguage)
+      posterDraftRaw &&
+      (hasAbstractPosterDraft(posterDraftRaw, outputLanguage) ||
+        hasTopicMismatchPosterDraft(posterDraftRaw, topic))
         ? buildPosterDraft(topic, posterSizeLabel, contextPrompt, outputLanguage)
         : posterDraftRaw,
     [contextPrompt, outputLanguage, posterDraftRaw, posterSizeLabel, topic],
@@ -2259,8 +2806,22 @@ export default function WorkspacePage() {
     }
     return 0;
   }, [densityAdjustedSlideDrafts, effectiveIntent, outlineItems, posterDraft]);
+  const inputTokenEstimate = useMemo(() => {
+    const normalized = (draftPrompt || "").trim();
+    if (!normalized) {
+      return 1;
+    }
+    return Math.max(1, Math.ceil(normalized.length / 4));
+  }, [draftPrompt]);
   const outputTokenEstimate = Math.max(1, Math.ceil(draftOutputCharCount / 4));
-  const languageModelCredits = Math.max(1, Math.ceil(outputTokenEstimate / 1000));
+  const usageTotalTokens =
+    draftLlmUsage?.totalTokens ??
+    ((draftLlmUsage?.inputTokens ?? 0) + (draftLlmUsage?.outputTokens ?? 0));
+  const totalTokenEstimate = Math.max(
+    1,
+    usageTotalTokens > 0 ? usageTotalTokens : inputTokenEstimate + outputTokenEstimate,
+  );
+  const languageModelCredits = Math.max(1, Math.ceil(totalTokenEstimate / 1000));
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const billingCost = languageModelCredits + imageModelCredits;
   const buildFreshImageGenerationTasks = useCallback(() => {
@@ -2309,12 +2870,40 @@ export default function WorkspacePage() {
     visualizationTypeHint,
   ]);
   const imageGenerationTasks = useMemo(() => buildFreshImageGenerationTasks(), [buildFreshImageGenerationTasks]);
+  const posterCanvasAspectRatio = useMemo(() => {
+    if (effectiveIntent !== "poster") {
+      return "9:16";
+    }
+    if (posterSizeId && POSTER_SIZE_ID_TO_RATIO[posterSizeId]) {
+      return POSTER_SIZE_ID_TO_RATIO[posterSizeId];
+    }
+    const candidates = [
+      normalizedGenerationConfig.normalizedRatio,
+      imageGenerationTasks[0]?.aspectRatio,
+      posterSizeLabel,
+    ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    for (const candidate of candidates) {
+      const match = candidate.match(/(\d+)\s*[:/]\s*(\d+)/);
+      if (match) {
+        return `${Number(match[1])}:${Number(match[2])}`;
+      }
+    }
+    return "9:16";
+  }, [effectiveIntent, imageGenerationTasks, normalizedGenerationConfig.normalizedRatio, posterSizeId, posterSizeLabel]);
   const canConfirmBilling = credits >= billingCost || debugGoGenerateStepEnabled;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
   const imageGenerationTaskByIndex = useMemo(() => {
     return new Map(imageGenerationTasks.map((task) => [task.index, task] as const));
   }, [imageGenerationTasks]);
   useEffect(() => {
+    if (initializedWorkspaceScopeKeys.has(sessionPrefsScopeKey)) {
+      logGenerationCacheGuard("skip-clear-current-generation-state", {
+        reason: "scope-already-initialized",
+        scope: sessionPrefsScopeKey,
+      });
+      return;
+    }
+    initializedWorkspaceScopeKeys.add(sessionPrefsScopeKey);
     const cachedImageTurns = readWorkspaceChatHistory(sessionPrefsScopeKey).filter((turn) =>
       typeof turn.content === "string" &&
       /(\/api\/workspace\/image\/assets\/|https?:\/\/\S+\.(png|jpe?g|webp))/i.test(turn.content),
@@ -2493,6 +3082,18 @@ export default function WorkspacePage() {
   );
   const runGenerationBatch = useCallback(
     async (tasks: ImageGenerationTask[], isRetry = false, runIdOverride?: string | null) => {
+      emitFlowAudit({
+        stage: "7.run-generation-batch",
+        status: "started",
+        decision: "prepare-generate-batch",
+        reason: "runGenerationBatch-called",
+        keyFields: {
+          isRetry,
+          taskCount: tasks.length,
+          taskIndexes: tasks.map((task) => task.index),
+          runIdOverride: runIdOverride ?? null,
+        },
+      });
       console.info("[workspace-generation] runGenerationBatch called", {
         taskCount: tasks.length,
         taskIndexes: tasks.map((task) => task.index),
@@ -2618,6 +3219,18 @@ export default function WorkspacePage() {
         taskCount: tasks.length,
         taskIndexes: tasks.map((task) => task.index),
       });
+      emitFlowAudit({
+        stage: "7.run-generation-batch",
+        status: "request-sent",
+        decision: "POST-/api/workspace/image/generate-batch",
+        reason: "tasks-valid",
+        keyFields: {
+          activeRunId,
+          idempotencyKey,
+          taskCount: tasks.length,
+          taskIndexes: tasks.map((task) => task.index),
+        },
+      });
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
       try {
@@ -2649,6 +3262,22 @@ export default function WorkspacePage() {
           firstImageUrl: payload?.tasks?.[0]?.imageUrl,
           attemptedProviders: payload?.attemptedProviders,
           skippedProviders: payload?.skippedProviders,
+        });
+        emitFlowAudit({
+          stage: "10.frontend-response-parse",
+          status: "response-received",
+          decision: "parse-batch-response",
+          reason: "generate-batch-returned",
+          keyFields: {
+            httpOk: response.ok,
+            httpStatus: response.status,
+            responseOk: payload?.ok ?? null,
+            responseRunId,
+            responseJobId,
+            taskCount: payload?.tasks?.length ?? 0,
+            attemptedProviders: payload?.attemptedProviders ?? [],
+            skippedProviders: payload?.skippedProviders ?? [],
+          },
         });
         logWorkspaceImageDebug("[ImageRenderDebug] generate-batch response:", {
           payload,
@@ -2688,32 +3317,23 @@ export default function WorkspacePage() {
           setGenerationConfirmError(missingRunMessage);
           return;
         } else if (responseRunId !== activeRunId) {
-          const staleMessage = tr(
-            "Ignored stale generation result from a previous run. Please retry.",
-            "已忽略旧批次生成结果，请重试。",
-          );
-          logGenerationCacheGuard("reject-state-write", {
+          logGenerationCacheGuard("ignore-state-write", {
             reason: "stale-job",
             requestRunId: activeRunId,
             responseRunId,
             responseJobId,
           });
-          tasks.forEach((task) => {
-            setGenerationTaskStateByIndex((prev) => ({
-              ...prev,
-              [task.index]: {
-                index: task.index,
-                status: "failed",
-                attempts: 1,
-                maxAttempts,
-                error: staleMessage,
-                startedAt: prev[task.index]?.startedAt ?? Date.now(),
-                lastUpdatedAt: Date.now(),
-              },
-            }));
-            upsertImageErrorTurn(task, staleMessage);
+          emitFlowAudit({
+            stage: "10.frontend-response-parse",
+            status: "ignored",
+            decision: "skip-stale-response",
+            reason: "response-run-does-not-match-request-run",
+            keyFields: {
+              requestRunId: activeRunId,
+              responseRunId,
+              responseJobId,
+            },
           });
-          setGenerationConfirmError(staleMessage);
           return;
         }
         if (!responseJobId) {
@@ -2749,34 +3369,25 @@ export default function WorkspacePage() {
         }
         if (responseJobId) {
           if (currentGenerationJobIdRef.current && currentGenerationJobIdRef.current !== responseJobId) {
-            const mismatchMessage = tr(
-              "Ignored generation result from mismatched job. Please retry.",
-              "已忽略不匹配的任务结果，请重试。",
-            );
-            logGenerationCacheGuard("reject-state-write", {
-              reason: "job-id-mismatch",
+            logGenerationCacheGuard("accept-state-write", {
+              reason: "job-id-switched-same-run",
               requestRunId: activeRunId,
               responseRunId,
               currentJobId: currentGenerationJobIdRef.current,
               responseJobId,
             });
-            tasks.forEach((task) => {
-              setGenerationTaskStateByIndex((prev) => ({
-                ...prev,
-                [task.index]: {
-                  index: task.index,
-                  status: "failed",
-                  attempts: 1,
-                  maxAttempts,
-                  error: mismatchMessage,
-                  startedAt: prev[task.index]?.startedAt ?? Date.now(),
-                  lastUpdatedAt: Date.now(),
-                },
-              }));
-              upsertImageErrorTurn(task, mismatchMessage);
+            emitFlowAudit({
+              stage: "10.frontend-response-parse",
+              status: "accepted",
+              decision: "accept-job-switch-same-run",
+              reason: "parallel-single-task-jobs-share-one-run",
+              keyFields: {
+                requestRunId: activeRunId,
+                responseRunId,
+                currentJobId: currentGenerationJobIdRef.current,
+                responseJobId,
+              },
             });
-            setGenerationConfirmError(mismatchMessage);
-            return;
           }
           setGenerationRunContext(activeRunId, responseJobId);
         }
@@ -2902,6 +3513,18 @@ export default function WorkspacePage() {
                 status: nextState.status,
                 imageUrl: nextState.imageUrl,
               });
+              emitFlowAudit({
+                stage: "10.frontend-state-write",
+                status: "success",
+                decision: "set-generationTaskStateByIndex",
+                reason: "task-success",
+                keyFields: {
+                  index: task.index,
+                  runId: activeRunId,
+                  jobId: responseJobId || currentGenerationJobIdRef.current || null,
+                  imageUrl: nextState.imageUrl || null,
+                },
+              });
               return next;
             });
             logClientEvent({
@@ -2950,6 +3573,18 @@ export default function WorkspacePage() {
               newState: nextState,
               newStatus: nextState.status,
               newImageUrl: nextState.imageUrl,
+            });
+            emitFlowAudit({
+              stage: "10.frontend-state-write",
+              status: "failed",
+              decision: "set-generationTaskStateByIndex",
+              reason: "task-failed",
+              keyFields: {
+                index: task.index,
+                runId: activeRunId,
+                jobId: responseJobId || currentGenerationJobIdRef.current || null,
+                error: nextError,
+              },
             });
             return next;
           });
@@ -3015,7 +3650,47 @@ export default function WorkspacePage() {
         window.clearTimeout(timeoutId);
       }
     },
-    [buildGenerationRequestPayload, currentEmail, imageModel, setGenerationRunContext, tr],
+    [buildGenerationRequestPayload, currentEmail, emitFlowAudit, imageModel, setGenerationRunContext, tr],
+  );
+  const runGenerationTasksOrdered = useCallback(
+    async (tasks: ImageGenerationTask[], runId: string, isRetry = false) => {
+      if (!tasks.length) {
+        return;
+      }
+      const maxParallel = Math.max(
+        1,
+        Math.min(4, Number.parseInt(process.env.NEXT_PUBLIC_IMAGE_GENERATION_PARALLEL || "3", 10) || 3),
+      );
+      emitFlowAudit({
+        stage: "7.run-generation-batch",
+        status: "ordered-dispatch-started",
+        decision: "request-tasks-in-order-with-limited-parallelism",
+        reason: "reduce-total-wait-time",
+        keyFields: {
+          runId,
+          taskCount: tasks.length,
+          taskIndexes: tasks.map((task) => task.index),
+          maxParallel,
+          isRetry,
+        },
+      });
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(maxParallel, tasks.length) }, () => (async () => {
+        while (true) {
+          const task = tasks[cursor];
+          cursor += 1;
+          if (!task) {
+            return;
+          }
+          // Ordered dispatch starts jobs in index order, but does not wait for previous job completion.
+          // Multiple single-task jobs can run concurrently under the same run id.
+          setGenerationRunContext(runId, null);
+          await runGenerationBatch([task], isRetry, runId);
+        }
+      })());
+      await Promise.all(workers);
+    },
+    [emitFlowAudit, runGenerationBatch, setGenerationRunContext],
   );
   const handleRetryGenerationTask = useCallback(
     (index: number) => {
@@ -3024,19 +3699,114 @@ export default function WorkspacePage() {
         return;
       }
       if (generationRequestInFlightRef.current) {
+        setGenerationConfirmError(
+          tr("Generation is in progress. Please retry after current tasks finish.", "当前仍在生成中，请等待本轮结束后重试。"),
+        );
         return;
       }
       const nextRunId = createGenerationRunId();
       setGenerationRunContext(nextRunId, null);
       generationRequestInFlightRef.current = true;
-      void runGenerationBatch([task], true, nextRunId).finally(() => {
+      void runGenerationTasksOrdered([task], nextRunId, true).finally(() => {
         generationRequestInFlightRef.current = false;
       });
     },
-    [imageGenerationTaskByIndex, runGenerationBatch, setGenerationRunContext],
+    [imageGenerationTaskByIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
+  );
+  const handleRedrawGenerationTask = useCallback(
+    (index: number, copy: string) => {
+      const baseTask = imageGenerationTaskByIndex.get(index);
+      if (!baseTask) {
+        return;
+      }
+      if (generationRequestInFlightRef.current) {
+        setGenerationConfirmError(
+          tr("Generation is in progress. Please retry after current tasks finish.", "当前仍在生成中，请等待本轮结束后重试。"),
+        );
+        return;
+      }
+
+      const parsedCopy = parsePosterCardCopy(copy, baseTask.contentTitle || `Poster ${index}`);
+      const contentBody = compactLineText([parsedCopy.pageFocus, ...parsedCopy.contentLines].join("\n"));
+      const visibleText: VisibleText = {
+        title: parsedCopy.title || baseTask.visibleText?.title || baseTask.contentTitle,
+        subtitle: baseTask.visibleText?.subtitle || "",
+        labels: splitToShortLabels(parsedCopy.contentLines, 4),
+      };
+      const visualDesign: VisualDesign = {
+        ...baseTask.visualDesign,
+        mainVisual: parsedCopy.visualStructure || baseTask.visualDesign.mainVisual,
+        composition: compactLineText(
+          [baseTask.visualDesign.composition, `Redraw focus: ${parsedCopy.pageFocus}`]
+            .filter(Boolean)
+            .join(" | "),
+        ),
+      };
+      const redrawTask: ImageGenerationTask = {
+        ...baseTask,
+        contentTitle: parsedCopy.title || baseTask.contentTitle,
+        contentBody: contentBody || baseTask.contentBody,
+        visibleText,
+        visualDesign,
+        visualHint: compactLineText(
+          [parsedCopy.pageFocus, ...parsedCopy.contentLines, parsedCopy.visualStructure]
+            .filter(Boolean)
+            .join(" | "),
+        ),
+        imagePromptDraft: compactLineText(copy).slice(0, 500),
+      };
+      redrawTask.composedPrompt = buildTuziImagePrompt({
+        draftContent: compactLineText([redrawTask.contentTitle, redrawTask.contentBody, redrawTask.visualHint].join("\n")),
+        selectedStyle: redrawTask.styleName || redrawTask.stylePrompt,
+        aspectRatio: redrawTask.aspectRatio,
+        posterIndex: redrawTask.index,
+        totalCount: normalizedGenerationConfig.normalizedCount,
+        outputType: redrawTask.outputType,
+        fullContent: topic,
+        visualType: parsedCopy.visualStructure || redrawTask.visualDesign.mainVisual,
+        imagePromptDraft: redrawTask.imagePromptDraft,
+        visibleText: redrawTask.visibleText,
+        visualDesign: redrawTask.visualDesign,
+        pageRole: redrawTask.pageRole,
+        textStrategy: redrawTask.textStrategy || {
+          mode: "guided",
+          titleIdea: redrawTask.contentTitle,
+          keyConcepts: splitToShortLabels([parsedCopy.pageFocus, ...parsedCopy.contentLines], 5),
+          language: outputLanguage.toLowerCase().startsWith("zh") ? "Simplified Chinese" : "English",
+          density: redrawTask.visualDesign.textDensity,
+          allowRewrite: true,
+        },
+        factualRules: redrawTask.factualRules,
+        negativeRules: redrawTask.negativeRules,
+        seriesStyle: redrawTask.seriesStyle,
+      });
+
+      const nextRunId = createGenerationRunId();
+      setGenerationRunContext(nextRunId, null);
+      generationRequestInFlightRef.current = true;
+      setGenerationConfirmError(null);
+      void runGenerationTasksOrdered([redrawTask], nextRunId, true).finally(() => {
+        generationRequestInFlightRef.current = false;
+      });
+    },
+    [
+      imageGenerationTaskByIndex,
+      normalizedGenerationConfig.normalizedCount,
+      outputLanguage,
+      runGenerationTasksOrdered,
+      setGenerationRunContext,
+      topic,
+      tr,
+    ],
   );
   const startGenerationFromCanvas = useCallback(
     async (reason: "auto-generate-missing-current-run-image") => {
+      emitFlowAudit({
+        stage: "6.auto-trigger-exec",
+        status: "started",
+        decision: "start-generation-from-canvas",
+        reason,
+      });
       if (generationRequestInFlightRef.current) {
         return;
       }
@@ -3052,6 +3822,13 @@ export default function WorkspacePage() {
       if (!tasksToGenerate.length) {
         const message = tr("No generation tasks are ready.", "没有可生成的任务。");
         setGenerationConfirmError(message);
+        emitFlowAudit({
+          stage: "6.auto-trigger-exec",
+          status: "aborted",
+          decision: "no-request",
+          reason: "empty-tasks",
+          keyFields: { message },
+        });
         return;
       }
       const runId = normalizeGenerationRunId(currentGenerationRunIdRef.current) || createGenerationRunId();
@@ -3084,12 +3861,12 @@ export default function WorkspacePage() {
         taskIndexes: tasksToGenerate.map((task) => task.index),
       });
       try {
-        await runGenerationBatch(tasksToGenerate, false, runId);
+        await runGenerationTasksOrdered(tasksToGenerate, runId, false);
       } finally {
         generationRequestInFlightRef.current = false;
       }
     },
-    [buildFreshImageGenerationTasks, runGenerationBatch, setGenerationRunContext, tr],
+    [buildFreshImageGenerationTasks, emitFlowAudit, runGenerationTasksOrdered, setGenerationRunContext, tr],
   );
 
   const stageLabel = useMemo(() => {
@@ -3112,12 +3889,43 @@ export default function WorkspacePage() {
   }, [flowStage, tr]);
   useEffect(() => {
     if (debugGoGenerateStepEnabled || debugImageBridgeEnabled) {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "debug-mode-enabled",
+        keyFields: {
+          debugGoGenerateStepEnabled,
+          debugImageBridgeEnabled,
+        },
+      });
       return;
     }
     if (flowStage !== "generate" || !billingConfirmed || effectiveIntent !== "poster") {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "flow-or-intent-not-ready",
+        keyFields: {
+          flowStage,
+          billingConfirmed,
+          effectiveIntent,
+        },
+      });
       return;
     }
     if (generationRequestInFlightRef.current || isPlanningBillingStep) {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "request-in-flight",
+        keyFields: {
+          generationRequestInFlight: generationRequestInFlightRef.current,
+          isPlanningBillingStep,
+        },
+      });
       return;
     }
 
@@ -3130,9 +3938,15 @@ export default function WorkspacePage() {
             item.source === "current-run",
         )
       : [];
-    const hasCurrentRunSuccess = currentRunStates.some(
+    const currentRunSuccessStates = currentRunStates.filter(
       (item) => item.status === "success" && Boolean(item.imageUrl),
     );
+    const hasCurrentRunSuccess = currentRunSuccessStates.length > 0;
+    const hasRenderableCurrentRunSuccess = currentRunSuccessStates.some(
+      (item) => !isMockAssetRenderUrl(item.imageUrl),
+    );
+    const hasOnlyMockCurrentRunSuccess =
+      hasCurrentRunSuccess && !hasRenderableCurrentRunSuccess;
     const hasCurrentRunProcessing = currentRunStates.some(
       (item) =>
         item.status === "queued" ||
@@ -3141,17 +3955,64 @@ export default function WorkspacePage() {
     );
     const hasCurrentRunFailed = currentRunStates.some((item) => item.status === "failed");
 
-    if (hasCurrentRunSuccess || hasCurrentRunProcessing || hasCurrentRunFailed) {
+    if (
+      hasRenderableCurrentRunSuccess ||
+      hasCurrentRunProcessing ||
+      hasCurrentRunFailed
+    ) {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: hasOnlyMockCurrentRunSuccess
+          ? "mock-success-does-not-block-auto-trigger"
+          : "current-run-already-has-state",
+        keyFields: {
+          currentRunId,
+          hasCurrentRunSuccess,
+          hasRenderableCurrentRunSuccess,
+          hasOnlyMockCurrentRunSuccess,
+          hasCurrentRunProcessing,
+          hasCurrentRunFailed,
+          currentRunStates: currentRunStates.map((item) => ({
+            index: item.index,
+            status: item.status,
+            imageUrl: item.imageUrl || null,
+            runId: item.runId || null,
+            jobId: item.jobId || null,
+          })),
+        },
+      });
       return;
     }
 
     const autoTriggerKey = currentRunId || `auto-seed-${generationSessionSeed}`;
     if (autoGenerationTriggeredRunIdsRef.current[autoTriggerKey]) {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "auto-trigger-already-fired",
+        keyFields: {
+          autoTriggerKey,
+        },
+      });
       return;
     }
     autoGenerationTriggeredRunIdsRef.current[autoTriggerKey] = true;
+    emitFlowAudit({
+      stage: "6.auto-trigger-check",
+      status: "triggered",
+      decision: "startGenerationFromCanvas",
+      reason: "missing-current-run-image",
+      keyFields: {
+        autoTriggerKey,
+        currentRunId,
+      },
+    });
     void startGenerationFromCanvas("auto-generate-missing-current-run-image");
   }, [
+    emitFlowAudit,
     billingConfirmed,
     debugGoGenerateStepEnabled,
     debugImageBridgeEnabled,
@@ -3162,6 +4023,137 @@ export default function WorkspacePage() {
     isPlanningBillingStep,
     startGenerationFromCanvas,
   ]);
+
+  useEffect(() => {
+    const currentUrl =
+      typeof window !== "undefined" ? window.location.href : "/workspace";
+    emitFlowAudit({
+      stage: "1.page-enter",
+      status: "observed",
+      decision: "entered-workspace",
+      reason: "workspace-client-mounted",
+      keyFields: {
+        url: currentUrl,
+        debugGoGenerateStepEnabled,
+        debugImageBridgeEnabled,
+        queryProjectId: searchParams.get("projectId") || null,
+        flowStage,
+        showPosterCanvas,
+        showStoryboard,
+        billingConfirmed,
+        generationStateCount: Object.keys(generationTaskStateByIndex).length,
+      },
+    });
+  }, [
+    billingConfirmed,
+    debugGoGenerateStepEnabled,
+    debugImageBridgeEnabled,
+    emitFlowAudit,
+    flowStage,
+    generationTaskStateByIndex,
+    searchParams,
+    showPosterCanvas,
+    showStoryboard,
+  ]);
+
+  useEffect(() => {
+    emitFlowAudit({
+      stage: "2.project-restore",
+      status: "observed",
+      decision: "restore-from-home-draft-or-cache",
+      reason: "initial-entry-parsed",
+      keyFields: {
+        sourceProjectId: initialEntry.project?.projectId || null,
+        sourceProjectTraceId: initialEntry.project?.projectTraceId || null,
+        sourcePromptLength: initialEntry.prompt.length,
+        sourceCount: initialEntry.sources.length,
+        sessionScopeKey: sessionPrefsScopeKey,
+        restoredChatHistoryCount: readWorkspaceChatHistory(sessionPrefsScopeKey).length,
+      },
+    });
+  }, [emitFlowAudit, initialEntry.project?.projectId, initialEntry.project?.projectTraceId, initialEntry.prompt.length, initialEntry.sources.length, sessionPrefsScopeKey]);
+
+  useEffect(() => {
+    emitFlowAudit({
+      stage: "3.draft-content",
+      status: "observed",
+      decision: "draft-ready-check",
+      reason: "draft-state-evaluated",
+      keyFields: {
+        intent: effectiveIntent,
+        hasPosterDraft: Boolean(posterDraft),
+        posterDraftSource: editablePosterDraft ? "editablePosterDraft" : basePosterDraft ? "basePosterDraft" : "none",
+        posterPlanCount: (editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList).length,
+        outlineCount: outlineItems.length,
+        slideDraftCount: densityAdjustedSlideDrafts.length,
+      },
+    });
+  }, [
+    basePosterDraft,
+    basePosterPlanList,
+    densityAdjustedSlideDrafts.length,
+    editablePosterDraft,
+    editablePosterPlanList,
+    effectiveIntent,
+    emitFlowAudit,
+    outlineItems.length,
+    posterDraft,
+  ]);
+
+  useEffect(() => {
+    emitFlowAudit({
+      stage: "4.config-style-ratio-quantity",
+      status: "observed",
+      decision: "generation-config-evaluated",
+      reason: "config-state-updated",
+      keyFields: {
+        selectedStyleId,
+        selectedAspectRatio: normalizedGenerationConfig.normalizedRatio,
+        quantity: normalizedGenerationConfig.normalizedCount,
+        selectedImageModel: initialEntry.models?.imageModel || "gpt-image-2",
+        provider: "tuzi",
+        canBuildGenerationTasks: imageGenerationTasks.length > 0,
+        imageGenerationTasksLength: imageGenerationTasks.length,
+      },
+    });
+  }, [
+    emitFlowAudit,
+    imageGenerationTasks.length,
+    initialEntry.models?.imageModel,
+    normalizedGenerationConfig.normalizedCount,
+    normalizedGenerationConfig.normalizedRatio,
+    selectedStyleId,
+  ]);
+
+  useEffect(() => {
+    if (flowStage !== "generate") {
+      return;
+    }
+    emitFlowAudit({
+      stage: "5.enter-canvas-generate-step",
+      status: "observed",
+      decision: "entered-generate-step",
+      reason: "flowStage-is-generate",
+      keyFields: {
+        billingConfirmed,
+        currentGenerationRunId: currentGenerationRunIdRef.current,
+        currentGenerationJobId: currentGenerationJobIdRef.current,
+        generationRequestInFlight: generationRequestInFlightRef.current,
+        imageGenerationTasksLength: imageGenerationTasks.length,
+        generationStateByIndex: Object.fromEntries(
+          Object.entries(generationTaskStateByIndex).map(([index, state]) => [
+            index,
+            {
+              status: state.status,
+              imageUrl: state.imageUrl || null,
+              runId: state.runId || null,
+              jobId: state.jobId || null,
+            },
+          ]),
+        ),
+      },
+    });
+  }, [billingConfirmed, emitFlowAudit, flowStage, generationTaskStateByIndex, imageGenerationTasks.length]);
   const projectTitle = isZhOutput
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
@@ -3363,9 +4355,11 @@ export default function WorkspacePage() {
     }
     const message = error instanceof Error ? error.message : "Unknown request error.";
     const codeMatch = message.match(/\b([A-Z][A-Z0-9_]{2,})\b/);
+    const authRequired = isAuthRequiredErrorMessage(message);
     return {
       userMessage: message,
       code: codeMatch?.[1],
+      authRequired,
     };
   }, []);
 
@@ -3509,15 +4503,26 @@ export default function WorkspacePage() {
   }, [generationTaskStateByIndex, imageGenerationTasks, showPosterCanvas]);
 
   function pushUserMessage(content: string, module = "内容改写") {
-    setUpdates((prev) => [
-      ...prev,
-      {
-        id: `u-${Date.now()}-${Math.round(Math.random() * 9999)}`,
-        role: "user",
-        module,
-        content,
-      },
-    ]);
+    setUpdates((prev) => {
+      const last = prev[prev.length - 1];
+      if (
+        last &&
+        last.role === "user" &&
+        last.module === module &&
+        last.content.trim() === content.trim()
+      ) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: `u-${Date.now()}-${Math.round(Math.random() * 9999)}`,
+          role: "user",
+          module,
+          content,
+        },
+      ];
+    });
     logClientEvent({
       category: "chat",
       action: "user_message",
@@ -3697,6 +4702,7 @@ export default function WorkspacePage() {
 
     if (effectiveIntent !== "poster") {
       let requestSucceeded = true;
+      setDraftLlmUsage(null);
       setEditableOutlineItems([]);
       setEditableSlideDrafts([]);
       setEditablePosterDraft(basePosterDraft);
@@ -3746,7 +4752,23 @@ export default function WorkspacePage() {
             imagePrompt?: string;
             imagePromptDraft?: string;
           }>;
+          llmUsage?: DraftLlmUsage;
         };
+        if (
+          data.llmUsage &&
+          Number.isFinite(data.llmUsage.totalTokens) &&
+          Number(data.llmUsage.totalTokens) > 0
+        ) {
+          setDraftLlmUsage({
+            inputTokens: Math.max(0, Math.round(data.llmUsage.inputTokens || 0)),
+            outputTokens: Math.max(0, Math.round(data.llmUsage.outputTokens || 0)),
+            totalTokens: Math.max(1, Math.round(data.llmUsage.totalTokens)),
+            source: data.llmUsage.source,
+            model: data.llmUsage.model,
+          });
+        } else {
+          setDraftLlmUsage(null);
+        }
         const nextOutline = Array.isArray(data.outlineItems) && data.outlineItems.length
           ? data.outlineItems.map((item) => String(item || "").trim()).filter(Boolean)
           : baseOutlineItems;
@@ -3805,6 +4827,17 @@ export default function WorkspacePage() {
             existingErrorTurnId: existingErrorTurnId ?? null,
           },
         });
+        if (parsed.authRequired) {
+          if (existingErrorTurnId) {
+            removeErrorTurn(existingErrorTurnId);
+          }
+          pushAssistantMessage(
+            tr("Please sign in to continue.", "请先登录后继续。"),
+            tr("Request Guard", "请求保护"),
+          );
+          await ensureThinkingVisible();
+          return false;
+        }
         upsertAssistantErrorMessage(
           existingErrorTurnId,
           `Language model draft generation failed. ${parsed.userMessage}`,
@@ -3825,6 +4858,7 @@ export default function WorkspacePage() {
     const requestId = posterDraftRequestRef.current + 1;
     posterDraftRequestRef.current = requestId;
     let requestSucceeded = true;
+    setDraftLlmUsage(null);
     setEditablePosterDraft(null);
     setEditablePosterPlanList([]);
     startThinking(
@@ -3868,6 +4902,7 @@ export default function WorkspacePage() {
         posterDraft?: PosterDraft;
         planList?: PosterPlanItem[];
         source?: "llm" | "fallback";
+        llmUsage?: DraftLlmUsage;
         _internal?: {
           renderSpec?: unknown;
           modelPrompt?: string;
@@ -3875,6 +4910,21 @@ export default function WorkspacePage() {
       };
       if (posterDraftRequestRef.current !== requestId) {
         return false;
+      }
+      if (
+        data.llmUsage &&
+        Number.isFinite(data.llmUsage.totalTokens) &&
+        Number(data.llmUsage.totalTokens) > 0
+      ) {
+        setDraftLlmUsage({
+          inputTokens: Math.max(0, Math.round(data.llmUsage.inputTokens || 0)),
+          outputTokens: Math.max(0, Math.round(data.llmUsage.outputTokens || 0)),
+          totalTokens: Math.max(1, Math.round(data.llmUsage.totalTokens)),
+          source: data.llmUsage.source,
+          model: data.llmUsage.model,
+        });
+      } else {
+        setDraftLlmUsage(null);
       }
       setEditablePosterDraft(data.posterDraft ?? basePosterDraft);
       setEditablePosterPlanList(
@@ -3911,6 +4961,16 @@ export default function WorkspacePage() {
           requestId,
         },
       });
+      if (parsed.authRequired) {
+        if (existingErrorTurnId) {
+          removeErrorTurn(existingErrorTurnId);
+        }
+        pushAssistantMessage(
+          tr("Please sign in to continue.", "请先登录后继续。"),
+          tr("Request Guard", "请求保护"),
+        );
+        return false;
+      }
       upsertAssistantErrorMessage(
         existingErrorTurnId,
         `Language model draft generation failed. ${parsed.userMessage}`,
@@ -3939,12 +4999,13 @@ export default function WorkspacePage() {
     manualIntent,
     outputLanguage,
     parseStructuredError,
+    removeErrorTurn,
     posterCount,
     posterSizeId,
     posterSizeLabel,
     pptPageCount,
     pptRatio,
-    pushAssistantErrorMessage,
+    pushAssistantMessage,
     tr,
     topic,
     upsertAssistantErrorMessage,
@@ -4083,8 +5144,31 @@ export default function WorkspacePage() {
       expectedTaskCount: expectedCount,
       debugGoGenerateStepEnabled,
     });
+    emitFlowAudit({
+      stage: "7.confirm-generation",
+      status: "entered",
+      decision: "handleConfirmBilling-called",
+      reason: "user-confirm-or-auto-confirm",
+      keyFields: {
+        flowStage,
+        credits,
+        billingCost,
+        canConfirmBilling,
+        isPlanningBillingStep,
+        generationRequestInFlight: generationRequestInFlightRef.current,
+        imageGenerationTasksLength: imageGenerationTasks.length,
+        freshTaskCount: tasksToGenerate.length,
+        expectedTaskCount: expectedCount,
+      },
+    });
     if (generationRequestInFlightRef.current) {
       console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "generationRequestInFlight",
+      });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
         reason: "generationRequestInFlight",
       });
       return;
@@ -4094,6 +5178,13 @@ export default function WorkspacePage() {
         reason: "insufficientCredits",
         credits,
         billingCost,
+      });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
+        reason: "insufficientCredits",
+        keyFields: { credits, billingCost },
       });
       pushAssistantMessage(
         isZhOutput
@@ -4107,6 +5198,12 @@ export default function WorkspacePage() {
       console.info("[workspace-generation] handleConfirmBilling early return", {
         reason: "isPlanningBillingStep",
       });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
+        reason: "isPlanningBillingStep",
+      });
       return;
     }
     if (flowStage !== "billing") {
@@ -4115,6 +5212,13 @@ export default function WorkspacePage() {
         reason: "invalidFlowStage",
         flowStage,
       });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
+        reason: "invalidFlowStage",
+        keyFields: { flowStage },
+      });
       setGenerationConfirmError(message);
       pushAssistantMessage(message, tr("Generation", "生成"));
       return;
@@ -4122,6 +5226,12 @@ export default function WorkspacePage() {
     if (!tasksToGenerate.length) {
       const message = tr("No generation tasks are ready.", "没有可生成的任务。");
       console.info("[workspace-generation] handleConfirmBilling early return", {
+        reason: "emptyGenerationTasks",
+      });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
         reason: "emptyGenerationTasks",
       });
       setGenerationConfirmError(message);
@@ -4135,6 +5245,16 @@ export default function WorkspacePage() {
         expectedCount,
         actualCount: tasksToGenerate.length,
       });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
+        reason: "taskCountMismatch",
+        keyFields: {
+          expectedCount,
+          actualCount: tasksToGenerate.length,
+        },
+      });
       setGenerationConfirmError(message);
       pushAssistantMessage(message, tr("Generation", "生成"));
       return;
@@ -4147,6 +5267,13 @@ export default function WorkspacePage() {
       console.info("[workspace-generation] handleConfirmBilling early return", {
         reason: "invalidTaskPayload",
         invalidTaskIndex: invalidTask.index,
+      });
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "early-return",
+        decision: "abort",
+        reason: "invalidTaskPayload",
+        keyFields: { invalidTaskIndex: invalidTask.index },
       });
       setGenerationConfirmError(message);
       pushAssistantMessage(message, tr("Generation", "生成"));
@@ -4164,6 +5291,17 @@ export default function WorkspacePage() {
       projectTraceId: projectTraceIdRef.current,
       taskCount: tasksToGenerate.length,
       taskIndexes: tasksToGenerate.map((task) => task.index),
+    });
+    emitFlowAudit({
+      stage: "7.confirm-generation",
+      status: "accepted",
+      decision: "start-run",
+      reason: "tasks-ready",
+      keyFields: {
+        nextRunId,
+        taskCount: tasksToGenerate.length,
+        taskIndexes: tasksToGenerate.map((task) => task.index),
+      },
     });
     const generationStartedAt = Date.now();
     const pendingState: Record<number, GenerationTaskUiState> = {};
@@ -4281,7 +5419,7 @@ export default function WorkspacePage() {
           taskIndexes: tasksToGenerate.map((task) => task.index),
         },
       });
-      await runGenerationBatch(tasksToGenerate, false, nextRunId);
+      await runGenerationTasksOrdered(tasksToGenerate, nextRunId, false);
     } catch (error) {
       setBillingConfirmed(false);
       setGenerationConfirmError(
@@ -4296,6 +5434,12 @@ export default function WorkspacePage() {
         projectId: projectIdRef.current ?? null,
       });
     } finally {
+      emitFlowAudit({
+        stage: "7.confirm-generation",
+        status: "finished",
+        decision: "request-finished",
+        reason: "handleConfirmBilling-finally",
+      });
       stopThinking();
       setIsPlanningBillingStep(false);
       generationRequestInFlightRef.current = false;
@@ -4308,6 +5452,9 @@ export default function WorkspacePage() {
       source?: "manual" | "suggestion";
     },
   ) {
+    const cleanupAuthRelatedChatUi = () => {
+      setUpdates((prev) => sanitizeAuthRelatedChatTurns(prev));
+    };
     try {
       const guardResponse = await fetch("/api/workspace/chat-guard", {
         method: "POST",
@@ -4316,6 +5463,7 @@ export default function WorkspacePage() {
         },
       });
       if (!guardResponse.ok) {
+        cleanupAuthRelatedChatUi();
         const data = (await guardResponse.json()) as { error?: string };
         pushAssistantMessage(
           data?.error ||
@@ -4328,6 +5476,7 @@ export default function WorkspacePage() {
         return;
       }
     } catch {
+      cleanupAuthRelatedChatUi();
       pushAssistantMessage(
         tr(
           "Request guard is unavailable. Please retry shortly.",
@@ -4370,6 +5519,15 @@ export default function WorkspacePage() {
     await new Promise((resolve) => window.setTimeout(resolve, 280));
 
     const normalized = normalizeText(value);
+    const backNavigationCommand = isBackNavigationCommand(normalized);
+    const downloadCommand = isDownloadCommand(normalized);
+    const draftEditIntentCommand = isDraftEditIntentCommand(normalized);
+    const parsedPosterCount = extractPosterCount(value);
+    const parsedPptCount = extractPageCount(value);
+    const parsedVideoCount = extractVideoStoryboardCount(value);
+    const parsedPosterSize = extractPosterSize(value);
+    const parsedPptRatio = extractPptRatio(value);
+    const parsedVideoRatio = extractVideoRatio(value);
     const hasDirectionHint = containsAny(normalized, [
       "海报",
       "视频",
@@ -4413,6 +5571,78 @@ export default function WorkspacePage() {
     ]);
     const likelyTopicText = !hasDirectionHint && !isConfigCommand && !isEditCommand;
 
+    if (backNavigationCommand) {
+      pushAssistantMessage(
+        tr(
+          "Back navigation is handled by the page controls. Please use the step buttons.",
+          "返回操作由页面按钮处理，请使用步骤按钮。",
+        ),
+        tr("Workflow Guard", "流程约束"),
+      );
+      stopThinking();
+      setIsSending(false);
+      return;
+    }
+
+    if (flowStage === "generate" && downloadCommand) {
+      pushAssistantMessage(
+        tr(
+          "Download is button-only in canvas mode. Please click Download / Download All.",
+          "无限画布阶段下载仅支持按钮操作，请点击 Download / Download All。",
+        ),
+        tr("Workflow Guard", "流程约束"),
+      );
+      stopThinking();
+      setIsSending(false);
+      return;
+    }
+
+    const allowDraftEditFromLaterStage =
+      (flowStage === "style" || flowStage === "billing" || flowStage === "generate") &&
+      draftEditIntentCommand;
+    const strictStageGuardActive = flowStage === "style" || flowStage === "billing";
+    const shouldPrioritizeDraftEdit = flowStage === "content" || allowDraftEditFromLaterStage;
+
+    if (flowStage === "billing" && !allowDraftEditFromLaterStage) {
+      pushAssistantMessage(
+        tr(
+          "Billing step does not accept chat edits. Please use the on-screen buttons.",
+          "账单阶段不响应输入框编辑，请使用页面按钮操作。",
+        ),
+        tr("Workflow Guard", "流程约束"),
+      );
+      stopThinking();
+      setIsSending(false);
+      return;
+    }
+
+    if (strictStageGuardActive && !shouldPrioritizeDraftEdit) {
+      pushAssistantMessage(
+        tr(
+          "Please complete this step using on-screen controls. Draft edits are available from content stage.",
+          "请先通过页面控件完成当前步骤。文稿修改请在文稿阶段进行。",
+        ),
+        tr("Workflow Guard", "流程约束"),
+      );
+      stopThinking();
+      setIsSending(false);
+      return;
+    }
+
+    if (allowDraftEditFromLaterStage) {
+      // Re-open the draft stage for a new editable revision round.
+      setBillingConfirmed(false);
+      clearCurrentGenerationState("draft-edit-reopen-content");
+      setFlowStage("content");
+      pushAssistantMessage(
+        tr(
+          "Switched to draft revision mode. I will apply this as a new draft update; confirm draft, then reselect style.",
+          "已切换到文稿修改模式。本次会生成新的文稿更新卡片；确认文稿后请重新选择风格。",
+        ),
+        tr("Draft Revision", "文稿修订"),
+      );
+    }
+
     if (likelyTopicText && (flowStage === "intent" || flowStage === "config" || shouldClarifyIntent)) {
       setTopicContextPrompt(value);
     }
@@ -4424,7 +5654,7 @@ export default function WorkspacePage() {
       setWeakPromptResolved(true);
     }
 
-    if (weakPrompt && !hasDirectionHint) {
+    if (!shouldPrioritizeDraftEdit && weakPrompt && !hasDirectionHint) {
       if (inputSource === "suggestion") {
         stopThinking();
         setIsSending(false);
@@ -4451,7 +5681,13 @@ export default function WorkspacePage() {
       setIsSending(false);
       return;
     }
-    if (containsAny(normalized, ["ppt", "课件", "幻灯", "slides", "slide deck"])) {
+    if (!shouldPrioritizeDraftEdit && containsAny(normalized, ["ppt", "课件", "幻灯", "slides", "slide deck"])) {
+      if (parsedPptCount) {
+        setPptPageCount(parsedPptCount);
+      }
+      if (parsedPptRatio) {
+        setPptRatio(parsedPptRatio);
+      }
       if (manualIntent !== "ppt") {
         setManualIntent("ppt");
         resetToConfigStage("direction-change");
@@ -4477,7 +5713,13 @@ export default function WorkspacePage() {
       setIsSending(false);
       return;
     }
-    if (containsAny(normalized, ["视频", "口播", "分镜", "video", "storyboard", "voiceover"])) {
+    if (!shouldPrioritizeDraftEdit && containsAny(normalized, ["视频", "口播", "分镜", "video", "storyboard", "voiceover"])) {
+      if (parsedVideoCount) {
+        setVideoStoryboardCount(parsedVideoCount);
+      }
+      if (parsedVideoRatio) {
+        setVideoRatio(parsedVideoRatio);
+      }
       if (manualIntent !== "video") {
         setManualIntent("video");
         resetToConfigStage("direction-change");
@@ -4503,7 +5745,16 @@ export default function WorkspacePage() {
       setIsSending(false);
       return;
     }
-    if (containsAny(normalized, ["海报", "长图", "poster", "infographic"])) {
+    if (!shouldPrioritizeDraftEdit && containsAny(normalized, ["海报", "长图", "poster", "infographic"])) {
+      if (parsedPosterCount) {
+        setPosterCount(parsedPosterCount);
+      } else if (parsedPptCount) {
+        // 用户常说“8页海报”，这里将“页数”映射为海报张数。
+        setPosterCount(clamp(parsedPptCount, 1, 10));
+      }
+      if (parsedPosterSize) {
+        setPosterSizeId(parsedPosterSize);
+      }
       if (manualIntent !== "poster") {
         setManualIntent("poster");
         resetToConfigStage("direction-change");
@@ -4530,7 +5781,37 @@ export default function WorkspacePage() {
       return;
     }
 
-    if (isConfigCommand && (manualIntent === "poster" || manualIntent === "video" || manualIntent === "ppt")) {
+    if (
+      !shouldPrioritizeDraftEdit &&
+      isConfigCommand &&
+      (manualIntent === "poster" || manualIntent === "video" || manualIntent === "ppt")
+    ) {
+      if (manualIntent === "poster") {
+        if (parsedPosterCount) {
+          setPosterCount(parsedPosterCount);
+        } else if (parsedPptCount) {
+          setPosterCount(clamp(parsedPptCount, 1, 10));
+        }
+        if (parsedPosterSize) {
+          setPosterSizeId(parsedPosterSize);
+        }
+      } else if (manualIntent === "ppt") {
+        if (parsedPptCount) {
+          setPptPageCount(parsedPptCount);
+        }
+        if (parsedPptRatio) {
+          setPptRatio(parsedPptRatio);
+        }
+      } else if (manualIntent === "video") {
+        if (parsedVideoCount) {
+          setVideoStoryboardCount(parsedVideoCount);
+        } else if (parsedPptCount) {
+          setVideoStoryboardCount(clamp(parsedPptCount, 6, 24));
+        }
+        if (parsedVideoRatio) {
+          setVideoRatio(parsedVideoRatio);
+        }
+      }
       pushAssistantMessage(
         tr(
           "Configuration intent noted. Please update settings below and click Next for best accuracy.",
@@ -4543,7 +5824,7 @@ export default function WorkspacePage() {
       return;
     }
 
-    if (shouldClarifyIntent) {
+    if (!shouldPrioritizeDraftEdit && shouldClarifyIntent) {
       pushAssistantMessage(
         tr("I still cannot determine the output type. Please reply with PPT, video, or poster.", "我还不能确定你要生成的类型。请直接回复：PPT、视频或海报。"),
         tr("Requirement Check", "需求确认"),
@@ -4871,6 +6152,7 @@ export default function WorkspacePage() {
                   outlineItems={outlineItems}
                   slideDrafts={densityAdjustedSlideDrafts}
                   posterDraft={posterDraft}
+                  posterPlanList={editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList}
                   summaryText={summaryText}
                   updates={updates}
                   onConfirm={handleNextStep}
@@ -4890,7 +6172,6 @@ export default function WorkspacePage() {
                     languageModelCredits,
                     imageModelCredits,
                     totalCost: billingCost,
-                    outputTokenEstimate,
                     standardOutputCount,
                     promoCreditsPerOutput: STANDARD_OUTPUT_PROMO_CREDITS,
                     regularCreditsPerOutput: STANDARD_OUTPUT_REGULAR_CREDITS,
@@ -4908,9 +6189,9 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="z-20 border-t border-zinc-200/70 bg-[#f7f7f8] pt-2">
+              <div className="z-20 pt-2">
                 <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]">
-                  <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
+                  <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2">
                     <div className="flex items-center gap-2">
                       <textarea
                         value={chatInput}
@@ -4995,9 +6276,11 @@ export default function WorkspacePage() {
                 posterCount={posterCount}
                 posterDraft={posterDraft}
                 posterPlanList={editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList}
+                posterAspectRatio={posterCanvasAspectRatio}
                 generationSessionSeed={generationSessionSeed}
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 onRetryGenerationTask={handleRetryGenerationTask}
+                onRedrawGenerationTask={handleRedrawGenerationTask}
                 onSaveStateChange={(nextState, unsaved) => {
                   setSaveState(nextState);
                   setHasUnsavedChanges(unsaved);
