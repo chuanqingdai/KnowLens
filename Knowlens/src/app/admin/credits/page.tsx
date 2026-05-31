@@ -28,12 +28,21 @@ export default function AdminCreditsPage() {
     };
   }, [records]);
 
-  const filtered = useMemo(() => {
+  const filteredByKeyword = useMemo(() => {
     const key = keyword.trim().toLowerCase();
     if (!key) {
       return records;
     }
-    return records.filter((record) => record.description.toLowerCase().includes(key));
+    return records.filter((record) => {
+      const email = record.userEmail?.trim().toLowerCase() ?? "";
+      const projectId = record.projectId?.trim().toLowerCase() ?? "";
+      const description = record.description.trim().toLowerCase();
+      return (
+        description.includes(key) ||
+        email.includes(key) ||
+        projectId.includes(key)
+      );
+    });
   }, [keyword, records]);
 
   return (
@@ -59,7 +68,7 @@ export default function AdminCreditsPage() {
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="搜索流水描述"
+            placeholder="搜索邮箱 / projectId / 描述"
             className="w-full bg-transparent text-sm text-zinc-700 outline-none placeholder:text-zinc-400"
           />
         </div>
@@ -76,7 +85,7 @@ export default function AdminCreditsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((record) => (
+              {filteredByKeyword.map((record) => (
                 <tr key={record.id} className="border-t border-zinc-200">
                   <td className="px-3 py-2 text-zinc-600">{formatDate(record.createdAt)}</td>
                   <td className="px-3 py-2 text-zinc-700">

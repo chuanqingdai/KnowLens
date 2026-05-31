@@ -52,6 +52,14 @@ const USER_SCOPED_PROJECTS_KEY = "knowlens_user_projects_v1";
 
 const seedUsers: AdminUser[] = [
   {
+    id: "u-local-admin",
+    name: "local_admin",
+    email: "local@knowlens.ai",
+    role: "admin",
+    plan: "pro",
+    credits: 520,
+  },
+  {
     id: "u-admin",
     name: "chuanqingdai",
     email: "chuanqingdai@gmail.com",
@@ -281,7 +289,14 @@ function sortFeaturedConfigs(configs: FeaturedCaseConfig[]) {
 export function getAdminUsers() {
   const users = read<AdminUser[]>(ADMIN_USERS_KEY);
   if (users?.length) {
-    return users;
+    const existingIds = new Set(users.map((user) => user.id));
+    const missingSeedUsers = seedUsers.filter((user) => !existingIds.has(user.id));
+    if (!missingSeedUsers.length) {
+      return users;
+    }
+    const next = [...missingSeedUsers, ...users];
+    write(ADMIN_USERS_KEY, next);
+    return next;
   }
   write(ADMIN_USERS_KEY, seedUsers);
   return seedUsers;

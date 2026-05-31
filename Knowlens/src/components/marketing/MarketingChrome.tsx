@@ -245,7 +245,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
               onClick={openMembershipModal}
               className="inline-flex h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
             >
-              {t("Plans", "会员方案")}
+              {t("Pricing", "定价")}
             </button>
             {useGoogleFallback ? (
               <button
@@ -261,7 +261,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
                 href="/auth?callbackUrl=%2Fapp"
                 className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
               >
-                {t("Start now", "开始使用")}
+                {t("Generate Free", "免费生成")}
                 <ArrowRight size={13} />
               </Link>
             )}

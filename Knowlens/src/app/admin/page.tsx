@@ -65,7 +65,6 @@ type UsageLogRow = {
 };
 
 type UserQueryIdentity = {
-  userId: string | null;
   email: string | null;
 };
 
@@ -155,16 +154,9 @@ function buildMarkdownTimeline(rows: UsageLogRow[]) {
 function parseUserIdentityInput(raw: string): UserQueryIdentity {
   const trimmed = raw.trim();
   if (!trimmed) {
-    return { userId: null, email: null };
+    return { email: null };
   }
-  const lowered = trimmed.toLowerCase();
-  if (lowered.includes("@")) {
-    return { userId: null, email: lowered };
-  }
-  if (/^u-[a-z0-9_-]+$/i.test(trimmed)) {
-    return { userId: trimmed, email: null };
-  }
-  return { userId: null, email: lowered };
+  return { email: trimmed.toLowerCase() };
 }
 
 export default function AdminDashboardPage() {
@@ -198,7 +190,8 @@ export default function AdminDashboardPage() {
   const [usageActionFilter, setUsageActionFilter] = useState("");
   const [expandedUsageLogIds, setExpandedUsageLogIds] = useState<Record<string, boolean>>({});
   const [adminActionHint, setAdminActionHint] = useState("");
-  const [showUsageMarkdownTimeline, setShowUsageMarkdownTimeline] = useState(true);
+  const [showUsageMarkdownTimeline, setShowUsageMarkdownTimeline] = useState(false);
+  const [simpleMode, setSimpleMode] = useState(true);
 
   useEffect(() => {
     if (activeTab !== "overview") {
@@ -264,7 +257,6 @@ export default function AdminDashboardPage() {
 
   const normalizedEmailQuery = emailQuery.trim().toLowerCase();
   const queryIdentity = useMemo(() => parseUserIdentityInput(emailQuery), [emailQuery]);
-  const normalizedUserIdQuery = queryIdentity.userId?.trim() || "";
   const normalizedUserEmailQuery = queryIdentity.email?.trim().toLowerCase() || "";
   const normalizedProjectLogQuery = projectLogQuery.trim().toLowerCase();
 
@@ -296,10 +288,7 @@ export default function AdminDashboardPage() {
   }
 
   useEffect(() => {
-    const fallbackEmail = normalizedUserIdQuery
-      ? users.find((user) => user.id === normalizedUserIdQuery)?.email.trim().toLowerCase() || ""
-      : "";
-    const emailToLoad = normalizedUserEmailQuery || fallbackEmail;
+    const emailToLoad = normalizedUserEmailQuery;
     if (!emailToLoad) {
       return;
     }
@@ -339,7 +328,7 @@ export default function AdminDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [normalizedUserEmailQuery, normalizedUserIdQuery, opsReloadVersion, users]);
+  }, [normalizedUserEmailQuery, opsReloadVersion]);
 
   useEffect(() => {
     if (!normalizedProjectLogQuery) {
@@ -389,11 +378,8 @@ export default function AdminDashboardPage() {
     if (!normalizedEmailQuery) {
       return [];
     }
-    if (normalizedUserIdQuery) {
-      return users.filter((user) => user.id.toLowerCase() === normalizedUserIdQuery.toLowerCase());
-    }
     return users.filter((user) => user.email.toLowerCase().includes(normalizedUserEmailQuery));
-  }, [normalizedEmailQuery, normalizedUserEmailQuery, normalizedUserIdQuery, users]);
+  }, [normalizedEmailQuery, normalizedUserEmailQuery, users]);
 
   const usageCategories = useMemo(() => {
     return Array.from(new Set(usageLogs.map((item) => item.category).filter(Boolean))).sort((a, b) =>
@@ -440,9 +426,6 @@ export default function AdminDashboardPage() {
     if (!normalizedEmailQuery) {
       return sortedProjects;
     }
-    if (normalizedUserIdQuery) {
-      return sortedProjects.filter((project) => project.userId === normalizedUserIdQuery);
-    }
     return sortedProjects.filter((project) => {
       const owner = usersById.get(project.userId);
       if (!owner) {
@@ -450,17 +433,11 @@ export default function AdminDashboardPage() {
       }
       return owner.email.toLowerCase().includes(normalizedUserEmailQuery);
     });
-  }, [normalizedEmailQuery, normalizedUserEmailQuery, normalizedUserIdQuery, sortedProjects, usersById]);
+  }, [normalizedEmailQuery, normalizedUserEmailQuery, sortedProjects, usersById]);
 
   const selectedUserForLedger = useMemo(() => {
     if (!normalizedEmailQuery) {
       return null;
-    }
-    if (normalizedUserIdQuery) {
-      const byId = users.find((user) => user.id === normalizedUserIdQuery);
-      if (byId) {
-        return byId;
-      }
     }
     const exact = users.find(
       (user) => user.email.trim().toLowerCase() === normalizedUserEmailQuery,
@@ -482,7 +459,7 @@ export default function AdminDashboardPage() {
       };
     }
     return null;
-  }, [matchedUsers, normalizedEmailQuery, normalizedUserEmailQuery, normalizedUserIdQuery, users]);
+  }, [matchedUsers, normalizedEmailQuery, normalizedUserEmailQuery, users]);
 
   const selectedUserSummary = useMemo(() => {
     if (!selectedUserForLedger) {
@@ -717,6 +694,17 @@ export default function AdminDashboardPage() {
               {tabs.find((tab) => tab.id === activeTab)?.desc}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setSimpleMode((prev) => !prev)}
+            className={`inline-flex h-8 items-center rounded-lg border px-3 text-xs transition ${
+              simpleMode
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+            }`}
+          >
+            {simpleMode ? "简洁模式（推荐）" : "高级模式"}
+          </button>
         </div>
         <div className="mt-3 inline-flex w-full flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5">
           {tabs.map((tab) => (
@@ -743,7 +731,7 @@ export default function AdminDashboardPage() {
               <div>
                 <h2 className="text-sm font-medium text-zinc-900">用户查询入口</h2>
                 <p className="mt-1 text-xs text-zinc-500">
-                  支持输入用户邮箱或用户 ID（如 u-xxx），统一查看日志、项目与积分信息。
+                  支持按用户邮箱查询，统一查看日志、项目与积分信息。
                 </p>
               </div>
               <div className="relative w-full sm:max-w-md">
@@ -754,7 +742,7 @@ export default function AdminDashboardPage() {
                 <input
                   value={emailQuery}
                   onChange={(event) => handleEmailQueryChange(event.target.value)}
-                  placeholder="输入邮箱或用户 ID，例如 pixfun.ai@gmail.com / u-admin"
+                  placeholder="输入用户邮箱，例如 local@knowlens.ai"
                   className="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-10 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                 />
                 {emailQuery ? (
@@ -774,11 +762,11 @@ export default function AdminDashboardPage() {
               <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
                 匹配用户：
                 {matchedUsers.length > 0
-                  ? matchedUsers.map((user) => `${user.email} (${user.id})`).join("，")
+                  ? matchedUsers.map((user) => user.email).join("，")
                   : "未找到用户（仍可继续查询服务端日志）"}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-zinc-500">请输入邮箱或用户 ID 开始查询</p>
+              <p className="mt-3 text-sm text-zinc-500">请输入用户邮箱开始查询</p>
             )}
 
             {selectedUserForLedger && selectedUserSummary ? (
@@ -817,7 +805,11 @@ export default function AdminDashboardPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-medium text-zinc-900">用户使用日志</h2>
-                <p className="mt-1 text-xs text-zinc-500">按邮箱查看日志，并可按状态/分类/动作筛选。</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {simpleMode
+                    ? "短期运营只看核心字段：时间、动作、状态、错误摘要。"
+                    : "按邮箱查看日志，并可按状态/分类/动作筛选。"}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -827,69 +819,73 @@ export default function AdminDashboardPage() {
                 >
                   清空筛选
                 </button>
-                <button
-                  type="button"
-                  disabled={!filteredUsageLogs.length}
-                  onClick={handleExportUsageLogs}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Download size={12} />
-                  导出 JSON
-                </button>
-                <button
-                  type="button"
-                  disabled={!filteredUsageLogs.length}
-                  onClick={() => {
-                    void handleCopyText(usageTimelineMarkdown, "用户时间轴日志（Markdown）已复制");
-                  }}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Copy size={12} />
-                  复制时间轴
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsageStatusFilter("error");
-                    setUsageCategoryFilter("llm");
-                    setUsageActionFilter("draft_generation_failed");
-                  }}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  LLM 失败
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsageStatusFilter("error");
-                    setUsageCategoryFilter("image");
-                    setUsageActionFilter("image_generation_failed");
-                  }}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  Image2 失败
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleDownloadServerLogsByEmail();
-                  }}
-                  disabled={!normalizedUserEmailQuery}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Download size={12} />
-                  下载服务端日志
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUsageMarkdownTimeline((prev) => !prev)}
-                  className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
-                >
-                  {showUsageMarkdownTimeline ? "切换表格" : "切换 Markdown"}
-                </button>
+                {!simpleMode ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!filteredUsageLogs.length}
+                      onClick={handleExportUsageLogs}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Download size={12} />
+                      导出 JSON
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!filteredUsageLogs.length}
+                      onClick={() => {
+                        void handleCopyText(usageTimelineMarkdown, "用户时间轴日志（Markdown）已复制");
+                      }}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Copy size={12} />
+                      复制时间轴
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsageStatusFilter("error");
+                        setUsageCategoryFilter("llm");
+                        setUsageActionFilter("draft_generation_failed");
+                      }}
+                      className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                    >
+                      LLM 失败
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsageStatusFilter("error");
+                        setUsageCategoryFilter("image");
+                        setUsageActionFilter("image_generation_failed");
+                      }}
+                      className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                    >
+                      Image2 失败
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleDownloadServerLogsByEmail();
+                      }}
+                      disabled={!normalizedUserEmailQuery}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Download size={12} />
+                      下载服务端日志
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowUsageMarkdownTimeline((prev) => !prev)}
+                      className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+                    >
+                      {showUsageMarkdownTimeline ? "切换表格" : "切换 Markdown"}
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <div className={`mt-3 grid gap-2 ${simpleMode ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
               <select
                 value={usageStatusFilter}
                 onChange={(event) => setUsageStatusFilter(event.target.value as "all" | "ok" | "error" | "info")}
@@ -900,30 +896,34 @@ export default function AdminDashboardPage() {
                 <option value="error">状态：error</option>
                 <option value="info">状态：info</option>
               </select>
-              <select
-                value={usageCategoryFilter}
-                onChange={(event) => setUsageCategoryFilter(event.target.value)}
-                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              >
-                <option value="">分类：全部</option>
-                {usageCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={usageActionFilter}
-                onChange={(event) => setUsageActionFilter(event.target.value)}
-                className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              >
-                <option value="">动作：全部</option>
-                {usageActions.map((action) => (
-                  <option key={action} value={action}>
-                    {action}
-                  </option>
-                ))}
-              </select>
+              {!simpleMode ? (
+                <>
+                  <select
+                    value={usageCategoryFilter}
+                    onChange={(event) => setUsageCategoryFilter(event.target.value)}
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  >
+                    <option value="">分类：全部</option>
+                    {usageCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={usageActionFilter}
+                    onChange={(event) => setUsageActionFilter(event.target.value)}
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  >
+                    <option value="">动作：全部</option>
+                    {usageActions.map((action) => (
+                      <option key={action} value={action}>
+                        {action}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </div>
             {adminActionHint ? (
               <p className="mt-2 text-xs text-zinc-500">{adminActionHint}</p>
@@ -938,11 +938,11 @@ export default function AdminDashboardPage() {
                 {usageLogsError}
               </p>
             ) : !normalizedEmailQuery ? (
-              <p className="mt-3 text-sm text-zinc-500">请输入邮箱或用户 ID 后查看日志</p>
+              <p className="mt-3 text-sm text-zinc-500">请输入用户邮箱后查看日志</p>
             ) : !filteredUsageLogs.length ? (
               <p className="mt-3 text-sm text-zinc-500">当前筛选条件下暂无日志（可先清空筛选或下载服务端原始日志确认）</p>
             ) : (
-              showUsageMarkdownTimeline ? (
+              !simpleMode && showUsageMarkdownTimeline ? (
                 <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                   <p className="mb-2 text-xs text-zinc-500">
                     Markdown 时间轴（完整可复制）：按时间倒序，包含分类、动作、阶段、message、details。
@@ -959,13 +959,17 @@ export default function AdminDashboardPage() {
                         <th className="px-2 py-1.5 font-medium">时间</th>
                         <th className="px-2 py-1.5 font-medium">分类</th>
                         <th className="px-2 py-1.5 font-medium">动作</th>
-                        <th className="px-2 py-1.5 font-medium">失败环节</th>
                         <th className="px-2 py-1.5 font-medium">状态</th>
-                        <th className="px-2 py-1.5 font-medium">来源</th>
-                        <th className="px-2 py-1.5 font-medium">错误码</th>
                         <th className="px-2 py-1.5 font-medium">消息</th>
-                        <th className="px-2 py-1.5 font-medium">项目</th>
-                        <th className="px-2 py-1.5 font-medium">详情</th>
+                        {!simpleMode ? (
+                          <>
+                            <th className="px-2 py-1.5 font-medium">失败环节</th>
+                            <th className="px-2 py-1.5 font-medium">来源</th>
+                            <th className="px-2 py-1.5 font-medium">错误码</th>
+                            <th className="px-2 py-1.5 font-medium">项目</th>
+                            <th className="px-2 py-1.5 font-medium">详情</th>
+                          </>
+                        ) : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -976,40 +980,44 @@ export default function AdminDashboardPage() {
                             <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-500">{formatDate(item.createdAt)}</td>
                             <td className="px-2 py-1.5 text-zinc-700">{item.category}</td>
                             <td className="px-2 py-1.5 text-zinc-700">{item.action}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.stage ?? resolveFailureStage(item)}</td>
                             <td className={`px-2 py-1.5 text-xs font-medium ${
                               item.status === "error" ? "text-rose-600" : item.status === "ok" ? "text-emerald-600" : "text-zinc-500"
                             }`}>{item.status}</td>
-                            <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
                             <td className="max-w-[360px] px-2 py-1.5 text-zinc-700">{item.message ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">{item.projectId ?? "-"}</td>
-                            <td className="px-2 py-1.5 text-xs text-zinc-500">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleUsageDetails(item.id)}
-                                  className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100"
-                                >
-                                  {expanded ? "收起" : "展开"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!item.detailsJson}
-                                  onClick={() => {
-                                    void handleCopyText(item.detailsJson ?? "", "日志详情已复制");
-                                  }}
-                                  className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-                                >
-                                  <Copy size={10} />
-                                </button>
-                              </div>
-                              {expanded ? (
-                                <pre className="mt-1 max-w-[320px] whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-1.5 text-[11px] leading-4 text-zinc-600">
-                                  {item.detailsJson ?? "-"}
-                                </pre>
-                              ) : null}
-                            </td>
+                            {!simpleMode ? (
+                              <>
+                                <td className="px-2 py-1.5 text-xs text-zinc-500">{item.stage ?? resolveFailureStage(item)}</td>
+                                <td className="px-2 py-1.5 text-zinc-700">{item.source ?? "-"}</td>
+                                <td className="px-2 py-1.5 text-xs text-zinc-500">{item.code ?? "-"}</td>
+                                <td className="px-2 py-1.5 text-xs text-zinc-500">{item.projectId ?? "-"}</td>
+                                <td className="px-2 py-1.5 text-xs text-zinc-500">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleUsageDetails(item.id)}
+                                      className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100"
+                                    >
+                                      {expanded ? "收起" : "展开"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!item.detailsJson}
+                                      onClick={() => {
+                                        void handleCopyText(item.detailsJson ?? "", "日志详情已复制");
+                                      }}
+                                      className="inline-flex rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+                                    >
+                                      <Copy size={10} />
+                                    </button>
+                                  </div>
+                                  {expanded ? (
+                                    <pre className="mt-1 max-w-[320px] whitespace-pre-wrap rounded-md border border-zinc-200 bg-zinc-50 p-1.5 text-[11px] leading-4 text-zinc-600">
+                                      {item.detailsJson ?? "-"}
+                                    </pre>
+                                  ) : null}
+                                </td>
+                              </>
+                            ) : null}
                           </tr>
                         );
                       })}

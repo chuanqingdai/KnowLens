@@ -2,15 +2,15 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Check } from "lucide-react";
+import { ArrowRight, BadgeCheck, BriefcaseBusiness, Check, GraduationCap, Megaphone, Presentation, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 
-const heroImage = "/picture/ai-infographic-generator-learning-hero.jpg";
-const LANDING_ASSET_VERSION = "20260528c";
+const heroImage = "/picture/hero picture.jpg";
+const LANDING_ASSET_VERSION = "20260531b";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 const MEMBERSHIP_SOURCE = "landing-page";
 
@@ -88,289 +88,184 @@ const previewTallCases = [
 const principleModules = [
   {
     id: "understand",
-    titleEn: "Semantic Understanding",
-    titleZh: "语义理解层",
-    descEn: "Parse source context, identify topic boundaries, and detect key intent before generation starts.",
-    descZh: "在生成前解析上下文，识别主题边界与核心意图。",
-    notesEn: [
-      "Normalizes noisy source content from text, docs, URLs, and transcripts.",
-      "Builds a domain-aware concept map before visual planning begins.",
-    ],
-    notesZh: [
-      "统一处理文本、文档、链接与转写内容中的噪声信息。",
-      "在视觉规划前先建立领域感知的概念关系图。",
-    ],
+    titleEn: "Understand Your Text",
+    titleZh: "理解你的文本",
+    descEn: "KnowLens identifies the topic, key points, relationships, and explanation flow in your text.",
+    descZh: "KnowLens 会识别你文本中的主题、重点、关系和讲解逻辑。",
+    notesEn: ["It removes clutter and keeps the most important ideas for visual presentation."],
+    notesZh: ["它会去掉干扰信息，只保留最适合可视化呈现的核心内容。"],
   },
   {
     id: "structure",
-    titleEn: "Structural Planning",
-    titleZh: "结构规划层",
-    descEn: "Convert intent into an explicit information architecture with hierarchy, pacing, and visual priority.",
-    descZh: "将意图转换为显式信息架构，明确层次、节奏与视觉优先级。",
-    notesEn: [
-      "Maps content into reusable patterns such as causal flow, timeline, and comparison.",
-      "Balances readability and density for poster, slide, and short-video contexts.",
-    ],
-    notesZh: [
-      "将内容映射为因果流、时间线、对比图等可复用结构。",
-      "针对海报、幻灯片和短视频平衡信息密度与可读性。",
-    ],
+    titleEn: "Organize the Key Ideas",
+    titleZh: "组织关键观点",
+    descEn: "It turns raw text into a clear structure with hierarchy, sections, and visual emphasis.",
+    descZh: "它会把原始文本整理为清晰结构，包含层级、分段与视觉重点。",
+    notesEn: ["This helps the final output feel readable instead of crowded."],
+    notesZh: ["这样最终内容更易读，不会显得拥挤和杂乱。"],
   },
   {
     id: "compose",
-    titleEn: "Multi-format Composition",
-    titleZh: "多形态编排层",
-    descEn: "Render poster, slides, and video drafts from one shared content backbone for consistent delivery.",
-    descZh: "基于同一内容主干生成海报、PPT 与视频稿，保持跨形态一致性。",
-    notesEn: [
-      "Applies style grammar, typography rhythm, and layout constraints per output type.",
-      "Keeps message consistency while adapting to different visual formats.",
-    ],
-    notesZh: [
-      "按输出类型应用风格语法、文字节奏与版式约束。",
-      "在不同视觉形态下保持核心信息表达一致。",
-    ],
+    titleEn: "Generate the Right Visual Format",
+    titleZh: "生成合适的视觉形式",
+    descEn: "Choose the format you need: infographic poster, presentation slides, or explainer video draft.",
+    descZh: "选择你需要的形式：信息图海报、演示幻灯片或讲解视频草稿。",
+    notesEn: ["Each format uses a different layout logic for better clarity."],
+    notesZh: ["每种形式都使用不同的布局逻辑，以获得更好的清晰度。"],
   },
 ];
 
 const generationPipeline = [
   {
-    id: "ingest",
-    stepEn: "Ingest",
-    stepZh: "输入接入",
-    detailEn: "Text · Document · URL · Video/Podcast",
-    detailZh: "文本 · 文档 · 链接 · 视频/播客",
-    noteEn: "Unifies mixed sources into one structured draft input.",
-    noteZh: "将混合来源统一为结构化草稿输入。",
+    id: "text-input",
+    stepEn: "Text Input",
+    stepZh: "文本输入",
+    detailEn: "Paste your explanation, notes, draft, or topic idea.",
+    detailZh: "粘贴你的解释、笔记、草稿或主题想法。",
+    noteEn: "",
+    noteZh: "",
   },
   {
-    id: "reason",
-    stepEn: "Reason",
-    stepZh: "结构推理",
-    detailEn: "Intent recognition · Outline · Content blocks",
-    detailZh: "意图识别 · 大纲 · 内容块",
-    noteEn: "Plans scope, sequencing, and visual emphasis before rendering.",
-    noteZh: "在渲染前规划范围、顺序与视觉重点。",
+    id: "knowledge-structure",
+    stepEn: "Knowledge Structure",
+    stepZh: "知识结构",
+    detailEn: "KnowLens extracts key points, creates an outline, and plans the visual hierarchy.",
+    detailZh: "KnowLens 提取关键观点，生成大纲，并规划视觉层级。",
+    noteEn: "",
+    noteZh: "",
   },
   {
-    id: "deliver",
-    stepEn: "Deliver",
-    stepZh: "可视化交付",
-    detailEn: "Poster · PPT · Video draft",
-    detailZh: "海报 · PPT · 视频稿",
-    noteEn: "Outputs editable results for publishing or downstream production.",
-    noteZh: "输出可编辑成果，便于发布与后续制作。",
+    id: "visual-draft",
+    stepEn: "Visual Draft",
+    stepZh: "视觉草稿",
+    detailEn: "Generate a poster, slide draft, or explainer video draft based on your selected format.",
+    detailZh: "根据你选择的格式生成海报、幻灯片草稿或讲解视频草稿。",
+    noteEn: "",
+    noteZh: "",
   },
-];
-
-const knowledgeDomains = [
-  { en: "Economics", zh: "经济学" },
-  { en: "Medicine", zh: "医学" },
-  { en: "Geography", zh: "地理" },
-  { en: "Biology", zh: "生物" },
-  { en: "Physics", zh: "物理" },
-  { en: "Technology", zh: "科技" },
 ];
 
 const userVoices = [
   {
-    id: "economics",
-    nameEn: "Dr. Emily Carter",
-    nameZh: "林博士",
-    identityEn: "Economics Scholar",
-    identityZh: "经济学学者",
+    id: "science-teacher",
+    roleEn: "Science Teacher",
+    roleZh: "科学老师",
     quoteEn:
-      "I can turn inflation and macro-policy analysis into clean causal visuals that students understand in one glance.",
-    quoteZh: "我可以把通胀与宏观政策分析转成清晰因果图，学生一眼就能理解核心逻辑。",
+      "KnowLens helps me turn lesson notes into AI infographic posters that make abstract science topics easier to explain.",
+    quoteZh: "KnowLens 帮我把课堂笔记转成 AI 可视化海报，让抽象科学主题更容易讲清楚。",
+    metaEn: "AI Infographic Poster · Slides · GPT-image2",
+    metaZh: "AI 可视化海报 · 幻灯片 · GPT-image2",
+    icon: GraduationCap,
   },
   {
-    id: "medicine",
-    nameEn: "Ava Johnson",
-    nameZh: "陈安薇",
-    identityEn: "Medical Student",
-    identityZh: "医学学生",
+    id: "medical-student",
+    roleEn: "Medical Student",
+    roleZh: "医学生",
     quoteEn:
-      "Pathways, organs, and treatment logic become structured poster notes, so revision is less fragmented and more memorable.",
-    quoteZh: "通路、器官与治疗逻辑可以快速整理成结构化海报笔记，复习不再碎片化。",
+      "Dense anatomy and treatment pathways become easier to review when they are organized into AI visual poster summaries.",
+    quoteZh: "当解剖与治疗路径被整理成 AI 可视化海报总结后，复习会轻松很多。",
+    metaEn: "AI Infographic Poster · GPT-image2",
+    metaZh: "AI 可视化海报 · GPT-image2",
+    icon: Users,
   },
   {
-    id: "middle-school",
-    nameEn: "Noah Miller",
-    nameZh: "王乐",
-    identityEn: "Middle School Student",
-    identityZh: "中学生",
+    id: "content-creator",
+    roleEn: "Content Creator",
+    roleZh: "内容创作者",
     quoteEn:
-      "Hard science topics become visual stories with clear steps, so I finally know what to focus on first.",
-    quoteZh: "难懂的科学知识变成有步骤的可视化故事，我能更快抓住重点。",
+      "A rough explanation can quickly become an AI explainer video storyboard, helping me plan educational videos with clearer scenes and pacing.",
+    quoteZh: "一个粗略说明可以很快变成 AI 讲解视频分镜，帮助我做出节奏更清晰的教育视频规划。",
+    metaEn: "AI Explainer Video · GPT-image2",
+    metaZh: "AI 讲解视频 · GPT-image2",
+    icon: Megaphone,
   },
   {
-    id: "youtube-creator",
-    nameEn: "Mia Thompson",
-    nameZh: "周米娅",
-    identityEn: "YouTube Science Creator",
-    identityZh: "YouTube 科普作者",
+    id: "business-analyst",
+    roleEn: "Business Analyst",
+    roleZh: "业务分析师",
     quoteEn:
-      "From one source script, I get storyboard-ready visuals and concise narration blocks that reduce production time a lot.",
-    quoteZh: "同一份脚本可以同时产出分镜视觉和旁白要点，视频制作周期缩短很多。",
+      "Market trends and strategy notes become slide-ready visuals and AI infographic posters that help teams understand key points faster.",
+    quoteZh: "市场趋势和策略笔记可以变成可上幻灯片的内容和 AI 可视化海报，团队理解重点更快。",
+    metaEn: "Slides · AI Infographic Poster · GPT-image2",
+    metaZh: "幻灯片 · AI 可视化海报 · GPT-image2",
+    icon: BriefcaseBusiness,
   },
   {
-    id: "high-school-teacher",
-    nameEn: "Mr. Daniel Brooks",
-    nameZh: "赵老师",
-    identityEn: "High School Teacher",
-    identityZh: "高中老师",
+    id: "university-student",
+    roleEn: "University Student",
+    roleZh: "大学生",
     quoteEn:
-      "I can convert textbook chapters into visual slide sequences, so students stay focused and discussion quality improves.",
-    quoteZh: "我能把教材章节转成可视化分页讲解，学生更专注，课堂讨论质量也更高。",
+      "My study notes become memorable one-page AI visual posters, which makes review sessions feel less scattered.",
+    quoteZh: "我的学习笔记会变成更好记的一页 AI 可视化海报，复习不再那么零散。",
+    metaEn: "AI Infographic Poster · GPT-image2",
+    metaZh: "AI 可视化海报 · GPT-image2",
+    icon: Users,
   },
   {
     id: "product-manager",
-    nameEn: "Olivia Harris",
-    nameZh: "刘伊然",
-    identityEn: "Product Manager",
-    identityZh: "产品经理",
+    roleEn: "Product Manager",
+    roleZh: "产品经理",
     quoteEn:
-      "Complex strategy and market insights become understandable visual narratives that design, engineering, and ops can align on quickly.",
-    quoteZh: "复杂策略和市场洞察能快速变成可理解的视觉叙事，设计、研发、运营更容易达成共识。",
-  },
-  {
-    id: "training-specialist",
-    nameEn: "Nora Bennett",
-    nameZh: "孙诺拉",
-    identityEn: "Corporate Trainer",
-    identityZh: "企业培训负责人",
-    quoteEn:
-      "Policy documents and process manuals are easier to digest when transformed into visual training assets.",
-    quoteZh: "制度文档和流程手册转成可视化培训素材后，理解门槛明显降低。",
-  },
-  {
-    id: "independent-creator",
-    nameEn: "Ethan Walker",
-    nameZh: "金诺亚",
-    identityEn: "Independent Creator",
-    identityZh: "独立创作者",
-    quoteEn:
-      "I can turn one research source into poster, PPT, and video drafts with consistent style and message.",
-    quoteZh: "一份研究素材可以同步产出海报、PPT 和视频草稿，风格和信息保持一致。",
+      "Complex product ideas are easier to communicate when they are turned into structured visual narratives, AI infographic posters, and AI explainer video drafts.",
+    quoteZh: "复杂的产品想法转成结构化视觉叙事、AI 可视化海报和 AI 讲解视频草稿后，会更容易沟通。",
+    metaEn: "Slides · AI Infographic Poster · AI Explainer Video · GPT-image2",
+    metaZh: "幻灯片 · AI 可视化海报 · AI 讲解视频 · GPT-image2",
+    icon: Presentation,
   },
 ];
 
 const capabilityFlows = [
   {
-    id: "text-to-poster",
-    tabEn: "Text → Poster",
-    tabZh: "文本 → 海报",
+    id: "infographic-poster",
+    tabEn: "Infographic Poster",
+    tabZh: "信息图海报",
     previewImage: "/picture/text-to-poster.jpg",
-    inputEn: "Topic / Text prompt",
-    inputZh: "主题 / 文本需求",
-    outputEn: "Visual poster",
-    outputZh: "信息可视化海报",
-    noteEn: "Turn a raw idea into a concise poster with clear key points and visual hierarchy.",
-    noteZh: "把一句主题快速转成重点清晰、结构明确的可视化海报。",
+    inputEn: "Text input",
+    inputZh: "任意来源内容",
+    outputEn: "Infographic poster",
+    outputZh: "信息图海报",
+    noteEn: "Generate concise visual posters with clear hierarchy and key ideas.",
+    noteZh: "生成层次清晰、重点突出的信息图海报。",
     cases: [
       { titleEn: "Inflation in Daily Life", titleZh: "通货膨胀影响生活", cover: "/picture/inflation-daily-life-poster-case.jpg" },
       { titleEn: "Immune Mechanism", titleZh: "免疫机制全景图", cover: "/picture/immune-mechanism-infographic-case.jpg" },
     ],
   },
   {
-    id: "text-to-ppt",
-    tabEn: "Text → PPT",
-    tabZh: "文本 → PPT",
+    id: "presentation-slides",
+    tabEn: "Presentation Slides",
+    tabZh: "演示幻灯片",
     previewImage: "/picture/text-to-ppt-workflow.jpg",
-    inputEn: "Topic / Script draft",
-    inputZh: "主题 / 讲解文案",
-    outputEn: "Structured PPT",
-    outputZh: "结构化教学PPT",
-    noteEn: "Expand text into a multi-page presentation with slide-by-slide narrative flow.",
-    noteZh: "把文案扩展为分页演示内容，形成完整的讲解节奏。",
+    inputEn: "Text input",
+    inputZh: "任意来源内容",
+    outputEn: "Presentation slides",
+    outputZh: "演示幻灯片",
+    noteEn: "Turn source material into structured, presentation-ready slide narratives.",
+    noteZh: "将源内容转成结构化、可直接演示的幻灯片叙事。",
     cases: [
       { titleEn: "Volcano Eruption Process", titleZh: "火山喷发过程", cover: "/picture/volcano-eruption-ppt-case.jpg" },
       { titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/electrolysis-classroom-ppt-case.jpg" },
     ],
   },
   {
-    id: "web-to-poster",
-    tabEn: "Web → Poster",
-    tabZh: "网页链接 → 海报",
-    previewImage: "/picture/webpage-to-poster-workflow.jpg",
-    inputEn: "Webpage URL",
-    inputZh: "网页链接",
-    outputEn: "Visual poster",
-    outputZh: "信息可视化海报",
-    noteEn: "Extract key points from long articles and convert them into a concise visual poster.",
-    noteZh: "从长文中提炼核心观点，生成可直接传播的信息海报。",
-    cases: [
-      { titleEn: "Inflation in Daily Life", titleZh: "通货膨胀影响生活", cover: "/picture/inflation-daily-life-poster-case.jpg" },
-      { titleEn: "Ocean Circulation Basics", titleZh: "洋流循环与气候", cover: "/picture/ocean-circulation-infographic-case.jpg" },
-    ],
-  },
-  {
-    id: "doc-to-ppt",
-    tabEn: "Doc → PPT",
-    tabZh: "文档资料 → PPT",
-    previewImage: "/picture/document-to-ppt-workflow.jpg",
-    inputEn: "PDF / PPT / Docs",
-    inputZh: "PDF / PPT / 文档",
-    outputEn: "Structured PPT",
-    outputZh: "结构化教学PPT",
-    noteEn: "Turn fragmented materials into coherent slides with clear narrative progression.",
-    noteZh: "把零散资料整合成有叙事主线的完整演示文稿。",
-    cases: [
-      { titleEn: "Volcano Eruption Process", titleZh: "火山喷发过程", cover: "/picture/volcano-eruption-ppt-case.jpg" },
-      { titleEn: "Electrolysis Classroom", titleZh: "电解反应课堂版", cover: "/picture/electrolysis-classroom-ppt-case.jpg" },
-    ],
-  },
-  {
-    id: "video-to-video",
-    tabEn: "Video → Video",
-    tabZh: "视频 → 视频",
-    previewImage: "/picture/video-to-video-workflow.jpg",
-    inputEn: "Video",
-    inputZh: "视频",
-    outputEn: "Edited short video",
-    outputZh: "可编辑短视频",
-    noteEn: "Extract transcript and highlights, then generate a reusable video draft pipeline.",
-    noteZh: "提取字幕和关键片段，生成可继续编辑与合成的视频稿件。",
+    id: "explainer-video",
+    tabEn: "Explainer Video",
+    tabZh: "讲解视频",
+    previewImage: "/picture/text to video.jpg",
+    inputEn: "Text input",
+    inputZh: "任意来源内容",
+    outputEn: "Explainer video",
+    outputZh: "讲解视频分镜",
+    noteEn: "Build concise explainer video drafts with clear scenes and narration flow.",
+    noteZh: "生成结构化讲解视频分镜，便于后续合成与编辑。",
     cases: [
       { titleEn: "Black Hole Video Draft", titleZh: "黑洞视频稿", cover: "/picture/black-hole-video-visual-case.jpg" },
       { titleEn: "DNA Video Script", titleZh: "DNA视频脚本", cover: "/picture/dna-video-script-case.jpg" },
     ],
   },
-  {
-    id: "podcast-to-video",
-    tabEn: "Podcast → Video",
-    tabZh: "播客 → 视频",
-    previewImage: "/picture/podcast-to-video-workflow.jpg",
-    inputEn: "Podcast Audio",
-    inputZh: "播客音频",
-    outputEn: "Narrated video draft",
-    outputZh: "旁白视频草稿",
-    noteEn: "Turn spoken episodes into structured video scenes with concise narration flow.",
-    noteZh: "将播客口播内容转成结构化视频分镜与简洁旁白流程。",
-    cases: [
-      { titleEn: "Ocean Podcast Storyboard", titleZh: "洋流播客分镜稿", cover: "/picture/ocean-circulation-infographic-case.jpg" },
-      { titleEn: "Deep Sea Episode Visuals", titleZh: "深海播客可视化", cover: "/picture/deep-sea-podcast-visual-case.jpg" },
-    ],
-  },
-  {
-    id: "video-to-poster",
-    tabEn: "Video → Poster",
-    tabZh: "视频 → 海报",
-    previewImage: "/picture/video-to-poster-workflow.jpg",
-    inputEn: "Video",
-    inputZh: "视频",
-    outputEn: "Visual poster",
-    outputZh: "信息可视化海报",
-    noteEn: "Extract key moments from video and compress them into a concise visual poster.",
-    noteZh: "提取视频核心片段与结论，压缩为重点明确的可视化海报。",
-    cases: [
-      { titleEn: "Black Hole Key Takeaways", titleZh: "黑洞视频要点海报", cover: "/picture/black-hole-video-visual-case.jpg" },
-      { titleEn: "Blue Light Health Summary", titleZh: "蓝光伤眼总结海报", cover: "/picture/blue-light-health-poster-case.jpg" },
-    ],
-  },
 ];
 
-const DEFAULT_CAPABILITY_FLOW_ID = "text-to-poster";
+const DEFAULT_CAPABILITY_FLOW_ID = "infographic-poster";
 
 const planCards = [
   {
@@ -421,7 +316,7 @@ const planCards = [
       "HD infographic export",
       "More visual styles",
       "Visual PPT generation",
-      "Video storyboard generation",
+      "Explainer video generation",
       "Faster generation queue",
       "Commercial usage",
     ],
@@ -450,7 +345,7 @@ const planCards = [
       "Premium HD export",
       "Long infographic generation",
       "Full visual PPT generation",
-      "Video storyboard generation",
+      "Explainer video generation",
       "Priority rendering",
       "Batch generation",
       "Commercial usage",
@@ -459,6 +354,80 @@ const planCards = [
     ctaEn: "Subscribe with Stripe",
     ctaZh: "Stripe 订阅",
     highlight: false,
+  },
+];
+
+const landingFaqItems = [
+  {
+    id: "faq-input",
+    questionEn: "What can I use as input?",
+    questionZh: "我可以输入什么内容？",
+    answerEn:
+      "KnowLens currently supports pasted text and topic descriptions. You can paste notes, explanations, drafts, or simply describe the topic you want to visualize. This text-first workflow, powered by GPT-image2, is designed to quickly turn your ideas into an AI infographic poster or an AI explainer video draft.",
+    answerZh:
+      "KnowLens 当前支持粘贴文本和主题描述。你可以粘贴笔记、解释、草稿，或直接描述你想可视化的主题。通过由 GPT-image2 提供技术支持的文本优先流程，你可以更快把想法转换为 AI 可视化海报或 AI 讲解视频草稿。",
+  },
+  {
+    id: "faq-files",
+    questionEn: "Can I upload PDFs, files, or links?",
+    questionZh: "可以上传 PDF、文件或链接吗？",
+    answerEn:
+      "Not yet. The current version focuses on text input only. Please paste the content directly into the text box, then choose an output format such as AI visual poster, presentation slides, or AI explainer video.",
+    answerZh:
+      "暂时不支持。当前版本仅支持文本输入，请将内容直接粘贴到文本框中，再选择输出形式，例如 AI 可视化海报、演示幻灯片或 AI 讲解视频。",
+  },
+  {
+    id: "faq-generate",
+    questionEn: "What can KnowLens generate?",
+    questionZh: "KnowLens 可以生成什么？",
+    answerEn:
+      "You can choose one output format each time: Infographic Poster, Presentation Slides, or Explainer Video. Each output is optimized for clarity and powered by GPT-image2, whether you need an AI infographic poster for quick understanding or an AI explainer video draft for storytelling.",
+    answerZh:
+      "每次可选择一种输出形式：信息图海报、演示幻灯片或解释性视频。每种输出都由 GPT-image2 提供技术支持并针对清晰表达优化，无论你需要用于快速理解的 AI 可视化海报，还是用于叙事表达的 AI 讲解视频草稿。",
+  },
+  {
+    id: "faq-all-formats",
+    questionEn: "Does one input generate all formats at once?",
+    questionZh: "一次输入会同时生成所有形式吗？",
+    answerEn:
+      "No. You paste your text first, then choose the format you want to generate. If needed, you can run separate generations from the same text to create an AI infographic poster, slides, and an AI explainer video draft one by one.",
+    answerZh:
+      "不会。你先粘贴文本，再选择想要生成的形式。如有需要，你可以基于同一段文本分别生成 AI 可视化海报、幻灯片和 AI 讲解视频草稿。",
+  },
+  {
+    id: "faq-design-skills",
+    questionEn: "Do I need design skills?",
+    questionZh: "需要设计技能吗？",
+    answerEn:
+      "No. KnowLens helps organize your text, plan the visual structure, and generate a clear visual draft automatically. You can focus on ideas and explanation while GPT-image2-powered generation handles layout logic for AI visual posters, slides, and AI explainer videos.",
+    answerZh:
+      "不需要。KnowLens 会帮助你整理文本、规划视觉结构，并自动生成清晰的可视化草稿。你可以专注在观点和解释上，由 GPT-image2 提供技术支持的生成能力会处理 AI 可视化海报、幻灯片和 AI 讲解视频的布局逻辑。",
+  },
+  {
+    id: "faq-free",
+    questionEn: "Can I try KnowLens for free?",
+    questionZh: "可以免费试用 KnowLens 吗？",
+    answerEn:
+      "Yes. Free users can generate sample outputs with watermark, including examples of AI infographic posters and AI explainer video drafts. Paid plans unlock more generations, better limits, and watermark-free export.",
+    answerZh:
+      "可以。免费用户可生成带水印示例结果，包括 AI 可视化海报和 AI 讲解视频草稿。付费方案可解锁更多生成次数、更高额度以及无水印导出。",
+  },
+  {
+    id: "faq-paid",
+    questionEn: "What do paid plans unlock?",
+    questionZh: "付费方案可解锁什么？",
+    answerEn:
+      "Paid plans unlock watermark-free export, HD output, more generations, and access to poster, slide, and video generation features powered by GPT-image2. This is ideal if you need high-frequency production of AI visual posters, presentation materials, or AI explainer videos.",
+    answerZh:
+      "付费方案可解锁无水印导出、HD 输出、更多生成次数，以及由 GPT-image2 提供技术支持的海报/幻灯片/视频生成功能。如果你需要高频产出 AI 可视化海报、演示内容或 AI 讲解视频，这会更合适。",
+  },
+  {
+    id: "faq-cancel",
+    questionEn: "Can I cancel anytime?",
+    questionZh: "可以随时取消吗？",
+    answerEn: "Yes. You can cancel your subscription anytime from your account settings.",
+    answerZh:
+      "可以。你可以随时在账户设置中取消订阅。你的历史文本内容和已生成的 AI 可视化海报或 AI 讲解视频结果不会因为取消而自动删除。",
   },
 ];
 
@@ -760,9 +729,9 @@ export default function LandingPage() {
         <h1 className="sr-only">{t("KnowLens.ai visual creation platform", "KnowLens.ai 知识可视化创作平台")}</h1>
 
         <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
-          <div className="max-w-[620px]">
+          <div className="mx-auto flex max-w-[620px] flex-col items-center text-center lg:mx-0 lg:items-start lg:text-left">
             <div className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-[11px] text-zinc-600">
-              {t("From Source Content to Visual Delivery", "从源内容到可视化交付")}
+              {t("Powered by GPT-image2", "Powered by GPT-image2")}
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
               {locale === "en" ? (
@@ -779,16 +748,16 @@ export default function LandingPage() {
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base">
               {t(
-                "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
-                "将文本、文档、视频和播客转化为信息图海报、幻灯片和讲解视频，让知识更易理解与传播。",
+                "Paste your text or describe a topic. KnowLens turns it into infographic posters, presentation slides, and explainer videos in minutes.",
+                "粘贴你的文本或描述一个主题。KnowLens 会在几分钟内将其转换为信息图海报、演示幻灯片和视频分镜。",
               )}
             </p>
-            <div className="mt-5 flex items-center sm:mt-6">
+            <div className="mt-5 flex w-full items-center justify-center sm:mt-6 lg:justify-start">
               <Link
                 href="/auth?callbackUrl=%2Fapp"
                 className="inline-flex h-12 min-w-[176px] items-center justify-center gap-2 rounded-xl bg-zinc-900 px-8 text-[15px] font-medium text-white transition hover:bg-zinc-700 sm:h-[52px]"
               >
-                {t("Start now", "开始使用")}
+                {t("Generate Free", "免费生成")}
                 <ArrowRight size={15} />
               </Link>
             </div>
@@ -811,24 +780,24 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <h2 className="mt-2 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
-              {t("Convert source content directly into deliverables", "把源内容直接转换为可交付成果")}
+              {t("From Text to Visual Learning Content", "从文本到可视化学习内容")}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "Pick one workflow and preview real examples before you start creating.",
-                "选择一个生成链路，并先查看对应真实案例。",
+                "Start with a simple explanation and turn it into a clear visual draft.",
+                "从一句简单解释开始，快速转成清晰的可视化草稿。",
               )}
             </p>
 
             <div className="mt-5">
-              <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
-                <div className="inline-flex min-w-full gap-2 sm:grid sm:w-full sm:max-w-6xl sm:grid-cols-3 lg:grid-cols-7">
+              <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="mx-auto flex w-max min-w-full justify-center gap-2 px-1 sm:min-w-0 sm:px-0">
                 {capabilityFlows.map((flow) => (
                   <button
                     key={flow.id}
                     type="button"
                     onClick={() => setActiveFlowId(flow.id)}
-                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-center text-[10px] leading-4 transition sm:shrink sm:px-2 lg:whitespace-nowrap ${
+                    className={`shrink-0 rounded-lg border px-4 py-2 text-center text-xs leading-4 transition sm:px-5 sm:text-[12px] ${
                       activeFlowId === flow.id
                         ? "border-zinc-900 bg-zinc-900 text-white"
                         : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
@@ -930,41 +899,33 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
-              {t("PRODUCT PRINCIPLES", "产品原理")}
+              {t("HOW IT WORKS", "工作方式")}
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("Built on an AI-Native Visual Intelligence Engine", "基于 AI 原生视觉智能引擎")}
+              {t("How KnowLens Turns Text into Visual Content", "KnowLens 如何将文本转成可视化内容")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "A structured AI system that turns source knowledge into controllable, delivery-ready visual content.",
-                "结构化 AI 引擎，将源知识转换为可控、可交付的可视化内容。",
+                "KnowLens reads your text, organizes the key ideas, and turns them into clear posters, slides, or explainer video drafts.",
+                "KnowLens 会读取你的文本，整理关键观点，并生成清晰的海报、幻灯片或讲解视频草稿。",
               )}
             </p>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              {knowledgeDomains.map((domain) => (
-                <span key={domain.en} className="rounded-full border border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-600">
-                  {t(domain.en, domain.zh)}
-                </span>
-              ))}
-            </div>
-
-            <div className="mt-8 grid gap-6 md:grid-cols-3">
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
               {principleModules.map((module, index) => (
-                <article key={module.id} className="border-t border-zinc-300 pt-4">
+                <article key={module.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
                   <p className="text-xs font-medium text-zinc-500">
                     {`0${index + 1}`}
                   </p>
                   <h3 className="mt-2 text-base font-semibold text-zinc-900">
                     {t(module.titleEn, module.titleZh)}
                   </h3>
-                  <p className="mt-2 text-sm leading-7 text-zinc-600">
+                  <p className="mt-2 text-sm leading-6 text-zinc-600">
                     {t(module.descEn, module.descZh)}
                   </p>
                   <div className="mt-2 space-y-1.5">
                     {(t(module.notesEn.join("||"), module.notesZh.join("||")).split("||")).map((note) => (
-                      <p key={note} className="text-sm leading-7 text-zinc-600">
+                      <p key={note} className="text-sm leading-6 text-zinc-500">
                         {note}
                       </p>
                     ))}
@@ -975,21 +936,21 @@ export default function LandingPage() {
 
             <div className="mt-8 border-t border-zinc-200 pt-5">
               <p className="text-xs font-medium text-zinc-500">
-                {t("Generation Pipeline", "生成流程")}
+                {t("Generation Flow", "生成流程")}
               </p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                {generationPipeline.map((step) => (
-                  <article key={step.id} className="border-l border-zinc-300 pl-3 py-1">
-                    <h4 className="text-sm font-semibold text-zinc-900">
-                      {t(step.stepEn, step.stepZh)}
-                    </h4>
-                    <p className="mt-1 text-xs leading-6 text-zinc-600">
-                      {t(step.detailEn, step.detailZh)}
-                    </p>
-                    <p className="mt-1 text-xs leading-6 text-zinc-500">
-                      {t(step.noteEn, step.noteZh)}
-                    </p>
-                  </article>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-stretch">
+                {generationPipeline.map((step, index) => (
+                  <div key={step.id} className="contents">
+                    <article className="rounded-lg border border-zinc-200 bg-white px-3 py-3">
+                      <h4 className="text-sm font-semibold text-zinc-900">{t(step.stepEn, step.stepZh)}</h4>
+                      <p className="mt-1 text-sm leading-6 text-zinc-600">{t(step.detailEn, step.detailZh)}</p>
+                    </article>
+                    {index < generationPipeline.length - 1 ? (
+                      <div className="hidden items-center justify-center text-zinc-400 sm:flex" aria-hidden="true">
+                        <ArrowRight size={16} />
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>
@@ -999,31 +960,41 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
-              {t("USER VOICES", "用户评价")}
+              {t("USER VOICES", "用户反馈")}
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("How Users Create with KnowLens", "用户如何用 KnowLens 创作")}
+              {t("What Users Say About KnowLens", "用户如何评价 KnowLens")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "From scholars to students to creators, KnowLens helps people convert dense knowledge into visuals they can explain, remember, and publish.",
-                "从学者、学生到内容创作者，KnowLens 帮助用户把复杂知识转成可讲解、可记忆、可发布的可视化内容。",
+                "Educators, students, creators, and teams use KnowLens to turn text and ideas into clearer visual content.",
+                "教育者、学生、创作者与团队使用 KnowLens，把文本和想法转成更清晰的可视化内容。",
               )}
             </p>
 
-            <div className="mt-7 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {userVoices.map((voice) => (
-                <article key={voice.id} className="rounded-xl border border-zinc-200 bg-white/90 p-3.5 sm:p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-[15px] font-semibold text-zinc-900 sm:text-base">{t(voice.nameEn, voice.nameZh)}</h3>
-                    <span className="text-[11px] text-zinc-500 sm:text-xs">
-                      {t(voice.identityEn, voice.identityZh)}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-7 text-zinc-700">{t(voice.quoteEn, voice.quoteZh)}</p>
-                </article>
-              ))}
+            <div className="mt-7 grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {userVoices.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <article
+                    key={item.id}
+                    className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-700">
+                        <Icon size={16} />
+                      </span>
+                      <h3 className="text-[15px] font-semibold text-zinc-900 sm:text-base">{t(item.roleEn, item.roleZh)}</h3>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-600">“{t(item.quoteEn, item.quoteZh)}”</p>
+                    <div className="mt-3 border-t border-zinc-200 pt-3 text-xs font-medium text-zinc-500">
+                      {t(item.metaEn, item.metaZh)}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
+
           </div>
         </section>
 
@@ -1149,6 +1120,39 @@ export default function LandingPage() {
             <p className="mt-3 text-xs leading-5 text-amber-800">
               * GPT-image2 limited-time 70% off offer. Availability windows may change.
             </p>
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-6xl px-4 pb-10 pt-3 sm:px-6 sm:pb-14">
+          <div className="mx-auto max-w-5xl">
+            <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
+              {t("FAQ", "常见问题")}
+            </p>
+            <h2 className="mt-3 text-center text-[28px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[38px]">
+              {t("Frequently Asked Questions", "常见问题")}
+            </h2>
+            <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
+              {t(
+                "Everything you need to know before creating your first visual with KnowLens.",
+                "在你用 KnowLens 创建第一个可视化内容前，先了解这些关键问题。",
+              )}
+            </p>
+
+            <div className="mt-7 divide-y divide-zinc-200 border-y border-zinc-200">
+              {landingFaqItems.map((item) => (
+                <details key={item.id} className="group py-1">
+                  <summary className="flex list-none items-center justify-between gap-3 py-3 text-left text-[15px] font-semibold leading-6 text-zinc-900 marker:content-none">
+                    <span>{t(`Q: ${item.questionEn}`, `Q: ${item.questionZh}`)}</span>
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-zinc-500 transition group-open:rotate-45 group-open:text-zinc-800">
+                      +
+                    </span>
+                  </summary>
+                  <p className="pb-3 pr-9 text-sm leading-6 text-zinc-600">
+                    {t(`A: ${item.answerEn}`, `A: ${item.answerZh}`)}
+                  </p>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
     </MarketingChrome>
