@@ -87,14 +87,8 @@ const recentProjects = [
 const textModelOptions = [
   {
     value: "gemini-2.5",
-    label: "Gemini 2.5",
+    label: "Gemini 3",
     desc: "Fast drafting for everyday topics and first-pass content planning.",
-    premium: false,
-  },
-  {
-    value: "deepseek-v4",
-    label: "DeepSeek V4",
-    desc: "Reliable bilingual drafting for quick daily knowledge workflows.",
     premium: false,
   },
   {
@@ -124,7 +118,7 @@ const textModelOptions = [
 ];
 
 function defaultFreeModelByLocale(locale: "en" | "zh") {
-  return locale === "zh" ? "deepseek-v4" : "gemini-2.5";
+  return "gemini-2.5";
 }
 
 const inputPlaceholders = [
@@ -1794,6 +1788,7 @@ export default function Home() {
     () => featuredFilteredItems.slice(0, featuredVisibleCount),
     [featuredFilteredItems, featuredVisibleCount],
   );
+  const shouldUseFourColumnFeaturedGrid = featuredFilteredItems.length > 4;
 
   const hasMoreFeaturedItems = featuredVisibleCount < featuredFilteredItems.length;
 
@@ -2155,7 +2150,13 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+              <div
+                className={
+                  shouldUseFourColumnFeaturedGrid
+                    ? "grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4"
+                    : "columns-2 gap-4 md:columns-3 lg:columns-4"
+                }
+              >
                 {featuredVisibleItems.map((item, index) => {
                     const metric = getCaseMetrics(item.id, item.views, item.likes, currentEmail);
                     return (
@@ -2170,7 +2171,11 @@ export default function Home() {
                         openFeaturedPreview(item);
                       }
                     }}
-                    className="group mb-4 inline-block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    className={`group w-full overflow-hidden rounded-xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] ${
+                      shouldUseFourColumnFeaturedGrid
+                        ? "mb-0 inline-block break-inside-avoid-column"
+                        : "mb-4 inline-block break-inside-avoid-column align-top"
+                    }`}
                   >
                     <div className="relative w-full bg-zinc-100">
                       <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>

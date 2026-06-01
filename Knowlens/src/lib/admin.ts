@@ -540,7 +540,7 @@ export function upsertAdminUserFromAuth(authUser: AuthUser) {
       email: authUser.email,
       role: authUser.role,
       plan: "free",
-      credits: 80,
+      credits: 50,
     },
     ...users,
   ];

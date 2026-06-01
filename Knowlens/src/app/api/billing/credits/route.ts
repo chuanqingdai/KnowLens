@@ -61,6 +61,6 @@ export async function GET() {
     ok: true,
     email,
     records,
-    balance: records[0]?.balance ?? 80,
+    balance: records[0]?.balance ?? 50,
   });
 }

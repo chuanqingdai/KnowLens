@@ -54,7 +54,7 @@ const plans: Plan[] = [
     yearlyPrice: 124.9,
     yearlyEquivalent: 10.43,
     monthlyCredits: 1200,
-    usage: "6 credits/output during promo, up to ~200 outputs/month.",
+    usage: "6 credits/image during promo, up to ~200 images/month.",
     features: [
       "1,200 monthly credits",
       "No watermark",
@@ -76,7 +76,7 @@ const plans: Plan[] = [
     yearlyPrice: 242,
     yearlyEquivalent: 20.17,
     monthlyCredits: 3000,
-    usage: "6 credits/output during promo, up to ~500 outputs/month.",
+    usage: "6 credits/image during promo, up to ~500 images/month.",
     recommended: true,
     features: [
       "3,000 monthly credits",
@@ -102,7 +102,7 @@ const plans: Plan[] = [
     yearlyPrice: 489.9,
     yearlyEquivalent: 40.83,
     monthlyCredits: 7500,
-    usage: "6 credits/output during promo, up to ~1,250 outputs/month.",
+    usage: "6 credits/image during promo, up to ~1,250 images/month.",
     features: [
       "7,500 monthly credits",
       "No watermark",

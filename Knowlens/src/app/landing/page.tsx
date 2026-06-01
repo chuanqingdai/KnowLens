@@ -385,7 +385,7 @@ const planCards = [
     monthlyCreditsEn: "1,200 credits / month",
     monthlyCreditsZh: "每月 1,200 积分",
     usageEn:
-      "6 credits/output during promo, up to ~200 outputs/month.",
+      "6 credits/image during promo, up to ~200 images/month.",
     usageZh: "活动期 6 积分/输出，每月约可生成 200 个内容。",
     modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
     featuresEn: [
@@ -413,7 +413,7 @@ const planCards = [
     monthlyCreditsEn: "3,000 credits / month",
     monthlyCreditsZh: "每月 3,000 积分",
     usageEn:
-      "6 credits/output during promo, up to ~500 outputs/month.",
+      "6 credits/image during promo, up to ~500 images/month.",
     usageZh: "活动期 6 积分/输出，每月约可生成 500 个内容。",
     modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
     featuresEn: [
@@ -442,7 +442,7 @@ const planCards = [
     monthlyCreditsEn: "7,500 credits / month",
     monthlyCreditsZh: "每月 7,500 积分",
     usageEn:
-      "6 credits/output during promo, up to ~1,250 outputs/month.",
+      "6 credits/image during promo, up to ~1,250 images/month.",
     usageZh: "活动期 6 积分/输出，每月约可生成 1,250 个内容。",
     modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
     featuresEn: [

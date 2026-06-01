@@ -135,6 +135,18 @@ type ParsedContentEditCommand = {
   payload: string;
 };
 
+type IntentAnalysis = {
+  classification: "invalid" | "need_topic_clarification" | "needs_fresh_sources" | "ready";
+  direction: WorkspaceIntent;
+  confidence: number;
+  topic: string;
+  reason: string;
+  clarifyMode: "none" | "topic" | "fresh_sources";
+  needsFreshSources: boolean;
+  suggestions: string[];
+  assistantHint: string;
+};
+
 type WorkspaceSessionPrefs = {
   intent: Exclude<WorkspaceIntent, "unknown">;
   posterCount: number;
@@ -279,9 +291,15 @@ const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
 const GENERATION_UI_HARD_TIMEOUT_MS = 450000;
 const DEBUG_IMAGE_BRIDGE_MOCK_URL =
   "https://apioss20.sydney-ai.com/img/174/t9il_0UNjpQmjxFqjxQAjxQnfx1m10kNt7TgYsFuksWxtvFN1a_ljpMm1xkmXaMV1aklX5oItaMm10ezjaQlX9hnX0-u1a_q103lX01TXpQAX4Tgkx1qfv24kAVmR8_=/gi2007i-144x144-1780044357126-ab388bbc.png";
-const WORKSPACE_IMAGE_DEBUG = process.env.NODE_ENV === "development";
-const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
+const WORKSPACE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_WORKSPACE_IMAGE_DEBUG === "1";
+const WORKSPACE_FLOW_AUDIT = process.env.NEXT_PUBLIC_WORKSPACE_FLOW_AUDIT === "1";
+const WORKSPACE_VERBOSE_LOG = process.env.NEXT_PUBLIC_WORKSPACE_VERBOSE_LOG === "1";
+const WORKSPACE_CLIENT_TELEMETRY =
+  process.env.NODE_ENV === "production" ||
+  process.env.NEXT_PUBLIC_WORKSPACE_CLIENT_TELEMETRY === "1";
 const initializedWorkspaceScopeKeys = new Set<string>();
+const workspaceChatHistoryPayloadCache = new Map<string, string>();
+const workspaceSessionPrefsPayloadCache = new Map<string, string>();
 const AUTH_REQUIRED_PATTERNS = [
   /please sign in/i,
   /sign[-\s]?in required/i,
@@ -303,7 +321,7 @@ function logWorkspaceImageDebug(message: string, payload: Record<string, unknown
 }
 
 function logGenerationCacheGuard(message: string, payload: Record<string, unknown>) {
-  if (process.env.NODE_ENV !== "development") {
+  if (!WORKSPACE_VERBOSE_LOG) {
     return;
   }
   console.info(`[GenerationCacheGuard] ${message}`, payload);
@@ -314,6 +332,17 @@ function logWorkspaceFlowAudit(payload: Record<string, unknown>) {
     return;
   }
   console.info("[WorkspaceFlowAudit]", payload);
+}
+
+function logWorkspaceVerbose(message: string, payload?: Record<string, unknown>) {
+  if (!WORKSPACE_VERBOSE_LOG) {
+    return;
+  }
+  if (payload) {
+    console.info(message, payload);
+    return;
+  }
+  console.info(message);
 }
 
 function isAuthRequiredErrorMessage(message: string) {
@@ -772,8 +801,8 @@ function cleanTopicText(input: string) {
   );
   const withoutDirectionWords = withoutGreeting
     .replace(/\b(?:generate|create|make|build|write|draft|produce)\b/gi, " ")
-    .replace(/\b(?:ppt|slides?|slide\s*deck|video|poster|infographic|storyboard)\b/gi, " ")
-    .replace(/(?:生成|制作|创建|做|输出|海报|视频|分镜|课件|长图|图文卡片|文稿)/g, " ")
+    .replace(/\b(?:ppt|slides?|slide\s*deck|video|poster|infographic|storyboard|image|images)\b/gi, " ")
+    .replace(/(?:生成|制作|创建|做|输出|海报|视频|分镜|课件|长图|图文卡片|文稿|图片|配图|信息图)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return withoutDirectionWords || withoutGreeting || trimmed;
@@ -841,300 +870,6 @@ function parsePosterCardCopy(copy: string, fallbackTitle: string): ParsedPosterC
   };
 }
 
-type SuggestionTheme =
-  | "volcano"
-  | "black-hole"
-  | "photosynthesis"
-  | "tide"
-  | "tectonics"
-  | "inflation"
-  | "immune"
-  | "dna"
-  | "printing"
-  | "electrolysis"
-  | "generic";
-
-function sanitizeSuggestionTopic(topic: string, outputLanguage: OutputLanguage) {
-  const cleaned = cleanTopicText(topic)
-    .replace(/[，。；,.!?！？]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (cleaned.length >= 2) {
-    return cleaned.slice(0, 36);
-  }
-  return isChineseLanguage(outputLanguage) ? "这个主题" : "this topic";
-}
-
-function isLowSignalSuggestionInput(seedTopic: string) {
-  const raw = seedTopic.trim();
-  if (!raw) {
-    return true;
-  }
-  const cleaned = cleanTopicText(raw)
-    .replace(/[，。；,.!?！？]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned) {
-    return true;
-  }
-  const compact = cleaned
-    .toLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, "");
-  if (!compact) {
-    return true;
-  }
-  if (
-    /^(?:hello|hi|hey|yo|test|testing|pls|please|ok|okay|你好|您好|哈喽|嗨|测试|开始|在吗)$/.test(
-      compact,
-    )
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function detectSuggestionTheme(topic: string): SuggestionTheme {
-  const raw = cleanTopicText(topic);
-  const bag = normalizeText(raw);
-  const zhBag = raw.replace(/\s+/g, "");
-  if (containsAny(bag, ["火山", "volcano", "magma", "eruption"])) {
-    return "volcano";
-  }
-  if (containsAny(zhBag, ["火山爆发", "喷发"])) {
-    return "volcano";
-  }
-  if (containsAny(bag, ["黑洞", "blackhole", "eventhorizon", "奇点"])) {
-    return "black-hole";
-  }
-  if (containsAny(zhBag, ["黑洞形成", "事件视界"])) {
-    return "black-hole";
-  }
-  if (containsAny(bag, ["光合作用", "photosynthesis", "叶绿体", "chlorophyll"])) {
-    return "photosynthesis";
-  }
-  if (containsAny(bag, ["潮汐", "潮水", "tide", "moon", "月球引力"])) {
-    return "tide";
-  }
-  if (containsAny(bag, ["板块", "地震", "tectonic", "plateboundary", "fault"])) {
-    return "tectonics";
-  }
-  if (containsAny(bag, ["通货膨胀", "cpi", "inflation", "物价上涨", "购买力"])) {
-    return "inflation";
-  }
-  if (containsAny(bag, ["免疫", "抗体", "immune", "vaccine", "炎症"])) {
-    return "immune";
-  }
-  if (containsAny(bag, ["dna", "基因", "遗传", "mutation", "双螺旋"])) {
-    return "dna";
-  }
-  if (containsAny(bag, ["印刷术", "活字", "printing", "movabletype"])) {
-    return "printing";
-  }
-  if (containsAny(bag, ["电解", "electrolysis", "阴极", "阳极"])) {
-    return "electrolysis";
-  }
-  return "generic";
-}
-
-function buildSpecificTopicSuggestions(seedTopic: string, outputLanguage: OutputLanguage) {
-  const topic = sanitizeSuggestionTopic(seedTopic, outputLanguage);
-  const theme = detectSuggestionTheme(topic);
-  const isZh = isChineseLanguage(outputLanguage);
-  const lowSignalInput = isLowSignalSuggestionInput(seedTopic);
-
-  if (!isZh) {
-    if (theme === "volcano") {
-      return [
-        "A clear explainer of how volcanoes form from mantle melting to eruption.",
-        "A clear explainer of how magma-chamber pressure buildup triggers eruptions.",
-        "A clear explainer of which precursor signals best predict volcanic eruption risk.",
-        "A clear explainer of explosive versus effusive eruptions and why they differ.",
-      ];
-    }
-    if (lowSignalInput) {
-      return [
-        "A clear explainer of how plate tectonics shapes major landforms.",
-        "A clear explainer of how photosynthesis converts light into stored energy.",
-        "A clear explainer of how the immune system identifies pathogens.",
-        "A clear explainer of how tides are driven by Moon-Sun gravity.",
-      ];
-    }
-    if (theme === "black-hole") {
-      return [
-        "How a black hole forms from stellar collapse and mass threshold",
-        "What the event horizon changes for light, time, and information",
-        "How accretion disks and jets make black holes observable",
-        "How scientists estimate black-hole mass from orbit and radiation data",
-      ];
-    }
-    if (theme === "photosynthesis") {
-      return [
-        "How light reactions convert photon energy into ATP and NADPH",
-        "How the Calvin cycle stores carbon into sugars step by step",
-        "Which factors (light, CO2, temperature) limit photosynthesis first",
-        "How photosynthesis links plant growth, food webs, and carbon balance",
-      ];
-    }
-    if (theme === "tide") {
-      return [
-        "How Moon-Sun gravity creates periodic high and low tides",
-        "Why spring tides and neap tides differ in range",
-        "How coastline shape and seabed depth amplify local tide height",
-        "How tides influence navigation safety, ecosystems, and energy use",
-      ];
-    }
-    if (theme === "tectonics") {
-      return [
-        "How plate boundaries control earthquake and volcano distribution",
-        "How stress accumulates and releases along active faults",
-        "How subduction, collision, and rifting shape landforms differently",
-        "How tectonic evidence is measured with seismic and GPS data",
-      ];
-    }
-    if (theme === "inflation") {
-      return [
-        "How demand-pull and cost-push inflation follow different mechanisms",
-        "How inflation changes real wages, savings value, and household budgets",
-        "How CPI is built and why different baskets show different inflation views",
-        "How rate policy transmits from central banks to jobs and consumption",
-      ];
-    }
-    if (theme === "immune") {
-      return [
-        "How innate immunity reacts within hours before adaptive response starts",
-        "How B cells and T cells coordinate targeted pathogen elimination",
-        "How vaccines build memory cells without causing full disease",
-        "How chronic inflammation differs from short protective inflammation",
-      ];
-    }
-    if (theme === "dna") {
-      return [
-        "How DNA replication maintains accuracy and where mutations arise",
-        "How transcription and translation convert genes into proteins",
-        "How dominant and recessive inheritance appears across generations",
-        "How gene variants influence disease risk and treatment response",
-      ];
-    }
-    if (theme === "printing") {
-      return [
-        "How movable type changed speed, cost, and scale of knowledge spread",
-        "How printing innovation reshaped education and scientific communication",
-        "How East-West printing paths differed in materials and workflow",
-        "How printing technology evolved from manual press to modern systems",
-      ];
-    }
-    if (theme === "electrolysis") {
-      return [
-        "How ion migration at anode/cathode drives electrolysis reactions",
-        "How voltage, concentration, and electrode material change product yield",
-        "How Faraday's law predicts output mass from current and time",
-        "How electrolysis is applied in hydrogen production and metal refining",
-      ];
-    }
-    return [
-      `${topic}: formation conditions and trigger thresholds`,
-      `${topic}: first-changing signal and measurable key variables`,
-      `${topic}: step-by-step mechanism chain from cause to outcome`,
-      `${topic}: one data-backed real-world case and practical implication`,
-    ];
-  }
-
-  if (theme === "volcano") {
-    return [
-      "火山形成的过程讲解：从地幔熔融到岩浆上升再到喷发。",
-      "火山为什么会喷发的讲解：岩浆房压力如何累积并跨过阈值。",
-      "火山喷发前信号讲解：地震活动、气体异常和地表形变怎么看。",
-      "火山喷发类型讲解：爆炸式与溢流式喷发为什么会不同。",
-    ];
-  }
-  if (lowSignalInput) {
-    return [
-      "板块运动过程讲解：板块边界如何塑造地貌并触发地震。",
-      "光合作用过程讲解：光能如何转化为有机物并进入食物链。",
-      "免疫系统机制讲解：人体如何识别并清除外来病原体。",
-      "潮汐形成机制讲解：月球和太阳引力如何驱动潮位变化。",
-    ];
-  }
-  if (theme === "black-hole") {
-    return [
-      "恒星坍缩到什么质量条件才会形成黑洞",
-      "事件视界对光、时间和信息传递意味着什么",
-      "吸积盘和喷流如何帮助我们间接观测黑洞",
-      "科学家如何用轨道和辐射数据估算黑洞质量",
-    ];
-  }
-  if (theme === "photosynthesis") {
-    return [
-      "光反应如何把光能转成 ATP 和 NADPH",
-      "卡尔文循环如何把二氧化碳固定成糖",
-      "光照、温度和 CO2 浓度谁最先限制光合作用效率",
-      "光合作用如何影响食物链和碳循环平衡",
-    ];
-  }
-  if (theme === "tide") {
-    return [
-      "月球和太阳引力如何形成周期性的涨潮与落潮",
-      "大潮和小潮为什么会出现明显潮差",
-      "海岸线形状和水深如何放大局地潮位变化",
-      "潮汐变化如何影响航运、沿海生态与潮汐能利用",
-    ];
-  }
-  if (theme === "tectonics") {
-    return [
-      "板块边界类型如何决定地震和火山分布",
-      "断层应力如何累积并在地震中瞬时释放",
-      "俯冲、碰撞与张裂三类构造会形成哪些不同地貌",
-      "地震波和 GPS 数据如何用于板块运动监测",
-    ];
-  }
-  if (theme === "inflation") {
-    return [
-      "需求拉动型和成本推动型通胀的机制区别",
-      "通胀如何影响工资购买力、储蓄实际价值和预算结构",
-      "CPI 的构成与统计口径为什么会影响通胀感知",
-      "加息政策如何传导到消费、就业和企业融资",
-    ];
-  }
-  if (theme === "immune") {
-    return [
-      "先天免疫与适应性免疫在时间和作用上的分工",
-      "B 细胞和 T 细胞如何协同识别并清除病原体",
-      "疫苗如何在不致病的前提下建立免疫记忆",
-      "急性炎症和慢性炎症在风险和意义上有何区别",
-    ];
-  }
-  if (theme === "dna") {
-    return [
-      "DNA 复制如何保证高保真并减少突变累积",
-      "转录与翻译如何把基因信息转为蛋白质功能",
-      "显性与隐性遗传在家系中如何呈现分布规律",
-      "基因变异如何影响疾病风险与个体化治疗",
-    ];
-  }
-  if (theme === "printing") {
-    return [
-      "活字印刷如何改变知识传播速度与成本结构",
-      "印刷术如何推动教育普及与科学交流",
-      "中西方印刷技术路线在材料与工艺上的差异",
-      "从手工排印到现代印刷的关键技术演进",
-    ];
-  }
-  if (theme === "electrolysis") {
-    return [
-      "电解过程中阴极与阳极分别发生哪些反应",
-      "电压、溶液浓度和电极材料如何影响产物选择",
-      "法拉第定律如何用于计算电解产物质量",
-      "电解在制氢和金属精炼中的典型应用路径",
-    ];
-  }
-  return [
-    `${topic}的形成条件与关键触发阈值`,
-    `${topic}中最先变化的可观测指标与核心变量`,
-    `${topic}从起因到结果的机制链路拆解`,
-    `${topic}在现实中的一个数据化案例及实际影响`,
-  ];
-}
-
 function detectIntent(
   prompt: string,
   sources: HomeSourceItem[],
@@ -1152,7 +887,7 @@ function detectIntent(
   if (containsAny(text, ["视频", "口播", "配音", "短片", "剪辑"])) {
     scores.video += 4;
   }
-  if (containsAny(text, ["海报", "长图", "poster", "封面", "图文卡片"])) {
+  if (containsAny(text, ["海报", "长图", "poster", "封面", "图文卡片", "图片", "配图", "信息图", "infographic", "image"])) {
     scores.poster += 4;
   }
 
@@ -1211,6 +946,12 @@ function detectIntent(
     confidence,
     reason: `已根据关键词和素材类型判断为${intent === "ppt" ? "PPT" : intent === "video" ? "视频" : "海报"}生成。`,
   };
+}
+
+function hasRecencySensitiveRequest(prompt: string) {
+  return /(最新|最近|当日|今日|本周|本月|今年|实时|快讯|news|latest|newest|recent|today|thisweek|thismonth|current|earnings|quarterly|10-k|10q|财报|业绩)/i.test(
+    prompt,
+  );
 }
 
 function inferRecommendedIntent(
@@ -1288,6 +1029,42 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
   if (text.length <= 2) {
     return true;
   }
+  const hasExplicitRequestSignal =
+    containsAny(text, [
+      "生成",
+      "制作",
+      "创建",
+      "做成",
+      "输出",
+      "讲解",
+      "解释",
+      "分析",
+      "总结",
+      "海报",
+      "长图",
+      "图片",
+      "配图",
+      "信息图",
+      "视频",
+      "分镜",
+      "ppt",
+      "slide",
+      "poster",
+      "video",
+      "storyboard",
+      "infographic",
+      "generate",
+      "create",
+      "make",
+      "build",
+      "explain",
+      "analyze",
+      "summarize",
+    ]) ||
+    /(?:\d+\s*(?:页|张|个分镜|帧|slides?|posters?|frames?))/.test(text);
+  if (hasExplicitRequestSignal && text.length >= 8) {
+    return false;
+  }
   const weakPatterns = [
     /^hello\b/,
     /^hi\b/,
@@ -1308,6 +1085,10 @@ function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
     .filter(Boolean).length;
   if (tokenCount <= 2 && text.length < 20) {
     return true;
+  }
+  const cjkLength = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  if (cjkLength >= 6 && hasExplicitRequestSignal) {
+    return false;
   }
   return false;
 }
@@ -1467,80 +1248,170 @@ function buildMissingHints(
   return hints;
 }
 
-function buildGenericOutline(topic: string, intent: WorkspaceIntent, count: number, outputLanguage: OutputLanguage) {
-  if (!isChineseLanguage(outputLanguage)) {
-    const pptSeed = [
-      `${topic}: core question and learning objective`,
-      `${topic}: practical context and use cases`,
-      `${topic}: key concepts to understand first`,
-      `${topic}: mechanism path from trigger to outcome`,
-      `${topic}: critical variables and transmission path`,
-      `${topic}: major types and contrasts`,
-      `${topic}: one explainable real-world case`,
-      `${topic}: impact at personal, industry, and system levels`,
-      `${topic}: common misconceptions and corrections`,
-      `${topic}: summary and next actions`,
-    ];
-    const videoSeed = [
-      `${topic}: opening hook and tension`,
-      `${topic}: context scene that viewers can relate to`,
-      `${topic}: mechanism breakdown part 1`,
-      `${topic}: mechanism breakdown part 2`,
-      `${topic}: before vs after contrast`,
-      `${topic}: real-world case frame`,
-      `${topic}: concise conclusion`,
-      `${topic}: actionable next step`,
-    ];
-    const defaultSeed = [
-      `What is ${topic}?`,
-      `Context and background of ${topic}`,
-      `Core mechanism of ${topic}`,
-      `Impact and application of ${topic}`,
-    ];
-    const seed = intent === "video" ? videoSeed : intent === "ppt" ? pptSeed : defaultSeed;
-    if (count <= seed.length) {
-      return seed.slice(0, count);
+function buildMediaFallbackSeed(topic: string, intent: WorkspaceIntent, count: number, outputLanguage: OutputLanguage) {
+  const isZh = isChineseLanguage(outputLanguage);
+  const isDesertTopic = /沙漠|昼夜|白天|晚上|温差/.test(topic.replace(/\s+/g, ""));
+  const desertSeed = [
+    {
+      title: "沙漠昼夜温差",
+      pptBody: "同一地点在一天内温度可大幅波动，白天升温快、夜晚降温也快。\n关键不是沙漠一直热，而是它不擅长保温。",
+      videoBody: "沙漠最反常的地方，不是白天很热，而是夜里会迅速变冷。理解这个昼夜反差，才能抓住沙漠气候的关键。",
+      visual: intent === "video" ? "左右分屏：左侧烈日下沙地快速升温，右侧夜空下热量向上散走，中间用温度曲线表现陡升陡降。" : "昼夜分屏对比图",
+    },
+    {
+      title: "白天升温快",
+      pptBody: "沙漠云量少、遮挡弱，太阳辐射更直接到达地表。\n地表吸收能量快，温度上升也更快。",
+      videoBody: "白天沙漠上空云量少，太阳能量几乎直接打到地表。沙地吸收得快，所以温度会在短时间内明显升高。",
+      visual: intent === "video" ? "太阳占据画面上方，粗箭头穿过稀薄云层直达沙地，地表温度计快速上升，突出白天能量输入。" : "太阳辐射箭头直达地表",
+    },
+    {
+      title: "地表不擅长储热",
+      pptBody: "沙地和裸岩不像水体那样擅长储热，受热快、失热也快。\n这会放大一天内的温度波动。",
+      videoBody: "沙地和裸岩不像水体那样擅长储热。它们白天热得快，到了晚上也凉得快，于是温差被进一步拉大。",
+      visual: intent === "video" ? "沙地与湖水并排对比：沙地温度计剧烈波动，水体温度计变化平缓，用储热能力差异解释温差。" : "沙地与水体储热对比",
+    },
+    {
+      title: "夜晚散热更直接",
+      pptBody: "入夜后没有太阳继续输入能量，地表热量更容易向天空散走。\n云层少时，夜间保温效果更弱。",
+      videoBody: "到了晚上，太阳不再继续输入能量，地表开始向天空散热。因为云层少，热量更容易离开近地面。",
+      visual: intent === "video" ? "夜晚沙漠地表变暗，红色热量箭头从地面向星空散出，稀少云层无法形成保温层。" : "热量向天空散失路径",
+    },
+    {
+      title: "空气干燥不保温",
+      pptBody: "水汽少意味着空气保温能力弱，夜里难以把热量留在近地面。\n少云少水汽共同削弱了夜间保温层。",
+      videoBody: "沙漠空气很干燥，水汽少，保温能力就弱。你可以把它理解成少了一层保温被，夜里热量留不住。",
+      visual: intent === "video" ? "把湿润空气画成厚保温层、沙漠干空气画成稀薄透明层，热量从薄层中快速逃逸。" : "云层与水汽保温层示意",
+    },
+    {
+      title: "湿润地区更缓和",
+      pptBody: "湿润地区云层和水汽更多，白天升温较慢，夜晚降温也更缓。\n对比后更容易看出沙漠温差大的原因。",
+      videoBody: "湿润地区有更多水汽和云层，白天能缓冲升温，夜里也能减慢降温。对比之后，沙漠的温差就更明显。",
+      visual: intent === "video" ? "左侧沙漠温度曲线陡升陡降，右侧湿润地区曲线平缓，云层和水汽作为缓冲层显示。" : "沙漠与湿润地区对比",
+    },
+    {
+      title: "常见误区",
+      pptBody: "“沙漠一直很热”并不准确。\n更准确的说法是：沙漠昼夜温差大，白天热、夜晚冷。",
+      videoBody: "所以说沙漠一直很热，其实并不准确。更准确的说法是：沙漠白天热得快，夜晚也冷得快。",
+      visual: intent === "video" ? "误区卡片被划掉：沙漠一直很热；事实卡片突出：白天热、夜晚冷，旁边配昼夜温度对比。" : "误区与事实对照",
+    },
+    {
+      title: "三因素判断",
+      pptBody: "判断昼夜温差，优先看三件事：云量、水汽、地表材质。\n云少、水汽少、地表不储热，温差通常更大。",
+      videoBody: "判断一个地方昼夜温差大不大，可以先看三件事：云量、水汽和地表材质。云少、水汽少、地表不储热，温差通常更大。",
+      visual: intent === "video" ? "三个节点依次出现：云量、水汽、地表材质，最终汇聚到昼夜温差结果，箭头清晰、文字极少。" : "云量-水汽-地表材质三节点模型",
+    },
+    {
+      title: "变量如何联动",
+      pptBody: "少云让白天更容易升温，少水汽让夜晚更难保温。\n地表不擅长储热，会把这种昼夜差异进一步放大。",
+      videoBody: "云量、水汽和地表材质不是各自独立发挥作用。它们会一起影响升温和散热，最终把昼夜温差放大。",
+      visual: intent === "video" ? "云量少、水汽少、地表储热弱三个变量同时亮起，箭头汇聚到一个放大的温差计。" : "云量-水汽-地表材质联动图",
+    },
+    {
+      title: "一天温度时间线",
+      pptBody: "清晨温度较低，中午快速升高，日落后又迅速下降。\n把一天拆成时间线，可以更直观看到升温和降温速度。",
+      videoBody: "把一天摊开看，沙漠温度常像一条陡升陡降的曲线。中午升得快，日落后降得也快。",
+      visual: intent === "video" ? "横向时间线从清晨到夜晚，温度曲线先陡升再陡降，背景光线从日出过渡到星空。" : "清晨-中午-日落-夜晚温度曲线",
+    },
+    {
+      title: "怎么快速判断",
+      pptBody: "看到晴朗、干燥、裸露地表，就要警惕昼夜温差更大。\n如果云层厚、水汽多或地表含水量高，温差通常会被削弱。",
+      videoBody: "快速判断时，可以先看天空、空气和地表。天空少云、空气干燥、地表裸露，通常就意味着更大的昼夜温差。",
+      visual: intent === "video" ? "画面依次检查天空、空气、地表三个图标，每个图标连接到温差大小判断，不出现长段文字。" : "三步检查清单",
+    },
+    {
+      title: "迁移到其他地区",
+      pptBody: "类似逻辑也能解释干旱内陆、高原荒漠等地区的昼夜温差。\n关键不是名字叫不叫沙漠，而是云量、水汽和储热能力。",
+      videoBody: "这套逻辑不只适用于沙漠，也能迁移到高原和干旱内陆。只要少云、干燥、地表储热弱，温差就容易变大。",
+      visual: intent === "video" ? "地图式小场景并列展示沙漠、高原、干旱内陆，用同一套三因素模型连接这些地区。" : "沙漠-高原-干旱内陆对照",
+    },
+    {
+      title: "真实场景应用",
+      pptBody: "沙漠旅行常需要同时准备防晒和保暖用品。\n白天应防强日照，夜间则要应对快速降温。",
+      videoBody: "这也是为什么去沙漠旅行，白天要防晒，晚上还要保暖。你面对的不是单纯高温，而是剧烈的温度切换。",
+      visual: intent === "video" ? "旅行背包分成白天和夜晚两侧：一侧是帽子、防晒，另一侧是外套、保暖装备，呼应昼夜温差。" : "白天防晒与夜间保暖场景卡",
+    },
+    {
+      title: "一页复盘模型",
+      pptBody: "沙漠昼夜温差大的判断公式：白天强输入，夜晚弱保温，地表不储热。\n这三点同时出现，昼夜温差就容易被拉大。",
+      videoBody: "最后用一句话记住：白天强输入，夜晚弱保温，地表又不擅长储热。三点叠加，沙漠昼夜温差就会变大。",
+      visual: intent === "video" ? "结尾总模型：强输入、弱保温、不储热三个模块围绕一个大温差计排列，形成清晰收束画面。" : "强输入-弱保温-不储热总结模型",
+    },
+  ];
+
+  const genericZh = intent === "video"
+    ? [
+        ["冲突开场", `${topic}先用一个强反差画面建立问题，让观众立刻知道矛盾在哪里。接着用一句话点出本集要解释的关键机制。`, "强对比主视觉"],
+        ["现象镜头", `观众先看到${topic}最直观的变化，再理解这个变化为什么值得解释。画面要把现象讲清楚，而不是只给概念标签。`, "现实场景特写"],
+        ["第一原因", `先锁定第一个发生变化的关键变量，它通常决定后续链路怎么展开。把起点讲清楚，后面的因果才不会散。`, "单变量动作图"],
+        ["机制传导", `变化不会停在第一步，而是会沿着因果链继续传导。这个镜头要说明中间过程如何把结果一步步推出来。`, "箭头路径图"],
+        ["对比镜头", `通过变化前后或两种场景的对比，观众能更快看出差异。这个镜头要用对比帮助理解，而不是重复前一帧。`, "左右分屏对比"],
+        ["误区纠偏", `很多误解来自只看表面结果，却忽略形成过程。先指出常见误区，再用一个清楚事实把它纠正过来。`, "误区事实卡"],
+        ["结尾模型", `最后把${topic}压缩成一个容易记住的判断模型。观众看完这一帧，应该能复述核心逻辑并迁移使用。`, "三节点总结图"],
+      ]
+    : [
+        ["核心问题", `${topic}的关键是把可观察现象、触发条件和最终结果连接起来。`, "主题主视觉"],
+        ["现象观察", `${topic}先表现为一个可直接感知的变化。`, "现象对比图"],
+        ["关键机制", `解释${topic}时，应抓住最先变化的变量和连锁反应。`, "因果链路图"],
+        ["变量路径", `2-3个关键变量通常决定结果会被放大还是减弱。`, "变量框架图"],
+        ["对比验证", `通过前后或A/B对比，可以判断机制解释是否成立。`, "对比卡片"],
+        ["误区澄清", `常见误解往往来自只看结果、不看形成过程。`, "误区事实卡"],
+        ["判断框架", `最终可按“现象、变量、结果”三步复盘${topic}。`, "三步判断框架"],
+      ];
+  const genericEn = intent === "video"
+    ? [
+        ["Opening Tension", `${topic} begins with one strong visual contrast that makes the question obvious. Then name the mechanism the viewer should watch for.`, "high-contrast hook frame"],
+        ["Visible Pattern", `The viewer first sees the most observable change and why it matters. Keep the explanation concrete, not just a concept label.`, "real-world close-up"],
+        ["First Cause", `Identify the first variable that changes, because it sets the direction for the whole chain. This frame should make the starting point easy to remember.`, "single-variable action"],
+        ["Mechanism Path", `Show how the change travels through a cause-effect chain. The narration should explain the middle step that connects the trigger to the result.`, "arrow path with main subject"],
+        ["Contrast Beat", `Use a before-after or A/B comparison so the viewer can see the difference immediately. This frame should add contrast, not repeat the previous beat.`, "split-screen contrast"],
+        ["Myth Correction", `State the common misconception first, then correct it with one clear fact. The viewer should leave with a cleaner mental model.`, "myth versus fact visual"],
+        ["Final Model", `${topic} closes as one memorable judgment model. The viewer should be able to repeat the core logic and use it elsewhere.`, "three-node recap model"],
+      ]
+    : [
+        ["Core Question", `${topic} is best explained by linking the visible pattern, trigger, and outcome.`, "hero visual"],
+        ["Observable Pattern", `${topic} starts from a visible change rather than an abstract label.`, "before-after comparison"],
+        ["Key Mechanism", `Track the first changing variable and the chain reaction it creates.`, "causal chain diagram"],
+        ["Variable Path", `Two or three key variables decide whether the effect grows or weakens.`, "variable framework"],
+        ["Contrast Check", `A/B contrast helps verify whether the mechanism explains the result.`, "comparison cards"],
+        ["Misconception", `Misunderstandings often come from seeing the outcome without the process.`, "myth-fact card"],
+        ["Judgment Framework", `Use pattern, variables, and outcome as the final review frame.`, "three-step framework"],
+      ];
+
+  const source = isZh && isDesertTopic ? desertSeed : (isZh ? genericZh : genericEn).map(([title, body, visual]) => ({
+    title,
+    pptBody: intent === "ppt" ? `${body}\n${isZh ? "本页只保留一个解释重点。" : "Keep one explanation point on this slide."}` : body,
+    videoBody: body,
+    visual,
+  }));
+  return Array.from({ length: count }, (_, idx) => {
+    const existing = source[idx];
+    if (existing) {
+      return existing;
     }
-    const extra = Array.from(
-      { length: count - seed.length },
-      (_, idx) => `${topic}: advanced extension ${idx + 1}`,
-    );
-    return [...seed, ...extra];
-  }
-  const pptSeed = [
-    `${topic}的核心问题与学习目标`,
-    `${topic}在现实中的典型场景`,
-    `${topic}需要先理解的关键概念`,
-    `${topic}的机制链路：触发条件到结果`,
-    `${topic}的关键变量与变化路径`,
-    `${topic}的常见类型与对比差异`,
-    `${topic}案例拆解：一个可复述的真实情境`,
-    `${topic}影响评估：个人、行业与系统层面`,
-    `${topic}常见误区与纠偏方法`,
-    `${topic}总结与行动建议`,
-  ];
-  const videoSeed = [
-    `${topic}开场钩子：一句话提出冲突`,
-    `${topic}场景建立：观众可感知的变化`,
-    `${topic}机制拆解①：第一层因果`,
-    `${topic}机制拆解②：关键变量如何传导`,
-    `${topic}对比视角：变化前后差异`,
-    `${topic}案例镜头：真实情境复现`,
-    `${topic}结论收束：可执行判断`,
-    `${topic}行动建议：下一步怎么做`,
-  ];
-  const defaultSeed = [
-    `${topic}是什么`,
-    `${topic}的背景与场景`,
-    `${topic}的关键机制`,
-    `${topic}的影响与应用`,
-  ];
-  const seed = intent === "video" ? videoSeed : intent === "ppt" ? pptSeed : defaultSeed;
-  if (count <= seed.length) {
-    return seed.slice(0, count);
-  }
-  const extra = Array.from({ length: count - seed.length }, (_, idx) => `${topic}进阶补充：扩展主题 ${idx + 1}`);
-  return [...seed, ...extra];
+    const extraIndex = idx - source.length + 1;
+    if (isZh) {
+      const extraTitle =
+        intent === "video" ? `补充镜头 ${extraIndex}` : `${topic}延展页 ${extraIndex}`;
+      return {
+        title: extraTitle,
+        pptBody: `${topic}在这一页补充一个新的观察角度，避免重复前文结论。\n本页应服务于对比、误区、判断、案例或迁移应用中的一种功能。`,
+        videoBody: `${topic}在这一帧补充一个新的观察角度，只围绕一个变化点展开。先说明画面中的变化，再给出它对结果的影响。`,
+        visual: "单一重点的信息图模块",
+      };
+    }
+    const extraTitle = intent === "video" ? `Extension Frame ${extraIndex}` : `${topic}: extension ${extraIndex}`;
+    return {
+      title: extraTitle,
+      pptBody: `Add one new perspective on ${topic} without repeating earlier conclusions.\nThis page should serve comparison, misconception, judgment, case, or transfer learning.`,
+      videoBody: `Add one new perspective on ${topic} with one clear change only. Explain what changes in the frame and why it matters for the outcome.`,
+      visual: "single-focus infographic module",
+    };
+  });
+}
+
+function buildGenericOutline(topic: string, intent: WorkspaceIntent, count: number, outputLanguage: OutputLanguage) {
+  const seed = buildMediaFallbackSeed(topic, intent, count, outputLanguage);
+  return seed.map((item) => item.title);
 }
 
 function buildGenericSlides(
@@ -1549,54 +1420,22 @@ function buildGenericSlides(
   intent: WorkspaceIntent,
   outputLanguage: OutputLanguage,
 ) {
-  if (!isChineseLanguage(outputLanguage)) {
-    return outline.map((title, index) => {
-      if (intent === "video") {
-        return {
-          page: index + 1,
-          title,
-          body: [
-            `Narration objective: explain "${title}" within ~10 seconds and keep one clear conclusion.`,
-            "Narration order: start from an observable scene, then explain the mechanism, then close with one practical takeaway.",
-            "On-screen text rule: keep captions to one short line (ideally <= 8 words) to avoid tiny text and preserve readability.",
-          ].join("\n"),
-          visual: `Visual direction: centered main subject + one directional cue (arrow/contrast); frame ${index + 1} should focus on one change only, with high-contrast labels.`,
-        };
-      }
-      return {
-        page: index + 1,
-        title,
-        body: [
-          `Core explanation: define "${title}" in one precise sentence and anchor it in a real context.`,
-          "Mechanism breakdown: explain why it happens, which variable changes first, and how the effect propagates.",
-          "Practical example: provide one concrete scenario and end with one learner-facing takeaway.",
-        ].join("\n"),
-        visual: `Layout suggestion: title + 3 key bullets + 1 supporting diagram; slide ${index + 1} should keep one dominant conclusion and avoid text overload.`,
-      };
-    });
-  }
+  const seed = buildMediaFallbackSeed(topic, intent, Math.max(outline.length, 1), outputLanguage);
   return outline.map((title, index) => {
+    const item = seed[index] || seed[seed.length - 1];
     if (intent === "video") {
       return {
         page: index + 1,
-        title,
-        body: [
-          `口播目标：在约 10 秒内讲清“${title}”，并落到一个明确结论。`,
-          "口播顺序：先说可观察现象，再解释机制，再给一个可执行判断。",
-          "字幕规则：每镜头只保留 1 行关键词（建议 8 字以内），避免小字堆叠影响观看。",
-        ].join("\n"),
-        visual: `画面建议：主体居中 + 单一箭头或对比元素；第 ${index + 1} 镜头只突出一个关键变化，标签高对比、少装饰。`,
+        title: title || item.title,
+        body: item.videoBody,
+        visual: item.visual,
       };
     }
     return {
       page: index + 1,
-      title,
-      body: [
-        `讲解目标：围绕“${title}”先给定义或现象，让读者在 5 秒内进入主题。`,
-        "机制说明：解释关键变量如何变化、为何会导致当前结果，并指出容易混淆的点。",
-        "应用收束：给一个生活化或行业化案例，最后用一句话总结本页核心结论。",
-      ].join("\n"),
-      visual: `版式建议：标题 + 3 要点 + 1 个示意图；第 ${index + 1} 页突出单一结论，避免信息分散与文本堆叠。`,
+      title: title || item.title,
+      body: item.pptBody,
+      visual: item.visual,
     };
   });
 }
@@ -2245,13 +2084,19 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
   }));
   try {
     const payload = JSON.stringify(normalizedPayload);
+    if (workspaceChatHistoryPayloadCache.get(key) === payload) {
+      return;
+    }
     window.sessionStorage.setItem(key, payload);
     window.localStorage.setItem(key, payload);
+    workspaceChatHistoryPayloadCache.set(key, payload);
   } catch (error) {
-    console.warn("[WorkspaceChatHistory] write failed, fallback to minimal payload", {
-      scopeKey,
-      error: error instanceof Error ? error.message : "unknown",
-    });
+    if (WORKSPACE_VERBOSE_LOG) {
+      console.warn("[WorkspaceChatHistory] write failed, fallback to minimal payload", {
+        scopeKey,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
     const fallbackPayload = JSON.stringify(
       normalizedPayload.map((item) => ({
         id: item.id,
@@ -2260,8 +2105,16 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
         content: typeof item.content === "string" ? item.content : "",
       })),
     );
-    window.sessionStorage.setItem(key, fallbackPayload);
-    window.localStorage.setItem(key, fallbackPayload);
+    if (workspaceChatHistoryPayloadCache.get(key) === fallbackPayload) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(key, fallbackPayload);
+      window.localStorage.setItem(key, fallbackPayload);
+      workspaceChatHistoryPayloadCache.set(key, fallbackPayload);
+    } catch {
+      // Ignore storage quota failures; chat can continue without persistence.
+    }
   }
 }
 
@@ -2278,7 +2131,7 @@ export default function WorkspacePage() {
   const [creditVersion, setCreditVersion] = useState(0);
   const credits = useMemo(() => {
     void creditVersion;
-    return getCreditRecords(currentEmail)[0]?.balance ?? 80;
+    return getCreditRecords(currentEmail)[0]?.balance ?? 50;
   }, [currentEmail, creditVersion]);
   const isFreeUser = useMemo(() => {
     const subscription = getSubscriptionByUser(currentEmail);
@@ -2315,6 +2168,9 @@ export default function WorkspacePage() {
   const [topicSuggestionLocked, setTopicSuggestionLocked] = useState(false);
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
+  const [intentAnalysis, setIntentAnalysis] = useState<IntentAnalysis | null>(null);
+  const [intentAnalysisLoading, setIntentAnalysisLoading] = useState(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
   const [currentGenerationRunId, setCurrentGenerationRunId] = useState<string | null>(null);
   const [currentGenerationJobId, setCurrentGenerationJobId] = useState<string | null>(null);
@@ -2398,6 +2254,8 @@ export default function WorkspacePage() {
   const [isExportingPpt, setIsExportingPpt] = useState(false);
   const [isComposingVideo, setIsComposingVideo] = useState(false);
   const posterDraftRequestRef = useRef(0);
+  const chatHistoryWriteTimerRef = useRef<number | null>(null);
+  const intentAnalysisRequestedRef = useRef(false);
 
   const modeActionsRef = useRef<{
     exportPpt: () => void;
@@ -2451,6 +2309,9 @@ export default function WorkspacePage() {
       projectId?: string | null;
       projectTraceId?: string | null;
     }) => {
+      if (!WORKSPACE_CLIENT_TELEMETRY) {
+        return;
+      }
       void fetch("/api/telemetry/client-log", {
         method: "POST",
         headers: {
@@ -2562,6 +2423,57 @@ export default function WorkspacePage() {
   const isZhOutput = uiLanguage === "zh";
   const tr = (en: string, _zh: string) => en;
 
+  useEffect(() => {
+    if (intentAnalysisRequestedRef.current) {
+      return;
+    }
+    const firstInput = initialEntry.prompt.trim();
+    if (!firstInput && !initialEntry.sources.length) {
+      return;
+    }
+    intentAnalysisRequestedRef.current = true;
+    setIntentAnalysisLoading(true);
+    const controller = new AbortController();
+    // Prompt1 runs on the server. Give it enough time so the UI does not fall back to weak local routing.
+    const timeoutId = window.setTimeout(() => controller.abort(), 6000);
+    void fetch("/api/workspace/intent-analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: firstInput,
+        outputLanguage,
+        sources: initialEntry.sources.map((item) => ({
+          kind: item.kind,
+          name: item.name,
+          origin: item.origin,
+          excerpt: item.excerpt,
+        })),
+      }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { analysis?: IntentAnalysis };
+        if (!data.analysis) {
+          return;
+        }
+        setIntentAnalysis(data.analysis);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+        setIntentAnalysisLoading(false);
+      });
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [initialEntry.prompt, initialEntry.sources, outputLanguage]);
+
   const detectedIntent = useMemo(
     () => detectIntent(contextPrompt, entrySources),
     [contextPrompt, entrySources],
@@ -2588,8 +2500,20 @@ export default function WorkspacePage() {
     () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId, outputLanguage),
     [effectiveIntent, contextPrompt, posterSizeId, outputLanguage],
   );
-  const shouldClarifyIntent = weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58;
-  const waitingTopicSuggestionConfirm = weakPrompt;
+  const shouldUseIntentAnalysis = Boolean(intentAnalysis);
+  const fallbackNeedsFreshSources = hasRecencySensitiveRequest(contextPrompt) && entrySources.length === 0;
+  const fallbackShouldClarifyIntent =
+    !intentAnalysisLoading &&
+    (weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58 || fallbackNeedsFreshSources);
+  const shouldClarifyIntent = shouldUseIntentAnalysis
+    ? intentAnalysis?.clarifyMode !== "none"
+    : fallbackShouldClarifyIntent;
+  const waitingTopicSuggestionConfirm = shouldUseIntentAnalysis
+    ? intentAnalysis?.clarifyMode === "topic"
+    : false;
+  const needsFreshSourcesClarify = shouldUseIntentAnalysis
+    ? intentAnalysis?.clarifyMode === "fresh_sources"
+    : fallbackNeedsFreshSources;
   const showPosterSizeSelector = effectiveIntent === "poster" && !posterSizeId;
   const canProceed = configConfirmed && !showPosterSizeSelector;
   const showDirectionGuide = flowStage === "intent" || flowStage === "config";
@@ -2601,6 +2525,19 @@ export default function WorkspacePage() {
   const hasCanvasPanel = showStoryboard || showPosterCanvas;
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
   const showCanvasPanelInLayout = hasCanvasPanel && (!isMobileViewport || mobileWorkspaceView === "canvas");
+
+  useEffect(() => {
+    if (!shouldUseIntentAnalysis || !intentAnalysis) {
+      return;
+    }
+    if (intentAnalysis.direction === "unknown") {
+      return;
+    }
+    if (manualIntent === intentAnalysis.direction) {
+      return;
+    }
+    setManualIntent(intentAnalysis.direction);
+  }, [intentAnalysis, manualIntent, shouldUseIntentAnalysis]);
   const debugGoGenerateStepEnabled =
     process.env.NODE_ENV === "development" && searchParams.get("debugGoGenerateStep") === "1";
   const debugImageBridgeEnabled =
@@ -2705,23 +2642,42 @@ export default function WorkspacePage() {
   ]);
 
   const analysisText = useMemo(() => {
+    if (intentAnalysisLoading) {
+      return isZhOutput ? "正在分析你的需求上下文..." : "Analyzing your request context...";
+    }
+    if (shouldUseIntentAnalysis && intentAnalysis?.assistantHint) {
+      return intentAnalysis.assistantHint;
+    }
+    if (!shouldUseIntentAnalysis && fallbackNeedsFreshSources) {
+      return isZhOutput
+        ? "这个需求依赖最新资料。请补充最新来源，或回复：继续公开资料概览。"
+        : "This request depends on recent sources. Add a fresh source, or reply: continue with public overview.";
+    }
     if (weakPrompt) {
-      return tr(
-        "I still need a clear topic before generation. Tell me what you want to explain, or choose an output direction first.",
-        "我还没有收到可用于生成的明确主题。你可以告诉我想讲解什么知识点，或先选择生成方向，我会给你一版可直接继续的草稿。",
-      );
+      return isZhOutput
+        ? `“${topicHintText(topic, outputLanguage)}”范围比较大，请补充你想解释的角度。`
+        : `“${topicHintText(topic, outputLanguage)}” is broad. Add the angle you want to explain.`;
     }
     if (!contextPrompt && !entrySources.length) {
-      return tr(
-        "I have not received a clear request yet. Choose an output direction first and I will guide the configuration.",
-        "我还没有收到明确需求。你可以先选择生成方向，我会引导你补齐配置并开始生成。",
-      );
+      return isZhOutput
+        ? "我还没有收到明确需求。你可以先选择生成方向，我会引导你补齐配置并开始生成。"
+        : "I have not received a clear request yet. Choose an output direction first and I will guide the configuration.";
     }
-    return tr(
-      `I understood the topic "${topicHintText(topic, outputLanguage)}". Next, choose output direction and confirm configuration to generate structured content.`,
-      `我已理解主题“${topicHintText(topic, outputLanguage)}”。接下来请选择生成方向并确认配置，我会据此生成对应的结构化内容。`,
-    );
-  }, [contextPrompt, entrySources.length, outputLanguage, topic, tr, weakPrompt]);
+    return isZhOutput
+      ? `我已理解主题“${topicHintText(topic, outputLanguage)}”。接下来请选择生成方向并确认配置，我会据此生成对应的结构化内容。`
+      : `I understood the topic "${topicHintText(topic, outputLanguage)}". Next, choose output direction and confirm configuration to generate structured content.`;
+  }, [
+    contextPrompt,
+    entrySources.length,
+    isZhOutput,
+    intentAnalysis,
+    intentAnalysisLoading,
+    outputLanguage,
+    shouldUseIntentAnalysis,
+    topic,
+    weakPrompt,
+    fallbackNeedsFreshSources,
+  ]);
 
   const basePosterPlanList = useMemo<PosterPlanItem[]>(() => {
     if (effectiveIntent !== "poster" || !basePosterDraft || !configConfirmed) {
@@ -2945,7 +2901,7 @@ export default function WorkspacePage() {
     if (debugGoGenerateStepAppliedRef.current) {
       return;
     }
-    console.info("[workspace-generation] debugGoGenerateStep applied", {
+    logWorkspaceVerbose("[workspace-generation] debugGoGenerateStep applied", {
       flowStage,
       effectiveIntent,
       imageGenerationTasksLength: imageGenerationTasks.length,
@@ -3094,7 +3050,7 @@ export default function WorkspacePage() {
           runIdOverride: runIdOverride ?? null,
         },
       });
-      console.info("[workspace-generation] runGenerationBatch called", {
+      logWorkspaceVerbose("[workspace-generation] runGenerationBatch called", {
         taskCount: tasks.length,
         taskIndexes: tasks.map((task) => task.index),
         isRetry,
@@ -3213,7 +3169,7 @@ export default function WorkspacePage() {
         projectTraceId: projectTraceIdRef.current,
         tasks,
       });
-      console.info("[workspace-generation] generate-batch request started", {
+      logWorkspaceVerbose("[workspace-generation] generate-batch request started", {
         runId: activeRunId,
         idempotencyKey,
         taskCount: tasks.length,
@@ -3250,7 +3206,7 @@ export default function WorkspacePage() {
         const payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
         const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
         const responseJobId = (payload?.job?.id || "").trim() || null;
-        console.info("[workspace-generation] generate-batch response", {
+        logWorkspaceVerbose("[workspace-generation] generate-batch response", {
           ok: response.ok,
           status: response.status,
           responseOk: payload?.ok,
@@ -3508,7 +3464,7 @@ export default function WorkspacePage() {
                 newStatus: nextState.status,
                 newImageUrl: nextState.imageUrl,
               });
-              console.info("[workspace-generation] generationTaskStateByIndex success + imageUrl", {
+              logWorkspaceVerbose("[workspace-generation] generationTaskStateByIndex success + imageUrl", {
                 index: task.index,
                 status: nextState.status,
                 imageUrl: nextState.imageUrl,
@@ -4158,9 +4114,11 @@ export default function WorkspacePage() {
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
   const topicSuggestions = useMemo(() => {
-    const suggestionSeed = topicContextPrompt || topic;
-    return buildSpecificTopicSuggestions(suggestionSeed, outputLanguage);
-  }, [outputLanguage, topic, topicContextPrompt]);
+    if (intentAnalysis?.clarifyMode === "topic" && intentAnalysis.suggestions.length) {
+      return intentAnalysis.suggestions.slice(0, 4);
+    }
+    return [];
+  }, [intentAnalysis]);
 
   const isHydrated = useSyncExternalStore(
     useCallback(() => () => undefined, []),
@@ -4231,7 +4189,16 @@ export default function WorkspacePage() {
       videoRatio,
       styleId: selectedStyleId,
     };
-    window.sessionStorage.setItem(sessionPrefsScopeKey, JSON.stringify(payload));
+    const serialized = JSON.stringify(payload);
+    if (workspaceSessionPrefsPayloadCache.get(sessionPrefsScopeKey) === serialized) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(sessionPrefsScopeKey, serialized);
+      workspaceSessionPrefsPayloadCache.set(sessionPrefsScopeKey, serialized);
+    } catch {
+      // Ignore storage quota failures; preferences will fall back to current React state.
+    }
   }, [
     manualIntent,
     posterCount,
@@ -4246,7 +4213,23 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     updatesRef.current = updates;
-    writeWorkspaceChatHistory(sessionPrefsScopeKey, updates);
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (chatHistoryWriteTimerRef.current) {
+      window.clearTimeout(chatHistoryWriteTimerRef.current);
+    }
+    chatHistoryWriteTimerRef.current = window.setTimeout(() => {
+      writeWorkspaceChatHistory(sessionPrefsScopeKey, updates);
+      chatHistoryWriteTimerRef.current = null;
+    }, 180);
+    return () => {
+      if (!chatHistoryWriteTimerRef.current) {
+        return;
+      }
+      window.clearTimeout(chatHistoryWriteTimerRef.current);
+      chatHistoryWriteTimerRef.current = null;
+    };
   }, [sessionPrefsScopeKey, updates]);
 
   useEffect(() => {
@@ -4471,13 +4454,13 @@ export default function WorkspacePage() {
         currentGenerationJobId,
       };
     }
-    console.info("[workspace-generation] state snapshot", JSON.stringify({
+    logWorkspaceVerbose("[workspace-generation] state snapshot", {
       entries,
       imageGenerationTasksLength: imageGenerationTasks.length,
       flowStage,
       currentGenerationRunId,
       currentGenerationJobId,
-    }));
+    });
     logWorkspaceImageDebug("[ImageRenderDebug] generationTaskStateByIndex snapshot:", {
       generationTaskStateByIndex,
       entries,
@@ -5131,7 +5114,7 @@ export default function WorkspacePage() {
         !task.aspectRatio?.trim() ||
         !task.size?.trim(),
     );
-    console.info("[workspace-generation] handleConfirmBilling called", {
+    logWorkspaceVerbose("[workspace-generation] handleConfirmBilling called", {
       flowStage,
       credits,
       billingCost,
@@ -5162,7 +5145,7 @@ export default function WorkspacePage() {
       },
     });
     if (generationRequestInFlightRef.current) {
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "generationRequestInFlight",
       });
       emitFlowAudit({
@@ -5174,7 +5157,7 @@ export default function WorkspacePage() {
       return;
     }
     if (credits < billingCost && !debugGoGenerateStepEnabled) {
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "insufficientCredits",
         credits,
         billingCost,
@@ -5195,7 +5178,7 @@ export default function WorkspacePage() {
       return;
     }
     if (isPlanningBillingStep) {
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "isPlanningBillingStep",
       });
       emitFlowAudit({
@@ -5208,7 +5191,7 @@ export default function WorkspacePage() {
     }
     if (flowStage !== "billing") {
       const message = tr("Generation can only be confirmed at the billing step.", "仅可在账单确认步骤发起生成。");
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "invalidFlowStage",
         flowStage,
       });
@@ -5225,7 +5208,7 @@ export default function WorkspacePage() {
     }
     if (!tasksToGenerate.length) {
       const message = tr("No generation tasks are ready.", "没有可生成的任务。");
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "emptyGenerationTasks",
       });
       emitFlowAudit({
@@ -5240,7 +5223,7 @@ export default function WorkspacePage() {
     }
     if (tasksToGenerate.length !== expectedCount) {
       const message = tr("Task count does not match selected output quantity.", "任务数量与选择的输出数量不一致。");
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "taskCountMismatch",
         expectedCount,
         actualCount: tasksToGenerate.length,
@@ -5264,7 +5247,7 @@ export default function WorkspacePage() {
         `Task ${invalidTask.index} is missing prompt or size.`,
         `任务 ${invalidTask.index} 缺少提示词或尺寸配置。`,
       );
-      console.info("[workspace-generation] handleConfirmBilling early return", {
+      logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "invalidTaskPayload",
         invalidTaskIndex: invalidTask.index,
       });
@@ -5491,6 +5474,9 @@ export default function WorkspacePage() {
     if (!value || isSending) {
       return;
     }
+    if (!hasUserInteracted) {
+      setHasUserInteracted(true);
+    }
     const inputSource = options?.source ?? "manual";
     logClientEvent({
       category: "chat",
@@ -5570,6 +5556,26 @@ export default function WorkspacePage() {
       "polish",
     ]);
     const likelyTopicText = !hasDirectionHint && !isConfigCommand && !isEditCommand;
+    const wantsContinuePublicOverview = containsAny(normalized, [
+      "继续公开资料概览",
+      "继续概览",
+      "先按公开资料",
+      "继续生成概览",
+      "continue public overview",
+      "continue with public overview",
+      "general overview",
+    ]);
+    const wantsFreshSourcePath = containsAny(normalized, [
+      "补充来源",
+      "上传来源",
+      "补充最新资料",
+      "添加资料",
+      "add source",
+      "upload source",
+      "add latest source",
+      "fresh source",
+    ]);
+    const isFreshSourceGateActive = needsFreshSourcesClarify && !wantsContinuePublicOverview;
 
     if (backNavigationCommand) {
       pushAssistantMessage(
@@ -5591,6 +5597,41 @@ export default function WorkspacePage() {
           "无限画布阶段下载仅支持按钮操作，请点击 Download / Download All。",
         ),
         tr("Workflow Guard", "流程约束"),
+      );
+      stopThinking();
+      setIsSending(false);
+      return;
+    }
+
+    if (needsFreshSourcesClarify && wantsContinuePublicOverview) {
+      setIntentAnalysis((prev) =>
+        prev
+          ? {
+              ...prev,
+              clarifyMode: "none",
+              needsFreshSources: false,
+              classification: "ready",
+              assistantHint: tr(
+                "Proceeding with a public-information overview first. Fresh sources can be added later for recency validation.",
+                "已按公开资料概览继续。后续可补充最新来源做时效校验。",
+              ),
+            }
+          : prev,
+      );
+      pushAssistantMessage(
+        tr(
+          "Understood. I will continue with a public-information overview first.",
+          "收到，我先按公开资料概览继续生成。",
+        ),
+        tr("Requirement Check", "需求确认"),
+      );
+    } else if (isFreshSourceGateActive && wantsFreshSourcePath) {
+      pushAssistantMessage(
+        tr(
+          "Great. Please add a latest source in Home upload first, then return to continue.",
+          "好的。请先在 Home 补充最新来源，再回来继续。",
+        ),
+        tr("Requirement Check", "需求确认"),
       );
       stopThinking();
       setIsSending(false);
@@ -5825,6 +5866,18 @@ export default function WorkspacePage() {
     }
 
     if (!shouldPrioritizeDraftEdit && shouldClarifyIntent) {
+      if (isFreshSourceGateActive) {
+        pushAssistantMessage(
+          tr(
+            "This request depends on recent sources. Add a fresh source, or reply: continue with public overview.",
+            "这个需求依赖最新资料。请补充最新来源，或回复：继续公开资料概览。",
+          ),
+          tr("Requirement Check", "需求确认"),
+        );
+        stopThinking();
+        setIsSending(false);
+        return;
+      }
       pushAssistantMessage(
         tr("I still cannot determine the output type. Please reply with PPT, video, or poster.", "我还不能确定你要生成的类型。请直接回复：PPT、视频或海报。"),
         tr("Requirement Check", "需求确认"),
@@ -6118,7 +6171,9 @@ export default function WorkspacePage() {
                   analysisText={analysisText}
                   showDirectionGuide={showDirectionGuide}
                   shouldClarifyIntent={shouldClarifyIntent}
-                  showWeakPromptSuggestions={showDirectionGuide && shouldClarifyIntent && waitingTopicSuggestionConfirm}
+                  showWeakPromptSuggestions={
+                    showDirectionGuide && shouldClarifyIntent && waitingTopicSuggestionConfirm && topicSuggestions.length > 0
+                  }
                   topicSuggestions={topicSuggestions}
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
@@ -6166,6 +6221,7 @@ export default function WorkspacePage() {
                   isPlanningBillingStep={isPlanningBillingStep}
                   billingConfirmed={billingConfirmed}
                   canConfirmBilling={canConfirmBilling}
+                  isFreeUser={isFreeUser}
                   generationConfirmError={generationConfirmError}
                   billingSummary={{
                     styleName: selectedStyle.englishName ?? selectedStyle.name,

@@ -126,10 +126,37 @@ function cleanText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
+const PROMPT_NOISE_PATTERNS = [
+  /本页重点|画面结构|讲解文稿|输出格式|写作结构|版式建议|讲解目标|机制说明|应用收束/i,
+  /核心结论|机制解释|记忆点|关键发现|事实证据|结论启发|step\s*\d+|phase\s*\d+|阶段\s*\d+/i,
+  /围绕当前标题补充关键变量的变化路径|给出一个对比、例子或判断口诀/i,
+  /先明确.*关键驱动因素|必要条件|放大因素|触发条件.?机制传导.?结果呈现/i,
+  /page role|information structure|visualization structure|role=/i,
+];
+
+function stripSectionPrefix(text: string) {
+  return cleanText(
+    text
+      .replace(/^(核心结论|机制解释|记忆点|关键发现|事实证据|结论启发|coremessage|mechanism|memoryhook|insight|evidence|takeaway)\s*[：:]\s*/i, "")
+      .replace(/^(本页重点|画面结构|讲解文稿)\s*[：:]\s*/i, ""),
+  );
+}
+
+function sanitizePromptLine(text: string) {
+  const normalized = stripSectionPrefix(text);
+  if (!normalized) {
+    return "";
+  }
+  if (PROMPT_NOISE_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return "";
+  }
+  return normalized;
+}
+
 function splitLabels(value: string, maxCount = 4) {
   return value
     .split(/[\n,，;；|、]/g)
-    .map((item) => cleanText(item))
+    .map((item) => sanitizePromptLine(item))
     .filter(Boolean)
     .slice(0, maxCount);
 }
@@ -193,6 +220,24 @@ function normalizePosterLabelText(text: string, singlePoster: boolean) {
 
 function isCjkText(text: string) {
   return /[\u3400-\u9fff]/.test(text);
+}
+
+function isHighRiskDataContent(text: string) {
+  const source = cleanText(text);
+  if (!source) {
+    return false;
+  }
+  const hasMetricCue = /指标|数据|同比|环比|营收|净利润|每股收益|EPS|财报|收入|利润|亏损|增长|revenue|profit|earnings|margin/i.test(
+    source,
+  );
+  const hasNumberCue = /\d[\d,.]*\s*(?:亿|万|美元|元|%|百分点|million|billion|usd)?/i.test(source);
+  const hasTimeCue = /20\d{2}|Q[1-4]|季度|全年|截至|latest|current|最新|本季|本季度/i.test(source);
+  const hasFinanceCue = /财报|业绩|earnings|guidance|营收|净利润|eps|revenue|profit|云业务|广告收入/i.test(source);
+  return (hasMetricCue && hasNumberCue && (hasTimeCue || hasFinanceCue)) || (hasFinanceCue && hasTimeCue);
+}
+
+function isDataLikeRole(text: string) {
+  return /data|metric|指标|数据|财报|商业|business|summary/i.test(cleanText(text));
 }
 
 function buildFallbackCompactTitle(text: string) {
@@ -356,18 +401,6 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
   if (normalizedDirection === "poster" && input.posterDraft) {
     const planList = input.posterPlanList || [];
     const singlePoster = normalizedCount === 1;
-    const contextPlanTitles = singlePoster
-      ? []
-      : planList
-        .slice(0, Math.min(3, normalizedCount))
-        .map((item) => normalizePosterLabelText(item.title || "", false))
-        .filter(Boolean);
-    const seriesContext = cleanText([
-      input.posterDraft.headline,
-      input.posterDraft.subtitle,
-      input.posterDraft.visualType || "",
-      ...contextPlanTitles,
-    ].join(" | "));
     return Array.from({ length: normalizedCount }, (_, idx) => {
       const index = idx + 1;
       const plan = planList[idx];
@@ -387,11 +420,19 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
             : index === normalizedCount
               ? "system-model"
               : "mechanism";
-      const focusForBody = normalizePosterLabelText(plan?.focus || "", singlePoster);
+      const focusForBody = sanitizePromptLine(normalizePosterLabelText(plan?.focus || "", singlePoster));
       const keyFactsForBody = (plan?.keyFacts || [])
-        .map((item) => normalizePosterLabelText(item, singlePoster))
+        .map((item) => sanitizePromptLine(normalizePosterLabelText(item, singlePoster)))
         .filter(Boolean);
-      const pageKeyFacts = keyFactsForBody.slice(0, isFirstPoster ? 3 : 2);
+      const pageFactLimit =
+        isDataLikeRole(plan?.role || "") || /metrics|data|指标|数据|财报|营收|利润|同比|环比/i.test(plan?.visualType || "")
+          ? 5
+          : pageRole === "comparison" || pageRole === "checklist" || pageRole === "system-model"
+            ? 4
+            : isFirstPoster
+              ? 3
+              : 3;
+      const pageKeyFacts = keyFactsForBody.slice(0, pageFactLimit);
       const bodyForCurrentPoster = normalizePosterFreeText(input.posterDraft?.body || "", singlePoster);
       const sanitizedPlanTitle = normalizePosterLabelText(plan?.title || "", singlePoster);
       const rawTitleCandidate =
@@ -403,6 +444,9 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         focusForBody,
         ...pageKeyFacts,
       ].join("\n"));
+      const isDataLike = isHighRiskDataContent(
+        [contentTitle, contentBody, input.posterDraft?.headline, input.posterDraft?.body, ...(input.posterDraft?.points || [])].join(" "),
+      );
       const imagePromptDraft = normalizePosterFreeText(plan?.imagePromptDraft || plan?.imagePrompt || "", singlePoster);
       const visibleLabelCandidates: string[] = [];
       if (!singlePoster && focusForBody && isFirstPoster) {
@@ -415,24 +459,42 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
             .map((item) => normalizePosterLabelText(item, singlePoster))
             .filter(Boolean);
       pageVisibleFacts.forEach((item) => visibleLabelCandidates.push(item));
+      const sanitizedVisibleLabels = visibleLabelCandidates
+        .map((item) => sanitizePromptLine(item))
+        .filter(Boolean);
       const visibleText: VisibleText = {
         title: contentTitle,
         subtitle: isFirstPoster ? cleanText(input.posterDraft?.subtitle) : "",
-        labels: splitLabels(visibleLabelCandidates.join(" | "), isFirstPoster ? 3 : 2),
+        labels: splitLabels(sanitizedVisibleLabels.join(" | "), pageRole === "cover" ? 3 : pageFactLimit),
       };
       const visualDesign: VisualDesign = {
         layout: isFirstPoster
-          ? cleanText(plan?.layoutHint || input.posterDraft?.layoutSuggestion) || "Overview poster with clear top title, one main comparison/summary visual, and minimal supporting labels."
+          ? isDataLike
+            ? "Integrated metrics summary poster: one hero number/insight, supporting metric clusters, comparison strip, and concise takeaway."
+            : cleanText(plan?.layoutHint || input.posterDraft?.layoutSuggestion) || "Overview poster with clear top title, one main comparison/summary visual, and minimal supporting labels."
           : "Single-focus poster page: one main idea, one central visual, no repeated overview panels.",
-        mainVisual: cleanText(plan?.visualType || input.posterDraft?.visualType) || "Causal explainer illustration",
+        mainVisual: isDataLike
+          ? "Metrics summary infographic with business breakdown"
+          : cleanText(plan?.visualType || input.posterDraft?.visualType) || "Causal explainer illustration",
         composition: cleanText([
-          `Role=${pageRole}`,
+          pageRole === "cover"
+            ? "Overview treatment for the opening page."
+            : pageRole === "system-model"
+              ? "Framework treatment for synthesis or judgment."
+              : pageRole === "comparison"
+                ? "Comparison treatment for this page's single contrast."
+                : "Single-focus treatment for this page's idea.",
           (plan?.visualElements || input.posterDraft?.visualElements || []).join(", "),
+          isDataLike
+            ? "Preserve supplied numbers exactly; use an integrated data editorial layout, not generic causal mechanism panels."
+            : "",
           isFirstPoster
             ? "Use this page as the series overview; show the big question and the complete mental model only once."
             : "Focus only on this page's point; use one main panel, avoid repeated day/night overview blocks or unrelated summary strips.",
         ].join(" | ")) || "One key focal visual + supporting labels",
-        informationStructure: pageRole === "system-model"
+        informationStructure: isDataLike
+          ? "metrics-summary"
+          : pageRole === "system-model"
           ? "judgment-framework"
           : pageRole === "comparison"
             ? "comparison-cards"
@@ -444,16 +506,35 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
                   ? "layered-diagram"
               : "mechanism-diagram",
         pageRole,
-        textDensity: isFirstPoster ? "medium" : "low",
+        textDensity:
+          pageRole === "cover"
+            ? "low"
+            : isDataLike || pageRole === "comparison" || pageRole === "checklist" || pageRole === "system-model"
+              ? "medium"
+              : "medium",
       };
       const textStrategy: TextStrategy = {
-        mode: "guided",
+        mode: isDataLike ? "strict" : "guided",
         titleIdea: contentTitle,
         keyConcepts: splitLabels([focusForBody, ...pageKeyFacts].join(" | "), 5),
         language: input.outputLanguage.toLowerCase().startsWith("zh") ? "Simplified Chinese" : "English",
         density: visualDesign.textDensity,
-        allowRewrite: true,
+        allowRewrite: !isDataLike,
       };
+      const taskFactualRules = isDataLike
+        ? [
+            ...factualRules,
+            "For supplied metrics, preserve exact numbers, dates, currency units, percentages, company/segment names, and comparison direction.",
+            "Do not invent missing financial figures, axes, rankings, or sources.",
+          ]
+        : factualRules;
+      const taskNegativeRules = isDataLike
+        ? [
+            ...negativeRules,
+            "No fake trading dashboard, stock chart, unsupported logo, or made-up financial data.",
+            "Avoid generic mechanism-flow templates when the content is a metric summary.",
+          ]
+        : negativeRules;
       const visualHint = cleanText([
         visualDesign.mainVisual,
         visualDesign.layout,
@@ -461,20 +542,19 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         imagePromptDraft,
       ].join(" | "));
       const composedPrompt = buildTuziImagePrompt({
-        draftContent: cleanText([contentTitle, contentBody, visualHint].join("\n")),
+        draftContent: cleanText([contentTitle, contentBody].join("\n")),
         selectedStyle: input.style.name || input.style.prompt,
         aspectRatio: normalizedAspectRatio,
         posterIndex: index,
         totalCount: normalizedCount,
         outputType: "poster",
-        fullContent: seriesContext,
         imagePromptDraft,
         visibleText,
         visualDesign,
         pageRole,
         textStrategy,
-        factualRules,
-        negativeRules,
+        factualRules: taskFactualRules,
+        negativeRules: taskNegativeRules,
         seriesStyle,
       });
       return {
@@ -486,8 +566,8 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         contentBody,
         visibleText,
         visualDesign,
-        factualRules,
-        negativeRules,
+        factualRules: taskFactualRules,
+        negativeRules: taskNegativeRules,
         seriesStyle,
         pageRole,
         textStrategy,
@@ -500,20 +580,15 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
 
   const outline = input.outlineItems || [];
   const slides = input.slideDrafts || [];
-  const seriesContext = cleanText([
-    input.topic,
-    ...(outline.slice(0, Math.min(4, normalizedCount))),
-    cleanText(input.visualizationTypeHint || ""),
-  ].join(" | "));
   return Array.from({ length: normalizedCount }, (_, idx) => {
     const index = idx + 1;
     const slide = slides[idx];
     const contentTitle = cleanText(slide?.title) || cleanText(outline[idx]) || `${normalizedDirection === "ppt" ? "Slide" : "Frame"} ${index}`;
     const contentBody = cleanText(slide?.body) || cleanText(outline[idx]) || input.topic;
-    const imagePromptDraft = cleanText(slide?.imagePromptDraft || slide?.imagePrompt);
+    const imagePromptDraft = sanitizePromptLine(cleanText(slide?.imagePromptDraft || slide?.imagePrompt));
     const visibleText: VisibleText = {
       title: contentTitle,
-      labels: splitLabels(cleanText(slide?.visual) || cleanText(contentBody), normalizedDirection === "video" ? 2 : 4),
+      labels: splitLabels(sanitizePromptLine(cleanText(slide?.visual)) || sanitizePromptLine(cleanText(contentBody)), normalizedDirection === "video" ? 2 : 4),
     };
     const pageRole: CompiledGenerationTask["pageRole"] =
       index === 1 ? "cover" : index === normalizedCount ? "system-model" : "mechanism";
@@ -523,7 +598,11 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         : "Presentation page with one core point and one central visual.",
       mainVisual: cleanText(slide?.visual) || cleanText(input.visualizationTypeHint) || "Knowledge explainer visual",
       composition: cleanText([
-        `Role=${pageRole}`,
+        pageRole === "cover"
+          ? "Opening visual treatment."
+          : pageRole === "system-model"
+            ? "Closing framework treatment."
+            : "Single-point visual treatment.",
         normalizedDirection === "video" ? "Frame-first storytelling composition" : "Slide-first explanatory composition",
         imagePromptDraft,
       ].join(" | ")),
@@ -542,15 +621,14 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       density: visualDesign.textDensity,
       allowRewrite: true,
     };
-    const visualHint = cleanText([slide?.visual || "", imagePromptDraft].join(" | "));
+    const visualHint = cleanText([sanitizePromptLine(slide?.visual || ""), imagePromptDraft].join(" | "));
     const composedPrompt = buildTuziImagePrompt({
-      draftContent: cleanText([contentTitle, contentBody, visualHint].join("\n")),
+      draftContent: cleanText([contentTitle, sanitizePromptLine(contentBody)].join("\n")),
       selectedStyle: input.style.name || input.style.prompt,
       aspectRatio: normalizedAspectRatio,
       posterIndex: index,
       totalCount: normalizedCount,
       outputType: normalizedDirection,
-      fullContent: seriesContext,
       imagePromptDraft,
       visibleText,
       visualDesign,

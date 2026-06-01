@@ -2,6 +2,18 @@ export type DraftDirection = "poster" | "ppt" | "video";
 import type { OutputLanguage } from "@/lib/language";
 import { isChineseLanguage } from "@/lib/language";
 
+// Prompt2: unified draft generation for poster, PPT, and video.
+// Prompt1 decides whether the request is ready; this layer turns ready input into user-visible content structure.
+export type DraftTaskType =
+  | "full-text"
+  | "short-topic"
+  | "data-summary"
+  | "tutorial"
+  | "science-explainer"
+  | "business-analysis"
+  | "creative-visual"
+  | "recency-sensitive";
+
 export type ContentDraftPromptInput = {
   direction: DraftDirection;
   topic: string;
@@ -13,6 +25,8 @@ export type ContentDraftPromptInput = {
 
 export type VisualizationType =
   | "causal-flow"
+  | "metrics-summary"
+  | "business-breakdown"
   | "timeline"
   | "comparison"
   | "geo-map"
@@ -145,6 +159,20 @@ const VISUALIZATION_TYPE_DEFINITIONS: Record<VisualizationType, VisualizationTyp
     suitableContentTypes: ["经济传导", "气候影响链", "公共健康机制", "系统性问题拆解"],
     avoidFor: ["纯地理位置展示", "无因果关系的素材合集"],
     cueWords: ["为什么", "影响", "导致", "因果", "传导", "链路"],
+  },
+  "metrics-summary": {
+    label: "指标摘要图",
+    whenToUse: "用户提供财报、经营指标、统计摘要或表格式数据，需要保留具体数字并提炼关键结论。",
+    suitableContentTypes: ["财报摘要", "业务指标", "运营数据", "统计结果", "季度报告"],
+    avoidFor: ["没有任何数据的抽象科普", "需要逐步操作的教程"],
+    cueWords: ["指标", "数据", "同比", "环比", "营收", "净利润", "eps", "财报", "收入", "增长", "%", "美元", "q1", "q2", "q3", "q4"],
+  },
+  "business-breakdown": {
+    label: "业务拆解图",
+    whenToUse: "解释公司、行业、产品或商业问题的结构、收入来源、增长驱动和风险边界。",
+    suitableContentTypes: ["公司分析", "行业分析", "增长拆解", "商业模式", "产品结构"],
+    avoidFor: ["纯自然科学机制", "纯空间地理分布"],
+    cueWords: ["公司", "业务", "商业", "市场", "收入", "利润", "增长", "客户", "产品", "行业", "广告", "cloud", "云"],
   },
   timeline: {
     label: "时间线",
@@ -283,6 +311,8 @@ const VISUALIZATION_TYPE_DEFINITIONS: Record<VisualizationType, VisualizationTyp
 
 const DIRECTIONAL_VISUALIZATION_PRIORITIES: Record<DraftDirection, VisualizationType[]> = {
   poster: [
+    "metrics-summary",
+    "business-breakdown",
     "causal-flow",
     "comparison",
     "ranking-list",
@@ -322,6 +352,41 @@ function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
 }
 
+function detectDraftTaskType(topic: string, userPrompt: string): DraftTaskType {
+  const rawText = `${topic}\n${userPrompt}`.trim();
+  const text = normalizeText(rawText);
+  const hasFreshnessCue = /最新|今天|昨日|今年|当前|实时|新闻|财报|股价|政策|latest|today|current|real[-\s]?time|earnings|stock/.test(
+    rawText.toLowerCase(),
+  );
+  const hasDataCue = /指标|数据|同比|环比|营收|净利润|每股收益|eps|财报|收入|利润|增长|亏损|美元|人民币|%|亿元|million|billion|revenue|profit|margin|q[1-4]/i.test(
+    rawText,
+  );
+  const hasManyFacts =
+    rawText.length >= 120 ||
+    (rawText.match(/[。.!?\n]/g)?.length ?? 0) >= 3 ||
+    (rawText.match(/\d/g)?.length ?? 0) >= 8;
+
+  if (hasDataCue) {
+    return hasFreshnessCue && !hasManyFacts ? "recency-sensitive" : "data-summary";
+  }
+  if (/教程|如何使用|怎么做|步骤|流程|上手|学习|操作|指南|workflow|tutorial|howto/.test(text)) {
+    return "tutorial";
+  }
+  if (/公司|业务|商业|市场|行业|增长|用户|产品|成本|收益|投资|business|market|growth|strategy/.test(text)) {
+    return "business-analysis";
+  }
+  if (/为什么|为何|原理|机制|形成|影响|导致|区别|科普|解释|why|how|mechanism|explain/.test(text)) {
+    return "science-explainer";
+  }
+  if (/海报风格|创意|视觉|封面|插画|场景|氛围|posterstyle|creative|visual/.test(text)) {
+    return "creative-visual";
+  }
+  if (hasManyFacts) {
+    return "full-text";
+  }
+  return "short-topic";
+}
+
 function formatVisualizationCatalogForPrompt() {
   const rows: string[] = ["可视化类型体系（用于映射）："];
   for (const [key, value] of Object.entries(VISUALIZATION_TYPE_DEFINITIONS)) {
@@ -338,6 +403,25 @@ function pickVisualizationType(topic: string, userPrompt: string, direction: Dra
   type: VisualizationType;
   reason: string;
 } {
+  const taskType = detectDraftTaskType(topic, userPrompt);
+  if (taskType === "data-summary" || taskType === "recency-sensitive") {
+    return {
+      type: "metrics-summary",
+      reason: "识别到数据/财报/指标类输入，应优先保留事实数字并生成指标摘要，而不是套用机制因果模板。",
+    };
+  }
+  if (taskType === "business-analysis") {
+    return {
+      type: "business-breakdown",
+      reason: "识别到商业/公司/行业分析输入，应优先做业务结构和指标拆解。",
+    };
+  }
+  if (taskType === "tutorial") {
+    return {
+      type: "process-steps",
+      reason: "识别到教程/操作路径输入，应优先用步骤流程和检查点组织内容。",
+    };
+  }
   const text = normalizeText(`${topic} ${userPrompt}`);
   let bestType: VisualizationType = DIRECTIONAL_VISUALIZATION_PRIORITIES[direction][0] ?? "causal-flow";
   let bestScore = Number.NEGATIVE_INFINITY;
@@ -391,41 +475,49 @@ function buildSharedSystemPrompt() {
 function buildSharedSystemPromptByLanguage(outputLanguage: OutputLanguage) {
   if (!isChineseLanguage(outputLanguage)) {
     return [
-      `You are a knowledge-visualization drafting assistant. Output strict JSON in ${outputLanguage}.`,
-      "Protocol (short, hard constraints):",
-      "R1 count_match: output item count must equal selected count.",
-      "R2 one_focus: one page/frame = one clear knowledge point.",
-      "R3 cover_rule: item 1 is cover/overview (PPT/video emphasis on hook).",
-      "R4 drawable: every sentence must map to drawable elements.",
-      "R5 factual: no fabricated numbers, labels, dates, or sources.",
-      "R6 concise: no abstract writing-process text or meta narration.",
-      "R6b factual_focus: focus lines must be content facts, not instruction verbs.",
-      "R7 medium_fit: poster can be denser; ppt one-slide-one-point; video low text for 6-10s view.",
-      "R8 visual: include explicit visual type + 3-5 core visual elements.",
-      "R9 consistency: stable terminology and narrative perspective across all items.",
-      "R10 no_sliding_window: never copy N+1/N+2 core content into page N.",
-      "R11 poster_page_shape: each poster page must contain coreMessage + mechanism + memoryHook.",
-      "R12 insufficiency_policy: if knowledge is insufficient for requested count, expand by page function differences (comparison/misconception/checklist/system model) instead of repeating.",
-      "R13 summary_rule: final page must output a judgment framework, not repetition.",
+      `Prompt2: You are the content-drafting layer for KnowLens.ai. Output strict JSON in ${outputLanguage}.`,
+      "Your job is to turn the user's usable input into a reviewable, paginated, visualizable content draft.",
+      "You are not a retrieval layer, blocker, or final image-prompt writer.",
+      "",
+      "First understand the input, then draft:",
+      "1. If the user provided complete text, notes, an article, a data block, or structured content, preserve its core claims, facts, order, wording, and conclusions. Organize, compress, paginate, title, and make it visualizable; do not replace it with a generic template.",
+      "2. If the user provided a short request, expand naturally around the topic with useful background, mechanism, steps, comparison, misconception, application, or summary framework. Each item must add distinct value.",
+      "3. If the user provided concrete facts or data, keep important numbers, dates, amounts, percentages, metrics, names, and conclusions. Do not generalize them away.",
+      "4. If the user wants data/current content but provided no data, create a framework-style draft describing what should be shown; do not invent specific figures, dates, rankings, or sources.",
+      "",
+      "Quality principles:",
+      "Write like a user-reviewable content draft, not a list of prompt rules.",
+      "The selected item count must be matched exactly.",
+      "Each page/frame should have one clear point and should not repeat neighboring content.",
+      "Do not use sliding-window splitting, filler pages, or the same idea with new titles.",
+      "If the requested count is high, add functional angles such as comparison, case, misconception, checklist, system model, or judgment framework instead of repetition.",
+      "The final item should synthesize into a framework, checklist, method, relationship model, or actionable takeaway, not restate earlier pages.",
+      "Keep all visible draft fields in one language, except proper nouns.",
+      "Do not output internal instructions, layout rules, placeholders, or writing-process phrases as visible copy.",
+      "Prompt2 may include a short visual hint, but must not write the final image2 prompt.",
     ].join("\n");
   }
   return [
-    "你是知识可视化内容生成助手。输出严格为中文 JSON。",
-    "短协议（强约束）：",
-    "R1 数量一致：输出条数必须等于用户选择数量。",
-    "R2 单页单重点：每页/帧只讲一个知识重点。",
-    "R3 首项封面：第1页/帧承担封面或综述作用（PPT/视频强调钩子）。",
-    "R4 可绘制：每句话都要能映射到画面元素。",
-    "R5 事实约束：禁止编造数字、标签、日期、来源。",
-    "R6 表达克制：禁止写“先写/再写/展开”等写作过程语。",
-    "R6b focus必须是知识事实句，不能是写作指令句。",
-    "R7 载体适配：海报可稍高密；PPT一页一重点；视频6-10秒低文字。",
-    "R8 视觉明确：给出可视化类型 + 3-5个核心视觉元素。",
-    "R9 全稿一致：术语和叙事视角保持一致。",
-    "R10 禁止滑动窗口拆页：第N页不能复制第N+1/N+2页核心内容。",
-    "R11 海报页结构固定：coreMessage + mechanism + memoryHook。",
-    "R12 若知识点不足以支撑页数，必须扩展页面功能（对比/误区/清单/系统模型），不能重复。",
-    "R13 总结页必须给出判断框架，不能复述前文。",
+    "Prompt2: You are the content-drafting layer for KnowLens.ai. Output strict JSON.",
+    `Prompt logic is in English; every user-facing draft value must be written in ${outputLanguage}, except proper nouns.`,
+    "Your job is to turn the user's usable input into a reviewable, paginated, visualizable content draft.",
+    "You are not a retrieval layer, blocker, or final image-prompt writer.",
+    "",
+    "First understand the input, then draft:",
+    "1. If the user provided complete text, notes, an article, a data block, or structured content, preserve its core claims, facts, order, wording, and conclusions. Organize, compress, paginate, title, and make it visualizable; do not replace it with a generic template.",
+    "2. If the user provided a short request, expand naturally around the topic with useful background, mechanism, steps, comparison, misconception, application, or summary framework. Each page/frame must add distinct value.",
+    "3. If the user provided concrete facts or data, keep important numbers, dates, amounts, percentages, metrics, names, and conclusions. Do not generalize them away.",
+    "4. If the user wants data/current content but provided no data, create a framework-style draft describing what should be shown; do not invent specific figures, dates, rankings, sources, or conclusions.",
+    "",
+    "Quality principles:",
+    "Write like a user-reviewable content draft, not a list of prompt rules.",
+    "The selected item count must be matched exactly.",
+    "Each page/frame should have one clear point and should not repeat neighboring content.",
+    "Do not use sliding-window splitting, filler pages, or the same idea with new titles.",
+    "If the requested count is high, add functional angles such as comparison, case, misconception, checklist, system model, or judgment framework instead of repetition.",
+    "The final item should synthesize into a framework, checklist, method, relationship model, or actionable takeaway, not restate earlier pages.",
+    "Do not output English internal instructions, layout rules, placeholders, field explanations, or writing-process phrases as visible copy.",
+    "Prompt2 may include a short visual hint, but must not write the final image2 prompt.",
   ].join("\n");
 }
 
@@ -438,6 +530,7 @@ function buildPosterPrompt(
   recommendedReason: string,
   outputLanguage: OutputLanguage,
 ) {
+  const taskType = detectDraftTaskType(topic, userPrompt);
   if (!isChineseLanguage(outputLanguage)) {
     return [
       "Direction: Poster",
@@ -445,54 +538,52 @@ function buildPosterPrompt(
       `User request: ${userPrompt}`,
       `Poster count: ${count}`,
       `Size: ${ratioOrSize}`,
-      `Recommended visualization type: ${recommendedType}`,
-      `Recommendation reason: ${recommendedReason}`,
+      `Reference taskType from code: ${taskType}`,
+      `Reference visualization type from code: ${recommendedType}`,
+      `Reference reason: ${recommendedReason}`,
       "Schema (strict JSON keys): contentMeta, posterDraft, planList, legacyCompat.",
+      "contentMeta fields: taskType, draftStrategy, sourceMode, textStrategy, visualStrategy, riskLevel.",
       "posterDraft fields: headline, subtitle, body, points, visualType, layoutSuggestion, visualElements, cta.",
       "planList item fields: index, role, title, focus, keyFacts, visualType, visualElements, layoutHint, imagePrompt.",
-      "Rules:",
-      "R1 body=3-4 concrete drawable sentences.",
-      "R2 points=5-6 one-line facts.",
-      "R3 planList length must equal poster count.",
-      "R4 planList[0]=cover with strong visual hook; others must be distinct knowledge points.",
-      "R5 imagePrompt must be GPT Image 2 ready and specific to current page.",
-      "R6 visualType explicit; visualElements=4-6.",
-      "R7 no abstract writing-process text.",
-      "R8 title/focus must be clean content lines, never commands like 'write/summarize/add'.",
-      "R9 avoid command residue (e.g. 'make 8 posters', 'topic is ...') in all fields.",
-      "R10 no sliding-window split: page N must not copy core from N+1/N+2.",
-      "R11 role must be one of: cover, mechanism, layered-diagram, comparison, misconception-fact, checklist, system-model.",
-      "R12 each planList item uses fixed content structure: coreMessage + mechanism + memoryHook.",
-      "R13 if topic depth is insufficient for page count, create functional pages instead of duplicates.",
-      "R14 final page (system-model) must provide a judgment framework.",
+      "Drafting guidance:",
+      "The reference taskType and visualization type are only hints. If they conflict with the user input, trust the user input and your own understanding.",
+      "posterDraft is the lightweight overall overview; keep it compact and do not duplicate the full planList.",
+      "planList carries the actual page-by-page content. Its length must equal poster count.",
+      "Page 1 should introduce the topic or visual hook. Later pages should each have a distinct point, fact set, and visual direction.",
+      "For complete text/data, preserve and reorganize the source instead of replacing it with generic mechanism pages.",
+      "For short topics, expand naturally with distinct page functions.",
+      "For data/business content, organize around metrics, structure, changes, observations, risks, and follow-up questions. Preserve supplied figures exactly; if no figures are supplied, produce a framework without made-up numbers.",
+      "Avoid generic mechanism-template wording for data/business content unless it is truly the user's source wording.",
+      "keyFacts should be concise content facts, not labels copied from an internal template.",
+      "imagePrompt is only a short visual hint for Prompt3: subject, composition, visual metaphor, or diagram direction. Do not write the final image prompt or dense on-image copy.",
     ].join("\n");
   }
   return [
-    "方向：海报",
-    `主题：${topic}`,
-    `用户原始需求：${userPrompt}`,
-    `海报数量：${count}`,
-    `尺寸：${ratioOrSize}`,
-    `推荐可视化类型：${recommendedType}`,
-    `推荐原因：${recommendedReason}`,
-    "输出键（严格）：contentMeta, posterDraft, planList, legacyCompat。",
-    "posterDraft 键：headline, subtitle, body, points, visualType, layoutSuggestion, visualElements, cta。",
-    "planList 每项键：index, role, title, focus, keyFacts, visualType, visualElements, layoutHint, imagePrompt。",
-    "硬约束：",
-    "R1 body=3-4句可绘制事实。",
-    "R2 points=5-6条单句信息点。",
-    "R3 planList 数量=海报数量。",
-    "R4 第1项为封面钩子，后续项必须是不同知识点。",
-    "R5 imagePrompt 直接可用于 GPT Image 2，且只描述当前页。",
-    "R6 visualType 明确；visualElements=4-6个。",
-    "R7 禁止“先写/再写/展开”等写作过程语。",
-    "R8 title/focus 只能是内容句，不能是“总结/补充/展开”等指令句。",
-    "R9 所有字段禁止残留“做成8页/主题是”等命令文本。",
-    "R10 禁止滑动窗口拆页：第N页不能复制第N+1/N+2页核心内容。",
-    "R11 role 必须来自：cover、mechanism、layered-diagram、comparison、misconception-fact、checklist、system-model。",
-    "R12 每页内容结构固定：coreMessage + mechanism + memoryHook。",
-    "R13 若知识点不足以支撑页数，必须做功能差异页，禁止重复页。",
-    "R14 最后一页（system-model）必须输出判断框架。",
+    "Direction: Poster",
+    `Topic: ${topic}`,
+    `User request: ${userPrompt}`,
+    `Poster count: ${count}`,
+    `Size: ${ratioOrSize}`,
+    `Reference taskType from code: ${taskType}`,
+    `Reference visualization type from code: ${recommendedType}`,
+    `Reference reason: ${recommendedReason}`,
+    "Schema (strict JSON keys): contentMeta, posterDraft, planList, legacyCompat.",
+    `All user-facing values inside posterDraft, planList, and legacyCompat must be written in ${outputLanguage}, except proper nouns.`,
+    "contentMeta fields: taskType, draftStrategy, sourceMode, textStrategy, visualStrategy, riskLevel.",
+    "posterDraft fields: headline, subtitle, body, points, visualType, layoutSuggestion, visualElements, cta.",
+    "planList item fields: index, role, title, focus, keyFacts, visualType, visualElements, layoutHint, imagePrompt.",
+    "Drafting guidance:",
+    "The reference taskType and visualization type are only hints. If they conflict with the user input, trust the user input and your own understanding.",
+    "posterDraft is the lightweight overall overview; keep it compact and do not duplicate the full planList.",
+    "planList carries the actual page-by-page content. Its length must equal poster count.",
+    "Page 1 should introduce the topic or visual hook. Later pages should each have a distinct point, fact set, and visual direction.",
+    "For complete text/data, preserve and reorganize the source instead of replacing it with generic mechanism pages.",
+    "For short topics, expand naturally with distinct page functions.",
+    "For data/business content, organize around metrics, structure, changes, observations, risks, and follow-up questions. Preserve supplied figures exactly; if no figures are supplied, produce a framework without made-up numbers.",
+    "Avoid generic mechanism-template wording for data/business content unless it is truly the user's source wording.",
+    "keyFacts should be concise content facts, not labels copied from an internal template.",
+    "imagePrompt is only a short visual hint for Prompt3: subject, composition, visual metaphor, or diagram direction. Do not write the final image prompt or dense on-image copy.",
+    "Do not leak English prompt logic, schema explanations, internal rules, or placeholders into user-visible draft copy.",
   ].join("\n");
 }
 
@@ -505,6 +596,7 @@ function buildPptPrompt(
   recommendedReason: string,
   outputLanguage: OutputLanguage,
 ) {
+  const taskType = detectDraftTaskType(topic, userPrompt);
   if (!isChineseLanguage(outputLanguage)) {
     return [
       "Direction: PPT",
@@ -512,34 +604,47 @@ function buildPptPrompt(
       `User request: ${userPrompt}`,
       `Slide count: ${count}`,
       `Ratio: ${ratioOrSize}`,
-      `Recommended visualization type: ${recommendedType}`,
-      `Recommendation reason: ${recommendedReason}`,
+      `Reference taskType from code: ${taskType}`,
+      `Reference visualization type from code: ${recommendedType}`,
+      `Reference reason: ${recommendedReason}`,
       "Schema (strict JSON keys): contentMeta, outlineItems, slideDrafts.",
       "slideDrafts item fields: page, title, mainPoint, body, supportNote, visual, imagePrompt.",
-      "Rules:",
-      "R1 outlineItems and slideDrafts length must equal slide count.",
-      "R2 slide 1 is cover/title slide with strong visual and minimal body.",
-      "R3 one slide one point; mainPoint is required for each later slide.",
-      "R4 body=1-2 concrete sentences; supportNote optional <=1 sentence.",
-      "R5 visual and imagePrompt must be specific and GPT Image 2 ready.",
+      "Drafting guidance:",
+      "The reference taskType and visualization type are hints only. Trust the user input when they conflict.",
+      "PPT is a teaching/presentation structure, not an article split into equal chunks.",
+      "outlineItems and slideDrafts length must equal slide count.",
+      "Slide 1 is usually a cover/title slide with a strong theme and little body copy.",
+      "Each later slide should have one main point, a short title, and concise body content.",
+      "For complete text/data, follow the original logic and facts; do not replace it with a generic course outline.",
+      "For data/business decks, organize around metrics, insight, evidence, implication, risk, and next focus. Preserve supplied figures; do not force mechanism explanation.",
+      "supportNote should be optional and short: one example, memory hook, caveat, or explanation.",
+      "visual should describe the slide's visible idea. imagePrompt is only a compact visual hint for Prompt3, not the final image prompt.",
+      "Do not output template or process-rule wording as user-visible copy.",
     ].join("\n");
   }
   return [
-    "方向：PPT",
-    `主题：${topic}`,
-    `用户原始需求：${userPrompt}`,
-    `页数：${count}`,
-    `比例：${ratioOrSize}`,
-    `推荐可视化类型：${recommendedType}`,
-    `推荐原因：${recommendedReason}`,
-    "输出键（严格）：contentMeta, outlineItems, slideDrafts。",
-    "slideDrafts 每项键：page, title, mainPoint, body, supportNote, visual, imagePrompt。",
-    "硬约束：",
-    "R1 outlineItems 与 slideDrafts 数量=页数。",
-    "R2 第1页是封面：强主题图+少正文。",
-    "R3 后续页 one slide one point，mainPoint 必填。",
-    "R4 body=1-2句具体信息；supportNote 可选且<=1句。",
-    "R5 visual 与 imagePrompt 必须具体且可直接生图。",
+    "Direction: PPT",
+    `Topic: ${topic}`,
+    `User request: ${userPrompt}`,
+    `Slide count: ${count}`,
+    `Ratio: ${ratioOrSize}`,
+    `Reference taskType from code: ${taskType}`,
+    `Reference visualization type from code: ${recommendedType}`,
+    `Reference reason: ${recommendedReason}`,
+    "Schema (strict JSON keys): contentMeta, outlineItems, slideDrafts.",
+    `All user-facing values inside outlineItems and slideDrafts must be written in ${outputLanguage}, except proper nouns.`,
+    "slideDrafts item fields: page, title, mainPoint, body, supportNote, visual, imagePrompt.",
+    "Drafting guidance:",
+    "The reference taskType and visualization type are hints only. Trust the user input when they conflict.",
+    "PPT is a teaching/presentation structure, not an article split into equal chunks.",
+    "outlineItems and slideDrafts length must equal slide count.",
+    "Slide 1 is usually a cover/title slide with a strong theme and little body copy.",
+    "Each later slide should have one main point, a short title, and concise body content.",
+    "For complete text/data, follow the original logic and facts; do not replace it with a generic course outline.",
+    "For data/business decks, organize around metrics, insight, evidence, implication, risk, and next focus. Preserve supplied figures; do not force mechanism explanation.",
+    "supportNote should be optional and short: one example, memory hook, caveat, or explanation.",
+    "visual should describe the slide's visible idea. imagePrompt is only a compact visual hint for Prompt3, not the final image prompt.",
+    "Do not output template, process-rule wording, English prompt logic, schema explanations, or placeholders as user-visible copy.",
   ].join("\n");
 }
 
@@ -552,6 +657,7 @@ function buildVideoPrompt(
   recommendedReason: string,
   outputLanguage: OutputLanguage,
 ) {
+  const taskType = detectDraftTaskType(topic, userPrompt);
   if (!isChineseLanguage(outputLanguage)) {
     return [
       "Direction: Video Storyboard",
@@ -559,36 +665,52 @@ function buildVideoPrompt(
       `User request: ${userPrompt}`,
       `Storyboard frame count: ${count}`,
       `Ratio: ${ratioOrSize}`,
-      `Recommended visualization type: ${recommendedType}`,
-      `Recommendation reason: ${recommendedReason}`,
+      `Reference taskType from code: ${taskType}`,
+      `Reference visualization type from code: ${recommendedType}`,
+      `Reference reason: ${recommendedReason}`,
       "Schema (strict JSON keys): contentMeta, outlineItems, storyboardDrafts.",
       "storyboardDrafts item fields: index, title, durationSec, narration, visual, onScreenText, imagePrompt.",
-      "Rules:",
-      "R1 outlineItems and storyboardDrafts length must equal frame count.",
-      "R2 frame 1 must behave like a strong YouTube thumbnail.",
-      "R3 durationSec default 6-10.",
-      "R4 narration=one short sentence for TTS.",
-      "R5 onScreenText empty by default; if needed keep very short.",
-      "R6 visual and imagePrompt must define subject, scene, composition, action.",
+      "Drafting guidance:",
+      "The reference taskType and visualization type are hints only. Trust the user input when they conflict.",
+      "Video storyboard is a sequence of visual and narration beats, not poster pages split into frames.",
+      "outlineItems and storyboardDrafts length must equal frame count.",
+      "Frame 1 should work as a strong opening/thumbnail-style hook.",
+      "Each frame should have a short title, a concrete still-frame visual, and narration that sounds like real voiceover.",
+      "durationSec should usually be 8-12 seconds.",
+      "narration should be long enough for that duration but concise; do not write internal goals, process rules, or placeholders.",
+      "onScreenText should usually be empty or very short because generated images are not editable subtitle tracks.",
+      "visual must describe subject, scene, composition, action, or change; do not write only 'comparison chart' or 'flow diagram'.",
+      "For complete text/data, preserve facts and order while turning them into narrative beats.",
+      "For data/business videos, show concrete visual scenes such as metric boards, segment comparison, timeline, analyst desk, or risk checklist; no fake numbers and no dense subtitles.",
+      "imagePrompt should only summarize the frame's visual direction for Prompt3; do not write the final image prompt.",
     ].join("\n");
   }
   return [
-    "方向：视频分镜",
-    `主题：${topic}`,
-    `用户原始需求：${userPrompt}`,
-    `分镜数量：${count}`,
-    `比例：${ratioOrSize}`,
-    `推荐可视化类型：${recommendedType}`,
-    `推荐原因：${recommendedReason}`,
-    "输出键（严格）：contentMeta, outlineItems, storyboardDrafts。",
-    "storyboardDrafts 每项键：index, title, durationSec, narration, visual, onScreenText, imagePrompt。",
-    "硬约束：",
-    "R1 outlineItems 与 storyboardDrafts 数量=分镜数量。",
-    "R2 第1分镜=封面钩子（高对比、强主体、少字）。",
-    "R3 durationSec 默认 6-10 秒。",
-    "R4 narration 每条1句，适配 TTS。",
-    "R5 onScreenText 默认空；若有则极短。",
-    "R6 visual 与 imagePrompt 必须明确主体/场景/构图/动作。",
+    "Direction: Video Storyboard",
+    `Topic: ${topic}`,
+    `User request: ${userPrompt}`,
+    `Storyboard frame count: ${count}`,
+    `Ratio: ${ratioOrSize}`,
+    `Reference taskType from code: ${taskType}`,
+    `Reference visualization type from code: ${recommendedType}`,
+    `Reference reason: ${recommendedReason}`,
+    "Schema (strict JSON keys): contentMeta, outlineItems, storyboardDrafts.",
+    `All user-facing values inside outlineItems and storyboardDrafts must be written in ${outputLanguage}, except proper nouns.`,
+    "storyboardDrafts item fields: index, title, durationSec, narration, visual, onScreenText, imagePrompt.",
+    "Drafting guidance:",
+    "The reference taskType and visualization type are hints only. Trust the user input when they conflict.",
+    "Video storyboard is a sequence of visual and narration beats, not poster pages split into frames.",
+    "outlineItems and storyboardDrafts length must equal frame count.",
+    "Frame 1 should work as a strong opening/thumbnail-style hook.",
+    "Each frame should have a short title, a concrete still-frame visual, and narration that sounds like real voiceover.",
+    "durationSec should usually be 8-12 seconds.",
+    "narration should be long enough for that duration but concise; do not write internal goals, process rules, or placeholders.",
+    "onScreenText should usually be empty or very short because generated images are not editable subtitle tracks.",
+    "visual must describe subject, scene, composition, action, or change; do not write only 'comparison chart' or 'flow diagram'.",
+    "For complete text/data, preserve facts and order while turning them into narrative beats.",
+    "For data/business videos, show concrete visual scenes such as metric boards, segment comparison, timeline, analyst desk, or risk checklist; no fake numbers and no dense subtitles.",
+    "imagePrompt should only summarize the frame's visual direction for Prompt3; do not write the final image prompt.",
+    "Do not leak English prompt logic, schema explanations, internal rules, or placeholders into user-visible draft copy.",
   ].join("\n");
 }
 

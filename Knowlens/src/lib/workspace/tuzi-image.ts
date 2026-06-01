@@ -19,7 +19,13 @@ export type TuziImagePayload = {
 
 const MAX_FINAL_IMAGE_PROMPT_CHARS = 2000;
 const IMAGE_PROMPT_POLISH_SUFFIX =
-  "Make the image feel like a refined, professional, and aesthetically polished educational infographic with one dominant hero visual, integrated poster-like composition, clear diagrammatic storytelling, elegant spacing, balanced information density, and cohesive premium design.";
+  "Make the image feel like a refined, professional, and aesthetically polished educational infographic with one dominant hero visual, integrated poster-like composition, soft visual transitions, natural embedded callouts, clear diagrammatic storytelling, elegant spacing, balanced information density, and cohesive premium design.";
+const IMAGE_PROMPT_NOISE_PATTERNS = [
+  /本页重点|画面结构|讲解文稿|输出格式|写作结构|版式建议|讲解目标|机制说明|应用收束/i,
+  /核心结论|机制解释|记忆点|关键发现|事实证据|结论启发|page role|information structure|visualization structure/i,
+  /围绕当前标题补充关键变量的变化路径|给出一个对比、例子或判断口诀/i,
+  /先明确.*关键驱动因素|必要条件|放大因素|触发条件.?机制传导.?结果呈现/i,
+];
 
 function compactText(input: string, maxLength: number) {
   return input
@@ -31,6 +37,65 @@ function compactText(input: string, maxLength: number) {
     .replace(/\s{2,}/g, " ")
     .slice(0, maxLength)
     .trim();
+}
+
+function stripMetaPrefix(input: string) {
+  return input
+    .replace(/^(核心结论|机制解释|记忆点|关键发现|事实证据|结论启发|coremessage|mechanism|memoryhook|insight|evidence|takeaway)\s*[：:]\s*/i, "")
+    .replace(/^(本页重点|画面结构|讲解文稿)\s*[：:]\s*/i, "")
+    .trim();
+}
+
+function sanitizePromptSignal(input: string, maxLength: number) {
+  const compact = compactText(stripMetaPrefix(input), maxLength);
+  if (!compact) {
+    return "";
+  }
+  if (IMAGE_PROMPT_NOISE_PATTERNS.some((pattern) => pattern.test(compact))) {
+    return "";
+  }
+  return compact;
+}
+
+function splitPromptSentences(input: string, maxItems: number, maxLength: number) {
+  const normalized = compactText(input, maxLength * Math.max(1, maxItems));
+  if (!normalized) {
+    return [];
+  }
+  return normalized
+    .split(/(?<=[。！？.!?])\s+|[；;]/)
+    .map((item) => sanitizePromptSignal(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function extractProtectedFacts(input: string, maxItems = 6) {
+  const candidates = splitPromptSentences(input, 12, 110);
+  const factPattern =
+    /(\d|%|％|\$|美元|人民币|亿元|亿|万|q[1-4]|fy\d{2,4}|20\d{2}|19\d{2}|营收|收入|净利润|eps|每股收益|同比|环比|增长|下降|亏损|google|alphabet|nvidia|英伟达|苹果|微软|tesla|meta|cloud|广告)/i;
+  return candidates.filter((item) => factPattern.test(item)).slice(0, maxItems);
+}
+
+function describeTextDensity(role: string, outputType: string, density: string) {
+  if (outputType === "video") {
+    return "Text density: very low; prioritize the scene, motion cue, and one short label only when useful.";
+  }
+  if (role === "cover") {
+    return "Text density: low; use a concise title and at most one supporting phrase.";
+  }
+  if (role === "comparison") {
+    return "Text density: medium; use 3-5 short comparison points if they help explain the contrast.";
+  }
+  if (role === "checklist") {
+    return "Text density: medium; use 3-5 compact checklist or step labels.";
+  }
+  if (role === "system-model") {
+    return "Text density: medium; use a compact framework with 3-5 short factor labels.";
+  }
+  if (density === "high") {
+    return "Text density: controlled high; preserve important facts but avoid paragraph blocks.";
+  }
+  return "Text density: balanced; use 2-4 short labels around one dominant visual when helpful.";
 }
 
 function trimWithEllipsis(input: string, maxLength: number) {
@@ -74,6 +139,50 @@ function joinPromptSectionsWithBudget(sections: string[], maxChars: number) {
     break;
   }
   return chosen.join("\n");
+}
+
+function describePageRole(role: string) {
+  if (role === "cover") {
+    return "Use an overview/cover treatment with one strong hook and a clear main subject.";
+  }
+  if (role === "comparison") {
+    return "Show a clear before/after or side-by-side comparison around this page's idea.";
+  }
+  if (role === "misconception-fact") {
+    return "Show a simple misconception-versus-fact contrast without turning it into a text-heavy card.";
+  }
+  if (role === "checklist") {
+    return "Show a concise checklist or decision path with a strong central visual.";
+  }
+  if (role === "system-model") {
+    return "Show a compact framework or system model that helps the viewer make a judgment.";
+  }
+  if (role === "layered-diagram") {
+    return "Show a layered diagram or cutaway-style explanation of the current idea.";
+  }
+  return "Show the current idea as a clear mechanism or explanatory diagram.";
+}
+
+function describeInformationLayout(layout: string) {
+  if (layout === "comparison-cards") {
+    return "Use a comparison layout with two or three clearly separated but visually integrated zones.";
+  }
+  if (layout === "myth-vs-fact") {
+    return "Use a misconception-versus-fact layout with short labels and a decisive visual contrast.";
+  }
+  if (layout === "variable-framework") {
+    return "Use a compact variable framework with connected factors and an outcome area.";
+  }
+  if (layout === "checklist-grid") {
+    return "Use a concise checklist layout with a clear reading path and restrained labels.";
+  }
+  if (layout === "layered-diagram") {
+    return "Use a layered diagram layout that reveals parts, levels, or process stages.";
+  }
+  if (layout === "metrics-summary") {
+    return "Use a data-summary layout with supplied metrics emphasized exactly and no invented figures.";
+  }
+  return "Use a structured explainer layout with one dominant visual and a few short annotations.";
 }
 
 export function normalizeTuziAspectRatio(value: string | null | undefined): TuziAspectRatio | null {
@@ -168,42 +277,42 @@ export function buildTuziImagePrompt(input: {
     languageRule: string;
   };
 }) {
-  // Budget-first composition: keep core intent + style + medium guidance clear, then fill optional context.
-  const topic = compactText(input.draftContent, 760);
-  const fullContent = compactText(input.fullContent || "", 220);
+  // Prompt3: compile one confirmed draft page/frame into one image-generation prompt.
+  // Visual-translation composition: current-page task first, optional fields only when they sharpen that task.
+  const currentContent = sanitizePromptSignal(input.draftContent, 520);
   const style = compactText(input.selectedStyle, 220);
   const ratio = compactText(input.aspectRatio, 24) || "9:16";
   const index = Number.isFinite(input.posterIndex) ? Math.max(1, Math.round(input.posterIndex)) : 1;
   const total = Number.isFinite(input.totalCount) ? Math.max(1, Math.round(input.totalCount)) : 1;
   const outputType = input.outputType || "poster";
   const pageRole = input.pageRole || input.visualDesign?.pageRole || "mechanism";
-  const visualType = compactText(input.visualType || "", 110);
+  const visualType = sanitizePromptSignal(input.visualType || "", 110);
   const visualElements = (input.visualElements || [])
-    .map((item) => compactText(item, 60))
+    .map((item) => sanitizePromptSignal(item, 60))
     .filter(Boolean)
-    .slice(0, 6)
+    .slice(0, 5)
     .join(", ");
   // Draft-layer prompt text should only be treated as hint, not final prompt source.
-  const sourceImagePromptDraft = compactText(input.imagePromptDraft || input.imagePrompt || "", 320);
-  const visibleTitle = compactText(input.visibleText?.title || "", 120);
-  const visibleSubtitle = compactText(input.visibleText?.subtitle || "", 120);
+  const sourceImagePromptDraft = sanitizePromptSignal(input.imagePromptDraft || input.imagePrompt || "", 180);
+  const visibleTitle = sanitizePromptSignal(input.visibleText?.title || "", 120);
+  const visibleSubtitle = sanitizePromptSignal(input.visibleText?.subtitle || "", 120);
   const visibleLabels = (input.visibleText?.labels || [])
-    .map((item) => compactText(item, 56))
+    .map((item) => sanitizePromptSignal(item, 56))
     .filter(Boolean)
-    .slice(0, 4)
+    .slice(0, pageRole === "cover" || outputType === "video" ? 2 : 5)
     .join(" | ");
-  const visualDesignLayout = compactText(input.visualDesign?.layout || "", 180);
-  const visualDesignMainVisual = compactText(input.visualDesign?.mainVisual || "", 180);
-  const visualDesignComposition = compactText(input.visualDesign?.composition || "", 220);
+  const visualDesignLayout = sanitizePromptSignal(input.visualDesign?.layout || "", 140);
+  const visualDesignMainVisual = sanitizePromptSignal(input.visualDesign?.mainVisual || "", 150);
+  const visualDesignComposition = sanitizePromptSignal(input.visualDesign?.composition || "", 180);
   const visualDesignTextDensity = compactText(input.visualDesign?.textDensity || "", 24);
-  const visualDesignInfoStructure = compactText(input.visualDesign?.informationStructure || "", 80);
-  const visualDesignMapRegion = compactText(input.visualDesign?.mapRegion || "", 120);
-  const visualDesignChartType = compactText(input.visualDesign?.chartType || "", 80);
-  const visualDesignWorkflowType = compactText(input.visualDesign?.workflowType || "", 80);
+  const visualDesignInfoStructure = sanitizePromptSignal(input.visualDesign?.informationStructure || "", 80);
+  const visualDesignMapRegion = sanitizePromptSignal(input.visualDesign?.mapRegion || "", 120);
+  const visualDesignChartType = sanitizePromptSignal(input.visualDesign?.chartType || "", 80);
+  const visualDesignWorkflowType = sanitizePromptSignal(input.visualDesign?.workflowType || "", 80);
   const textStrategyMode = input.textStrategy?.mode || "guided";
-  const textStrategyTitleIdea = compactText(input.textStrategy?.titleIdea || "", 80);
+  const textStrategyTitleIdea = sanitizePromptSignal(input.textStrategy?.titleIdea || "", 80);
   const textStrategyConcepts = (input.textStrategy?.keyConcepts || [])
-    .map((item) => compactText(item, 40))
+    .map((item) => sanitizePromptSignal(item, 40))
     .filter(Boolean)
     .slice(0, 5)
     .join(" | ");
@@ -211,20 +320,30 @@ export function buildTuziImagePrompt(input: {
   const textStrategyDensity = compactText(input.textStrategy?.density || "", 20) || visualDesignTextDensity || "medium";
   const textStrategyAllowRewrite = input.textStrategy?.allowRewrite ?? (textStrategyMode === "guided");
   const factualRules = (input.factualRules || [])
-    .map((item) => compactText(item, 120))
+    .map((item) => sanitizePromptSignal(item, 120))
     .filter(Boolean)
     .slice(0, 5)
     .join(" | ");
   const negativeRules = (input.negativeRules || [])
-    .map((item) => compactText(item, 120))
+    .map((item) => sanitizePromptSignal(item, 120))
     .filter(Boolean)
     .slice(0, 6)
     .join(" | ");
-  const seriesTitleArea = compactText(input.seriesStyle?.titleArea || "", 120);
-  const seriesIconSystem = compactText(input.seriesStyle?.iconSystem || "", 120);
-  const seriesColorSystem = compactText(input.seriesStyle?.colorSystem || "", 120);
-  const seriesPageModule = compactText(input.seriesStyle?.pageModuleStyle || "", 120);
-  const seriesLanguageRule = compactText(input.seriesStyle?.languageRule || "", 120);
+  const protectedFacts = extractProtectedFacts(
+    [
+      currentContent,
+      visibleTitle,
+      visibleSubtitle,
+      visibleLabels,
+      factualRules,
+    ].join(" "),
+    6,
+  ).join(" | ");
+  const seriesTitleArea = sanitizePromptSignal(input.seriesStyle?.titleArea || "", 120);
+  const seriesIconSystem = sanitizePromptSignal(input.seriesStyle?.iconSystem || "", 120);
+  const seriesColorSystem = sanitizePromptSignal(input.seriesStyle?.colorSystem || "", 120);
+  const seriesPageModule = sanitizePromptSignal(input.seriesStyle?.pageModuleStyle || "", 120);
+  const seriesLanguageRule = sanitizePromptSignal(input.seriesStyle?.languageRule || "", 120);
 
   const mediumGuidance = (() => {
     if (outputType === "ppt") {
@@ -239,7 +358,7 @@ export function buildTuziImagePrompt(input: {
     }
     return index === 1 && total > 1
       ? "Poster 1: create a strong mobile-first cover/overview with the main question, visual hook, large title, and clear hierarchy."
-      : "Mobile-first infographic poster: one page, one key point; use one central visual, 1-2 short supporting labels, and no repeated overview panels.";
+      : "Mobile-first infographic poster: one page, one key point; use one central visual, role-appropriate short labels, and no repeated overview panels.";
   })();
 
   const defaultInformationStructure =
@@ -254,12 +373,16 @@ export function buildTuziImagePrompt(input: {
             : pageRole === "layered-diagram"
               ? "layered-diagram"
           : "mechanism-diagram";
+  const describedRole = describePageRole(pageRole);
+  const describedLayout = describeInformationLayout(visualDesignInfoStructure || defaultInformationStructure);
 
   const textStrategyGuidance = (() => {
     if (textStrategyMode === "strict") {
       return [
-        "Text strategy: strict.",
-        "Use provided visible text exactly when present; keep wording unchanged and avoid adding extra labels.",
+        "Text strategy: fact-strict, expression-guided.",
+        "Preserve protected facts exactly: numbers, dates, amounts, percentages, company/product names, metric names, sources, and key conclusions.",
+        "Auxiliary titles, short labels, and visual annotations may be lightly optimized for readability as long as protected facts are not changed, omitted, or invented.",
+        "If no concrete data is provided, render a framework-style infographic without made-up figures.",
       ].join(" ");
     }
     if (textStrategyMode === "minimal") {
@@ -271,57 +394,55 @@ export function buildTuziImagePrompt(input: {
     return [
       "Text strategy: guided (default).",
       `Language: ${textStrategyLanguage}; density: ${textStrategyDensity}; allowRewrite=${textStrategyAllowRewrite ? "true" : "false"}.`,
-      "Use concise labels based on the title idea and key concepts.",
-      "The model may lightly rewrite labels for visual clarity while preserving meaning.",
-      "Keep labels short, readable, and relevant.",
+      "Use concise labels based on the theme and key concepts; the model may add a few relevant title words, short labels, or annotations when useful.",
+      "The model may lightly rewrite, compress, and rearrange ordinary explanatory wording for visual clarity while preserving meaning.",
+      "Keep labels short, readable, relevant, and integrated into the visual.",
       "Do not add fake numbers, unrelated concepts, wrong-language labels, or dense paragraphs.",
     ].join(" ");
   })();
 
   const coreSections = [
-    `Draw one ${outputType} image in ${ratio}.`,
-    `Current page/frame (${index}/${total}) must be the only mandatory content.`,
-    `Page role: ${pageRole}.`,
-    `Style direction: ${style || "Clean modern educational infographic."}`,
-    `Current page/frame content: ${topic}`,
+    `Create one ${outputType} visual in ${ratio} for page/frame ${index} of ${total}.`,
+    "Only visualize this current page/frame; do not pull facts, labels, titles, or body text from other pages.",
+    describedRole,
+    `Use this style direction: ${style || "Clean modern educational infographic."}`,
+    currentContent ? `Current page content to translate visually: ${currentContent}` : "",
     mediumGuidance,
     "Prefer structured infographic composition over scenic artwork unless the prompt explicitly asks for scenic visuals.",
-    "Prioritize diagrammatic layout, mechanism visualization, comparison cards, variable framework, clear arrows, generous whitespace, and refined typography hierarchy.",
-    "Do not include facts or labels from other pages/frames.",
+    visualDesignMainVisual ? `Dominant hero visual: ${visualDesignMainVisual}` : "",
+    visualDesignComposition ? `Composition direction: ${visualDesignComposition}` : "",
+    describedLayout,
+    describeTextDensity(pageRole, outputType, textStrategyDensity),
+    "Prioritize diagrammatic storytelling, soft visual transitions, embedded callouts, generous whitespace, and refined typography hierarchy.",
+    "Avoid heavy boxed segmentation, dashboard-like panels, many large rectangular cards, and scenic background plus arrows as the main solution.",
     total > 1 && index > 1
       ? "For this non-cover poster, do not redraw the whole series framework; only visualize this page's single point."
       : "",
-    `Information structure: ${visualDesignInfoStructure || defaultInformationStructure}.`,
-    "Keep typography concise, readable, and hierarchically clear.",
+    protectedFacts ? `Protected facts that must remain accurate: ${protectedFacts}` : "",
     textStrategyGuidance,
     "Avoid UI, billing, settings, or workflow words in the rendered image.",
+    "Do not render internal drafting field names, workflow labels, or prompt instructions as visible text.",
   ];
   const optionalSections = [
-    fullContent
-      ? `Series consistency anchors (use only when relevant to this page): ${fullContent}`
-      : "",
-    visualType ? `Visualization structure: ${visualType}.` : "",
-    visualElements ? `Core drawable elements for this page: ${visualElements}.` : "",
-    sourceImagePromptDraft ? `Image hint from draft layer (reference only): ${sourceImagePromptDraft}` : "",
-    textStrategyTitleIdea ? `Text strategy > title idea: ${textStrategyTitleIdea}` : "",
-    textStrategyConcepts ? `Text strategy > key concepts: ${textStrategyConcepts}` : "",
-    visibleTitle ? `Visible text > title: ${visibleTitle}` : "",
-    visibleSubtitle ? `Visible text > subtitle: ${visibleSubtitle}` : "",
-    visibleLabels ? `Visible text > labels: ${visibleLabels}` : "",
-    visualDesignLayout ? `Visual design > layout: ${visualDesignLayout}` : "",
-    visualDesignMainVisual ? `Visual design > main visual: ${visualDesignMainVisual}` : "",
-    visualDesignComposition ? `Visual design > composition: ${visualDesignComposition}` : "",
-    visualDesignTextDensity ? `Visual design > text density: ${visualDesignTextDensity}` : "",
-    visualDesignMapRegion ? `Visual design > map region: ${visualDesignMapRegion}` : "",
-    visualDesignChartType ? `Visual design > chart type: ${visualDesignChartType}` : "",
-    visualDesignWorkflowType ? `Visual design > workflow type: ${visualDesignWorkflowType}` : "",
-    factualRules ? `Factual rules: ${factualRules}` : "",
-    negativeRules ? `Negative rules: ${negativeRules}` : "",
-    seriesTitleArea ? `Series style > title area: ${seriesTitleArea}` : "",
-    seriesIconSystem ? `Series style > icon system: ${seriesIconSystem}` : "",
-    seriesColorSystem ? `Series style > color system: ${seriesColorSystem}` : "",
-    seriesPageModule ? `Series style > page module style: ${seriesPageModule}` : "",
-    seriesLanguageRule ? `Series style > language rule: ${seriesLanguageRule}` : "",
+    visualType ? `A suitable visual form is ${visualType}.` : "",
+    visualElements ? `Use these drawable elements when they fit this page: ${visualElements}.` : "",
+    sourceImagePromptDraft ? `Draft-layer visual hint to consider only if helpful: ${sourceImagePromptDraft}` : "",
+    textStrategyTitleIdea ? `Main title idea: ${textStrategyTitleIdea}` : "",
+    textStrategyConcepts ? `Key concepts to express visually: ${textStrategyConcepts}` : "",
+    visibleTitle && textStrategyMode === "strict" ? `Source title fact/text: ${visibleTitle}` : "",
+    visibleSubtitle && textStrategyMode === "strict" ? `Source subtitle fact/text: ${visibleSubtitle}` : "",
+    visibleLabels ? `Short label ideas for this page only: ${visibleLabels}` : "",
+    visualDesignLayout ? `Layout direction: ${visualDesignLayout}` : "",
+    visualDesignMapRegion ? `Relevant map/region context: ${visualDesignMapRegion}` : "",
+    visualDesignChartType ? `If charting is needed, use this chart direction: ${visualDesignChartType}` : "",
+    visualDesignWorkflowType ? `If showing a workflow, use this direction: ${visualDesignWorkflowType}` : "",
+    factualRules ? `Factual boundary: ${factualRules}` : "",
+    negativeRules ? `Avoid: ${negativeRules}` : "",
+    seriesTitleArea ? `Series visual consistency only - title placement: ${seriesTitleArea}` : "",
+    seriesIconSystem ? `Series visual consistency only - icon styling: ${seriesIconSystem}` : "",
+    seriesColorSystem ? `Series visual consistency only - color treatment: ${seriesColorSystem}` : "",
+    seriesPageModule ? `Series visual consistency only - annotation/module style: ${seriesPageModule}` : "",
+    seriesLanguageRule ? `Language rule: ${seriesLanguageRule}` : "",
   ].filter(Boolean);
   const polishedSuffix = IMAGE_PROMPT_POLISH_SUFFIX.trim();
   const reservedLength = polishedSuffix ? polishedSuffix.length + 2 : 0;

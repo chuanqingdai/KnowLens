@@ -40,7 +40,7 @@ export default function SubscriptionManagePage() {
   const [toast, setToast] = useState<string | null>(null);
   const credits = useMemo(() => {
     void refreshVersion;
-    return getCreditRecords(currentEmail)[0]?.balance ?? 80;
+    return getCreditRecords(currentEmail)[0]?.balance ?? 50;
   }, [currentEmail, refreshVersion]);
 
   useEffect(() => {

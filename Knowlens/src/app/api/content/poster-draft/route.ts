@@ -183,15 +183,32 @@ function getGptsApiKeyForModel(textModel: string) {
 }
 
 function getPaidChatCompletionsApiKey() {
-  return process.env.PAID_LLM_API_KEY || process.env.OPENAI_API_KEY || "";
+  return (
+    process.env.PAID_LLM_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.IMAGE2_TUZI_PROVIDER_API_KEY ||
+    ""
+  );
 }
 
 function getPaidChatCompletionsUrl() {
-  return (
+  const explicitUrl =
     process.env.PAID_LLM_CHAT_COMPLETIONS_URL ||
-    process.env.OPENAI_COMPAT_CHAT_COMPLETIONS_URL ||
+    process.env.OPENAI_COMPAT_CHAT_COMPLETIONS_URL;
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+  const tuziEndpoint = process.env.IMAGE2_TUZI_PROVIDER_ENDPOINT || "";
+  if (process.env.IMAGE2_TUZI_PROVIDER_API_KEY && tuziEndpoint.startsWith("https://api.tu-zi.com/")) {
+    return "https://api.tu-zi.com/v1/chat/completions";
+  }
+  return (
     "https://api.openai.com/v1/chat/completions"
   );
+}
+
+function hasOpenAICompatDraftProvider() {
+  return Boolean(getPaidChatCompletionsApiKey());
 }
 
 function estimateTokenCount(text: string) {
@@ -467,6 +484,220 @@ function normalizeDraftTopic(input: string, outputLanguage: OutputLanguage) {
   return normalized.slice(0, isChineseLanguage(outputLanguage) ? 28 : 48);
 }
 
+function isDataSummaryInput(topic: string, prompt: string) {
+  const source = `${topic}\n${prompt}`.trim();
+  if (!source) {
+    return false;
+  }
+  const dataCueCount = [
+    /指标|数据|同比|环比|营收|净利润|每股收益|EPS|财报|收入|利润|亏损|增长|广告收入|Cloud|Other Bets/i,
+    /\d[\d,.]*\s*(?:亿|万|美元|元|%|百分点|million|billion)/i,
+    /Q[1-4]|季度|全年|截至|20\d{2}年/i,
+  ].filter((pattern) => pattern.test(source)).length;
+  return dataCueCount >= 2;
+}
+
+function cleanDataSummaryFactLine(line: string, outputLanguage: OutputLanguage) {
+  const cleaned = line
+    .replace(/(?:做成|生成|制作|输出)\s*\d+\s*(?:张|页|个分镜|帧)?\s*(?:信息图|图片|海报|PPT|ppt|视频)?[。.!！?？]*$/i, "")
+    .replace(/(?:做成|生成|制作|输出)\s*(?:信息图|图片|海报|PPT|ppt|视频)?[。.!！?？]*$/i, "")
+    .replace(/[；;、,\s]+$/g, "")
+    .replace(/[。.!！?？]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned ? ensureSentenceEnding(cleaned, outputLanguage) : "";
+}
+
+function extractDataSummaryFacts(topic: string, prompt: string, outputLanguage: OutputLanguage) {
+  const source = (prompt || topic)
+    .replace(/[📅📊]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!source) {
+    return [];
+  }
+
+  const metricAnchors = [
+    "总营收",
+    "净利润",
+    "每股收益（EPS）",
+    "每股收益",
+    "EPS",
+    "Google 广告收入",
+    "广告收入",
+    "搜索广告",
+    "YouTube 广告",
+    "Google Cloud",
+    "Cloud",
+    "Other Bets",
+    "2024年Q4营收",
+    "2024全年营收",
+    "2024全年净利润",
+    "全年营收",
+    "全年净利润",
+    "收入",
+    "利润",
+    "亏损",
+  ];
+  const anchorPositions = metricAnchors
+    .flatMap((anchor) => {
+      const positions: Array<{ anchor: string; index: number }> = [];
+      let cursor = source.indexOf(anchor);
+      while (cursor >= 0) {
+        positions.push({ anchor, index: cursor });
+        cursor = source.indexOf(anchor, cursor + anchor.length);
+      }
+      return positions;
+    })
+    .sort((a, b) => (a.index === b.index ? b.anchor.length - a.anchor.length : a.index - b.index))
+    .filter((position, idx, positions) => {
+      const previous = positions[idx - 1];
+      if (!previous) return true;
+      return position.index >= previous.index + previous.anchor.length;
+    });
+
+  const chunks: string[] = [];
+  for (let idx = 0; idx < anchorPositions.length; idx += 1) {
+    const current = anchorPositions[idx];
+    const next = anchorPositions[idx + 1];
+    const end = next ? next.index : Math.min(source.length, current.index + 80);
+    const chunk = source.slice(current.index, end).trim();
+    if (/\d|两位数|收窄|增长|下降|亏损/.test(chunk)) {
+      chunks.push(chunk);
+    }
+  }
+
+  const sentenceChunks = source
+    .split(/[。；;\n]/)
+    .map((line) => line.trim())
+    .filter((line) => line && /(?:\d|同比|环比|营收|净利润|收入|利润|增长|亏损|EPS|Cloud)/i.test(line));
+
+  const normalized = dedupeLines(chunks.length >= 2 ? chunks : [...chunks, ...sentenceChunks])
+    .map((line) => cleanDataSummaryFactLine(line.slice(0, isChineseLanguage(outputLanguage) ? 70 : 110), outputLanguage))
+    .filter(Boolean)
+    .slice(0, 10);
+  return normalized;
+}
+
+function buildDataSummaryPosterDraft(
+  topic: string,
+  sizeLabel: string | undefined,
+  prompt: string,
+  outputLanguage: OutputLanguage,
+): PosterDraft {
+  const facts = extractDataSummaryFacts(topic, prompt, outputLanguage);
+  if (!isChineseLanguage(outputLanguage)) {
+    const points = facts.length
+      ? facts.slice(0, 5)
+      : [
+          "Summarize the provided metrics without inventing new numbers.",
+          "Separate headline performance, segment performance, and comparison context.",
+          "Use only numbers and dates supplied by the user.",
+        ];
+    return {
+      headline: `${topic}: key metrics summary`,
+      subtitle: "Source-preserving data infographic",
+      body: points.slice(0, 3).join(" "),
+      points,
+      cta: "Use the supplied figures only.",
+      size: sizeLabel,
+      visualType: "Metrics summary infographic",
+      layoutSuggestion: "Integrated hero metric + supporting metric clusters + concise takeaway.",
+      visualElements: ["hero metric", "growth labels", "segment cards", "comparison strip", "takeaway line"],
+    };
+  }
+
+  const points = facts.length
+    ? facts.slice(0, 5)
+    : [
+        "仅整理用户提供的数据，不新增未经来源确认的数字。",
+        "把核心指标、分业务表现和对比背景分层展示。",
+        "结论只基于输入中已经出现的金额、日期和百分比。",
+      ];
+  return {
+    headline: `${topic}：核心数据摘要`,
+    subtitle: "保留原始数字，提炼关键指标与变化方向",
+    body: points.slice(0, 3).join(""),
+    points,
+    cta: "先看核心指标，再看分业务变化。",
+    size: sizeLabel,
+    visualType: "指标摘要图",
+    layoutSuggestion: "一个核心指标主视觉 + 分业务指标组 + 底部对比与结论",
+    visualElements: ["核心指标主卡", "同比增长标签", "分业务指标组", "对比条", "结论提示"],
+  };
+}
+
+function buildDataSummaryPlanListByLanguage(
+  topic: string,
+  count: number,
+  prompt: string,
+  outputLanguage: OutputLanguage,
+): PosterPlanItem[] {
+  const facts = extractDataSummaryFacts(topic, prompt, outputLanguage);
+  const fallbackFacts = isChineseLanguage(outputLanguage)
+    ? [
+        "仅使用输入中提供的数字、日期、金额和百分比。",
+        "先展示核心指标，再展示分业务表现，最后给出基于数据的判断框架。",
+      ]
+    : [
+        "Use only numbers, dates, amounts, and percentages supplied by the user.",
+        "Start with headline metrics, then segment performance, then a data-based judgment frame.",
+      ];
+  const factBank = facts.length ? facts : fallbackFacts.map((line) => ensureSentenceEnding(line, outputLanguage));
+  const roles = count <= 1
+    ? ["data-summary"]
+    : count === 2
+      ? ["data-summary", "insight"]
+      : ["data-summary", "metrics", "comparison", "insight", "checklist", "system-model"];
+
+  return Array.from({ length: count }, (_, idx) => {
+    const role = roles[idx] ?? roles[(idx - 1) % Math.max(roles.length - 1, 1)] ?? "metrics";
+    const primary = factBank[idx % factBank.length] ?? factBank[0] ?? "";
+    const secondary = factBank[(idx + 1) % factBank.length] ?? primary;
+    const title = (() => {
+      if (!isChineseLanguage(outputLanguage)) {
+        if (idx === 0) return `${topic}: Metric Overview`;
+        if (role === "comparison") return `${topic}: Comparison Context`;
+        if (role === "checklist") return `${topic}: Reading Checklist`;
+        if (role === "system-model") return `${topic}: Judgment Frame`;
+        return `${topic}: Key Metric ${idx + 1}`;
+      }
+      if (idx === 0) return `${topic}：数据总览`;
+      if (role === "comparison") return `${topic}：对比背景`;
+      if (role === "checklist") return `${topic}：阅读清单`;
+      if (role === "system-model") return `${topic}：判断框架`;
+      return `${topic}：关键指标 ${idx + 1}`;
+    })();
+    const keyFacts = isChineseLanguage(outputLanguage)
+      ? [
+          ensureSentenceEnding(`关键发现：${primary.replace(/^关键发现[:：]/, "")}`, outputLanguage),
+          ensureSentenceEnding(`事实证据：${secondary.replace(/^事实证据[:：]/, "")}`, outputLanguage),
+          ensureSentenceEnding("结论启发：只基于已提供数据做归纳，不补充未经确认的新数字。", outputLanguage),
+        ]
+      : [
+          ensureSentenceEnding(`Insight: ${primary.replace(/^Insight[:：]/i, "")}`, outputLanguage),
+          ensureSentenceEnding(`Evidence: ${secondary.replace(/^Evidence[:：]/i, "")}`, outputLanguage),
+          ensureSentenceEnding("Takeaway: summarize only from supplied data without adding unverified figures", outputLanguage),
+        ];
+    return {
+      index: idx + 1,
+      role,
+      title,
+      focus: primary,
+      keyFacts,
+      visualType: isChineseLanguage(outputLanguage) ? "指标摘要图" : "metrics summary infographic",
+      visualElements: isChineseLanguage(outputLanguage)
+        ? ["核心指标主卡", "分业务指标组", "同比增长标签", "对比条", "结论提示"]
+        : ["hero metric", "segment metric clusters", "growth labels", "comparison strip", "takeaway cue"],
+      layoutHint: isChineseLanguage(outputLanguage)
+        ? "一张整合式指标信息图，减少硬卡片堆叠，突出一个核心数据主视觉"
+        : "integrated metrics infographic with one hero metric, soft grouping, and minimal hard panels",
+      imagePromptDraft: "",
+      imagePrompt: "",
+    };
+  });
+}
+
 function buildFallbackPosterDraft(
   topic: string,
   sizeLabel: string | undefined,
@@ -667,6 +898,54 @@ function buildExtendedPosterSeed(
   return result.slice(0, count);
 }
 
+function inferFallbackMechanismLine(item: PosterSeedItem, topic: string, outputLanguage: OutputLanguage) {
+  const title = `${item.title} ${item.focus}`;
+  if (!isChineseLanguage(outputLanguage)) {
+    if (/desert|day|night|temperature/i.test(title)) {
+      if (/sun|day|heating/i.test(title)) return "Clear skies let solar energy reach the ground directly, so surface temperature rises fast.";
+      if (/night|cooling|heat loss/i.test(title)) return "After sunset, heat escapes upward quickly because there is little cloud or moisture to hold it near the ground.";
+      if (/moisture|dry|air/i.test(title)) return "Dry air acts like a thin blanket, so it keeps less heat near the surface overnight.";
+      if (/surface|sand|rock|storage/i.test(title)) return "Sand and bare rock store heat poorly, so they warm and cool faster than water-rich surfaces.";
+      return "The large temperature swing comes from fast daytime heat input and fast nighttime heat loss happening in the same place.";
+    }
+    return `The mechanism is visible when ${item.focus.replace(/[.!?]\s*$/, "")} changes the next observable result.`;
+  }
+  if (/沙漠|昼夜|白天|晚上|夜晚|夜间|温差|水汽/.test(title)) {
+    if (/核心现象/.test(title)) return "白天吸热快与夜间散热快同时发生，才会把同一天内的温差拉大。";
+    if (/夜晚|降温|散热|长波/.test(title)) return "没有太阳继续输入能量后，地表热量会更快跑向天空，少云层也难以把热量拦回来。";
+    if (/白天|太阳|太阳辐射|升温/.test(title)) return "少云少遮挡让太阳能量更直接到达地表，地表温度因此快速上升。";
+    if (/空气|干燥|水汽|保温/.test(title)) return "水汽少就像少了一层保温被，夜间很难把热量留在近地面。";
+    if (/地表|材质|热惯量|沙地|裸岩/.test(title)) return "沙地和裸岩不擅长储热，所以温度会跟着能量输入和散失快速变化。";
+    if (/湿润|对比/.test(title)) return "湿润地区有更多水汽、云层和水体储热，升温与降温都会更缓慢。";
+    if (/误区|一直很热/.test(title)) return "真正差异不是全天都热，而是白天热量来得快、夜间热量走得也快。";
+    if (/总结|判断/.test(title)) return "云量、水汽和地表材质分别影响热量输入、热量保存和热量散失。";
+    return "白天吸热快与夜间散热快同时发生，才会把同一天内的温差拉大。";
+  }
+  return `这个机制可以从“${item.focus.replace(/[。！？]\s*$/, "")}”这一变化继续观察到结果。`;
+}
+
+function inferFallbackMemoryLine(item: PosterSeedItem, topic: string, outputLanguage: OutputLanguage) {
+  const title = `${item.title} ${item.focus}`;
+  if (!isChineseLanguage(outputLanguage)) {
+    if (/desert|day|night|temperature/i.test(title)) {
+      return "Memory cue: less cloud, less moisture, less heat storage means a larger day-night temperature swing.";
+    }
+    return `Memory cue: connect ${topic} with one observable contrast, not just a definition.`;
+  }
+  if (/沙漠|昼夜|白天|晚上|夜晚|夜间|温差|水汽/.test(title)) {
+    if (/核心现象/.test(title)) return "把沙漠温差记成一句话：热来得快，也走得快。";
+    if (/白天|太阳|升温/.test(title)) return "记住：白天升温快，先看云少不遮阳。";
+    if (/夜晚|降温|散热/.test(title)) return "记住：夜晚降温快，先看有没有云层保温。";
+    if (/空气|干燥|水汽/.test(title)) return "可以把水汽理解成空气里的“保温被”，越少越不保温。";
+    if (/地表|材质|热惯量/.test(title)) return "沙地像薄铁片，水体像厚锅，前者更容易快速变热又变冷。";
+    if (/湿润|对比/.test(title)) return "同样晒太阳，湿润地区更像有缓冲垫，温度变化没那么猛。";
+    if (/误区/.test(title)) return "判断一句话：沙漠不是一直热，而是温度起落大。";
+    if (/总结|判断/.test(title)) return "判断口诀：看云量、看水汽、看地表能不能储热。";
+    return "把沙漠温差记成一句话：热来得快，也走得快。";
+  }
+  return `用一个前后对比或生活例子记住“${item.focus.replace(/[。！？]\s*$/, "")}”。`;
+}
+
 function buildQuestionTopicSeed(topic: string, outputLanguage: OutputLanguage): PosterSeedItem[] | null {
   const normalized = topic.replace(/\s+/g, "");
   const isQuestion =
@@ -799,21 +1078,11 @@ function buildSeedKeyFacts(seed: PosterSeedItem[], index: number, outputLanguage
       outputLanguage,
     ),
     ensureSentenceEnding(
-      formatSectionLine(
-        "mechanism",
-        isChineseLanguage(outputLanguage)
-          ? "围绕当前标题补充关键变量的变化路径。"
-          : "add the key-variable pathway for this page title only.",
-      ),
+      formatSectionLine("mechanism", inferFallbackMechanismLine(seed[index], current, outputLanguage)),
       outputLanguage,
     ),
     ensureSentenceEnding(
-      formatSectionLine(
-        "memory",
-        isChineseLanguage(outputLanguage)
-          ? "给出一个对比、例子或判断口诀。"
-          : "add one contrast, example, or recall cue.",
-      ),
+      formatSectionLine("memory", inferFallbackMemoryLine(seed[index], current, outputLanguage)),
       outputLanguage,
     ),
   ];
@@ -888,7 +1157,7 @@ function normalizeWhitespace(value: string) {
 }
 
 function stripListPrefix(value: string) {
-  return value.replace(/^[\s\-*•·\d]+[.)、\s-]*/, "").trim();
+  return value.replace(/^\s*(?:[-*•·]\s*|\d+[.)、\s-]+)/, "").trim();
 }
 
 function stripPromptCommandPrefix(value: string, outputLanguage: OutputLanguage) {
@@ -1760,10 +2029,175 @@ function normalizeTextItem(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeOutlineItems(raw: unknown, count: number, topic: string) {
+function isTemplateInstructionText(value: string) {
+  const compact = value.replace(/\s+/g, "").toLowerCase();
+  if (!compact) {
+    return true;
+  }
+  return /讲解目标|机制说明|应用收束|版式建议|口播目标|口播顺序|字幕规则|画面建议|学习目标|个人、行业|行动建议|进阶补充|扩展主题|advancedextension|narrationobjective|narrationorder|captions?rule|layoutsuggestion|teachingobjective/.test(
+    compact,
+  );
+}
+
+function buildGenericMediaSeed(topic: string, count: number, direction: "ppt" | "video", outputLanguage: OutputLanguage) {
+  const topicSeed = buildQuestionTopicSeed(topic, outputLanguage);
+  if (topicSeed?.length) {
+    const expanded = buildExtendedPosterSeed(topicSeed, count, topic, outputLanguage);
+    return expanded.map((item, idx) => {
+      const facts = buildSeedKeyFacts(expanded, idx, outputLanguage);
+      const core = facts[0]?.replace(/^(核心结论|coreMessage)\s*[：:]\s*/, "") || item.focus;
+      const mechanism = facts[1]?.replace(/^(机制解释|mechanism)\s*[：:]\s*/, "") || item.focus;
+      const memory = facts[2]?.replace(/^(记忆点|memoryHook)\s*[：:]\s*/, "") || "";
+      return {
+        title: item.title.replace(new RegExp(`^${topic.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[:：·\\s]*`), ""),
+        mainPoint: core,
+        body: [core, mechanism, memory].filter(Boolean).join("\n"),
+        narration: core,
+        visual: item.visualType || (isChineseLanguage(outputLanguage) ? "机制信息图" : "mechanism infographic"),
+        imagePrompt:
+          direction === "video"
+            ? `Educational explainer still frame about ${item.title}, ${item.visualType || "clear visual beat"}, no subtitles, no dense text.`
+            : `Educational slide infographic about ${item.title}, ${item.visualType || "clear diagram"}, concise visual hierarchy.`,
+      };
+    });
+  }
+
+  const isZh = isChineseLanguage(outputLanguage);
+  const isDesertTopic = isZh && /沙漠|昼夜|白天|晚上|温差/.test(topic.replace(/\s+/g, ""));
+  if (isDesertTopic) {
+    const desertSeed = [
+      ["沙漠昼夜温差", "同一地点在一天内温度可大幅波动，白天升温快、夜晚降温也快。\n关键不是沙漠一直热，而是它不擅长保温。", "沙漠最反常的地方，不是白天很热，而是夜里会迅速变冷。理解这个昼夜反差，才能抓住沙漠气候的关键。", "左右分屏：左侧烈日下沙地快速升温，右侧夜空下热量向上散走，中间用温度曲线表现陡升陡降。"],
+      ["白天升温快", "沙漠云量少、遮挡弱，太阳辐射更直接到达地表。\n地表吸收能量快，温度上升也更快。", "白天沙漠上空云量少，太阳能量几乎直接打到地表。沙地吸收得快，所以温度会在短时间内明显升高。", "太阳占据画面上方，粗箭头穿过稀薄云层直达沙地，地表温度计快速上升，突出白天能量输入。"],
+      ["地表不擅长储热", "沙地和裸岩不像水体那样擅长储热，受热快、失热也快。\n这会放大一天内的温度波动。", "沙地和裸岩不像水体那样擅长储热。它们白天热得快，到了晚上也凉得快，于是温差被进一步拉大。", "沙地与湖水并排对比：沙地温度计剧烈波动，水体温度计变化平缓，用储热能力差异解释温差。"],
+      ["夜晚散热更直接", "入夜后没有太阳继续输入能量，地表热量更容易向天空散走。\n云层少时，夜间保温效果更弱。", "到了晚上，太阳不再继续输入能量，地表开始向天空散热。因为云层少，热量更容易离开近地面。", "夜晚沙漠地表变暗，红色热量箭头从地面向星空散出，稀少云层无法形成保温层。"],
+      ["空气干燥不保温", "水汽少意味着空气保温能力弱，夜里难以把热量留在近地面。\n少云少水汽共同削弱了夜间保温层。", "沙漠空气很干燥，水汽少，保温能力就弱。你可以把它理解成少了一层保温被，夜里热量留不住。", "把湿润空气画成厚保温层、沙漠干空气画成稀薄透明层，热量从薄层中快速逃逸。"],
+      ["湿润地区更缓和", "湿润地区云层和水汽更多，白天升温较慢，夜晚降温也更缓。\n对比后更容易看出沙漠温差大的原因。", "湿润地区有更多水汽和云层，白天能缓冲升温，夜里也能减慢降温。对比之后，沙漠的温差就更明显。", "左侧沙漠温度曲线陡升陡降，右侧湿润地区曲线平缓，云层和水汽作为缓冲层显示。"],
+      ["常见误区", "“沙漠一直很热”并不准确。\n更准确的说法是：沙漠昼夜温差大，白天热、夜晚冷。", "所以说沙漠一直很热，其实并不准确。更准确的说法是：沙漠白天热得快，夜晚也冷得快。", "误区卡片被划掉：沙漠一直很热；事实卡片突出：白天热、夜晚冷，旁边配昼夜温度对比。"],
+      ["三因素判断", "判断昼夜温差，优先看三件事：云量、水汽、地表材质。\n云少、水汽少、地表不储热，温差通常更大。", "判断一个地方昼夜温差大不大，可以先看三件事：云量、水汽和地表材质。云少、水汽少、地表不储热，温差通常更大。", "三个节点依次出现：云量、水汽、地表材质，最终汇聚到昼夜温差结果，箭头清晰、文字极少。"],
+      ["变量如何联动", "少云让白天更容易升温，少水汽让夜晚更难保温。\n地表不擅长储热，会把这种昼夜差异进一步放大。", "云量、水汽和地表材质不是各自独立发挥作用。它们会一起影响升温和散热，最终把昼夜温差放大。", "云量少、水汽少、地表储热弱三个变量同时亮起，箭头汇聚到一个放大的温差计。"],
+      ["一天温度时间线", "清晨温度较低，中午快速升高，日落后又迅速下降。\n把一天拆成时间线，可以更直观看到升温和降温速度。", "把一天摊开看，沙漠温度常像一条陡升陡降的曲线。中午升得快，日落后降得也快。", "横向时间线从清晨到夜晚，温度曲线先陡升再陡降，背景光线从日出过渡到星空。"],
+      ["怎么快速判断", "看到晴朗、干燥、裸露地表，就要警惕昼夜温差更大。\n如果云层厚、水汽多或地表含水量高，温差通常会被削弱。", "快速判断时，可以先看天空、空气和地表。天空少云、空气干燥、地表裸露，通常就意味着更大的昼夜温差。", "画面依次检查天空、空气、地表三个图标，每个图标连接到温差大小判断，不出现长段文字。"],
+      ["迁移到其他地区", "类似逻辑也能解释干旱内陆、高原荒漠等地区的昼夜温差。\n关键不是名字叫不叫沙漠，而是云量、水汽和储热能力。", "这套逻辑不只适用于沙漠，也能迁移到高原和干旱内陆。只要少云、干燥、地表储热弱，温差就容易变大。", "地图式小场景并列展示沙漠、高原、干旱内陆，用同一套三因素模型连接这些地区。"],
+      ["真实场景应用", "沙漠旅行常需要同时准备防晒和保暖用品。\n白天应防强日照，夜间则要应对快速降温。", "这也是为什么去沙漠旅行，白天要防晒，晚上还要保暖。你面对的不是单纯高温，而是剧烈的温度切换。", "旅行背包分成白天和夜晚两侧：一侧是帽子、防晒，另一侧是外套、保暖装备，呼应昼夜温差。"],
+      ["一页复盘模型", "沙漠昼夜温差大的判断公式：白天强输入，夜晚弱保温，地表不储热。\n这三点同时出现，昼夜温差就容易被拉大。", "最后用一句话记住：白天强输入，夜晚弱保温，地表又不擅长储热。三点叠加，沙漠昼夜温差就会变大。", "结尾总模型：强输入、弱保温、不储热三个模块围绕一个大温差计排列，形成清晰收束画面。"],
+    ] as const;
+    return Array.from({ length: count }, (_, idx) => {
+      const item = desertSeed[idx];
+      if (item) {
+        const [title, pptBody, narration, visual] = item;
+        return {
+          title,
+          mainPoint: direction === "video" ? narration : pptBody.split("\n")[0],
+          body: direction === "ppt" ? pptBody : narration,
+          narration,
+          visual: direction === "video" ? visual : visual.replace(/^.*?：/, ""),
+          imagePrompt:
+            direction === "video"
+              ? `Educational explainer still frame for ${title}. ${visual} No subtitles, no dense text.`
+              : `Educational slide infographic for ${title}. ${visual} Concise hierarchy.`,
+        };
+      }
+      const extraIndex = idx - desertSeed.length + 1;
+      return {
+        title: direction === "video" ? `补充镜头 ${extraIndex}` : `${topic}延展页 ${extraIndex}`,
+        mainPoint: `${topic}补充一个新的观察角度，避免重复前文结论。`,
+        body: `${topic}补充一个新的观察角度，避免重复前文结论。\n本页应服务于对比、误区、判断、案例或迁移应用中的一种功能。`,
+        narration: `${topic}在这一帧补充一个新的观察角度，只围绕一个变化点展开。先说明画面中的变化，再给出它对结果的影响。`,
+        visual: "单一重点的信息图模块，围绕新视角给出一个明确主体、一个动作和一个结果。",
+        imagePrompt: `Educational ${direction === "video" ? "storyboard frame" : "slide infographic"} for ${topic}, one new perspective, single clear visual focus, no repetition.`,
+      };
+    });
+  }
+  const pptRoles = isZh
+    ? [
+        ["核心问题", `${topic}的关键是把可观察现象、触发条件和最终结果连接起来。`, "主题主视觉 + 一句话结论"],
+        ["现象观察", `${topic}先表现为一个可直接感知的变化，而不是抽象概念。`, "现象对比图"],
+        ["关键机制", `解释${topic}时，应抓住最先变化的变量和它带来的连锁反应。`, "因果链路图"],
+        ["变量路径", `2-3个关键变量通常决定${topic}会被放大还是减弱。`, "变量框架图"],
+        ["对比验证", `通过前后或A/B对比，可以判断机制解释是否成立。`, "对比卡片"],
+        ["误区澄清", `常见误解往往来自只看结果、不看形成过程。`, "误区-事实卡"],
+        ["判断框架", `最终可按“现象、变量、结果”三步复盘${topic}。`, "三步判断框架"],
+      ]
+    : [
+        ["Core Question", `${topic} is best explained by linking the visible pattern, trigger, and outcome.`, "hero visual + one takeaway"],
+        ["Observable Pattern", `${topic} starts from a visible change rather than an abstract label.`, "before-after comparison"],
+        ["Key Mechanism", `The explanation should track the first changing variable and the chain reaction it creates.`, "causal chain diagram"],
+        ["Variable Path", `Two or three key variables usually decide whether the effect grows or weakens.`, "variable framework"],
+        ["Contrast Check", `A/B contrast helps verify whether the mechanism explains the result.`, "comparison cards"],
+        ["Misconception", `Misunderstandings often come from seeing the outcome without the process.`, "myth-fact card"],
+        ["Judgment Framework", `Use pattern, variables, and outcome as the final review frame.`, "three-step framework"],
+      ];
+  const videoRoles = isZh
+    ? [
+        ["冲突开场", `${topic}先用一个强反差画面抓住注意力，让观众立刻知道矛盾在哪里。接着用一句话点出本集要解释的关键机制。`, "强对比封面画面"],
+        ["现象镜头", `观众先看到${topic}最直观的变化，再理解这个变化为什么值得解释。画面要把现象讲清楚，而不是只给概念标签。`, "现实场景特写"],
+        ["第一原因", `先锁定第一个发生变化的关键变量，它通常决定后续链路怎么展开。把起点讲清楚，后面的因果才不会散。`, "单变量动作画面"],
+        ["机制传导", `变化不会停在第一步，而是会沿着因果链继续传导。这个镜头要说明中间过程如何把结果一步步推出来。`, "箭头路径和主体动作"],
+        ["对比镜头", `通过变化前后或两种场景的对比，观众能更快看出差异。这个镜头要用对比帮助理解，而不是重复前一帧。`, "左右分屏对比"],
+        ["误区纠偏", `很多误解来自只看表面结果，却忽略形成过程。先指出常见误区，再用一个清楚事实把它纠正过来。`, "误区与事实对照"],
+        ["结尾模型", `最后把${topic}压缩成一个容易记住的判断模型。观众看完这一帧，应该能复述核心逻辑并迁移使用。`, "三节点总结模型"],
+      ]
+    : [
+        ["Opening Tension", `${topic} begins with one strong visual contrast that makes the question obvious. Then name the mechanism the viewer should watch for.`, "high-contrast hook frame"],
+        ["Visible Pattern", `The viewer first sees the most observable change and why it matters. Keep the explanation concrete, not just a concept label.`, "real-world close-up"],
+        ["First Cause", `Identify the first variable that changes, because it sets the direction for the whole chain. This frame should make the starting point easy to remember.`, "single-variable action"],
+        ["Mechanism Path", `Show how the change travels through a cause-effect chain. The narration should explain the middle step that connects the trigger to the result.`, "arrow path with main subject"],
+        ["Contrast Beat", `Use a before-after or A/B comparison so the viewer can see the difference immediately. This frame should add contrast, not repeat the previous beat.`, "split-screen contrast"],
+        ["Myth Correction", `State the common misconception first, then correct it with one clear fact. The viewer should leave with a cleaner mental model.`, "myth versus fact visual"],
+        ["Final Model", `${topic} closes as one memorable judgment model. The viewer should be able to repeat the core logic and use it elsewhere.`, "three-node recap model"],
+      ];
+  const roles = direction === "video" ? videoRoles : pptRoles;
+  return Array.from({ length: count }, (_, idx) => {
+    const fallbackExtra = isZh
+      ? [
+          direction === "video" ? `补充镜头 ${idx - roles.length + 1}` : `${topic}延展页 ${idx - roles.length + 1}`,
+          `${topic}补充一个新的观察角度，避免重复前文结论。`,
+          "单一重点的信息图模块，围绕新视角给出一个明确主体、一个动作和一个结果。",
+        ]
+      : [
+          direction === "video" ? `Extension Frame ${idx - roles.length + 1}` : `${topic}: extension ${idx - roles.length + 1}`,
+          `Add one new perspective on ${topic} without repeating earlier conclusions.`,
+          "single-focus infographic module with one subject, one action, and one outcome",
+        ];
+    const [title, core, visual] = roles[idx] || fallbackExtra;
+    return {
+      title,
+      mainPoint: core,
+      body: direction === "ppt" ? [core, isZh ? "本页只保留一个解释重点，配一个主视觉帮助理解。" : "Keep one explanation point with one dominant supporting visual."].join("\n") : core,
+      narration: core,
+      visual,
+      imagePrompt:
+        direction === "video"
+          ? `Educational explainer still frame for ${title}, ${visual}, no subtitles, no dense text.`
+          : `Educational slide infographic for ${title}, ${visual}, concise hierarchy.`,
+    };
+  });
+}
+
+function normalizeOutlineItems(
+  raw: unknown,
+  count: number,
+  topic: string,
+  direction: "poster" | "ppt" | "video" = "poster",
+  outputLanguage: OutputLanguage = "zh",
+) {
   const list = Array.isArray(raw)
     ? raw.map((item) => normalizeTextItem(item)).filter(Boolean)
     : [];
+  if (direction === "ppt" || direction === "video") {
+    const fallback = buildGenericMediaSeed(topic, count, direction, outputLanguage).map((item) => item.title);
+    const badCount = list.filter((item) => isTemplateInstructionText(item)).length;
+    if (!list.length || badCount >= Math.max(1, Math.ceil(list.length / 2))) {
+      return fallback;
+    }
+    return Array.from({ length: count }, (_, idx) => {
+      const item = list[idx];
+      if (!item || isTemplateInstructionText(item)) {
+        return fallback[idx] || `${topic} · ${idx + 1}`;
+      }
+      return item;
+    });
+  }
   if (list.length >= count) {
     return list.slice(0, count);
   }
@@ -1774,7 +2208,14 @@ function normalizeOutlineItems(raw: unknown, count: number, topic: string) {
   return filled;
 }
 
-function normalizeSlideDrafts(raw: unknown, outlineItems: string[], count: number) {
+function normalizeSlideDrafts(
+  raw: unknown,
+  outlineItems: string[],
+  count: number,
+  topic = "Knowledge Topic",
+  outputLanguage: OutputLanguage = "zh",
+) {
+  const fallbackSlides = buildGenericMediaSeed(topic, count, "ppt", outputLanguage);
   const list = Array.isArray(raw) ? raw : [];
   const drafts = list
     .map((item, idx) => {
@@ -1782,18 +2223,25 @@ function normalizeSlideDrafts(raw: unknown, outlineItems: string[], count: numbe
         return null;
       }
       const row = item as PptSlideDraft;
-      const title = normalizeTextItem(row.title) || outlineItems[idx] || `Slide ${idx + 1}`;
+      const fallback = fallbackSlides[idx] || fallbackSlides[fallbackSlides.length - 1];
+      const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || fallback?.title || `Slide ${idx + 1}`;
+      const title = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const mainPoint = normalizeTextItem(row.mainPoint);
       const body = normalizeTextItem(row.body);
       const support = normalizeTextItem(row.supportNote);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
+      const bodyLines = [mainPoint, body, support].filter(Boolean);
+      const safeBody = !bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line))
+        ? fallback?.body || fallback?.mainPoint || ""
+        : bodyLines.join("\n");
       return {
         page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
         title,
-        body: [body, support].filter(Boolean).join("\n"),
-        visual,
-        imagePromptDraft,
-        imagePrompt: imagePromptDraft,
+        body: safeBody,
+        visual: visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "",
+        imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
+        imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
       };
     })
     .filter((item): item is { page: number; title: string; body: string; visual: string; imagePromptDraft: string; imagePrompt: string } => Boolean(item));
@@ -1808,16 +2256,23 @@ function normalizeSlideDrafts(raw: unknown, outlineItems: string[], count: numbe
     }
     return {
       page: idx + 1,
-      title,
-      body: "",
-      visual: "",
-      imagePromptDraft: "",
-      imagePrompt: "",
+      title: title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`,
+      body: fallbackSlides[idx]?.body || "",
+      visual: fallbackSlides[idx]?.visual || "",
+      imagePromptDraft: fallbackSlides[idx]?.imagePrompt || "",
+      imagePrompt: fallbackSlides[idx]?.imagePrompt || "",
     };
   });
 }
 
-function normalizeStoryboardDrafts(raw: unknown, outlineItems: string[], count: number) {
+function normalizeStoryboardDrafts(
+  raw: unknown,
+  outlineItems: string[],
+  count: number,
+  topic = "Knowledge Topic",
+  outputLanguage: OutputLanguage = "zh",
+) {
+  const fallbackFrames = buildGenericMediaSeed(topic, count, "video", outputLanguage);
   const list = Array.isArray(raw) ? raw : [];
   const drafts = list
     .map((item, idx) => {
@@ -1825,18 +2280,22 @@ function normalizeStoryboardDrafts(raw: unknown, outlineItems: string[], count: 
         return null;
       }
       const row = item as VideoStoryboardDraft;
-      const title = normalizeTextItem(row.title) || outlineItems[idx] || `Frame ${idx + 1}`;
+      const fallback = fallbackFrames[idx] || fallbackFrames[fallbackFrames.length - 1];
+      const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || fallback?.title || `Frame ${idx + 1}`;
+      const title = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
       const narration = normalizeTextItem(row.narration);
-      const onScreenText = normalizeTextItem(row.onScreenText);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
+      const safeNarration = narration && !isTemplateInstructionText(narration)
+        ? narration
+        : fallback?.narration || fallback?.mainPoint || "";
       return {
         index: Number.isFinite(row.index) ? Number(row.index) : idx + 1,
         title,
-        narration: [narration, onScreenText].filter(Boolean).join("\n"),
-        visual,
-        imagePromptDraft,
-        imagePrompt: imagePromptDraft,
+        narration: safeNarration,
+        visual: visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "",
+        imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
+        imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
       };
     })
     .filter((item): item is { index: number; title: string; narration: string; visual: string; imagePromptDraft: string; imagePrompt: string } => Boolean(item));
@@ -1851,11 +2310,11 @@ function normalizeStoryboardDrafts(raw: unknown, outlineItems: string[], count: 
     }
     return {
       index: idx + 1,
-      title,
-      narration: "",
-      visual: "",
-      imagePromptDraft: "",
-      imagePrompt: "",
+      title: title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
+      narration: fallbackFrames[idx]?.narration || "",
+      visual: fallbackFrames[idx]?.visual || "",
+      imagePromptDraft: fallbackFrames[idx]?.imagePrompt || "",
+      imagePrompt: fallbackFrames[idx]?.imagePrompt || "",
     };
   });
 }
@@ -2003,6 +2462,22 @@ function hasAbstractPosterDraft(posterDraft: PosterDraft) {
   return abstractBody || templateBody || abstractPoint;
 }
 
+function isDataSummaryPlanMismatch(planList: PosterPlanItem[]) {
+  const joined = planList
+    .map((item) => `${item.title} ${item.focus} ${(item.keyFacts ?? []).join(" ")} ${item.visualType ?? ""}`)
+    .join(" ")
+    .replace(/\s+/g, "");
+  if (!joined) {
+    return true;
+  }
+  const genericMechanism =
+    /先明确|必要条件|放大因素|3-4步|机制链路|可观测指标|判断机制是否|触发条件—机制传导—结果呈现|因果流图|现象—机制—验证/.test(
+      joined,
+    );
+  const hasSuppliedDataShape = /营收|净利润|收入|利润|EPS|同比|环比|增长|美元|亿元|%|Q[1-4]|季度|全年|Cloud|广告/.test(joined);
+  return genericMechanism || !hasSuppliedDataShape;
+}
+
 function getRequestScope(req: NextRequest, email: string) {
   const forwardedFor = req.headers.get("x-forwarded-for") ?? "";
   const ip = forwardedFor.split(",")[0]?.trim() || "unknown";
@@ -2092,6 +2567,7 @@ export async function POST(request: NextRequest) {
       fallback: payload.outputLanguage ?? "en",
     });
     const topic = normalizeDraftTopic(rawTopic || prompt || "Knowledge Topic", outputLanguage);
+    const dataSummaryMode = isDataSummaryInput(rawTopic || topic, prompt);
     const draftMode =
       payload.draftMode ?? (process.env.KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto");
 
@@ -2108,8 +2584,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const fallbackDraft = buildFallbackPosterDraft(topic, posterSizeLabel, prompt, outputLanguage);
-    const fallbackPlan = buildFallbackPlanListByLanguage(topic, outputCount, outputLanguage);
+    const fallbackDraft = dataSummaryMode
+      ? buildDataSummaryPosterDraft(topic, posterSizeLabel, prompt, outputLanguage)
+      : buildFallbackPosterDraft(topic, posterSizeLabel, prompt, outputLanguage);
+    const fallbackPlan = dataSummaryMode
+      ? buildDataSummaryPlanListByLanguage(topic, outputCount, prompt, outputLanguage)
+      : buildFallbackPlanListByLanguage(topic, outputCount, outputLanguage);
     const promptBundle = buildContentDraftPrompt({
       direction,
       topic,
@@ -2124,32 +2604,53 @@ export async function POST(request: NextRequest) {
     const modelForLog = textModel || "paid-default";
     if (isFreeTextModel(textModel)) {
       const freeResult = await requestDraftFromGptsApi({ textModel, promptBundle });
-      if (!freeResult.ok) {
-        logOpsEvent({
-          category: "llm",
-          action: "draft_generation_failed",
-          status: "error",
-          source: modelForLog,
-          userEmail: email,
-          code: "FREE_MODEL_REQUEST_FAILED",
-          message: freeResult.error,
-          details: { stage: "draft_model_request_free", direction, outputCount },
-        });
-        if (direction === "poster") {
-          return NextResponse.json(
-            {
-              posterDraft: fallbackDraft,
-              planList: fallbackPlan,
-              source: "fallback",
-              error: freeResult.error,
-            },
-            { status: 200 },
-          );
+      if (freeResult.ok) {
+        content = freeResult.text;
+        llmUsage = freeResult.usage ?? null;
+      } else {
+        const compatResult = hasOpenAICompatDraftProvider()
+          ? await requestDraftFromPaidModels({ textModel, promptBundle })
+          : null;
+        if (compatResult?.ok) {
+          content = compatResult.text;
+          llmUsage = compatResult.usage ?? null;
+        } else {
+          if (compatResult && !compatResult.ok) {
+            logOpsEvent({
+              category: "llm",
+              action: "draft_generation_failed",
+              status: "error",
+              source: modelForLog,
+              userEmail: email,
+              code: "OPENAI_COMPAT_MODEL_REQUEST_FAILED",
+              message: compatResult.error,
+              details: { stage: "draft_model_request_openai_compat", direction, outputCount },
+            });
+          }
+          logOpsEvent({
+            category: "llm",
+            action: "draft_generation_failed",
+            status: "error",
+            source: modelForLog,
+            userEmail: email,
+            code: "FREE_MODEL_REQUEST_FAILED",
+            message: freeResult.error,
+            details: { stage: "draft_model_request_free", direction, outputCount },
+          });
+          if (direction === "poster") {
+            return NextResponse.json(
+              {
+                posterDraft: fallbackDraft,
+                planList: fallbackPlan,
+                source: "fallback",
+                error: freeResult.error,
+              },
+              { status: 200 },
+            );
+          }
+          return NextResponse.json({ error: freeResult.error }, { status: 502 });
         }
-        return NextResponse.json({ error: freeResult.error }, { status: 502 });
       }
-      content = freeResult.text;
-      llmUsage = freeResult.usage ?? null;
     } else {
       const paidResult = await requestDraftFromPaidModels({ textModel, promptBundle });
       if (!paidResult.ok) {
@@ -2242,9 +2743,9 @@ export async function POST(request: NextRequest) {
         userEmail: email,
         details: { direction, outputCount },
       });
-      const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic);
+      const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic, direction, outputLanguage);
       if (direction === "ppt") {
-        const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount);
+        const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount, topic, outputLanguage);
         return NextResponse.json({
           direction,
           normalizedDirection: direction,
@@ -2263,7 +2764,7 @@ export async function POST(request: NextRequest) {
             }),
         });
       }
-      const storyboardDrafts = normalizeStoryboardDrafts(parsed.storyboardDrafts, outlineItems, outputCount);
+      const storyboardDrafts = normalizeStoryboardDrafts(parsed.storyboardDrafts, outlineItems, outputCount, topic, outputLanguage);
       return NextResponse.json({
         direction,
         normalizedDirection: direction,
@@ -2427,7 +2928,27 @@ export async function POST(request: NextRequest) {
       outputLanguage,
     });
     const usedCoreMessages = new Set<string>();
-    const mappedPlanList: PosterPlanItem[] = mappedPlanListRaw.map((item, idx) => {
+    const mappedPlanList: PosterPlanItem[] = dataSummaryMode ? mappedPlanListRaw.map((item, idx) => {
+      const fallback = fallbackPlan[idx] ?? fallbackPlan[fallbackPlan.length - 1];
+      const keyFacts = sanitizePlanFactList(
+        item.keyFacts?.length ? item.keyFacts : fallback?.keyFacts,
+        topic,
+        outputLanguage,
+      );
+      return {
+        ...item,
+        index: idx + 1,
+        role: item.role || fallback?.role || (idx === 0 ? "data-summary" : "metrics"),
+        title: sanitizePlanTitle(item.title || fallback?.title || topic, topic, idx + 1, outputLanguage),
+        focus: sanitizePlanFocus(item.focus || "", fallback?.focus || specificPosterDraft.body, topic, outputLanguage),
+        keyFacts,
+        visualType: item.visualType || fallback?.visualType || (isChineseLanguage(outputLanguage) ? "指标摘要图" : "metrics summary infographic"),
+        visualElements: item.visualElements?.length
+          ? item.visualElements
+          : fallback?.visualElements ?? specificPosterDraft.visualElements ?? fallbackDraft.visualElements,
+        layoutHint: item.layoutHint || fallback?.layoutHint || specificPosterDraft.layoutSuggestion,
+      };
+    }) : mappedPlanListRaw.map((item, idx) => {
       const role = roleBlueprint[idx] || (idx === 0 ? "cover" : idx === outputCount - 1 ? "system-model" : "mechanism");
       const moduleText = roleModules[idx] || buildRoleFunctionalModule({
         topic,
@@ -2488,14 +3009,19 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const planList = isPlanListLowQuality(mappedPlanList, outputLanguage)
-      ? buildFallbackPosterPlanFromDraft({
-          topic,
-          count: outputCount,
-          posterDraft: specificPosterDraft,
-          outputLanguage,
-          baseVisualType: specificPosterDraft.visualType || fallbackDraft.visualType,
-        })
+    const shouldUseFallbackPlan =
+      isPlanListLowQuality(mappedPlanList, outputLanguage) ||
+      (dataSummaryMode && isDataSummaryPlanMismatch(mappedPlanList));
+    const planList = shouldUseFallbackPlan
+      ? dataSummaryMode
+        ? buildDataSummaryPlanListByLanguage(topic, outputCount, prompt, outputLanguage)
+        : buildFallbackPosterPlanFromDraft({
+            topic,
+            count: outputCount,
+            posterDraft: specificPosterDraft,
+            outputLanguage,
+            baseVisualType: specificPosterDraft.visualType || fallbackDraft.visualType,
+          })
       : mappedPlanList;
 
     void renderSpec;

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { Check, LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle, Lock } from "lucide-react";
 
 export type ChatTurn = {
   id: string;
@@ -202,15 +202,6 @@ function compactDraftLine(text: string, max = 160) {
   return `${normalized.slice(0, Math.max(32, max - 1)).trim()}…`;
 }
 
-function extractDraftLabels(text: string, max = 3) {
-  return text
-    .split(/\n+/)
-    .map((line) => formatPosterPoint(line))
-    .map((line) => compactDraftLine(line, 80))
-    .filter(Boolean)
-    .slice(0, max);
-}
-
 function normalizeSlashLineBreaks(text: string) {
   return text
     .replace(/\s*\/\s*/g, "\n")
@@ -329,6 +320,7 @@ type ChatPanelProps = {
   isPlanningBillingStep: boolean;
   billingConfirmed: boolean;
   canConfirmBilling: boolean;
+  isFreeUser?: boolean;
   generationConfirmError?: string | null;
   billingSummary: {
     styleName: string;
@@ -355,7 +347,7 @@ type ChatPanelProps = {
   onRetryErrorTurn?: (turnId: string) => void;
 };
 
-export function ChatPanel({
+export const ChatPanel = memo(function ChatPanel({
   scrollContainerRef,
   outputLanguage = "en",
   userPrompt,
@@ -409,6 +401,7 @@ export function ChatPanel({
   isPlanningBillingStep,
   billingConfirmed,
   canConfirmBilling,
+  isFreeUser = false,
   generationConfirmError,
   billingSummary,
   styleOptions,
@@ -425,6 +418,45 @@ export function ChatPanel({
   const isZh = outputLanguage === "zh";
   const shouldUseEnglishUi = !isZh;
   const t = (en: string, zh: string) => (isZh ? zh : en);
+  const isPremiumCountLocked = useCallback((kind: "poster" | "ppt" | "video", count: number) => {
+    if (!isFreeUser) {
+      return false;
+    }
+    if (kind === "poster") {
+      return count >= 7;
+    }
+    if (kind === "ppt") {
+      return count >= 10;
+    }
+    return count >= 10;
+  }, [isFreeUser]);
+  const handleCountSelect = useCallback((input: {
+    kind: "poster" | "ppt" | "video";
+    count: number;
+    onSelect: (value: number) => void;
+    disabled?: boolean;
+  }) => {
+    if (input.disabled) {
+      return;
+    }
+    if (isPremiumCountLocked(input.kind, input.count)) {
+      onUpgradeForCredits?.();
+      return;
+    }
+    input.onSelect(input.count);
+  }, [isPremiumCountLocked, onUpgradeForCredits]);
+  const renderCountLabel = useCallback(
+    (kind: "poster" | "ppt" | "video", count: number, unit: string) => {
+      const locked = isPremiumCountLocked(kind, count);
+      return (
+        <span className="inline-flex items-center gap-1">
+          {locked ? <Lock size={11} className="opacity-80" aria-hidden="true" /> : null}
+          <span>{count} {unit}</span>
+        </span>
+      );
+    },
+    [isPremiumCountLocked],
+  );
   const selectedStyle =
     styleOptions.find((style) => style.id === selectedStyleId) ?? styleOptions[0];
   const stylePreloadRefs = useRef<Record<string, boolean>>({});
@@ -460,7 +492,8 @@ export function ChatPanel({
   const [supportsHoverDescription, setSupportsHoverDescription] = useState(false);
   const [introPhase, setIntroPhase] = useState<"analyzing" | "planning" | "ask">("analyzing");
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(updates), [updates]);
+  const deferredUpdates = useDeferredValue(updates);
+  const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(deferredUpdates), [deferredUpdates]);
 
   const scrollToLatestCard = useCallback(() => {
     if (typeof window === "undefined") {
@@ -634,7 +667,7 @@ export function ChatPanel({
     }, 120);
     return () => window.clearTimeout(timer);
   }, [hasDraftContentCard, scrollToLatestCard, showBillingRecord]);
-  const renderUpdateCard = (update: ChatTurn, idx: number) => {
+  const renderUpdateCard = useCallback((update: ChatTurn, idx: number) => {
     if (update.role === "assistant" && update.meta?.kind === "image_error") {
       return null;
     }
@@ -681,7 +714,11 @@ export function ChatPanel({
         <p className="whitespace-pre-line leading-6">{update.content}</p>
       </article>
     );
-  };
+  }, [onRetryErrorTurn, retryingErrorTurnIds]);
+  const updateCardNodes = useMemo(
+    () => displayedUpdates.map((update, idx) => renderUpdateCard(update, idx)),
+    [displayedUpdates, renderUpdateCard],
+  );
 
   const renderPosterDraftReview = ({
     locked,
@@ -815,9 +852,10 @@ export function ChatPanel({
     if (!outlineItems.length && !slideDrafts.length) {
       return null;
     }
+    const hasDetailedDrafts = slideDrafts.length > 0;
     return (
       <>
-        {!!outlineItems.length ? (
+        {!!outlineItems.length && !hasDetailedDrafts ? (
           <ol className="mt-3 divide-y divide-zinc-200 text-sm leading-6 text-zinc-700">
             {outlineItems.map((item, index) => (
               <li key={`outline-${index + 1}-${item}`} className="py-2.5">
@@ -832,7 +870,6 @@ export function ChatPanel({
         {!!slideDrafts.length ? (
           <div className="mt-3 divide-y divide-zinc-200">
             {slideDrafts.map((slide) => {
-              const labels = extractDraftLabels(slide.body, 3);
               const narration = compactDraftLine(slide.body, 200);
               return (
                 <section key={`${slide.page}-${slide.title}`} className="py-3">
@@ -842,16 +879,25 @@ export function ChatPanel({
                   <p className="mt-1 whitespace-pre-line text-sm font-semibold text-zinc-900">
                     {normalizeSlashLineBreaks(compactDraftLine(slide.title, 120))}
                   </p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
-                    {t("On-screen text", "画面文字")}: {normalizeSlashLineBreaks(compactDraftLine(slide.title, 72))}
-                    {labels.length ? `\n${labels.map((label) => normalizeSlashLineBreaks(label)).join("\n")}` : ""}
-                  </p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">{t("Visual structure", "画面结构")}: {normalizeSlashLineBreaks(compactDraftLine(slide.visual, 80))}</p>
                   {intent === "video" ? (
-                    <p className="mt-1 whitespace-pre-line text-sm text-zinc-600">
-                      {t("Narration", "讲解文稿")}: {normalizeSlashLineBreaks(narration)}
-                    </p>
-                  ) : null}
+                    <>
+                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                        {t("Storyboard content", "分镜内容")}: {normalizeSlashLineBreaks(compactDraftLine(slide.visual, 180))}
+                      </p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-600">
+                        {t("Narration", "讲解文稿")}: {normalizeSlashLineBreaks(narration)}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                        {t("Page content", "页面内容")}: {normalizeSlashLineBreaks(compactDraftLine(slide.body, 360))}
+                      </p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                        {t("Visual structure", "画面结构")}: {normalizeSlashLineBreaks(compactDraftLine(slide.visual, 120))}
+                      </p>
+                    </>
+                  )}
                 </section>
               );
             })}
@@ -1008,7 +1054,14 @@ export function ChatPanel({
                       key={`poster-count-en-${count}`}
                       type="button"
                       disabled={isDirectionLocked}
-                      onClick={() => onPosterCountChange(count)}
+                      onClick={() =>
+                        handleCountSelect({
+                          kind: "poster",
+                          count,
+                          onSelect: onPosterCountChange,
+                          disabled: isDirectionLocked,
+                        })
+                      }
                       className={`rounded-lg border px-2.5 py-1 text-xs ${
                         posterCount === count
                           ? "border-zinc-900 bg-zinc-900 text-white"
@@ -1017,11 +1070,11 @@ export function ChatPanel({
                             : "border-zinc-300 bg-white text-zinc-700"
                       }`}
                     >
-                      {count} posters
+                      {renderCountLabel("poster", count, "posters")}
                     </button>
                   ))}
                 </div>
-                <p className="mt-3 text-xs text-zinc-500">Size</p>
+                <p className="mt-3 text-xs font-medium text-zinc-500">Aspect Ratio</p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {posterSizeOptions.map((size) => {
                     const active = selectedPosterSize === size.id;
@@ -1070,7 +1123,14 @@ export function ChatPanel({
                       key={`ppt-count-en-${count}`}
                       type="button"
                       disabled={isDirectionLocked}
-                      onClick={() => onPptPageCountChange(count)}
+                      onClick={() =>
+                        handleCountSelect({
+                          kind: "ppt",
+                          count,
+                          onSelect: onPptPageCountChange,
+                          disabled: isDirectionLocked,
+                        })
+                      }
                       className={`rounded-lg border px-2.5 py-1 text-xs ${
                         pptPageCount === count
                           ? "border-zinc-900 bg-zinc-900 text-white"
@@ -1079,11 +1139,11 @@ export function ChatPanel({
                             : "border-zinc-300 bg-white text-zinc-700"
                       }`}
                     >
-                      {count} slides
+                      {renderCountLabel("ppt", count, "slides")}
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-zinc-500">Aspect Ratio</p>
+                <p className="mt-2 text-xs font-medium text-zinc-500">Aspect Ratio</p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {([
                     { id: "16:9", title: "16:9 Widescreen", desc: "Best for projectors and modern large displays." },
@@ -1135,7 +1195,14 @@ export function ChatPanel({
                       key={`video-count-en-${count}`}
                       type="button"
                       disabled={isDirectionLocked}
-                      onClick={() => onVideoStoryboardCountChange(count)}
+                      onClick={() =>
+                        handleCountSelect({
+                          kind: "video",
+                          count,
+                          onSelect: onVideoStoryboardCountChange,
+                          disabled: isDirectionLocked,
+                        })
+                      }
                       className={`rounded-lg border px-2.5 py-1 text-xs ${
                         videoStoryboardCount === count
                           ? "border-zinc-900 bg-zinc-900 text-white"
@@ -1144,12 +1211,12 @@ export function ChatPanel({
                             : "border-zinc-300 bg-white text-zinc-700"
                       }`}
                     >
-                      {count} frames
+                      {renderCountLabel("video", count, "frames")}
                     </button>
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-zinc-500">Estimated duration: ~{videoStoryboardCount * 10}s</p>
-                <p className="mt-2 text-xs text-zinc-500">Video Ratio</p>
+                <p className="mt-2 text-xs font-medium text-zinc-500">Aspect Ratio</p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {([
                     { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
@@ -1224,7 +1291,7 @@ export function ChatPanel({
           </article>
         ) : null}
 
-        {displayedUpdates.map((update, idx) => renderUpdateCard(update, idx))}
+        {updateCardNodes}
 
         {styleConfirmed ? (
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
@@ -1486,7 +1553,7 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-500"
                     }`}
                   >
-                    {count} slides
+                    {renderCountLabel("ppt", count, "slides")}
                   </button>
                 ))}
               </div>
@@ -1532,7 +1599,7 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-500"
                     }`}
                   >
-                    {count} frames
+                    {renderCountLabel("video", count, "frames")}
                   </button>
                 ))}
               </div>
@@ -1578,11 +1645,11 @@ export function ChatPanel({
                         : "border-zinc-300 bg-white text-zinc-500"
                     }`}
                   >
-                    {count} posters
+                    {renderCountLabel("poster", count, "posters")}
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-xs font-medium text-zinc-500">Size</p>
+              <p className="mt-3 text-xs font-medium text-zinc-500">Aspect Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {posterSizeOptions.map((size) => {
                   const active = selectedPosterSize === size.id;
@@ -1696,18 +1763,24 @@ export function ChatPanel({
                       <button
                         key={count}
                         type="button"
-                        onClick={() => onPptPageCountChange(count)}
+                        onClick={() =>
+                          handleCountSelect({
+                            kind: "ppt",
+                            count,
+                            onSelect: onPptPageCountChange,
+                          })
+                        }
                         className={`rounded-lg border px-2.5 py-1 text-xs ${
                           pptPageCount === count
                             ? "border-zinc-900 bg-zinc-900 text-white"
                             : "border-zinc-300 bg-white text-zinc-700"
                         }`}
                       >
-                        {count} slides
+                        {renderCountLabel("ppt", count, "slides")}
                       </button>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-zinc-500">Aspect Ratio</p>
+                  <p className="mt-2 text-xs font-medium text-zinc-500">Aspect Ratio</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {([
                       { id: "16:9", title: "16:9 Widescreen", desc: "Best for projectors and modern large displays." },
@@ -1755,21 +1828,27 @@ export function ChatPanel({
                       <button
                         key={count}
                         type="button"
-                        onClick={() => onVideoStoryboardCountChange(count)}
+                        onClick={() =>
+                          handleCountSelect({
+                            kind: "video",
+                            count,
+                            onSelect: onVideoStoryboardCountChange,
+                          })
+                        }
                         className={`rounded-lg border px-2.5 py-1 text-xs ${
                           videoStoryboardCount === count
                             ? "border-zinc-900 bg-zinc-900 text-white"
                             : "border-zinc-300 bg-white text-zinc-700"
                         }`}
                       >
-                        {count} frames
+                        {renderCountLabel("video", count, "frames")}
                       </button>
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">
                     Estimated duration: ~{videoStoryboardCount * 10}s (10s per frame)
                   </p>
-                  <p className="mt-2 text-xs text-zinc-500">Video Ratio</p>
+                  <p className="mt-2 text-xs font-medium text-zinc-500">Aspect Ratio</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {([
                       { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
@@ -1816,18 +1895,24 @@ export function ChatPanel({
                       <button
                         key={count}
                         type="button"
-                        onClick={() => onPosterCountChange(count)}
+                        onClick={() =>
+                          handleCountSelect({
+                            kind: "poster",
+                            count,
+                            onSelect: onPosterCountChange,
+                          })
+                        }
                         className={`rounded-lg border px-2.5 py-1 text-xs ${
                           posterCount === count
                             ? "border-zinc-900 bg-zinc-900 text-white"
                             : "border-zinc-300 bg-white text-zinc-700"
                         }`}
                       >
-                        {count} posters
+                        {renderCountLabel("poster", count, "posters")}
                       </button>
                     ))}
                   </div>
-                  <p className="mt-3 text-sm font-medium text-zinc-900">Choose Poster Size</p>
+                  <p className="mt-3 text-xs font-medium text-zinc-500">Aspect Ratio</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {posterSizeOptions.map((size) => {
                       const active = selectedPosterSize === size.id;
@@ -1883,14 +1968,20 @@ export function ChatPanel({
                   <button
                     key={count}
                     type="button"
-                    onClick={() => onPptPageCountChange(count)}
+                    onClick={() =>
+                      handleCountSelect({
+                        kind: "ppt",
+                        count,
+                        onSelect: onPptPageCountChange,
+                      })
+                    }
                     className={`rounded-lg border px-2.5 py-1 text-xs ${
                       pptPageCount === count
                         ? "border-zinc-900 bg-zinc-900 text-white"
                         : "border-zinc-300 bg-white text-zinc-700"
                     }`}
                   >
-                    {count} slides
+                    {renderCountLabel("ppt", count, "slides")}
                   </button>
                 ))}
               </div>
@@ -1942,21 +2033,27 @@ export function ChatPanel({
                   <button
                     key={count}
                     type="button"
-                    onClick={() => onVideoStoryboardCountChange(count)}
+                    onClick={() =>
+                      handleCountSelect({
+                        kind: "video",
+                        count,
+                        onSelect: onVideoStoryboardCountChange,
+                      })
+                    }
                     className={`rounded-lg border px-2.5 py-1 text-xs ${
                       videoStoryboardCount === count
                         ? "border-zinc-900 bg-zinc-900 text-white"
                         : "border-zinc-300 bg-white text-zinc-700"
                     }`}
                   >
-                    {count} frames
+                    {renderCountLabel("video", count, "frames")}
                   </button>
                 ))}
               </div>
               <p className="mt-2 text-xs text-zinc-500">
                 Estimated duration: ~{videoStoryboardCount * 10}s (10s per frame)
               </p>
-              <p className="mt-2 text-xs font-medium text-zinc-500">Video Ratio</p>
+              <p className="mt-2 text-xs font-medium text-zinc-500">Aspect Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {([
                   { id: "16:9", title: "16:9 Landscape", desc: "Best for horizontal explainers and web players." },
@@ -2014,18 +2111,24 @@ export function ChatPanel({
                   <button
                     key={count}
                     type="button"
-                    onClick={() => onPosterCountChange(count)}
+                    onClick={() =>
+                      handleCountSelect({
+                        kind: "poster",
+                        count,
+                        onSelect: onPosterCountChange,
+                      })
+                    }
                     className={`rounded-lg border px-2.5 py-1 text-xs ${
                       posterCount === count
                         ? "border-zinc-900 bg-zinc-900 text-white"
                         : "border-zinc-300 bg-white text-zinc-700"
                     }`}
                   >
-                    {count} posters
+                    {renderCountLabel("poster", count, "posters")}
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-sm font-medium text-zinc-900">Choose Poster Size</p>
+              <p className="mt-3 text-xs font-medium text-zinc-500">Aspect Ratio</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {posterSizeOptions.map((size) => {
                   const active = selectedPosterSize === size.id;
@@ -2082,7 +2185,7 @@ export function ChatPanel({
         </article>
       ) : null}
 
-      {displayedUpdates.map((update, idx) => renderUpdateCard(update, idx))}
+      {updateCardNodes}
 
       {styleConfirmed ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
@@ -2271,4 +2374,6 @@ export function ChatPanel({
 
     </section>
   );
-}
+});
+
+ChatPanel.displayName = "ChatPanel";

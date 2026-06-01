@@ -172,7 +172,7 @@ export function appendCreditRecordDb(input: {
   const rows = db
     .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
     .all(scopeEmail) as Array<{ balance?: number }>;
-  const latestBalance = rows[0]?.balance ?? 80;
+  const latestBalance = rows[0]?.balance ?? 50;
   const balance = latestBalance + input.delta;
   const id = `record-${randomUUID()}`;
   db.prepare(
@@ -508,7 +508,7 @@ export function applyBillingFulfillmentAtomic(input: {
     const balanceRows = db
       .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
       .all(normalizedEmail) as Array<{ balance?: number }>;
-    const previousBalance = balanceRows[0]?.balance ?? 80;
+    const previousBalance = balanceRows[0]?.balance ?? 50;
     const nextBalance = previousBalance + input.monthlyCredits;
     const creditRecordId = `record-${randomUUID()}`;
     db.prepare(
@@ -587,6 +587,17 @@ function buildUserLogFilePath(userEmail?: string | null) {
   return path.join(getOpsLogDir(), "users", `${safeEmail}.jsonl`);
 }
 
+function shouldWriteOpsEventFile() {
+  const override = (process.env.KNOWLENS_FILE_OPS_LOG || "").trim();
+  if (override === "1") {
+    return true;
+  }
+  if (override === "0") {
+    return false;
+  }
+  return process.env.NODE_ENV === "production";
+}
+
 function appendOpsEventFileRow(input: {
   id: string;
   category: string;
@@ -600,6 +611,9 @@ function appendOpsEventFileRow(input: {
   details: unknown;
   createdAt: string;
 }) {
+  if (!shouldWriteOpsEventFile()) {
+    return;
+  }
   try {
     const row = {
       id: input.id,

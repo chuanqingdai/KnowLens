@@ -151,7 +151,7 @@ export function getCreditRecords(email?: string | null) {
     isLocalDevEmail(email) &&
     window.localStorage.getItem(initKey) !== "1";
   if (shouldInitLocalDevCredits) {
-    const latestBalance = parsed[0]?.balance ?? 80;
+    const latestBalance = parsed[0]?.balance ?? 50;
     const delta = LOCAL_DEV_CREDIT_TARGET - latestBalance;
     const nextRecord: CreditRecord = {
       id: `record-${Date.now()}`,
@@ -199,7 +199,7 @@ export function appendCreditRecord(
   }
   const scopeEmail = input.userEmail ?? email;
   const existing = getCreditRecords(scopeEmail);
-  const latestBalance = existing[0]?.balance ?? 80;
+  const latestBalance = existing[0]?.balance ?? 50;
   const nextBalance = latestBalance + input.delta;
   const nextRecord: CreditRecord = {
     id: `record-${Date.now()}`,

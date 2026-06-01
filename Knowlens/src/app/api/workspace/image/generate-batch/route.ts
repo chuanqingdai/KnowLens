@@ -203,6 +203,22 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
   const negativeRules = Array.isArray(task.negativeRules)
     ? task.negativeRules.map((item) => compactPromptText(String(item || ""), 80)).filter(Boolean).join(" | ")
     : "";
+  const protectedFacts = compactPromptText(
+    [
+      title,
+      contentBody,
+      visibleLabels,
+      factualRules,
+    ]
+      .join(" ")
+      .split(/(?<=[。！？.!?])\s+|[；;]/)
+      .filter((item) =>
+        /(\d|%|％|\$|美元|人民币|亿元|亿|万|q[1-4]|20\d{2}|19\d{2}|营收|收入|净利润|eps|每股收益|同比|环比|增长|下降|亏损|google|alphabet|nvidia|英伟达|cloud|广告)/i.test(item),
+      )
+      .slice(0, 6)
+      .join(" | "),
+    420,
+  );
 
   return [
     `Create one ${outputType} visual with aspect ratio ${aspectRatio}.`,
@@ -211,20 +227,22 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
     contentBody ? `Core message: ${contentBody}` : "",
     `Page role: ${pageRole}.`,
     "Prefer structured infographic layout over scenic artwork unless explicitly requested.",
-    "Focus on mechanism visualization, comparison cards, variable framework, clear arrows, whitespace, and readable hierarchy.",
-    visibleTitle ? `Visible title: ${visibleTitle}` : "",
-    visibleSubtitle ? `Visible subtitle: ${visibleSubtitle}` : "",
-    visibleLabels ? `Visible labels: ${visibleLabels}` : "",
-    layout ? `Layout: ${layout}` : "",
+    "Use one dominant hero visual, clear information structure, embedded callouts, whitespace, and readable hierarchy.",
+    "Do not pull facts, labels, titles, or body text from other pages.",
+    protectedFacts ? `Protected facts that must remain accurate: ${protectedFacts}` : "",
+    textMode === "strict" && visibleTitle ? `Source title fact/text: ${visibleTitle}` : "",
+    textMode === "strict" && visibleSubtitle ? `Source subtitle fact/text: ${visibleSubtitle}` : "",
+    visibleLabels ? `Short label ideas for this page only: ${visibleLabels}` : "",
+    layout ? `Layout direction: ${layout}` : "",
     mainVisual ? `Main visual: ${mainVisual}` : "",
     composition ? `Composition: ${composition}` : "",
     informationStructure ? `Information structure: ${informationStructure}` : "",
     textDensity ? `Text density: ${textDensity}` : "",
-    `Text strategy mode: ${textMode}.`,
+    `Text strategy mode: ${textMode === "strict" ? "fact-strict, expression-guided" : textMode}.`,
     textMode === "guided"
-      ? `Use concise ${textLanguage} labels around key concepts. Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity; do not add fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`
+      ? `Use concise ${textLanguage} labels around key concepts. Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity; the model may add a few relevant short labels. Do not add fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`
       : textMode === "strict"
-        ? "Use provided visible text exactly when present; do not invent extra labels."
+        ? "Preserve protected facts exactly; auxiliary titles, labels, and visual notes may be lightly optimized if no facts are changed or invented. If no concrete data is provided, render a framework without made-up figures."
         : "Use minimal on-image text; keep labels extremely short only when needed.",
     textTitleIdea ? `Text title idea: ${textTitleIdea}` : "",
     textConcepts ? `Text key concepts: ${textConcepts}` : "",

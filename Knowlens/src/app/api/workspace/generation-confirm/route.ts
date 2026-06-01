@@ -124,23 +124,35 @@ function buildPromptFromTask(task: ImageGenerationTask) {
   if (typeof task.composedPrompt === "string" && task.composedPrompt.trim()) {
     return clampPromptForImage(task.composedPrompt.trim());
   }
+  const labels = Array.isArray(task.visibleText?.labels) ? task.visibleText.labels.join(" | ") : "";
+  const factualRules = Array.isArray(task.factualRules) ? task.factualRules.join(" | ") : "";
+  const protectedFacts = [
+    task.contentTitle,
+    task.contentBody,
+    labels,
+    factualRules,
+  ]
+    .join(" ")
+    .split(/(?<=[。！？.!?])\s+|[；;]/)
+    .filter((item) =>
+      /(\d|%|％|\$|美元|人民币|亿元|亿|万|q[1-4]|20\d{2}|19\d{2}|营收|收入|净利润|eps|每股收益|同比|环比|增长|下降|亏损|google|alphabet|nvidia|英伟达|cloud|广告)/i.test(item),
+    )
+    .slice(0, 6)
+    .join(" | ");
   return clampPromptForImage([
     task.stylePrompt ? `Style prompt: ${task.stylePrompt}` : "",
     task.outputType ? `Output type: ${task.outputType}` : "",
     task.aspectRatio ? `Aspect ratio: ${task.aspectRatio}` : "",
     task.contentTitle ? `Title: ${task.contentTitle}` : "",
-    task.contentBody ? `Content:\n${task.contentBody}` : "",
-    task.visibleText?.title ? `Visible title: ${task.visibleText.title}` : "",
-    task.visibleText?.subtitle ? `Visible subtitle: ${task.visibleText.subtitle}` : "",
-    Array.isArray(task.visibleText?.labels) && task.visibleText?.labels?.length
-      ? `Visible labels: ${task.visibleText.labels.join(" | ")}`
-      : "",
+    task.contentBody ? `Current page content to translate visually:\n${task.contentBody}` : "",
+    protectedFacts ? `Protected facts that must remain accurate: ${protectedFacts}` : "",
+    labels ? `Short label ideas for this page only: ${labels}` : "",
     task.visualDesign?.layout ? `Layout: ${task.visualDesign.layout}` : "",
     task.visualDesign?.mainVisual ? `Main visual: ${task.visualDesign.mainVisual}` : "",
     task.visualDesign?.composition ? `Composition: ${task.visualDesign.composition}` : "",
     task.visualDesign?.textDensity ? `Text density: ${task.visualDesign.textDensity}` : "",
     task.imagePromptDraft ? `Draft visual hint: ${task.imagePromptDraft}` : "",
-    Array.isArray(task.factualRules) && task.factualRules.length ? `Factual rules: ${task.factualRules.join(" | ")}` : "",
+    factualRules ? `Factual rules: ${factualRules}` : "",
     Array.isArray(task.negativeRules) && task.negativeRules.length ? `Negative rules: ${task.negativeRules.join(" | ")}` : "",
     task.visualHint ? `Visual hint: ${task.visualHint}` : "",
   ]
