@@ -188,6 +188,21 @@ function extractJsonObject(raw: string) {
 function buildTopicRelatedSuggestions(topic: string, outputLanguage?: string) {
   const isZh = (outputLanguage || "").toLowerCase().startsWith("zh");
   const seed = cleanTopicText(topic) || (isZh ? "这个主题" : "this topic");
+  if (/(tencent|腾讯)/i.test(seed)) {
+    return isZh
+      ? [
+          "腾讯主要做哪些业务？和微信、QQ、游戏之间是什么关系",
+          "腾讯的收入通常来自哪些板块，各自作用是什么",
+          "普通用户每天会在哪些场景用到腾讯的产品和服务",
+          "很多人对腾讯的常见误解有哪些，应该怎么理解更准确",
+        ]
+      : [
+          "What are Tencent's main businesses, and how do WeChat, QQ, and gaming connect?",
+          "Which business segments usually drive Tencent's revenue, and what roles do they play?",
+          "What are common daily-life scenarios where people use Tencent products and services?",
+          "What are common misunderstandings about Tencent, and what is a better way to view them?",
+        ];
+  }
   if (/(volcano|eruption|火山|喷发)/i.test(seed)) {
     return isZh
       ? [
@@ -244,8 +259,33 @@ function buildTopicRelatedSuggestions(topic: string, outputLanguage?: string) {
         `What is the key idea behind ${seed}?`,
         `How can ${seed} be explained in plain language?`,
         `What is a common real-life situation for ${seed}?`,
-        `What is one common misunderstanding about ${seed}?`,
+      `What is one common misunderstanding about ${seed}?`,
       ];
+}
+
+function refineSuggestionsByTopic(topic: string, suggestions: string[], outputLanguage?: string) {
+  const fallback = buildTopicRelatedSuggestions(topic, outputLanguage).slice(0, 4);
+  if (!suggestions.length) {
+    return fallback;
+  }
+  const normalizedTopic = cleanTopicText(topic);
+  if (!normalizedTopic) {
+    return suggestions.slice(0, 4);
+  }
+  const normalizedJoined = suggestions
+    .join(" ")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+  const looksGenericEntityTemplate =
+    /(是什么为什么值得了解|是怎样一步步发生|在生活中的一个简单例子|容易误解什么)/.test(normalizedJoined) ||
+    /(whatitisandwhyitmatters|howithappenedstepbystep|simpleexampleindailylife|commonmisunderstanding)/.test(
+      normalizedJoined,
+    );
+  const missingTopicCoverage = !normalizedJoined.includes(normalizedTopic.replace(/\s+/g, "").toLowerCase());
+  if (looksGenericEntityTemplate || missingTopicCoverage) {
+    return fallback;
+  }
+  return suggestions.slice(0, 4);
 }
 
 function buildLatestHint(outputLanguage?: string) {
@@ -331,7 +371,11 @@ function heuristicAnalyze(input: string, sourcesCount: number, outputLanguage?: 
   };
 }
 
-function normalizeAnalyzeResult(raw: Partial<IntentAnalysis>, fallback: IntentAnalysis): IntentAnalysis {
+function normalizeAnalyzeResult(
+  raw: Partial<IntentAnalysis>,
+  fallback: IntentAnalysis,
+  outputLanguage?: string,
+): IntentAnalysis {
   const direction =
     raw.direction === "poster" || raw.direction === "ppt" || raw.direction === "video" || raw.direction === "unknown"
       ? raw.direction
@@ -372,7 +416,7 @@ function normalizeAnalyzeResult(raw: Partial<IntentAnalysis>, fallback: IntentAn
   const suggestions =
     classification === "need_topic_clarification" || classification === "invalid"
       ? rawSuggestions.length
-        ? rawSuggestions
+        ? refineSuggestionsByTopic(topic, rawSuggestions, outputLanguage)
         : fallback.suggestions
       : [];
 
@@ -574,7 +618,7 @@ export async function POST(request: NextRequest) {
       .join("\n");
 
     const modelResult = await requestAnalyzeFromModel(input, sourcesSummary, outputLanguage);
-    const analysis = normalizeAnalyzeResult(modelResult || {}, fallback);
+    const analysis = normalizeAnalyzeResult(modelResult || {}, fallback, outputLanguage);
     return NextResponse.json({
       ok: true,
       analysis,

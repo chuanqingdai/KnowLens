@@ -5,3 +5,20 @@
 
 # generated test output
 /Knowlens/public/test-output/
+
+# Knowlens local caches and build artifacts
+/Knowlens/.next/
+/Knowlens/runtime-logs/
+/Knowlens/node_modules/
+/Knowlens/dist/
+/Knowlens/build/
+/Knowlens/out/
+/Knowlens/coverage/
+/Knowlens/.cache/
+/Knowlens/tmp/
+/Knowlens/temp/
+/Knowlens/generated/
+/Knowlens/exports/
+/Knowlens/public/generated/
+/Knowlens/public/exports/
+/Knowlens/*.log

@@ -948,12 +948,6 @@ function detectIntent(
   };
 }
 
-function hasRecencySensitiveRequest(prompt: string) {
-  return /(最新|最近|当日|今日|本周|本月|今年|实时|快讯|news|latest|newest|recent|today|thisweek|thismonth|current|earnings|quarterly|10-k|10q|财报|业绩)/i.test(
-    prompt,
-  );
-}
-
 function inferRecommendedIntent(
   prompt: string,
   sources: HomeSourceItem[],
@@ -1016,81 +1010,6 @@ function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage:
     return source.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 26);
   }
   return isChineseLanguage(outputLanguage) ? "知识主题" : "Knowledge Topic";
-}
-
-function isWeakPrompt(prompt: string, sources: HomeSourceItem[]) {
-  const text = prompt.trim().toLowerCase();
-  if (sources.length > 0) {
-    return false;
-  }
-  if (!text) {
-    return true;
-  }
-  if (text.length <= 2) {
-    return true;
-  }
-  const hasExplicitRequestSignal =
-    containsAny(text, [
-      "生成",
-      "制作",
-      "创建",
-      "做成",
-      "输出",
-      "讲解",
-      "解释",
-      "分析",
-      "总结",
-      "海报",
-      "长图",
-      "图片",
-      "配图",
-      "信息图",
-      "视频",
-      "分镜",
-      "ppt",
-      "slide",
-      "poster",
-      "video",
-      "storyboard",
-      "infographic",
-      "generate",
-      "create",
-      "make",
-      "build",
-      "explain",
-      "analyze",
-      "summarize",
-    ]) ||
-    /(?:\d+\s*(?:页|张|个分镜|帧|slides?|posters?|frames?))/.test(text);
-  if (hasExplicitRequestSignal && text.length >= 8) {
-    return false;
-  }
-  const weakPatterns = [
-    /^hello\b/,
-    /^hi\b/,
-    /^hey\b/,
-    /^hello world\b/,
-    /^test\b/,
-    /^你好\b/,
-    /^在吗\b/,
-    /^测试\b/,
-    /^开始\b/,
-  ];
-  if (weakPatterns.some((pattern) => pattern.test(text))) {
-    return true;
-  }
-  const tokenCount = text
-    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
-    .split(/\s+/)
-    .filter(Boolean).length;
-  if (tokenCount <= 2 && text.length < 20) {
-    return true;
-  }
-  const cjkLength = (text.match(/[\u4e00-\u9fff]/g) || []).length;
-  if (cjkLength >= 6 && hasExplicitRequestSignal) {
-    return false;
-  }
-  return false;
 }
 
 function topicHintText(value: string, outputLanguage: OutputLanguage) {
@@ -2233,6 +2152,7 @@ export default function WorkspacePage() {
   });
   const [billingConfirmed, setBillingConfirmed] = useState(false);
   const [draftLlmUsage, setDraftLlmUsage] = useState<DraftLlmUsage | null>(null);
+  const [isDraftGenerationPending, setIsDraftGenerationPending] = useState(false);
   const [isPlanningNextStep, setIsPlanningNextStep] = useState(false);
   const [isPlanningStyleStep, setIsPlanningStyleStep] = useState(false);
   const [isPlanningBillingStep, setIsPlanningBillingStep] = useState(false);
@@ -2434,8 +2354,7 @@ export default function WorkspacePage() {
     intentAnalysisRequestedRef.current = true;
     setIntentAnalysisLoading(true);
     const controller = new AbortController();
-    // Prompt1 runs on the server. Give it enough time so the UI does not fall back to weak local routing.
-    const timeoutId = window.setTimeout(() => controller.abort(), 6000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
     void fetch("/api/workspace/intent-analyze", {
       method: "POST",
       headers: {
@@ -2478,11 +2397,6 @@ export default function WorkspacePage() {
     () => detectIntent(contextPrompt, entrySources),
     [contextPrompt, entrySources],
   );
-  const [weakPromptResolved, setWeakPromptResolved] = useState(() => !isWeakPrompt(initialEntry.prompt, initialEntry.sources));
-  const weakPrompt = useMemo(
-    () => isWeakPrompt(contextPrompt, entrySources) && !weakPromptResolved,
-    [contextPrompt, entrySources, weakPromptResolved],
-  );
   const recommendedIntent = useMemo(
     () => inferRecommendedIntent(contextPrompt, entrySources),
     [contextPrompt, entrySources],
@@ -2500,23 +2414,24 @@ export default function WorkspacePage() {
     () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId, outputLanguage),
     [effectiveIntent, contextPrompt, posterSizeId, outputLanguage],
   );
-  const shouldUseIntentAnalysis = Boolean(intentAnalysis);
-  const fallbackNeedsFreshSources = hasRecencySensitiveRequest(contextPrompt) && entrySources.length === 0;
-  const fallbackShouldClarifyIntent =
-    !intentAnalysisLoading &&
-    (weakPrompt || effectiveIntent === "unknown" || detectedIntent.confidence < 0.58 || fallbackNeedsFreshSources);
-  const shouldClarifyIntent = shouldUseIntentAnalysis
-    ? intentAnalysis?.clarifyMode !== "none"
-    : fallbackShouldClarifyIntent;
-  const waitingTopicSuggestionConfirm = shouldUseIntentAnalysis
-    ? intentAnalysis?.clarifyMode === "topic"
-    : false;
-  const needsFreshSourcesClarify = shouldUseIntentAnalysis
-    ? intentAnalysis?.clarifyMode === "fresh_sources"
-    : fallbackNeedsFreshSources;
+  const prompt1Pending = intentAnalysisLoading && !intentAnalysis;
+  const shouldClarifyIntent = intentAnalysis?.clarifyMode === "topic";
+  const needsFreshSourcesClarify = intentAnalysis?.clarifyMode === "fresh_sources";
+  const topicSuggestions = useMemo(() => {
+    if (intentAnalysis?.clarifyMode === "topic" && intentAnalysis.suggestions.length) {
+      return intentAnalysis.suggestions.slice(0, 4);
+    }
+    return [] as string[];
+  }, [
+    intentAnalysis?.clarifyMode,
+    intentAnalysis?.suggestions,
+  ]);
+  const waitingTopicSuggestionConfirm =
+    shouldClarifyIntent && !needsFreshSourcesClarify && topicSuggestions.length > 0 && !topicSuggestionLocked;
   const showPosterSizeSelector = effectiveIntent === "poster" && !posterSizeId;
   const canProceed = configConfirmed && !showPosterSizeSelector;
   const showDirectionGuide = flowStage === "intent" || flowStage === "config";
+  const topicSuggestionsLoading = showDirectionGuide && !topicSuggestionLocked && prompt1Pending;
   const showStyleStage = flowStage === "style";
   const showBillingConfirm = flowStage === "billing";
   const showBillingRecord = flowStage === "billing" || flowStage === "generate";
@@ -2527,7 +2442,7 @@ export default function WorkspacePage() {
   const showCanvasPanelInLayout = hasCanvasPanel && (!isMobileViewport || mobileWorkspaceView === "canvas");
 
   useEffect(() => {
-    if (!shouldUseIntentAnalysis || !intentAnalysis) {
+    if (!intentAnalysis) {
       return;
     }
     if (intentAnalysis.direction === "unknown") {
@@ -2537,7 +2452,7 @@ export default function WorkspacePage() {
       return;
     }
     setManualIntent(intentAnalysis.direction);
-  }, [intentAnalysis, manualIntent, shouldUseIntentAnalysis]);
+  }, [intentAnalysis, manualIntent]);
   const debugGoGenerateStepEnabled =
     process.env.NODE_ENV === "development" && searchParams.get("debugGoGenerateStep") === "1";
   const debugImageBridgeEnabled =
@@ -2642,21 +2557,11 @@ export default function WorkspacePage() {
   ]);
 
   const analysisText = useMemo(() => {
-    if (intentAnalysisLoading) {
+    if (prompt1Pending) {
       return isZhOutput ? "正在分析你的需求上下文..." : "Analyzing your request context...";
     }
-    if (shouldUseIntentAnalysis && intentAnalysis?.assistantHint) {
+    if (intentAnalysis?.assistantHint) {
       return intentAnalysis.assistantHint;
-    }
-    if (!shouldUseIntentAnalysis && fallbackNeedsFreshSources) {
-      return isZhOutput
-        ? "这个需求依赖最新资料。请补充最新来源，或回复：继续公开资料概览。"
-        : "This request depends on recent sources. Add a fresh source, or reply: continue with public overview.";
-    }
-    if (weakPrompt) {
-      return isZhOutput
-        ? `“${topicHintText(topic, outputLanguage)}”范围比较大，请补充你想解释的角度。`
-        : `“${topicHintText(topic, outputLanguage)}” is broad. Add the angle you want to explain.`;
     }
     if (!contextPrompt && !entrySources.length) {
       return isZhOutput
@@ -2671,12 +2576,9 @@ export default function WorkspacePage() {
     entrySources.length,
     isZhOutput,
     intentAnalysis,
-    intentAnalysisLoading,
     outputLanguage,
-    shouldUseIntentAnalysis,
+    prompt1Pending,
     topic,
-    weakPrompt,
-    fallbackNeedsFreshSources,
   ]);
 
   const basePosterPlanList = useMemo<PosterPlanItem[]>(() => {
@@ -2691,8 +2593,18 @@ export default function WorkspacePage() {
   const [editablePosterDraft, setEditablePosterDraft] = useState<PosterDraft | null>(null);
   const [editablePosterPlanList, setEditablePosterPlanList] = useState<PosterPlanItem[]>([]);
 
-  const outlineItems = editableOutlineItems.length ? editableOutlineItems : baseOutlineItems;
-  const slideDrafts = editableSlideDrafts.length ? editableSlideDrafts : baseSlideDrafts;
+  const outlineItems =
+    editableOutlineItems.length > 0
+      ? editableOutlineItems
+      : configConfirmed
+        ? []
+        : baseOutlineItems;
+  const slideDrafts =
+    editableSlideDrafts.length > 0
+      ? editableSlideDrafts
+      : configConfirmed
+        ? []
+        : baseSlideDrafts;
   const densityAdjustedSlideDrafts = useMemo(() => {
     if (effectiveIntent === "video") {
       return makeVideoDensitySlides(slideDrafts);
@@ -2702,7 +2614,7 @@ export default function WorkspacePage() {
     }
     return slideDrafts;
   }, [effectiveIntent, slideDrafts]);
-  const posterDraftRaw = editablePosterDraft ?? basePosterDraft;
+  const posterDraftRaw = editablePosterDraft ?? (configConfirmed ? null : basePosterDraft);
   const posterDraft = useMemo(
     () =>
       posterDraftRaw &&
@@ -2915,7 +2827,6 @@ export default function WorkspacePage() {
       setManualIntent("poster");
       setPosterCount(1);
       setPosterSizeId((prev) => prev ?? "poster-9-16");
-      setWeakPromptResolved(true);
       if (!topicContextPrompt.trim()) {
         setTopicContextPrompt("QA mock poster generation smoke test");
       }
@@ -4113,12 +4024,6 @@ export default function WorkspacePage() {
   const projectTitle = isZhOutput
     ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
     : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
-  const topicSuggestions = useMemo(() => {
-    if (intentAnalysis?.clarifyMode === "topic" && intentAnalysis.suggestions.length) {
-      return intentAnalysis.suggestions.slice(0, 4);
-    }
-    return [];
-  }, [intentAnalysis]);
 
   const isHydrated = useSyncExternalStore(
     useCallback(() => () => undefined, []),
@@ -4564,7 +4469,6 @@ export default function WorkspacePage() {
     setLockedTopicSuggestion(text);
     setSelectedTopicSuggestion(null);
     setTopicContextPrompt(text);
-    setWeakPromptResolved(true);
     setFlowStage("intent");
     setConfigConfirmed(false);
     setBillingConfirmed(false);
@@ -4649,6 +4553,7 @@ export default function WorkspacePage() {
     });
     setConfigConfirmed(true);
     setFlowStage("content");
+    setIsDraftGenerationPending(true);
     if (manualIntent) {
       setConfirmedConfigSnapshot({
         intent: manualIntent,
@@ -4688,8 +4593,8 @@ export default function WorkspacePage() {
       setDraftLlmUsage(null);
       setEditableOutlineItems([]);
       setEditableSlideDrafts([]);
-      setEditablePosterDraft(basePosterDraft);
-      setEditablePosterPlanList(basePosterPlanList);
+      setEditablePosterDraft(null);
+      setEditablePosterPlanList([]);
       try {
         const count = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
         const ratioOrSize = effectiveIntent === "ppt" ? pptRatio : videoRatio;
@@ -4795,8 +4700,8 @@ export default function WorkspacePage() {
         });
       } catch (error) {
         requestSucceeded = false;
-        setEditableOutlineItems(baseOutlineItems);
-        setEditableSlideDrafts(baseSlideDrafts);
+        setEditableOutlineItems([]);
+        setEditableSlideDrafts([]);
         const parsed = parseStructuredError(error);
         logClientEvent({
           category: "llm",
@@ -4834,6 +4739,7 @@ export default function WorkspacePage() {
         );
       } finally {
         await ensureThinkingVisible();
+        setIsDraftGenerationPending(false);
       }
       return requestSucceeded;
     }
@@ -4909,10 +4815,8 @@ export default function WorkspacePage() {
       } else {
         setDraftLlmUsage(null);
       }
-      setEditablePosterDraft(data.posterDraft ?? basePosterDraft);
-      setEditablePosterPlanList(
-        Array.isArray(data.planList) && data.planList.length ? data.planList : basePosterPlanList,
-      );
+      setEditablePosterDraft(data.posterDraft ?? null);
+      setEditablePosterPlanList(Array.isArray(data.planList) ? data.planList : []);
       logClientEvent({
         category: "llm",
         action: "draft_generation_success",
@@ -4929,8 +4833,8 @@ export default function WorkspacePage() {
         return false;
       }
       requestSucceeded = false;
-      setEditablePosterDraft(basePosterDraft);
-      setEditablePosterPlanList(basePosterPlanList);
+      setEditablePosterDraft(null);
+      setEditablePosterPlanList([]);
       const parsed = parseStructuredError(error);
       logClientEvent({
         category: "llm",
@@ -4968,6 +4872,7 @@ export default function WorkspacePage() {
     } finally {
       if (posterDraftRequestRef.current === requestId) {
         await ensureThinkingVisible();
+        setIsDraftGenerationPending(false);
       }
     }
     return requestSucceeded;
@@ -4995,6 +4900,7 @@ export default function WorkspacePage() {
     videoRatio,
     videoStoryboardCount,
     logClientEvent,
+    setIsDraftGenerationPending,
   ]);
 
   async function handleNextStep() {
@@ -5688,14 +5594,7 @@ export default function WorkspacePage() {
       setTopicContextPrompt(value);
     }
 
-    if (
-      value.trim().length >= 6 ||
-      containsAny(normalized, ["天文", "经济", "历史", "地理", "火山", "气候", "物理", "science", "history", "climate", "physics"])
-    ) {
-      setWeakPromptResolved(true);
-    }
-
-    if (!shouldPrioritizeDraftEdit && weakPrompt && !hasDirectionHint) {
+    if (!shouldPrioritizeDraftEdit && waitingTopicSuggestionConfirm && topicSuggestions.length > 0 && !hasDirectionHint) {
       if (inputSource === "suggestion") {
         stopThinking();
         setIsSending(false);
@@ -5703,21 +5602,11 @@ export default function WorkspacePage() {
       }
       pushAssistantMessage(
         tr(
-          "I can help confirm output direction first. Reply with: generate poster, generate video, or generate PPT. You can also share a concrete topic first.",
-          "我先帮你确认生成方向。你可以直接回复：生成海报、生成视频，或生成PPT；也可以先告诉我具体主题。",
+          "Please pick one topic card first. After that, we will continue to output direction and configuration.",
+          "请先从 4 个建议里选 1 个。选完后再进入方向与配置。",
         ),
         tr("Requirement Check", "需求确认"),
       );
-      logClientEvent({
-        category: "chat",
-        action: "chat_prompt_need_direction",
-        status: "info",
-        source: inputSource,
-        message: "Weak prompt without clear direction.",
-        details: {
-          normalized,
-        },
-      });
       stopThinking();
       setIsSending(false);
       return;
@@ -6172,8 +6061,9 @@ export default function WorkspacePage() {
                   showDirectionGuide={showDirectionGuide}
                   shouldClarifyIntent={shouldClarifyIntent}
                   showWeakPromptSuggestions={
-                    showDirectionGuide && shouldClarifyIntent && waitingTopicSuggestionConfirm && topicSuggestions.length > 0
+                    showDirectionGuide && !topicSuggestionLocked && (topicSuggestionsLoading || waitingTopicSuggestionConfirm)
                   }
+                  topicSuggestionsLoading={topicSuggestionsLoading}
                   topicSuggestions={topicSuggestions}
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
@@ -6240,6 +6130,7 @@ export default function WorkspacePage() {
                   onUpgradeForCredits={openCreditsPaywall}
                   visualizationTypeHint={visualizationTypeHint}
                   thinkingState={thinkingState}
+                  isDraftGenerationPending={isDraftGenerationPending}
                   retryingErrorTurnIds={retryingErrorTurnIds}
                   onRetryErrorTurn={handleRetryErrorTurn}
                 />

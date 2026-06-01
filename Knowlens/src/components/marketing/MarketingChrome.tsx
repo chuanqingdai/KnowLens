@@ -55,17 +55,6 @@ declare global {
   }
 }
 
-function GoogleMark() {
-  return (
-    <svg viewBox="0 0 48 48" aria-hidden="true" className="h-4 w-4 shrink-0" fill="none">
-      <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.643 32.657 29.257 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.042l5.657-5.657C34.041 6.053 29.297 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
-      <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.042l5.657-5.657C34.041 6.053 29.297 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
-      <path fill="#4CAF50" d="M24 44c5.192 0 9.839-1.991 13.36-5.228l-6.165-5.193C29.235 35.091 26.76 36 24 36c-5.236 0-9.608-3.315-11.3-7.946l-6.52 5.021C9.487 39.556 16.119 44 24 44z"/>
-      <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.134 3.221-3.331 5.676-6.108 7.579l.002-.001 6.165 5.193C34.924 39.252 44 33 44 24c0-1.341-.138-2.65-.389-3.917z"/>
-    </svg>
-  );
-}
-
 function canUseOneTapNow() {
   if (typeof window === "undefined") {
     return false;
@@ -86,8 +75,6 @@ function canUseOneTapNow() {
 
   return !isIOS && !isSafariLike && navigator.cookieEnabled;
 }
-
-const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 
 export function MarketingChrome({ children, showLocaleSwitch = false }: MarketingChromeProps) {
   const { t } = useLocale();
@@ -124,20 +111,6 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
     script.onload = () => setOneTapReady(true);
     document.head.appendChild(script);
   }, [isLanding, oneTapClientId]);
-
-  function openMembershipModal() {
-    const currentPath =
-      typeof window !== "undefined"
-        ? `${window.location.pathname}${window.location.search}`
-        : pathname || "/";
-    try {
-      window.sessionStorage.setItem("membership:return-path", currentPath);
-      window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, "landing_upgrade");
-    } catch {
-      // ignore storage errors
-    }
-    router.push("/membership");
-  }
 
   useEffect(() => {
     if (
@@ -240,31 +213,26 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
           </Link>
           <div className="flex items-center gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
-            <button
-              type="button"
-              onClick={openMembershipModal}
+            <Link
+              href={isLanding ? "#pricing" : "/#pricing"}
               className="inline-flex h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
             >
-              {t("Plans", "会员方案")}
+              Pricing
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                if (useGoogleFallback) {
+                  void handleGoogleFallback();
+                  return;
+                }
+                router.push("/auth?callbackUrl=%2Fapp");
+              }}
+              className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
+            >
+              Generate Free
+              <ArrowRight size={13} />
             </button>
-            {useGoogleFallback ? (
-              <button
-                type="button"
-                onClick={() => void handleGoogleFallback()}
-                className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
-              >
-                <GoogleMark />
-                {t("Continue with Google", "使用 Google 登录")}
-              </button>
-            ) : (
-              <Link
-                href="/auth?callbackUrl=%2Fapp"
-                className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
-              >
-                {t("Start now", "开始使用")}
-                <ArrowRight size={13} />
-              </Link>
-            )}
           </div>
         </div>
       </header>
