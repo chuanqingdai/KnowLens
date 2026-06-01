@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   ChevronLeft,
@@ -291,7 +291,7 @@ function Pagination(props: {
   );
 }
 
-export default function AdminDashboardPage() {
+function AdminDashboardPageContent() {
   const [data, setData] = useState<AdminConsoleData>(() => createAdminConsoleMockData());
   const [selectedLogId, setSelectedLogId] = useState<string>("");
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
@@ -2295,5 +2295,19 @@ export default function AdminDashboardPage() {
         </div>
       ) : null}
     </AdminShell>
+  );
+}
+
+export default function AdminDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-50 p-6 text-sm text-zinc-500">
+          Loading admin console...
+        </div>
+      }
+    >
+      <AdminDashboardPageContent />
+    </Suspense>
   );
 }

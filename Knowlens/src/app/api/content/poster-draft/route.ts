@@ -131,6 +131,7 @@ type DraftLlmUsage = {
   source: "provider" | "estimated";
   model?: string;
 };
+type DraftProviderPath = "gptsapi" | "openai-compat" | "fallback";
 
 const FREE_MODEL_IDS = new Set(["gemini-2.5", "deepseek-v4"]);
 const PAID_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.4", "gemini-3.1-pro", "claude-sonnet-4.6"]);
@@ -146,6 +147,20 @@ const PAID_MODEL_MAP: Record<string, string> = {
   "gemini-3.1-pro": process.env.PAID_MODEL_GEMINI_31_PRO || "gemini-3.1-pro",
   "claude-sonnet-4.6": process.env.PAID_MODEL_CLAUDE_SONNET_46 || "claude-sonnet-4.6",
 };
+const DRAFT_MODEL_TIMEOUT_MS = Number.parseInt(process.env.DRAFT_MODEL_TIMEOUT_MS || "", 10) || 90000;
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 function isFreeTextModel(textModel?: string) {
   if (!textModel) {
@@ -290,17 +305,29 @@ async function requestDraftFromGptsApi(input: {
     },
   };
 
-  const response = await fetch(
-    `https://api.gptsapi.net/v1beta/models/${encodeURIComponent(providerModel)}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "x-goog-api-key": apiKey,
-        "Content-Type": "application/json",
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      `https://api.gptsapi.net/v1beta/models/${encodeURIComponent(providerModel)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    },
-  );
+      DRAFT_MODEL_TIMEOUT_MS,
+    );
+  } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
+    return {
+      ok: false as const,
+      error: isTimeout
+        ? `Model request timed out after ${DRAFT_MODEL_TIMEOUT_MS}ms.`
+        : `Model request failed: ${error instanceof Error ? error.message : "unknown network error"}`,
+    };
+  }
 
   if (!response.ok) {
     const errText = await response.text();
@@ -342,22 +369,37 @@ async function requestDraftFromPaidModels(input: {
 
   const model = resolvePaidModel(input.textModel);
   const endpoint = getPaidChatCompletionsUrl();
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.6,
-      messages: [
-        { role: "system", content: input.promptBundle.systemPrompt },
-        { role: "user", content: input.promptBundle.userPrompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.6,
+          messages: [
+            { role: "system", content: input.promptBundle.systemPrompt },
+            { role: "user", content: input.promptBundle.userPrompt },
+          ],
+          response_format: { type: "json_object" },
+        }),
+      },
+      DRAFT_MODEL_TIMEOUT_MS,
+    );
+  } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
+    return {
+      ok: false as const,
+      error: isTimeout
+        ? `Paid model request timed out after ${DRAFT_MODEL_TIMEOUT_MS}ms.`
+        : `Paid model request failed: ${error instanceof Error ? error.message : "unknown network error"}`,
+    };
+  }
 
   if (!response.ok) {
     const errText = await response.text();
@@ -2581,6 +2623,7 @@ export async function POST(request: NextRequest) {
         ...mock,
         outputLanguage,
         source: "mock",
+        providerPath: "fallback" as DraftProviderPath,
       });
     }
 
@@ -2601,12 +2644,14 @@ export async function POST(request: NextRequest) {
 
     let content = "";
     let llmUsage: DraftLlmUsage | null = null;
+    let providerPath: DraftProviderPath = "fallback";
     const modelForLog = textModel || "paid-default";
     if (isFreeTextModel(textModel)) {
       const freeResult = await requestDraftFromGptsApi({ textModel, promptBundle });
       if (freeResult.ok) {
         content = freeResult.text;
         llmUsage = freeResult.usage ?? null;
+        providerPath = "gptsapi";
       } else {
         const compatResult = hasOpenAICompatDraftProvider()
           ? await requestDraftFromPaidModels({ textModel, promptBundle })
@@ -2614,6 +2659,7 @@ export async function POST(request: NextRequest) {
         if (compatResult?.ok) {
           content = compatResult.text;
           llmUsage = compatResult.usage ?? null;
+          providerPath = "openai-compat";
         } else {
           if (compatResult && !compatResult.ok) {
             logOpsEvent({
@@ -2643,12 +2689,16 @@ export async function POST(request: NextRequest) {
                 posterDraft: fallbackDraft,
                 planList: fallbackPlan,
                 source: "fallback",
+                providerPath: "fallback" as DraftProviderPath,
                 error: freeResult.error,
               },
               { status: 200 },
             );
           }
-          return NextResponse.json({ error: freeResult.error }, { status: 502 });
+          return NextResponse.json(
+            { error: freeResult.error, providerPath: "fallback" as DraftProviderPath },
+            { status: 502 },
+          );
         }
       }
     } else {
@@ -2670,15 +2720,20 @@ export async function POST(request: NextRequest) {
               posterDraft: fallbackDraft,
               planList: fallbackPlan,
               source: "fallback",
+              providerPath: "fallback" as DraftProviderPath,
               error: paidResult.error,
             },
             { status: 200 },
           );
         }
-        return NextResponse.json({ error: paidResult.error }, { status: 502 });
+        return NextResponse.json(
+          { error: paidResult.error, providerPath: "fallback" as DraftProviderPath },
+          { status: 502 },
+        );
       }
       content = paidResult.text;
       llmUsage = paidResult.usage ?? null;
+      providerPath = "openai-compat";
     }
 
     if (!content) {
@@ -2698,12 +2753,16 @@ export async function POST(request: NextRequest) {
             posterDraft: fallbackDraft,
             planList: fallbackPlan,
             source: "fallback",
+            providerPath: "fallback" as DraftProviderPath,
             error: "Model response is empty.",
           },
           { status: 200 },
         );
       }
-      return NextResponse.json({ error: "Model response is empty." }, { status: 502 });
+      return NextResponse.json(
+        { error: "Model response is empty.", providerPath: "fallback" as DraftProviderPath },
+        { status: 502 },
+      );
     }
     const parsed = parseJsonContent(content);
 
@@ -2724,13 +2783,17 @@ export async function POST(request: NextRequest) {
         },
       });
       if (direction !== "poster") {
-        return NextResponse.json({ error: "Model response is not valid JSON." }, { status: 502 });
+        return NextResponse.json(
+          { error: "Model response is not valid JSON.", providerPath: "fallback" as DraftProviderPath },
+          { status: 502 },
+        );
       }
       return NextResponse.json({
         posterDraft: fallbackDraft,
         planList: fallbackPlan,
         outputLanguage,
         source: "fallback",
+        providerPath: "fallback" as DraftProviderPath,
       });
     }
 
@@ -2741,7 +2804,7 @@ export async function POST(request: NextRequest) {
         status: "ok",
         source: modelForLog,
         userEmail: email,
-        details: { direction, outputCount },
+        details: { direction, outputCount, providerPath },
       });
       const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic, direction, outputLanguage);
       if (direction === "ppt") {
@@ -2755,6 +2818,7 @@ export async function POST(request: NextRequest) {
           slideDrafts,
           outputLanguage,
           source: "llm",
+          providerPath,
           llmUsage:
             llmUsage ??
             buildEstimatedDraftLlmUsage({
@@ -2774,6 +2838,7 @@ export async function POST(request: NextRequest) {
         storyboardDrafts,
         outputLanguage,
         source: "llm",
+        providerPath,
         llmUsage:
           llmUsage ??
           buildEstimatedDraftLlmUsage({
@@ -3033,7 +3098,7 @@ export async function POST(request: NextRequest) {
       status: "ok",
       source: modelForLog,
       userEmail: email,
-      details: { direction, outputCount },
+      details: { direction, outputCount, providerPath },
     });
 
     return NextResponse.json({
@@ -3045,6 +3110,7 @@ export async function POST(request: NextRequest) {
       planList,
       outputLanguage,
       source: "llm",
+      providerPath,
       llmUsage:
         llmUsage ??
         buildEstimatedDraftLlmUsage({
@@ -3065,7 +3131,7 @@ export async function POST(request: NextRequest) {
         message: "Too many draft requests.",
       });
       return NextResponse.json(
-        { error: "Too many draft requests. Please retry later." },
+        { error: "Too many draft requests. Please retry later.", providerPath: "fallback" as DraftProviderPath },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       );
     }
@@ -3078,6 +3144,6 @@ export async function POST(request: NextRequest) {
       code: "DRAFT_INTERNAL",
       message,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, providerPath: "fallback" as DraftProviderPath }, { status: 500 });
   }
 }

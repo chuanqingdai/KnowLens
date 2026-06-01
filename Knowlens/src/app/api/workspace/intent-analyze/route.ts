@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildWorkspaceIntentPrompt } from "@/lib/prompts/workspace-intent";
+import { logOpsEvent } from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
@@ -50,14 +51,48 @@ const OPENAI_COMPAT_ENDPOINT =
     ? "https://api.tu-zi.com/v1/chat/completions"
     : "");
 const OPENAI_COMPAT_MODEL =
+  process.env.PAID_INTENT_ANALYZE_MODEL ||
   process.env.PAID_TEXT_MODEL_DEFAULT ||
   process.env.OPENAI_TEXT_MODEL ||
-  process.env.GPTSAPI_INTENT_ANALYZE_MODEL ||
-  process.env.GPTSAPI_INTENT_TRIAGE_MODEL ||
-  "gemini-2.5-flash";
+  "gpt-5.4";
+const INTENT_ANALYZE_TIMEOUT_MS = Number.parseInt(process.env.INTENT_ANALYZE_TIMEOUT_MS || "", 10) || 45000;
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
+}
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function logIntentAnalyzeError(input: {
+  code: string;
+  message: string;
+  source: string;
+  details?: Record<string, unknown>;
+}) {
+  try {
+    logOpsEvent({
+      category: "llm",
+      action: "intent_analyze_failed",
+      status: "error",
+      source: input.source,
+      code: input.code,
+      message: input.message,
+      details: input.details,
+    });
+  } catch {
+    // Keep analysis path resilient even if telemetry write fails.
+  }
 }
 
 function cleanTopicText(value: string) {
@@ -367,22 +402,46 @@ async function requestAnalyzeFromModel(input: string, sourcesSummary: string, ou
     return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
   }
 
-  const response = await fetch(`${DEFAULT_ENDPOINT}/${encodeURIComponent(DEFAULT_MODEL)}:generateContent`, {
-    method: "POST",
-    headers: {
-      "x-goog-api-key": DEFAULT_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      `${DEFAULT_ENDPOINT}/${encodeURIComponent(DEFAULT_MODEL)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": DEFAULT_KEY,
+          "Content-Type": "application/json",
         },
-      ],
-    }),
-  });
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+            },
+          ],
+        }),
+      },
+      INTENT_ANALYZE_TIMEOUT_MS,
+    );
+  } catch (error) {
+    logIntentAnalyzeError({
+      code:
+        error instanceof DOMException && error.name === "AbortError"
+          ? "INTENT_ANALYZE_PRIMARY_TIMEOUT"
+          : "INTENT_ANALYZE_PRIMARY_FETCH_FAILED",
+      message: error instanceof Error ? error.message : "Primary intent analyze request failed.",
+      source: "gptsapi",
+      details: { model: DEFAULT_MODEL },
+    });
+    return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
+  }
   if (!response.ok) {
+    logIntentAnalyzeError({
+      code: "INTENT_ANALYZE_PRIMARY_HTTP_ERROR",
+      message: `Primary intent analyze request failed with status ${response.status}.`,
+      source: "gptsapi",
+      details: { model: DEFAULT_MODEL, status: response.status },
+    });
     return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
   }
   const data = (await response.json()) as {
@@ -395,11 +454,23 @@ async function requestAnalyzeFromModel(input: string, sourcesSummary: string, ou
       .trim() || "";
   const jsonText = extractJsonObject(rawText);
   if (!jsonText) {
+    logIntentAnalyzeError({
+      code: "INTENT_ANALYZE_PRIMARY_INVALID_JSON",
+      message: "Primary intent analyze response did not contain a valid JSON object.",
+      source: "gptsapi",
+      details: { model: DEFAULT_MODEL },
+    });
     return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
   }
   try {
     return JSON.parse(jsonText) as Partial<IntentAnalysis>;
   } catch {
+    logIntentAnalyzeError({
+      code: "INTENT_ANALYZE_PRIMARY_JSON_PARSE_FAILED",
+      message: "Primary intent analyze response JSON parse failed.",
+      source: "gptsapi",
+      details: { model: DEFAULT_MODEL },
+    });
     return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
   }
 }
@@ -408,23 +479,47 @@ async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: 
   if (!OPENAI_COMPAT_KEY || !OPENAI_COMPAT_ENDPOINT) {
     return null;
   }
-  const response = await fetch(OPENAI_COMPAT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_COMPAT_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_COMPAT_MODEL,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      OPENAI_COMPAT_ENDPOINT,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_COMPAT_KEY}`,
+        },
+        body: JSON.stringify({
+          model: OPENAI_COMPAT_MODEL,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+        }),
+      },
+      INTENT_ANALYZE_TIMEOUT_MS,
+    );
+  } catch (error) {
+    logIntentAnalyzeError({
+      code:
+        error instanceof DOMException && error.name === "AbortError"
+          ? "INTENT_ANALYZE_COMPAT_TIMEOUT"
+          : "INTENT_ANALYZE_COMPAT_FETCH_FAILED",
+      message: error instanceof Error ? error.message : "Fallback intent analyze request failed.",
+      source: "openai-compat",
+      details: { model: OPENAI_COMPAT_MODEL },
+    });
+    return null;
+  }
   if (!response.ok) {
+    logIntentAnalyzeError({
+      code: "INTENT_ANALYZE_COMPAT_HTTP_ERROR",
+      message: `Fallback intent analyze request failed with status ${response.status}.`,
+      source: "openai-compat",
+      details: { model: OPENAI_COMPAT_MODEL, status: response.status },
+    });
     return null;
   }
   const data = (await response.json()) as {
@@ -433,11 +528,23 @@ async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: 
   const rawText = data.choices?.[0]?.message?.content?.trim() || "";
   const jsonText = extractJsonObject(rawText);
   if (!jsonText) {
+    logIntentAnalyzeError({
+      code: "INTENT_ANALYZE_COMPAT_INVALID_JSON",
+      message: "Fallback intent analyze response did not contain valid JSON.",
+      source: "openai-compat",
+      details: { model: OPENAI_COMPAT_MODEL },
+    });
     return null;
   }
   try {
     return JSON.parse(jsonText) as Partial<IntentAnalysis>;
   } catch {
+    logIntentAnalyzeError({
+      code: "INTENT_ANALYZE_COMPAT_JSON_PARSE_FAILED",
+      message: "Fallback intent analyze response JSON parse failed.",
+      source: "openai-compat",
+      details: { model: OPENAI_COMPAT_MODEL },
+    });
     return null;
   }
 }
