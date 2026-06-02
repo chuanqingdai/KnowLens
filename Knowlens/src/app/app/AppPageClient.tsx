@@ -1788,7 +1788,6 @@ export default function Home() {
     () => featuredFilteredItems.slice(0, featuredVisibleCount),
     [featuredFilteredItems, featuredVisibleCount],
   );
-  const shouldUseFourColumnFeaturedGrid = featuredFilteredItems.length > 4;
 
   const hasMoreFeaturedItems = featuredVisibleCount < featuredFilteredItems.length;
 
@@ -2150,13 +2149,7 @@ export default function Home() {
                 ))}
               </div>
 
-              <div
-                className={
-                  shouldUseFourColumnFeaturedGrid
-                    ? "grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4"
-                    : "columns-2 gap-4 md:columns-3 lg:columns-4"
-                }
-              >
+              <div className="columns-1 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
                 {featuredVisibleItems.map((item, index) => {
                     const metric = getCaseMetrics(item.id, item.views, item.likes, currentEmail);
                     return (
@@ -2171,11 +2164,7 @@ export default function Home() {
                         openFeaturedPreview(item);
                       }
                     }}
-                    className={`group w-full overflow-hidden rounded-xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] ${
-                      shouldUseFourColumnFeaturedGrid
-                        ? "mb-0 inline-block break-inside-avoid-column"
-                        : "mb-4 inline-block break-inside-avoid-column align-top"
-                    }`}
+                    className="group mb-4 inline-block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative w-full bg-zinc-100">
                       <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>

@@ -208,6 +208,7 @@ function buildPosterCardCopy(
   index: number,
   posterCount: number,
 ) {
+  const singlePoster = posterCount === 1;
   const titleLine =
     plan?.title?.trim() ||
     posterDraft?.headline?.trim() ||
@@ -216,7 +217,7 @@ function buildPosterCardCopy(
   const keyFacts = (plan?.keyFacts ?? posterDraft?.points ?? [])
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, singlePoster ? 8 : 5);
   const numberedFacts = keyFacts.map((item, idx) => `${idx + 1}. ${item}`);
   const visualStructure =
     plan?.visualType?.trim() ||
@@ -684,7 +685,7 @@ export function PosterCanvas({
       (posterDraft?.points ?? []).join("||"),
     ].join("|");
     const planPart = posterPlanList
-      .map((item) => `${item.index}|${item.title}|${item.focus}`)
+      .map((item) => `${item.index}|${item.title}|${item.focus}|${(item.keyFacts ?? []).join("||")}|${item.visualType || ""}|${item.layoutHint || ""}`)
       .join("||");
     return `${generationSessionSeed}__${count}__${draftPart}__${planPart}`;
   }, [

@@ -148,6 +148,11 @@ const PAID_MODEL_MAP: Record<string, string> = {
   "claude-sonnet-4.6": process.env.PAID_MODEL_CLAUDE_SONNET_46 || "claude-sonnet-4.6",
 };
 const DRAFT_MODEL_TIMEOUT_MS = Number.parseInt(process.env.DRAFT_MODEL_TIMEOUT_MS || "", 10) || 90000;
+const GPTSAPI_BASE_URL = (process.env.GPTSAPI_BASE_URL || "https://api.gptsapi.net/v1").replace(/\/+$/, "");
+const GPTSAPI_CHAT_COMPLETIONS_URL =
+  process.env.GPTSAPI_CHAT_COMPLETIONS_URL ||
+  process.env.GPTSAPI_OPENAI_COMPAT_CHAT_COMPLETIONS_URL ||
+  `${GPTSAPI_BASE_URL}/chat/completions`;
 
 async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
@@ -171,10 +176,13 @@ function isFreeTextModel(textModel?: string) {
 
 function resolvePaidModel(textModel?: string) {
   const normalized = (textModel || "").trim().toLowerCase();
+  if (normalized && FREE_MODEL_IDS.has(normalized)) {
+    return GPTSAPI_MODEL_MAP[normalized] || normalized;
+  }
   if (normalized && PAID_MODEL_IDS.has(normalized)) {
     return PAID_MODEL_MAP[normalized] || normalized;
   }
-  return process.env.PAID_TEXT_MODEL_DEFAULT || process.env.OPENAI_TEXT_MODEL || "gpt-5.4";
+  return process.env.PAID_TEXT_MODEL_DEFAULT || process.env.OPENAI_TEXT_MODEL || process.env.GPTSAPI_MODEL_GEMINI_25 || "gemini-2.5-flash";
 }
 
 function getGptsApiKeyForModel(textModel: string) {
@@ -201,7 +209,6 @@ function getPaidChatCompletionsApiKey() {
   return (
     process.env.PAID_LLM_API_KEY ||
     process.env.OPENAI_API_KEY ||
-    process.env.IMAGE2_TUZI_PROVIDER_API_KEY ||
     ""
   );
 }
@@ -213,17 +220,11 @@ function getPaidChatCompletionsUrl() {
   if (explicitUrl) {
     return explicitUrl;
   }
-  const tuziEndpoint = process.env.IMAGE2_TUZI_PROVIDER_ENDPOINT || "";
-  if (process.env.IMAGE2_TUZI_PROVIDER_API_KEY && tuziEndpoint.startsWith("https://api.tu-zi.com/")) {
-    return "https://api.tu-zi.com/v1/chat/completions";
-  }
-  return (
-    "https://api.openai.com/v1/chat/completions"
-  );
+  return process.env.OPENAI_API_KEY ? "https://api.openai.com/v1/chat/completions" : "";
 }
 
 function hasOpenAICompatDraftProvider() {
-  return Boolean(getPaidChatCompletionsApiKey());
+  return Boolean(getPaidChatCompletionsApiKey() && getPaidChatCompletionsUrl());
 }
 
 function estimateTokenCount(text: string) {
@@ -288,34 +289,25 @@ async function requestDraftFromGptsApi(input: {
     return { ok: false as const, error: `Missing API key for model ${input.textModel}.` };
   }
 
-  const requestBody = {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `${input.promptBundle.systemPrompt}\n\n${input.promptBundle.userPrompt}`,
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.2,
-    },
-  };
-
   let response: Response;
   try {
     response = await fetchWithTimeout(
-      `https://api.gptsapi.net/v1beta/models/${encodeURIComponent(providerModel)}:generateContent`,
+      GPTSAPI_CHAT_COMPLETIONS_URL,
       {
         method: "POST",
         headers: {
-          "x-goog-api-key": apiKey,
           "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          model: providerModel,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: input.promptBundle.systemPrompt },
+            { role: "user", content: input.promptBundle.userPrompt },
+          ],
+          response_format: { type: "json_object" },
+        }),
       },
       DRAFT_MODEL_TIMEOUT_MS,
     );
@@ -337,25 +329,21 @@ async function requestDraftFromGptsApi(input: {
     };
   }
 
-  const data = (await response.json()) as GptsApiGenerateResponse;
-  const text =
-    data.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text?.trim() ?? "")
-      .filter(Boolean)
-      .join("\n") ?? "";
+  const data = (await response.json()) as OpenAICompatChatCompletionResponse;
+  const text = data.choices?.[0]?.message?.content?.trim() || "";
   if (!text) {
     return { ok: false as const, error: "Empty model response." };
   }
 
   const usage = normalizeDraftLlmUsage({
-    inputTokens: data.usageMetadata?.promptTokenCount,
-    outputTokens: data.usageMetadata?.candidatesTokenCount,
-    totalTokens: data.usageMetadata?.totalTokenCount,
-    model: data.modelVersion ?? providerModel,
+    inputTokens: data.usage?.prompt_tokens,
+    outputTokens: data.usage?.completion_tokens,
+    totalTokens: data.usage?.total_tokens,
+    model: data.model ?? providerModel,
     source: "provider",
   });
 
-  return { ok: true as const, text, modelVersion: data.modelVersion ?? providerModel, usage };
+  return { ok: true as const, text, modelVersion: data.model ?? providerModel, usage };
 }
 
 async function requestDraftFromPaidModels(input: {
@@ -369,6 +357,9 @@ async function requestDraftFromPaidModels(input: {
 
   const model = resolvePaidModel(input.textModel);
   const endpoint = getPaidChatCompletionsUrl();
+  if (!endpoint) {
+    return { ok: false as const, error: "Missing paid model chat completions URL." };
+  }
   let response: Response;
   try {
     response = await fetchWithTimeout(
@@ -539,6 +530,48 @@ function isDataSummaryInput(topic: string, prompt: string) {
   return dataCueCount >= 2;
 }
 
+function isDenseSourceInput(prompt: string) {
+  const source = (prompt || "").trim();
+  if (!source) {
+    return false;
+  }
+  const sentenceCount = (source.match(/[。！？.!?\n]/g)?.length ?? 0);
+  const numberCount = (source.match(/\d/g)?.length ?? 0);
+  return source.length >= 380 || sentenceCount >= 8 || numberCount >= 20;
+}
+
+function buildSinglePosterDataFocus(topic: string, outputLanguage: OutputLanguage) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return ensureSentenceEnding(
+      `One-page investor brief for ${topic}: cover core metrics, business structure shifts, growth drivers, risk points, and next-quarter guidance`,
+      outputLanguage,
+    );
+  }
+  return ensureSentenceEnding(
+    `一页聚焦${topic}的核心业绩、业务结构变化、增长驱动、风险点与下季度指引`,
+    outputLanguage,
+  );
+}
+
+function buildSinglePosterModuleFacts(topic: string, outputLanguage: OutputLanguage) {
+  if (!isChineseLanguage(outputLanguage)) {
+    return [
+      ensureSentenceEnding("Module 1: Core metrics and growth snapshot", outputLanguage),
+      ensureSentenceEnding("Module 2: Data center and segment structure changes", outputLanguage),
+      ensureSentenceEnding("Module 3: New reporting structure and platform narrative", outputLanguage),
+      ensureSentenceEnding("Module 4: Capital return, next-quarter guidance, and growth assumptions", outputLanguage),
+      ensureSentenceEnding("Module 5: Investor watchlist: growth durability, margin, customer capex, and regional risk", outputLanguage),
+    ];
+  }
+  return [
+    ensureSentenceEnding("模块1：核心财务数据与增长快照", outputLanguage),
+    ensureSentenceEnding("模块2：数据中心与业务结构变化", outputLanguage),
+    ensureSentenceEnding("模块3：新业务口径与平台叙事变化", outputLanguage),
+    ensureSentenceEnding("模块4：股东回报、下季度指引与增长假设", outputLanguage),
+    ensureSentenceEnding("模块5：投资者关注点：增长持续性、毛利率、客户资本开支与区域风险", outputLanguage),
+  ];
+}
+
 function cleanDataSummaryFactLine(line: string, outputLanguage: OutputLanguage) {
   const cleaned = line
     .replace(/(?:做成|生成|制作|输出)\s*\d+\s*(?:张|页|个分镜|帧)?\s*(?:信息图|图片|海报|PPT|ppt|视频)?[。.!！?？]*$/i, "")
@@ -548,6 +581,73 @@ function cleanDataSummaryFactLine(line: string, outputLanguage: OutputLanguage) 
     .replace(/\s+/g, " ")
     .trim();
   return cleaned ? ensureSentenceEnding(cleaned, outputLanguage) : "";
+}
+
+function trimDataSummaryFactLine(line: string, outputLanguage: OutputLanguage) {
+  const cleaned = line.trim();
+  if (!cleaned) {
+    return "";
+  }
+  const maxLength = isChineseLanguage(outputLanguage) ? 180 : 260;
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+  const punctuationPattern = isChineseLanguage(outputLanguage) ? /[。！？；;]/g : /[.!?;]/g;
+  let lastSafeIndex = -1;
+  let match: RegExpExecArray | null;
+  while ((match = punctuationPattern.exec(cleaned)) !== null) {
+    if (match.index >= Math.floor(maxLength * 0.55) && match.index <= maxLength) {
+      lastSafeIndex = match.index + 1;
+    }
+  }
+  if (lastSafeIndex > 0) {
+    return cleaned.slice(0, lastSafeIndex).trim();
+  }
+  return cleaned.slice(0, maxLength).replace(/[，。！？；、,.;:：\-\s]+$/g, "").trim();
+}
+
+function findDataChunkEnd(source: string, start: number, nextIndex?: number) {
+  if (typeof nextIndex === "number") {
+    return nextIndex;
+  }
+  const searchStart = Math.min(source.length, start + 100);
+  const punctuationMatch = source.slice(searchStart).match(/[。！？；;]/);
+  if (punctuationMatch?.index != null) {
+    return searchStart + punctuationMatch.index + 1;
+  }
+  return Math.min(source.length, start + 220);
+}
+
+function splitDataSummarySentences(source: string) {
+  const normalized = source
+    .replace(/\r/g, "\n")
+    .replace(/[📅📊]/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+  if (!normalized) {
+    return [];
+  }
+  const matches = normalized.match(/[^。！？!?;\n]+[。！？!?;]?/g) ?? [];
+  return matches.map((line) => line.trim()).filter(Boolean);
+}
+
+function isDataSummarySentenceCandidate(line: string) {
+  const normalized = line.trim();
+  if (!normalized) {
+    return false;
+  }
+  const hasMetricValue =
+    /\d[\d,.]*\s*(?:亿|万|美元|元|%|百分点|基点|million|billion|trillion|B|M)/i.test(normalized) ||
+    /同比|环比|增长|下降|收窄|亏损|刷新历史纪录|创历史新高/i.test(normalized);
+  const hasBusinessTerm =
+    /财报|季度|截至|营收|收入|净利润|毛利率|每股收益|EPS|Data Center|数据中心|计算收入|网络收入|Hyperscale|ACIE|Edge Computing|股票回购|现金分红|回购授权|股息|下季度|第二季度|指引|中国|AI|Cloud|广告收入|Other Bets/i.test(
+      normalized,
+    );
+  const hasStrategicTerm =
+    /业务拆分|业务披露|商业叙事|卖 GPU|AI 计算平台|从云到边缘|护城河|投资者关注|增长持续性|客户资本开支|区域风险/i.test(
+      normalized,
+    );
+  return (hasMetricValue && hasBusinessTerm) || hasStrategicTerm;
 }
 
 function extractDataSummaryFacts(topic: string, prompt: string, outputLanguage: OutputLanguage) {
@@ -561,10 +661,32 @@ function extractDataSummaryFacts(topic: string, prompt: string, outputLanguage: 
 
   const metricAnchors = [
     "总营收",
+    "季度实现营收",
+    "实现营收",
+    "营收",
     "净利润",
+    "GAAP 净利润",
+    "GAAP 毛利率",
+    "Non-GAAP 毛利率",
+    "GAAP 稀释后每股收益",
+    "Non-GAAP 稀释后每股收益",
     "每股收益（EPS）",
     "每股收益",
     "EPS",
+    "Data Center",
+    "数据中心业务",
+    "数据中心计算",
+    "数据中心网络",
+    "Hyperscale",
+    "ACIE",
+    "Edge Computing",
+    "股票回购",
+    "现金分红",
+    "回购授权",
+    "季度现金股息",
+    "下季度",
+    "第二季度收入",
+    "中国的数据中心计算收入",
     "Google 广告收入",
     "广告收入",
     "搜索广告",
@@ -602,7 +724,7 @@ function extractDataSummaryFacts(topic: string, prompt: string, outputLanguage: 
   for (let idx = 0; idx < anchorPositions.length; idx += 1) {
     const current = anchorPositions[idx];
     const next = anchorPositions[idx + 1];
-    const end = next ? next.index : Math.min(source.length, current.index + 80);
+    const end = findDataChunkEnd(source, current.index, next?.index);
     const chunk = source.slice(current.index, end).trim();
     if (/\d|两位数|收窄|增长|下降|亏损/.test(chunk)) {
       chunks.push(chunk);
@@ -614,10 +736,14 @@ function extractDataSummaryFacts(topic: string, prompt: string, outputLanguage: 
     .map((line) => line.trim())
     .filter((line) => line && /(?:\d|同比|环比|营收|净利润|收入|利润|增长|亏损|EPS|Cloud)/i.test(line));
 
-  const normalized = dedupeLines(chunks.length >= 2 ? chunks : [...chunks, ...sentenceChunks])
-    .map((line) => cleanDataSummaryFactLine(line.slice(0, isChineseLanguage(outputLanguage) ? 70 : 110), outputLanguage))
+  const fullSentenceFacts = splitDataSummarySentences(prompt || topic)
+    .filter(isDataSummarySentenceCandidate)
+    .map((line) => trimDataSummaryFactLine(line, outputLanguage));
+
+  const normalized = dedupeLines([...fullSentenceFacts, ...chunks, ...sentenceChunks])
+    .map((line) => cleanDataSummaryFactLine(trimDataSummaryFactLine(line, outputLanguage), outputLanguage))
     .filter(Boolean)
-    .slice(0, 10);
+    .slice(0, 16);
   return normalized;
 }
 
@@ -1222,6 +1348,60 @@ function stripPromptCommandPrefix(value: string, outputLanguage: OutputLanguage)
     .trim();
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function toConciseDraftTitle(value: string, topic: string, outputLanguage: OutputLanguage) {
+  const maxZhChars = 18;
+  const maxEnWords = 8;
+  let candidate = normalizeWhitespace(
+    stripPromptCommandPrefix(stripListPrefix(value), outputLanguage),
+  )
+    .replace(/^[“”"'`]+|[“”"'`]+$/g, "")
+    .replace(/^(?:本页重点|页面内容|讲解文稿|画面文字|画面设计|画面结构|main\s*point|core\s*message|mechanism|memory\s*hook|narration|visual)\s*[：:]\s*/i, "")
+    .split(/\n+/)[0]
+    ?.trim();
+
+  if (!candidate) {
+    return "";
+  }
+
+  if (topic) {
+    const topicPrefix = new RegExp(`^${escapeRegExp(topic)}\\s*[：:·\\-–—|｜]?\\s*`, "i");
+    if (candidate.length > (isChineseLanguage(outputLanguage) ? maxZhChars : 48) && topicPrefix.test(candidate)) {
+      const withoutTopic = candidate.replace(topicPrefix, "").trim();
+      if (withoutTopic.length >= 2) {
+        candidate = withoutTopic;
+      }
+    }
+  }
+
+  const conciseSegment = candidate
+    .split(/[：:|｜，,；;。.!?！？]/)
+    .map((item) => item.trim())
+    .find((item) => item.length >= 2);
+  if (conciseSegment && conciseSegment.length < candidate.length) {
+    candidate = conciseSegment;
+  }
+
+  if (isChineseLanguage(outputLanguage)) {
+    if (candidate.length > maxZhChars) {
+      candidate = candidate.slice(0, maxZhChars).replace(/[，。！？；、,.;:：\-\s]+$/g, "").trim();
+    }
+    return candidate || topic;
+  }
+
+  const words = candidate.split(/\s+/).filter(Boolean);
+  if (words.length > maxEnWords) {
+    candidate = words.slice(0, maxEnWords).join(" ");
+  }
+  if (candidate.length > 72) {
+    candidate = candidate.slice(0, 72).replace(/[.,;:!?-\s]+$/g, "").trim();
+  }
+  return candidate || topic;
+}
+
 function isMetaInstructionLine(value: string, outputLanguage: OutputLanguage) {
   const line = value.replace(/\s+/g, "").toLowerCase();
   if (!line) {
@@ -1293,12 +1473,16 @@ function sanitizePlanTitle(value: string, topic: string, index: number, outputLa
     "",
   );
   if (cleaned) {
-    return cleaned;
+    return toConciseDraftTitle(cleaned, topic, outputLanguage) || cleaned;
   }
   if (isChineseLanguage(outputLanguage)) {
-    return index === 1 ? `${topic}：整体框架` : `${topic}：第${index}部分`;
+    return index === 1
+      ? toConciseDraftTitle(`${topic}：整体框架`, topic, outputLanguage)
+      : toConciseDraftTitle(`${topic}：第${index}部分`, topic, outputLanguage);
   }
-  return index === 1 ? `${topic}: Overview` : `${topic}: Part ${index}`;
+  return index === 1
+    ? toConciseDraftTitle(`${topic}: Overview`, topic, outputLanguage)
+    : toConciseDraftTitle(`${topic}: Part ${index}`, topic, outputLanguage);
 }
 
 function sanitizePlanFocus(
@@ -1330,6 +1514,7 @@ function sanitizePlanFactList(
   values: string[] | undefined,
   topic: string,
   outputLanguage: OutputLanguage,
+  maxItems = 5,
 ) {
   const normalized = dedupeLines(
     (values || [])
@@ -1339,7 +1524,7 @@ function sanitizePlanFactList(
       .filter((value) => value && !isMetaInstructionLine(value, outputLanguage)),
   );
   if (normalized.length) {
-    return normalized.slice(0, 5).map((value) => ensureSentenceEnding(value, outputLanguage));
+    return normalized.slice(0, maxItems).map((value) => ensureSentenceEnding(value, outputLanguage));
   }
   return [
     ensureSentenceEnding(
@@ -2235,9 +2420,9 @@ function normalizeOutlineItems(
     return Array.from({ length: count }, (_, idx) => {
       const item = list[idx];
       if (!item || isTemplateInstructionText(item)) {
-        return fallback[idx] || `${topic} · ${idx + 1}`;
+        return toConciseDraftTitle(fallback[idx] || `${topic} · ${idx + 1}`, topic, outputLanguage);
       }
-      return item;
+      return toConciseDraftTitle(item, topic, outputLanguage) || item;
     });
   }
   if (list.length >= count) {
@@ -2267,7 +2452,8 @@ function normalizeSlideDrafts(
       const row = item as PptSlideDraft;
       const fallback = fallbackSlides[idx] || fallbackSlides[fallbackSlides.length - 1];
       const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || fallback?.title || `Slide ${idx + 1}`;
-      const title = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const titleCandidate = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage) || titleCandidate;
       const mainPoint = normalizeTextItem(row.mainPoint);
       const body = normalizeTextItem(row.body);
       const support = normalizeTextItem(row.supportNote);
@@ -2298,7 +2484,8 @@ function normalizeSlideDrafts(
     }
     return {
       page: idx + 1,
-      title: title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`,
+      title: toConciseDraftTitle(title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`, topic, outputLanguage)
+        || title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`,
       body: fallbackSlides[idx]?.body || "",
       visual: fallbackSlides[idx]?.visual || "",
       imagePromptDraft: fallbackSlides[idx]?.imagePrompt || "",
@@ -2324,7 +2511,8 @@ function normalizeStoryboardDrafts(
       const row = item as VideoStoryboardDraft;
       const fallback = fallbackFrames[idx] || fallbackFrames[fallbackFrames.length - 1];
       const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || fallback?.title || `Frame ${idx + 1}`;
-      const title = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const titleCandidate = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage) || titleCandidate;
       const narration = normalizeTextItem(row.narration);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
@@ -2352,7 +2540,8 @@ function normalizeStoryboardDrafts(
     }
     return {
       index: idx + 1,
-      title: title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
+      title: toConciseDraftTitle(title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`, topic, outputLanguage)
+        || title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
       narration: fallbackFrames[idx]?.narration || "",
       visual: fallbackFrames[idx]?.visual || "",
       imagePromptDraft: fallbackFrames[idx]?.imagePrompt || "",
@@ -2610,6 +2799,8 @@ export async function POST(request: NextRequest) {
     });
     const topic = normalizeDraftTopic(rawTopic || prompt || "Knowledge Topic", outputLanguage);
     const dataSummaryMode = isDataSummaryInput(rawTopic || topic, prompt);
+    const preserveHighFidelityDraft =
+      outputCount === 1 && isDenseSourceInput(prompt) && (dataSummaryMode || prompt.length >= 520);
     const draftMode =
       payload.draftMode ?? (process.env.KNOWLENS_DRAFT_MODE === "mock" ? "mock" : "auto");
 
@@ -2856,7 +3047,7 @@ export async function POST(request: NextRequest) {
       body: mergedPosterDraft.body?.trim() || fallbackDraft.body,
       points:
         Array.isArray(mergedPosterDraft.points) && mergedPosterDraft.points.length
-          ? mergedPosterDraft.points.slice(0, 5).map((item) => item.trim()).filter(Boolean)
+          ? mergedPosterDraft.points.slice(0, preserveHighFidelityDraft ? 8 : 5).map((item) => item.trim()).filter(Boolean)
           : fallbackDraft.points,
       cta: mergedPosterDraft.cta?.trim() || fallbackDraft.cta,
       size: posterSizeLabel,
@@ -2875,19 +3066,35 @@ export async function POST(request: NextRequest) {
 
     const specificPosterDraft = enforcePosterSpecificityByLanguage(posterDraft, topic, outputLanguage);
 
-    const compactBody = specificPosterDraft.body
-      .split(/[。！？.!?]/)
-      .map((part) => simplifyTechnicalTerms(part.trim(), outputLanguage))
-      .filter(Boolean)
-      .slice(0, 3)
-      .join(isChineseLanguage(outputLanguage) ? "。" : ". ");
-    specificPosterDraft.body = compactBody
-      ? `${compactBody}${isChineseLanguage(outputLanguage) ? "。" : "."}`
-      : fallbackDraft.body;
+    if (preserveHighFidelityDraft) {
+      specificPosterDraft.body = normalizeWhitespace(
+        simplifyTechnicalTerms(specificPosterDraft.body || fallbackDraft.body, outputLanguage),
+      );
+    } else {
+      const compactBody = specificPosterDraft.body
+        .split(/[。！？.!?]/)
+        .map((part) => simplifyTechnicalTerms(part.trim(), outputLanguage))
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(isChineseLanguage(outputLanguage) ? "。" : ". ");
+      specificPosterDraft.body = compactBody
+        ? `${compactBody}${isChineseLanguage(outputLanguage) ? "。" : "."}`
+        : fallbackDraft.body;
+    }
     specificPosterDraft.points = (specificPosterDraft.points.length ? specificPosterDraft.points : fallbackDraft.points)
-      .slice(0, 5)
+      .slice(0, preserveHighFidelityDraft ? 8 : 5)
       .map((point) => simplifyTechnicalTerms(point.trim(), outputLanguage))
       .filter(Boolean);
+    if (dataSummaryMode && preserveHighFidelityDraft) {
+      const sourceFacts = extractDataSummaryFacts(topic, prompt, outputLanguage);
+      if (sourceFacts.length >= 4) {
+        specificPosterDraft.points = dedupeLines([
+          ...sourceFacts,
+          ...specificPosterDraft.points,
+        ]).slice(0, 10);
+        specificPosterDraft.body = sourceFacts.slice(0, 5).join(isChineseLanguage(outputLanguage) ? "" : " ");
+      }
+    }
     if (!specificPosterDraft.visualType) {
       specificPosterDraft.visualType = fallbackDraft.visualType;
     }
@@ -2995,17 +3202,28 @@ export async function POST(request: NextRequest) {
     const usedCoreMessages = new Set<string>();
     const mappedPlanList: PosterPlanItem[] = dataSummaryMode ? mappedPlanListRaw.map((item, idx) => {
       const fallback = fallbackPlan[idx] ?? fallbackPlan[fallbackPlan.length - 1];
+      const maxDataFacts = outputCount === 1 && preserveHighFidelityDraft ? 10 : preserveHighFidelityDraft ? 8 : 5;
+      const factBank = collectFactBankFromPosterDraft(specificPosterDraft, topic, outputLanguage);
+      const singlePageFacts =
+        outputCount === 1 && preserveHighFidelityDraft
+          ? [...buildSinglePosterModuleFacts(topic, outputLanguage), ...factBank.slice(0, 6)]
+          : null;
       const keyFacts = sanitizePlanFactList(
-        item.keyFacts?.length ? item.keyFacts : fallback?.keyFacts,
+        singlePageFacts ?? (item.keyFacts?.length ? item.keyFacts : fallback?.keyFacts),
         topic,
         outputLanguage,
+        maxDataFacts,
       );
+      const normalizedFocus =
+        outputCount === 1 && preserveHighFidelityDraft
+          ? buildSinglePosterDataFocus(topic, outputLanguage)
+          : sanitizePlanFocus(item.focus || "", fallback?.focus || specificPosterDraft.body, topic, outputLanguage);
       return {
         ...item,
         index: idx + 1,
         role: item.role || fallback?.role || (idx === 0 ? "data-summary" : "metrics"),
         title: sanitizePlanTitle(item.title || fallback?.title || topic, topic, idx + 1, outputLanguage),
-        focus: sanitizePlanFocus(item.focus || "", fallback?.focus || specificPosterDraft.body, topic, outputLanguage),
+        focus: normalizedFocus,
         keyFacts,
         visualType: item.visualType || fallback?.visualType || (isChineseLanguage(outputLanguage) ? "指标摘要图" : "metrics summary infographic"),
         visualElements: item.visualElements?.length

@@ -168,27 +168,43 @@ function compactPromptText(value: string, maxLen: number) {
     .trim();
 }
 
+function uniquePromptItems(items: string[], maxItems: number) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  items.forEach((item) => {
+    const compact = compactPromptText(item, 140);
+    const key = compact.toLowerCase();
+    if (!compact || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    result.push(compact);
+  });
+  return result.slice(0, maxItems);
+}
+
 function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["tasks"]>[number]) {
   const outputType = compactPromptText(task.outputType || "poster", 20) || "poster";
   const aspectRatio = compactPromptText(task.aspectRatio || "9:16", 24) || "9:16";
-  const stylePrompt = compactPromptText(task.stylePrompt || "", 240);
+  const stylePrompt = compactPromptText(task.stylePrompt || "", 180);
   const title = compactPromptText(task.contentTitle || "", 120);
   const contentBody = compactPromptText(
     task.contentBody || task.prompt || task.composedPrompt || "",
-    260,
+    220,
   );
   const visualHint = compactPromptText(task.visualHint || "", 160);
   const visibleTitle = compactPromptText(task.visibleText?.title || "", 120);
   const visibleSubtitle = compactPromptText(task.visibleText?.subtitle || "", 120);
   const visibleLabels = Array.isArray(task.visibleText?.labels)
-    ? task.visibleText.labels.map((item) => compactPromptText(String(item || ""), 60)).filter(Boolean).join(" | ")
+    ? uniquePromptItems(
+        task.visibleText.labels.map((item) => compactPromptText(String(item || ""), 54)).filter(Boolean),
+        4,
+      ).join(" | ")
     : "";
   const layout = compactPromptText(task.visualDesign?.layout || "", 180);
   const mainVisual = compactPromptText(task.visualDesign?.mainVisual || "", 180);
   const composition = compactPromptText(task.visualDesign?.composition || "", 180);
   const textDensity = compactPromptText(task.visualDesign?.textDensity || "", 24);
-  const informationStructure = compactPromptText(task.visualDesign?.informationStructure || "", 80);
-  const pageRole = compactPromptText(task.pageRole || task.visualDesign?.pageRole || "", 24) || "mechanism";
   const textMode = compactPromptText(task.textStrategy?.mode || "", 20) || "guided";
   const textTitleIdea = compactPromptText(task.textStrategy?.titleIdea || "", 80);
   const textConcepts = Array.isArray(task.textStrategy?.keyConcepts)
@@ -198,12 +214,15 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
   const textAllowRewrite = task.textStrategy?.allowRewrite;
   const draftHint = compactPromptText(task.imagePromptDraft || "", 220);
   const factualRules = Array.isArray(task.factualRules)
-    ? task.factualRules.map((item) => compactPromptText(String(item || ""), 80)).filter(Boolean).join(" | ")
+    ? uniquePromptItems(
+        task.factualRules.map((item) => compactPromptText(String(item || ""), 76)).filter(Boolean),
+        3,
+      ).join(" | ")
     : "";
   const negativeRules = Array.isArray(task.negativeRules)
     ? task.negativeRules.map((item) => compactPromptText(String(item || ""), 80)).filter(Boolean).join(" | ")
     : "";
-  const protectedFacts = compactPromptText(
+  const protectedFacts = uniquePromptItems(
     [
       title,
       contentBody,
@@ -215,43 +234,38 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
       .filter((item) =>
         /(\d|%|％|\$|美元|人民币|亿元|亿|万|q[1-4]|20\d{2}|19\d{2}|营收|收入|净利润|eps|每股收益|同比|环比|增长|下降|亏损|google|alphabet|nvidia|英伟达|cloud|广告)/i.test(item),
       )
-      .slice(0, 6)
-      .join(" | "),
-    420,
-  );
+      .map((item) => compactPromptText(item, 110)),
+    textMode === "strict" ? 7 : 4,
+  ).join(" | ");
 
   return [
-    `Create one ${outputType} visual with aspect ratio ${aspectRatio}.`,
-    stylePrompt ? `Style direction: ${stylePrompt}` : "",
+    `Create one ${aspectRatio} ${outputType} visual.`,
     title ? `Topic: ${title}` : "",
-    contentBody ? `Core message: ${contentBody}` : "",
-    `Page role: ${pageRole}.`,
-    "Prefer structured infographic layout over scenic artwork unless explicitly requested.",
-    "Use one dominant hero visual, clear information structure, embedded callouts, whitespace, and readable hierarchy.",
-    "Do not pull facts, labels, titles, or body text from other pages.",
-    protectedFacts ? `Protected facts that must remain accurate: ${protectedFacts}` : "",
+    contentBody ? `Current-page brief: ${contentBody}` : "",
+    protectedFacts ? `Must keep accurate: ${protectedFacts}` : "",
+    mainVisual ? `Hero visual: ${mainVisual}` : "",
+    composition ? `Composition: ${composition}` : "",
+    stylePrompt ? `Style: ${stylePrompt}` : "",
+    "Use one dominant hero visual, integrated infographic composition, embedded callouts, whitespace, and readable hierarchy.",
+    "Only use this current page/frame; do not pull facts, labels, titles, or body text from other pages.",
     textMode === "strict" && visibleTitle ? `Source title fact/text: ${visibleTitle}` : "",
     textMode === "strict" && visibleSubtitle ? `Source subtitle fact/text: ${visibleSubtitle}` : "",
-    visibleLabels ? `Short label ideas for this page only: ${visibleLabels}` : "",
-    layout ? `Layout direction: ${layout}` : "",
-    mainVisual ? `Main visual: ${mainVisual}` : "",
-    composition ? `Composition: ${composition}` : "",
-    informationStructure ? `Information structure: ${informationStructure}` : "",
+    textMode === "strict" && visibleLabels ? `Optional short label ideas: ${visibleLabels}` : "",
+    !composition && layout ? `Layout direction: ${layout}` : "",
     textDensity ? `Text density: ${textDensity}` : "",
-    `Text strategy mode: ${textMode === "strict" ? "fact-strict, expression-guided" : textMode}.`,
+    `Text: ${textMode === "strict" ? "fact-strict, expression-guided" : textMode}.`,
     textMode === "guided"
-      ? `Use concise ${textLanguage} labels around key concepts. Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity; the model may add a few relevant short labels. Do not add fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`
+      ? `Use concise ${textLanguage} labels. Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity. No fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`
       : textMode === "strict"
-        ? "Preserve protected facts exactly; auxiliary titles, labels, and visual notes may be lightly optimized if no facts are changed or invented. If no concrete data is provided, render a framework without made-up figures."
+        ? "Keep protected facts exact. Auxiliary titles and labels may be lightly optimized, but do not invent missing figures, dates, sources, rankings, or conclusions."
         : "Use minimal on-image text; keep labels extremely short only when needed.",
     textTitleIdea ? `Text title idea: ${textTitleIdea}` : "",
     textConcepts ? `Text key concepts: ${textConcepts}` : "",
-    draftHint ? `Draft visual hint (reference only): ${draftHint}` : "",
-    factualRules ? `Factual rules: ${factualRules}` : "",
+    draftHint ? `Optional visual hint: ${draftHint}` : "",
+    factualRules && !protectedFacts ? `Factual boundary: ${factualRules}` : "",
     negativeRules ? `Negative rules: ${negativeRules}` : "",
     visualHint ? `Visual guidance: ${visualHint}` : "",
-    "Use clear layout hierarchy and strong visual readability.",
-    "Avoid low-contrast text and cluttered composition.",
+    "Avoid heavy boxed segmentation, dashboard-like panels, internal field names, low-contrast text, and clutter.",
   ]
     .filter(Boolean)
     .join("\n")

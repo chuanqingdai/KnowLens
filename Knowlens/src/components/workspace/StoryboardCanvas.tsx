@@ -178,6 +178,23 @@ function buildPrompt(title: string, visual: string) {
   return `${title}，科普教学插画，构图清晰，知识图解风，16:9，重点表现：${visual}`;
 }
 
+function toConciseImageErrorMessage(error?: string) {
+  if (!error) {
+    return "Failed. Please retry.";
+  }
+  const normalized = error.toLowerCase();
+  if (normalized.includes("timeout")) {
+    return "Timed out. Please retry.";
+  }
+  if (normalized.includes("abort")) {
+    return "Request interrupted. Please retry.";
+  }
+  if (normalized.includes("save")) {
+    return "Save failed. Please retry.";
+  }
+  return "Failed. Please retry.";
+}
+
 function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
   return seedSlides.map((item) => ({
     ...item,
@@ -2385,6 +2402,12 @@ export function StoryboardCanvas({
                   const isActive = selectedSlideId === slide.id;
                   const prompt = promptBySlideId[slide.id] ?? buildPrompt(slide.title, slide.visual);
                   const historyOpen = historyOpenBySlideId[slide.id] ?? false;
+                  const generationState = generationTaskStateByIndex?.[slide.page];
+                  const isGenerating =
+                    generationState?.status === "queued" ||
+                    generationState?.status === "generating" ||
+                    generationState?.status === "retrying";
+                  const isGenerationFailed = generationState?.status === "failed";
                   return (
                     <section
                       key={`ppt-page-flow-${slide.id}`}
@@ -2411,6 +2434,38 @@ export function StoryboardCanvas({
                           fill
                           className="object-cover"
                         />
+                        {isGenerating ? (
+                          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
+                              <LoaderCircle size={12} className="animate-spin text-blue-500" />
+                              Generating image (2-3 min)
+                            </div>
+                          </div>
+                        ) : null}
+                        {isGenerationFailed ? (
+                          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
+                            <div className="max-w-[220px] rounded-lg border border-red-200 bg-white px-3 py-2 text-center shadow-sm">
+                              <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600">
+                                <AlertCircle size={15} />
+                              </div>
+                              <p className="text-xs font-medium text-zinc-800">Generation failed</p>
+                              <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
+                                {toConciseImageErrorMessage(generationState.error)}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  regenerateSlideImage(slide.id, slide.page);
+                                }}
+                                className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
+                              >
+                                <RotateCcw size={12} />
+                                Retry
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                         {slide.page === 1 ? (
                           <div className="absolute inset-0">
                             <textarea
@@ -2432,6 +2487,21 @@ export function StoryboardCanvas({
                               rows={2}
                             />
                           </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2">
+                        <p className="text-[11px] text-zinc-500">本页文稿</p>
+                        <p className="mt-1 text-xs font-semibold text-zinc-900">{slide.title}</p>
+                        {slide.body.trim() ? (
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-zinc-700">
+                            {slide.body}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-zinc-500">正在等待文稿内容…</p>
+                        )}
+                        {slide.visual.trim() ? (
+                          <p className="mt-1 text-xs text-zinc-600">画面结构：{slide.visual}</p>
                         ) : null}
                       </div>
 

@@ -17,7 +17,7 @@ export type TuziImagePayload = {
   response_format: "url";
 };
 
-const MAX_FINAL_IMAGE_PROMPT_CHARS = 2000;
+const MAX_FINAL_IMAGE_PROMPT_CHARS = 1500;
 const IMAGE_PROMPT_POLISH_SUFFIX =
   "Make the image feel like a refined, professional, and aesthetically polished educational infographic with one dominant hero visual, integrated poster-like composition, soft visual transitions, natural embedded callouts, clear diagrammatic storytelling, elegant spacing, balanced information density, and cohesive premium design.";
 const IMAGE_PROMPT_NOISE_PATTERNS = [
@@ -67,6 +67,21 @@ function splitPromptSentences(input: string, maxItems: number, maxLength: number
     .map((item) => sanitizePromptSignal(item, maxLength))
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function uniquePromptItems(items: string[], maxItems: number) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  items.forEach((item) => {
+    const compact = compactText(item, 160);
+    const key = compact.toLowerCase();
+    if (!compact || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    result.push(compact);
+  });
+  return result.slice(0, maxItems);
 }
 
 function extractProtectedFacts(input: string, maxItems = 6) {
@@ -279,7 +294,7 @@ export function buildTuziImagePrompt(input: {
 }) {
   // Prompt3: compile one confirmed draft page/frame into one image-generation prompt.
   // Visual-translation composition: current-page task first, optional fields only when they sharpen that task.
-  const currentContent = sanitizePromptSignal(input.draftContent, 520);
+  const currentContent = sanitizePromptSignal(input.draftContent, 420);
   const style = compactText(input.selectedStyle, 220);
   const ratio = compactText(input.aspectRatio, 24) || "9:16";
   const index = Number.isFinite(input.posterIndex) ? Math.max(1, Math.round(input.posterIndex)) : 1;
@@ -293,13 +308,12 @@ export function buildTuziImagePrompt(input: {
     .slice(0, 5)
     .join(", ");
   // Draft-layer prompt text should only be treated as hint, not final prompt source.
-  const sourceImagePromptDraft = sanitizePromptSignal(input.imagePromptDraft || input.imagePrompt || "", 180);
+  const sourceImagePromptDraft = sanitizePromptSignal(input.imagePromptDraft || input.imagePrompt || "", 120);
   const visibleTitle = sanitizePromptSignal(input.visibleText?.title || "", 120);
   const visibleSubtitle = sanitizePromptSignal(input.visibleText?.subtitle || "", 120);
-  const visibleLabels = (input.visibleText?.labels || [])
+  const visibleLabels = uniquePromptItems((input.visibleText?.labels || [])
     .map((item) => sanitizePromptSignal(item, 56))
-    .filter(Boolean)
-    .slice(0, pageRole === "cover" || outputType === "video" ? 2 : 5)
+    .filter(Boolean), pageRole === "cover" || outputType === "video" ? 2 : 4)
     .join(" | ");
   const visualDesignLayout = sanitizePromptSignal(input.visualDesign?.layout || "", 140);
   const visualDesignMainVisual = sanitizePromptSignal(input.visualDesign?.mainVisual || "", 150);
@@ -319,17 +333,19 @@ export function buildTuziImagePrompt(input: {
   const textStrategyLanguage = compactText(input.textStrategy?.language || "", 40) || "Simplified Chinese";
   const textStrategyDensity = compactText(input.textStrategy?.density || "", 20) || visualDesignTextDensity || "medium";
   const textStrategyAllowRewrite = input.textStrategy?.allowRewrite ?? (textStrategyMode === "guided");
-  const factualRules = (input.factualRules || [])
-    .map((item) => sanitizePromptSignal(item, 120))
-    .filter(Boolean)
-    .slice(0, 5)
-    .join(" | ");
+  const factualRules = uniquePromptItems(
+    (input.factualRules || [])
+      .map((item) => sanitizePromptSignal(item, 90))
+      .filter(Boolean),
+    3,
+  ).join(" | ");
   const negativeRules = (input.negativeRules || [])
     .map((item) => sanitizePromptSignal(item, 120))
     .filter(Boolean)
     .slice(0, 6)
     .join(" | ");
-  const protectedFacts = extractProtectedFacts(
+  const isStrictText = textStrategyMode === "strict";
+  const protectedFacts = uniquePromptItems(extractProtectedFacts(
     [
       currentContent,
       visibleTitle,
@@ -337,8 +353,8 @@ export function buildTuziImagePrompt(input: {
       visibleLabels,
       factualRules,
     ].join(" "),
-    6,
-  ).join(" | ");
+    isStrictText ? 8 : 4,
+  ), isStrictText ? 8 : 4).join(" | ");
   const seriesTitleArea = sanitizePromptSignal(input.seriesStyle?.titleArea || "", 120);
   const seriesIconSystem = sanitizePromptSignal(input.seriesStyle?.iconSystem || "", 120);
   const seriesColorSystem = sanitizePromptSignal(input.seriesStyle?.colorSystem || "", 120);
@@ -379,10 +395,9 @@ export function buildTuziImagePrompt(input: {
   const textStrategyGuidance = (() => {
     if (textStrategyMode === "strict") {
       return [
-        "Text strategy: fact-strict, expression-guided.",
-        "Preserve protected facts exactly: numbers, dates, amounts, percentages, company/product names, metric names, sources, and key conclusions.",
-        "Auxiliary titles, short labels, and visual annotations may be lightly optimized for readability as long as protected facts are not changed, omitted, or invented.",
-        "If no concrete data is provided, render a framework-style infographic without made-up figures.",
+        "Text: fact-strict, expression-guided.",
+        "Keep protected facts exact; do not invent missing numbers, dates, sources, rankings, or conclusions.",
+        "Auxiliary titles and labels may be lightly optimized for readability.",
       ].join(" ");
     }
     if (textStrategyMode === "minimal") {
@@ -392,56 +407,48 @@ export function buildTuziImagePrompt(input: {
       ].join(" ");
     }
     return [
-      "Text strategy: guided (default).",
-      `Language: ${textStrategyLanguage}; density: ${textStrategyDensity}; allowRewrite=${textStrategyAllowRewrite ? "true" : "false"}.`,
-      "Use concise labels based on the theme and key concepts; the model may add a few relevant title words, short labels, or annotations when useful.",
-      "The model may lightly rewrite, compress, and rearrange ordinary explanatory wording for visual clarity while preserving meaning.",
-      "Keep labels short, readable, relevant, and integrated into the visual.",
-      "Do not add fake numbers, unrelated concepts, wrong-language labels, or dense paragraphs.",
+      "Text: guided.",
+      `Use concise ${textStrategyLanguage} labels with ${textStrategyDensity} density.`,
+      textStrategyAllowRewrite
+        ? "Lightly rewrite ordinary wording for visual clarity while preserving meaning."
+        : "Keep supplied wording close to the source.",
+      "No fake numbers, unrelated concepts, wrong-language labels, or dense paragraphs.",
     ].join(" ");
   })();
 
   const coreSections = [
-    `Create one ${outputType} visual in ${ratio} for page/frame ${index} of ${total}.`,
-    "Only visualize this current page/frame; do not pull facts, labels, titles, or body text from other pages.",
-    describedRole,
-    `Use this style direction: ${style || "Clean modern educational infographic."}`,
-    currentContent ? `Current page content to translate visually: ${currentContent}` : "",
+    `Create one ${ratio} ${outputType} visual for page/frame ${index} of ${total}.`,
+    currentContent ? `Current-page brief: ${currentContent}` : "",
+    protectedFacts ? `Must keep accurate: ${protectedFacts}` : "",
+    visualDesignMainVisual ? `Hero visual: ${visualDesignMainVisual}` : "",
+    visualDesignComposition ? `Composition: ${visualDesignComposition}` : describedRole,
+    `Style: ${style || "Clean modern educational infographic."}`,
     mediumGuidance,
-    "Prefer structured infographic composition over scenic artwork unless the prompt explicitly asks for scenic visuals.",
-    visualDesignMainVisual ? `Dominant hero visual: ${visualDesignMainVisual}` : "",
-    visualDesignComposition ? `Composition direction: ${visualDesignComposition}` : "",
     describedLayout,
     describeTextDensity(pageRole, outputType, textStrategyDensity),
-    "Prioritize diagrammatic storytelling, soft visual transitions, embedded callouts, generous whitespace, and refined typography hierarchy.",
-    "Avoid heavy boxed segmentation, dashboard-like panels, many large rectangular cards, and scenic background plus arrows as the main solution.",
-    total > 1 && index > 1
-      ? "For this non-cover poster, do not redraw the whole series framework; only visualize this page's single point."
-      : "",
-    protectedFacts ? `Protected facts that must remain accurate: ${protectedFacts}` : "",
     textStrategyGuidance,
-    "Avoid UI, billing, settings, or workflow words in the rendered image.",
-    "Do not render internal drafting field names, workflow labels, or prompt instructions as visible text.",
+    "Only use this current page/frame. Do not import other pages' facts or labels.",
+    "Avoid heavy boxed segmentation, dashboard-like panels, many large rectangular cards, scenic-background-plus-arrows, UI/billing/workflow words, and internal field names.",
   ];
   const optionalSections = [
     visualType ? `A suitable visual form is ${visualType}.` : "",
     visualElements ? `Use these drawable elements when they fit this page: ${visualElements}.` : "",
-    sourceImagePromptDraft ? `Draft-layer visual hint to consider only if helpful: ${sourceImagePromptDraft}` : "",
+    sourceImagePromptDraft ? `Optional visual hint: ${sourceImagePromptDraft}` : "",
     textStrategyTitleIdea ? `Main title idea: ${textStrategyTitleIdea}` : "",
     textStrategyConcepts ? `Key concepts to express visually: ${textStrategyConcepts}` : "",
     visibleTitle && textStrategyMode === "strict" ? `Source title fact/text: ${visibleTitle}` : "",
     visibleSubtitle && textStrategyMode === "strict" ? `Source subtitle fact/text: ${visibleSubtitle}` : "",
-    visibleLabels ? `Short label ideas for this page only: ${visibleLabels}` : "",
-    visualDesignLayout ? `Layout direction: ${visualDesignLayout}` : "",
+    visibleLabels && textStrategyMode === "strict" ? `Optional short label ideas: ${visibleLabels}` : "",
+    visualDesignLayout && !visualDesignComposition ? `Layout direction: ${visualDesignLayout}` : "",
     visualDesignMapRegion ? `Relevant map/region context: ${visualDesignMapRegion}` : "",
     visualDesignChartType ? `If charting is needed, use this chart direction: ${visualDesignChartType}` : "",
     visualDesignWorkflowType ? `If showing a workflow, use this direction: ${visualDesignWorkflowType}` : "",
-    factualRules ? `Factual boundary: ${factualRules}` : "",
+    factualRules && !protectedFacts ? `Factual boundary: ${factualRules}` : "",
     negativeRules ? `Avoid: ${negativeRules}` : "",
-    seriesTitleArea ? `Series visual consistency only - title placement: ${seriesTitleArea}` : "",
-    seriesIconSystem ? `Series visual consistency only - icon styling: ${seriesIconSystem}` : "",
-    seriesColorSystem ? `Series visual consistency only - color treatment: ${seriesColorSystem}` : "",
-    seriesPageModule ? `Series visual consistency only - annotation/module style: ${seriesPageModule}` : "",
+    seriesTitleArea ? `Series visual consistency: title placement ${seriesTitleArea}` : "",
+    seriesIconSystem ? `Series visual consistency: icon style ${seriesIconSystem}` : "",
+    seriesColorSystem ? `Series visual consistency: colors ${seriesColorSystem}` : "",
+    seriesPageModule ? `Series visual consistency: callout/module style ${seriesPageModule}` : "",
     seriesLanguageRule ? `Language rule: ${seriesLanguageRule}` : "",
   ].filter(Boolean);
   const polishedSuffix = IMAGE_PROMPT_POLISH_SUFFIX.trim();

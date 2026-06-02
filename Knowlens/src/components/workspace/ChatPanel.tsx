@@ -1,5 +1,4 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { Check, LoaderCircle, Lock } from "lucide-react";
 
 export type ChatTurn = {
@@ -124,10 +123,12 @@ function StyleCover({ style }: { style: StyleOption }) {
   const [imageFailed, setImageFailed] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [coverSrc, setCoverSrc] = useState(() => styleCoverCandidates(style.coverImage)[0] ?? "");
+  const retryCountRef = useRef(0);
   const candidates = useMemo(() => styleCoverCandidates(style.coverImage), [style.coverImage]);
   useEffect(() => {
     setImageFailed(false);
     setImageLoaded(false);
+    retryCountRef.current = 0;
     setCoverSrc(candidates[0] ?? "");
   }, [candidates]);
   if (!coverSrc || imageFailed) {
@@ -143,19 +144,26 @@ function StyleCover({ style }: { style: StyleOption }) {
   return (
     <>
       {!imageLoaded ? <div className="skeleton-shimmer absolute inset-0" /> : null}
-      <Image
+      <img
         src={coverSrc}
         alt={style.name}
-        fill
-        unoptimized
-        sizes="(max-width: 1024px) 50vw, 25vw"
-        className={`absolute inset-0 h-full w-full !rounded-none object-cover align-top transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+        loading="eager"
+        decoding="async"
+        className={`absolute inset-0 block h-full w-full rounded-none object-cover align-top transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           const currentIndex = candidates.findIndex((candidate) => candidate === coverSrc);
-          const nextCandidate = candidates[currentIndex + 1];
+          const nextCandidate = currentIndex >= 0 ? candidates[currentIndex + 1] : "";
           if (nextCandidate) {
             setCoverSrc(nextCandidate);
+            return;
+          }
+          if (retryCountRef.current < 2 && coverSrc) {
+            retryCountRef.current += 1;
+            window.setTimeout(() => {
+              setImageLoaded(false);
+              setCoverSrc(`${coverSrc}${coverSrc.includes("?") ? "&" : "?"}retry=${retryCountRef.current}`);
+            }, 900);
             return;
           }
           setImageFailed(true);
@@ -207,6 +215,57 @@ function normalizeSlashLineBreaks(text: string) {
     .replace(/\s*\/\s*/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function splitDraftDisplaySentences(text: string) {
+  return text
+    .split(/[。！？!?;\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => `${part}。`);
+}
+
+function isDraftModulePlaceholder(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return /^(?:module|模块)\s*\d+\s*[:：]/i.test(normalized);
+}
+
+function isDraftInstructionArtifact(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return /(?:请把下面内容|把下面内容|一页聚焦把|适合投资者快速理解|重点展示|做成一组|生成一组)/i.test(
+    normalized,
+  );
+}
+
+function isStandaloneDraftFragment(text: string) {
+  const normalized = text.replace(/[。.!！?？\s]/g, "").trim();
+  if (!normalized) {
+    return true;
+  }
+  if (/^(?:GAAP|Non-GAAP|EPS|稀释后|Non-GAAP稀释后|GAAP稀释后)$/i.test(normalized)) {
+    return true;
+  }
+  if (/每股收益为\s*[\d.]+\s*(?:美元|元)?[，,]\s*(?:Non-)?GAAP\s*稀释后[。.]?$/i.test(text.trim())) {
+    return true;
+  }
+  if (normalized.length <= 8 && !/\d/.test(normalized)) {
+    return true;
+  }
+  if (/每股收益为\d/.test(normalized) && !/(?:GAAP|Non-GAAP|EPS|稀释后每股收益)/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeDraftDisplayLine(text: string, max = 180) {
+  const cleaned = compactDraftLine(formatPosterPoint(text), max);
+  if (!cleaned) {
+    return "";
+  }
+  if (isDraftModulePlaceholder(cleaned) || isDraftInstructionArtifact(cleaned) || isStandaloneDraftFragment(cleaned)) {
+    return "";
+  }
+  return cleaned;
 }
 
 function compactChatTurnsForDisplay(turns: ChatTurn[]) {
@@ -337,7 +396,11 @@ type ChatPanelProps = {
   onSelectStyle: (styleId: string) => void;
   onStyleNext: () => void;
   onConfirmBilling: () => void;
-  onUpgradeForCredits?: () => void;
+  onUpgradeForCredits?: (context?: {
+    scene: "count_limit" | "billing_insufficient";
+    kind?: "poster" | "ppt" | "video";
+    count?: number;
+  }) => void;
   visualizationTypeHint: string | null;
   thinkingState: {
     active: boolean;
@@ -419,9 +482,42 @@ export const ChatPanel = memo(function ChatPanel({
   retryingErrorTurnIds,
   onRetryErrorTurn,
 }: ChatPanelProps) {
-  const isZh = outputLanguage === "zh";
-  const shouldUseEnglishUi = !isZh;
+  void outputLanguage;
+  const isZh = false;
+  const shouldUseEnglishUi = true;
   const t = (en: string, zh: string) => (isZh ? zh : en);
+  const prompt1LoadingMessages = useMemo(
+    () =>
+      [
+        "Understanding your topic and input content...",
+        "Reading the first request carefully...",
+        "Checking whether this is a complete brief or a broad topic...",
+        "Identifying the real output intent behind the wording...",
+        "Separating the main topic from extra background details...",
+        "Detecting whether the request needs guided topic options...",
+        "Preparing the next best step for this workflow...",
+        "Drafting relevant topic angles when the request is broad...",
+        "Checking that suggestions stay close to your topic...",
+        "Removing generic template suggestions...",
+        "Finalizing the guided options...",
+      ],
+    [],
+  );
+  const [prompt1LoadingMessageIndex, setPrompt1LoadingMessageIndex] = useState(0);
+  useEffect(() => {
+    if (!(showWeakPromptSuggestions && topicSuggestionsLoading)) {
+      setPrompt1LoadingMessageIndex(0);
+      return;
+    }
+    const timerId = window.setInterval(() => {
+      setPrompt1LoadingMessageIndex((prev) => (prev + 1) % prompt1LoadingMessages.length);
+    }, 2400);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [showWeakPromptSuggestions, topicSuggestionsLoading, prompt1LoadingMessages.length]);
+  const prompt1LoadingMessage =
+    prompt1LoadingMessages[prompt1LoadingMessageIndex] ?? prompt1LoadingMessages[0];
   const isPremiumCountLocked = useCallback((kind: "poster" | "ppt" | "video", count: number) => {
     if (!isFreeUser) {
       return false;
@@ -444,7 +540,11 @@ export const ChatPanel = memo(function ChatPanel({
       return;
     }
     if (isPremiumCountLocked(input.kind, input.count)) {
-      onUpgradeForCredits?.();
+      onUpgradeForCredits?.({
+        scene: "count_limit",
+        kind: input.kind,
+        count: input.count,
+      });
       return;
     }
     input.onSelect(input.count);
@@ -536,7 +636,10 @@ export const ChatPanel = memo(function ChatPanel({
 
   const handleBillingConfirm = () => {
     if (!canConfirmBilling) {
-      onUpgradeForCredits?.();
+      onUpgradeForCredits?.({
+        scene: "billing_insufficient",
+        kind: selectedIntent ?? undefined,
+      });
       return;
     }
     onConfirmBilling();
@@ -625,7 +728,11 @@ export const ChatPanel = memo(function ChatPanel({
   const showMainSummaryBlock = !showDirectionGuide && !showStyleStage && !showBillingConfirm;
   const showPersistentDirectionSummary = !showDirectionGuide && Boolean(configConfirmed && selectedIntent);
   const showDirectionCard = showDirectionGuide || Boolean(selectedIntent);
-  const showWorkflowSummaryCard = !(showWeakPromptSuggestions && showDirectionGuide) && !topicSuggestionLocked;
+  const showWorkflowSummaryCard =
+    !configConfirmed &&
+    !topicSuggestionsLoading &&
+    !(showWeakPromptSuggestions && showDirectionGuide) &&
+    !topicSuggestionLocked;
   const isDirectionLocked = configConfirmed && !showDirectionGuide;
   const shouldShowDraftConfirmAction = !showStyleStage && !showBillingConfirm && !styleConfirmed;
   const hasDraftContentCard =
@@ -637,20 +744,61 @@ export const ChatPanel = memo(function ChatPanel({
   const shouldShowDraftLoadingCard =
     configConfirmed &&
     (isDraftGenerationPending || (draftGenerationLoadingActive && !hasDraftContentCard));
-  const draftLoadingTitle = isZh ? "KnowLens.ai · 文稿生成" : "KnowLens.ai · Draft Content";
-  const draftLoadingText = thinkingState.text
-    || (isZh ? "正在生成文稿草稿，请稍候..." : "Generating the draft content. Please wait...");
-  const draftLoadingSteps = isZh
-    ? [
-        "正在理解你的需求上下文",
-        "正在组织页面结构与重点",
-        "正在生成可审阅文稿草稿",
-      ]
-    : [
-        "Understanding your request context",
-        "Structuring the page flow and key points",
-        "Generating a reviewable draft",
-      ];
+  const draftLoadingTitle = "KnowLens.ai · Draft Content";
+  const rotatingDraftLoadingMessages = [
+    "Reading the confirmed direction and output count...",
+    "Sending the draft request to the language model...",
+    "Preserving user-provided facts, numbers, and structure...",
+    "Deciding what each page or frame should cover...",
+    "Separating core points from supporting details...",
+    "Keeping complete information units intact...",
+    "Adapting the content rhythm for poster, slides, or video...",
+    "Preparing concise titles for review...",
+    "Creating visual directions without locking final image text...",
+    "Checking for repeated or empty sections...",
+    "Assembling the reviewable draft...",
+    "Getting the draft card ready...",
+  ];
+  const [draftLoadingMessageIndex, setDraftLoadingMessageIndex] = useState(0);
+  useEffect(() => {
+    if (!shouldShowDraftLoadingCard) {
+      setDraftLoadingMessageIndex(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setDraftLoadingMessageIndex((prev) => (prev + 1) % rotatingDraftLoadingMessages.length);
+    }, 2600);
+    return () => window.clearInterval(interval);
+  }, [rotatingDraftLoadingMessages.length, shouldShowDraftLoadingCard]);
+  const draftLoadingText = rotatingDraftLoadingMessages[draftLoadingMessageIndex];
+  const draftLoadingCardRef = useRef<HTMLDivElement | null>(null);
+  const previousDraftLoadingVisibleRef = useRef(false);
+  useEffect(() => {
+    const justShown = shouldShowDraftLoadingCard && !previousDraftLoadingVisibleRef.current;
+    previousDraftLoadingVisibleRef.current = shouldShowDraftLoadingCard;
+    if (!justShown) {
+      return;
+    }
+    const scrollIntoViewCard = () => {
+      const card = draftLoadingCardRef.current;
+      if (!card) {
+        return;
+      }
+      card.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+    };
+    window.requestAnimationFrame(scrollIntoViewCard);
+    const timer = window.setTimeout(scrollIntoViewCard, 180);
+    return () => window.clearTimeout(timer);
+  }, [shouldShowDraftLoadingCard]);
+  const renderDraftLoadingCard = () => (
+    <div ref={draftLoadingCardRef}>
+      <div className="text-[11px] text-zinc-500">{draftLoadingTitle}</div>
+      <div className="mt-2 flex items-center gap-2 text-sm text-zinc-700">
+        <LoaderCircle size={14} className="animate-spin text-zinc-500" />
+        {draftLoadingText}
+      </div>
+    </div>
+  );
   const billingMessageClass = generationConfirmError
     ? "font-medium text-red-600"
     : canConfirmBilling
@@ -751,21 +899,35 @@ export const ChatPanel = memo(function ChatPanel({
     }
     const visibleTitle = formatPosterHeadline(posterDraft.headline);
     const visibleSubtitle = formatPosterSubtitle(posterDraft.subtitle);
-    const visibleLabels = posterDraft.points
-      .map((point) => compactDraftLine(formatPosterPoint(point), 80))
-      .filter(Boolean)
-      .slice(0, 4);
-    const pageFocus =
-      compactDraftLine(visibleLabels[0] || visibleSubtitle || visibleTitle, 120) ||
-      t("Define one clear page focus.", "先定义这一页的单一重点。");
-    const visualStructure =
-      compactDraftLine(visualizationTypeHint || "", 72) ||
-      compactDraftLine(posterDraft.layoutSuggestion || "", 100) ||
-      t("Single clean infographic structure.", "单一清晰的信息图结构。");
     const planItems = posterPlanList
       .slice()
       .sort((a, b) => a.index - b.index)
       .slice(0, posterCount);
+    const singlePlanItem = planItems.length === 1 ? planItems[0] : null;
+    const displayFactSources: string[] = singlePlanItem
+      ? [
+          ...(posterDraft.body ? splitDraftDisplaySentences(posterDraft.body) : []),
+          ...posterDraft.points,
+          ...(singlePlanItem.keyFacts ?? []),
+        ]
+      : posterDraft.points;
+    const visibleLabels = displayFactSources
+      .map((point) => normalizeDraftDisplayLine(point, singlePlanItem ? 190 : 88))
+      .filter(Boolean)
+      .filter((line, idx, lines) => lines.findIndex((candidate) => candidate.replace(/\s+/g, "") === line.replace(/\s+/g, "")) === idx)
+      .slice(0, singlePlanItem ? 8 : 4);
+    const rawPageFocus = normalizeDraftDisplayLine(singlePlanItem?.focus || "", singlePlanItem ? 180 : 120);
+    const pageFocus =
+      compactDraftLine(
+        rawPageFocus || visibleSubtitle || visibleLabels[0] || visibleTitle,
+        singlePlanItem ? 180 : 120,
+      ) ||
+      t("Define one clear page focus.", "先定义这一页的单一重点。");
+    const visualStructure =
+      compactDraftLine(singlePlanItem?.visualType || singlePlanItem?.layoutHint || "", 120) ||
+      compactDraftLine(visualizationTypeHint || "", 72) ||
+      compactDraftLine(posterDraft.layoutSuggestion || "", 100) ||
+      t("Single clean infographic structure.", "单一清晰的信息图结构。");
     const toNumberedLines = (lines: string[]) =>
       lines
         .map((line) => normalizeSlashLineBreaks(line))
@@ -1000,52 +1162,40 @@ export const ChatPanel = memo(function ChatPanel({
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-3">
             {showWeakPromptSuggestions ? (
               <div className="px-0.5 py-1">
-                <p className="text-sm font-medium text-zinc-900">
-                  {topicSuggestionsLoading ? "Analyzing your topic" : "Need a clearer request"}
-                </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {topicSuggestionsLoading
-                    ? "Please wait while Prompt1 prepares 4 guided topic suggestions."
-                    : "Your input is still too short for stable generation. Pick one option to continue, or type a new request below to replace these suggestions."}
-                </p>
                 {topicSuggestionsLoading ? (
-                  <div className="mt-3 space-y-3">
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
-                      <LoaderCircle size={13} className="animate-spin text-zinc-500" />
-                      Prompt1 is generating 4 guided suggestions...
+                  <>
+                    <p className="text-[11px] text-zinc-500">KnowLens.ai</p>
+                    <div className="mt-2 flex items-center gap-2 text-sm leading-6 text-zinc-700">
+                      <LoaderCircle size={16} className="animate-spin text-zinc-500" />
+                      <span>{prompt1LoadingMessage}</span>
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {Array.from({ length: 4 }, (_, index) => (
-                        <div
-                          key={`weak-en-loading-${index + 1}`}
-                          className="min-h-[72px] rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5"
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-zinc-900">Need a clearer request</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Your input is still too short for stable generation. Pick one option to continue, or type a new request below to replace these suggestions.
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {topicSuggestions.map((item) => (
+                        <button
+                          key={`weak-en-${item}`}
+                          type="button"
+                          disabled={topicSuggestionLocked}
+                          onClick={() => onApplyTopicSuggestion(item)}
+                          className={`min-h-[72px] rounded-xl border px-3 py-2.5 text-left text-sm leading-6 transition ${
+                            selectedTopicSuggestion === item
+                              ? "border-zinc-900 bg-zinc-900 text-white"
+                              : topicSuggestionLocked
+                                ? "cursor-not-allowed border-zinc-300 bg-white text-zinc-500"
+                                : "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-500 hover:bg-zinc-50"
+                          }`}
                         >
-                          <div className="h-3 w-3/4 animate-pulse rounded bg-zinc-200" />
-                          <div className="mt-2 h-3 w-2/3 animate-pulse rounded bg-zinc-200" />
-                        </div>
+                          {item}
+                        </button>
                       ))}
                     </div>
-                  </div>
-                ) : (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {topicSuggestions.map((item) => (
-                      <button
-                        key={`weak-en-${item}`}
-                        type="button"
-                        disabled={topicSuggestionLocked}
-                        onClick={() => onApplyTopicSuggestion(item)}
-                        className={`min-h-[72px] rounded-xl border px-3 py-2.5 text-left text-sm leading-6 transition ${
-                          selectedTopicSuggestion === item
-                            ? "border-zinc-900 bg-zinc-900 text-white"
-                            : topicSuggestionLocked
-                              ? "cursor-not-allowed border-zinc-300 bg-white text-zinc-500"
-                              : "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-500 hover:bg-zinc-50"
-                        }`}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
+                  </>
                 )}
                 {!topicSuggestionsLoading && selectedTopicSuggestion ? (
                   <div className="mt-3 flex justify-end">
@@ -1321,26 +1471,7 @@ export const ChatPanel = memo(function ChatPanel({
             ) : null}
 
             {shouldShowDraftLoadingCard ? (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-                <div className="text-[11px] text-zinc-500">{draftLoadingTitle}</div>
-                <div className="mt-2 flex items-center gap-2 text-sm text-zinc-700">
-                  <LoaderCircle size={14} className="animate-spin text-zinc-500" />
-                  {draftLoadingText}
-                </div>
-                <div className="mt-3 space-y-2">
-                  {draftLoadingSteps.map((step, index) => (
-                    <div key={`draft-loading-step-en-${index + 1}`} className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex size-4 items-center justify-center rounded-full bg-zinc-100 text-[10px] font-semibold text-zinc-600">
-                          {index + 1}
-                        </span>
-                        <div className="h-3 w-40 animate-pulse rounded bg-zinc-200" />
-                      </div>
-                      <p className="mt-1.5 text-xs text-zinc-500">{step}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              renderDraftLoadingCard()
             ) : null}
           </article>
         ) : null}
@@ -1776,49 +1907,35 @@ export const ChatPanel = memo(function ChatPanel({
 
               {showWeakPromptSuggestions ? (
                 <div className="mt-3 px-0.5 py-1">
-                  <p className="text-sm font-medium text-zinc-900">
-                    {topicSuggestionsLoading ? "Analyzing your topic" : "Try These Topics"}
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {topicSuggestionsLoading
-                      ? "Please wait while Prompt1 prepares 4 guided topic suggestions."
-                      : "Pick one to continue with guided next steps."}
-                  </p>
                   {topicSuggestionsLoading ? (
-                    <div className="mt-3 space-y-3">
-                      <div className="flex items-center gap-2 text-xs text-zinc-500">
-                        <LoaderCircle size={13} className="animate-spin text-zinc-500" />
-                        Prompt1 is generating 4 guided suggestions...
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {Array.from({ length: 4 }, (_, index) => (
-                          <div
-                            key={`weak-zh-loading-${index + 1}`}
-                            className="min-h-[72px] rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5"
-                          >
-                            <div className="h-3 w-3/4 animate-pulse rounded bg-zinc-200" />
-                            <div className="mt-2 h-3 w-2/3 animate-pulse rounded bg-zinc-200" />
-                          </div>
-                        ))}
+                    <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+                      <p className="text-[11px] text-zinc-500">KnowLens.ai</p>
+                      <div className="mt-2 flex items-center gap-2 text-xl leading-7 text-zinc-700">
+                        <LoaderCircle size={16} className="animate-spin text-zinc-500" />
+                        <span>{prompt1LoadingMessage}</span>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {topicSuggestions.map((item) => (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() => onApplyTopicSuggestion(item)}
-                          className={`min-h-[72px] rounded-xl border px-3 py-2.5 text-left text-sm leading-6 transition ${
-                            selectedTopicSuggestion === item
-                              ? "border-zinc-900 bg-zinc-900 text-white"
-                              : "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-500 hover:bg-zinc-50"
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <p className="text-sm font-medium text-zinc-900">Try These Topics</p>
+                      <p className="mt-1 text-xs text-zinc-500">Pick one to continue with guided next steps.</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {topicSuggestions.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => onApplyTopicSuggestion(item)}
+                            className={`min-h-[72px] rounded-xl border px-3 py-2.5 text-left text-sm leading-6 transition ${
+                              selectedTopicSuggestion === item
+                                ? "border-zinc-900 bg-zinc-900 text-white"
+                                : "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-500 hover:bg-zinc-50"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   )}
                   {!topicSuggestionsLoading && selectedTopicSuggestion ? (
                     <div className="mt-3 flex justify-end">
@@ -2253,27 +2370,8 @@ export const ChatPanel = memo(function ChatPanel({
           ) : null}
 
           {shouldShowDraftLoadingCard ? (
-            <article className="mt-3 max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-3 py-3">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-                <div className="text-[11px] text-zinc-500">{draftLoadingTitle}</div>
-                <div className="mt-2 flex items-center gap-2 text-sm text-zinc-700">
-                  <LoaderCircle size={14} className="animate-spin text-zinc-500" />
-                  {draftLoadingText}
-                </div>
-                <div className="mt-3 space-y-2">
-                  {draftLoadingSteps.map((step, index) => (
-                    <div key={`draft-loading-step-zh-${index + 1}`} className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex size-4 items-center justify-center rounded-full bg-zinc-100 text-[10px] font-semibold text-zinc-600">
-                          {index + 1}
-                        </span>
-                        <div className="h-3 w-40 animate-pulse rounded bg-zinc-200" />
-                      </div>
-                      <p className="mt-1.5 text-xs text-zinc-500">{step}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <article className="mt-3 max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+              {renderDraftLoadingCard()}
             </article>
           ) : null}
 
@@ -2288,13 +2386,7 @@ export const ChatPanel = memo(function ChatPanel({
             ? renderSlideDraftReview({ locked: true })
             : null}
           {shouldShowDraftLoadingCard ? (
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-              <div className="text-[11px] text-zinc-500">{draftLoadingTitle}</div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-zinc-700">
-                <LoaderCircle size={14} className="animate-spin text-zinc-500" />
-                {draftLoadingText}
-              </div>
-            </div>
+            renderDraftLoadingCard()
           ) : null}
         </article>
       ) : null}

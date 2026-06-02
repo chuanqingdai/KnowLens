@@ -424,9 +424,13 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       const keyFactsForBody = (plan?.keyFacts || [])
         .map((item) => sanitizePromptLine(normalizePosterLabelText(item, singlePoster)))
         .filter(Boolean);
+      const isDataLikePlan =
+        isDataLikeRole(plan?.role || "") || /metrics|data|指标|数据|财报|营收|利润|同比|环比/i.test(plan?.visualType || "");
       const pageFactLimit =
-        isDataLikeRole(plan?.role || "") || /metrics|data|指标|数据|财报|营收|利润|同比|环比/i.test(plan?.visualType || "")
-          ? 5
+        isDataLikePlan
+          ? singlePoster
+            ? 8
+            : 5
           : pageRole === "comparison" || pageRole === "checklist" || pageRole === "system-model"
             ? 4
             : isFirstPoster

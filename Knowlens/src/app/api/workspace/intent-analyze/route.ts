@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 type AnalyzeDirection = "poster" | "ppt" | "video" | "unknown";
 type AnalyzeClassification = "invalid" | "need_topic_clarification" | "needs_fresh_sources" | "ready";
 type ClarifyMode = "none" | "topic" | "fresh_sources";
+type IntentProviderPath = "gptsapi" | "openai-compat" | "fallback";
 
 type IntentAnalysis = {
   classification: AnalyzeClassification;
@@ -32,7 +33,11 @@ type RequestBody = {
 };
 
 const DEFAULT_MODEL = process.env.GPTSAPI_INTENT_ANALYZE_MODEL || process.env.GPTSAPI_INTENT_TRIAGE_MODEL || "gemini-2.5-flash";
-const DEFAULT_ENDPOINT = process.env.GPTSAPI_INTENT_ANALYZE_ENDPOINT || process.env.GPTSAPI_INTENT_TRIAGE_ENDPOINT || "https://api.gptsapi.net/v1beta/models";
+const GPTSAPI_BASE_URL = (process.env.GPTSAPI_BASE_URL || "https://api.gptsapi.net/v1").replace(/\/+$/, "");
+const GPTSAPI_CHAT_COMPLETIONS_URL =
+  process.env.GPTSAPI_CHAT_COMPLETIONS_URL ||
+  process.env.GPTSAPI_OPENAI_COMPAT_CHAT_COMPLETIONS_URL ||
+  `${GPTSAPI_BASE_URL}/chat/completions`;
 const DEFAULT_KEY =
   process.env.GPTSAPI_GEMINI_API_KEY ||
   process.env.GPTSAPI_FREE_API_KEY ||
@@ -41,20 +46,17 @@ const DEFAULT_KEY =
 const OPENAI_COMPAT_KEY =
   process.env.PAID_LLM_API_KEY ||
   process.env.OPENAI_API_KEY ||
-  process.env.IMAGE2_TUZI_PROVIDER_API_KEY ||
   "";
 const OPENAI_COMPAT_ENDPOINT =
   process.env.PAID_LLM_CHAT_COMPLETIONS_URL ||
   process.env.OPENAI_COMPAT_CHAT_COMPLETIONS_URL ||
-  (process.env.IMAGE2_TUZI_PROVIDER_API_KEY &&
-  (process.env.IMAGE2_TUZI_PROVIDER_ENDPOINT || "").startsWith("https://api.tu-zi.com/")
-    ? "https://api.tu-zi.com/v1/chat/completions"
-    : "");
+  (process.env.OPENAI_API_KEY ? "https://api.openai.com/v1/chat/completions" : "");
 const OPENAI_COMPAT_MODEL =
   process.env.PAID_INTENT_ANALYZE_MODEL ||
   process.env.PAID_TEXT_MODEL_DEFAULT ||
   process.env.OPENAI_TEXT_MODEL ||
-  "gpt-5.4";
+  process.env.GPTSAPI_MODEL_GEMINI_25 ||
+  "gemini-2.5-flash";
 const INTENT_ANALYZE_TIMEOUT_MS = Number.parseInt(process.env.INTENT_ANALYZE_TIMEOUT_MS || "", 10) || 45000;
 
 function normalizeText(value: string) {
@@ -436,7 +438,48 @@ function normalizeAnalyzeResult(
   };
 }
 
-async function requestAnalyzeFromModel(input: string, sourcesSummary: string, outputLanguage?: string) {
+function repairClarificationResultForInput(
+  analysis: IntentAnalysis,
+  input: string,
+  outputLanguage?: string,
+): IntentAnalysis {
+  if (analysis.clarifyMode !== "topic") {
+    return analysis;
+  }
+  const topicFromInput = buildTopic(input);
+  if (!topicFromInput || /^(hello|hi|hey|test|你好|在吗|测试)$/i.test(input.trim())) {
+    return analysis;
+  }
+  const joinedSuggestions = analysis.suggestions.join(" ").replace(/\s+/g, "").toLowerCase();
+  const compactTopic = topicFromInput.replace(/\s+/g, "").toLowerCase();
+  const looksGeneric =
+    !analysis.topic ||
+    !joinedSuggestions ||
+    !joinedSuggestions.includes(compactTopic) ||
+    /(whatisthekeyidea|howcan.*explainedinplainlanguage|commonreal-lifesituation|commonmisunderstanding|是什么为什么值得了解|是怎样一步步发生|生活中的一个简单例子|容易误解什么)/.test(
+      joinedSuggestions,
+    );
+  if (!looksGeneric) {
+    return analysis;
+  }
+  const isZh = (outputLanguage || "").toLowerCase().startsWith("zh");
+  return {
+    ...analysis,
+    classification: analysis.classification === "invalid" ? "need_topic_clarification" : analysis.classification,
+    topic: topicFromInput,
+    reason: "Topic is broad, but the entity can be used to generate guided topic options.",
+    suggestions: buildTopicRelatedSuggestions(topicFromInput, outputLanguage).slice(0, 4),
+    assistantHint: isZh
+      ? `“${topicFromInput}”范围比较大，请先选择你想解释的角度。`
+      : `"${topicFromInput}" is broad. Choose the angle you want to explain first.`,
+  };
+}
+
+async function requestAnalyzeFromModel(
+  input: string,
+  sourcesSummary: string,
+  outputLanguage?: string,
+): Promise<{ result: Partial<IntentAnalysis> | null; providerPath: IntentProviderPath }> {
   const { systemPrompt, userPrompt } = buildWorkspaceIntentPrompt({
     userInput: input,
     sourcesSummary,
@@ -449,20 +492,21 @@ async function requestAnalyzeFromModel(input: string, sourcesSummary: string, ou
   let response: Response;
   try {
     response = await fetchWithTimeout(
-      `${DEFAULT_ENDPOINT}/${encodeURIComponent(DEFAULT_MODEL)}:generateContent`,
+      GPTSAPI_CHAT_COMPLETIONS_URL,
       {
         method: "POST",
         headers: {
-          "x-goog-api-key": DEFAULT_KEY,
           "Content-Type": "application/json",
+          Authorization: `Bearer ${DEFAULT_KEY}`,
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
-            },
+          model: DEFAULT_MODEL,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
           ],
+          response_format: { type: "json_object" },
         }),
       },
       INTENT_ANALYZE_TIMEOUT_MS,
@@ -489,13 +533,9 @@ async function requestAnalyzeFromModel(input: string, sourcesSummary: string, ou
     return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
   }
   const data = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    choices?: Array<{ message?: { content?: string } }>;
   };
-  const rawText =
-    data.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || "")
-      .join("\n")
-      .trim() || "";
+  const rawText = data.choices?.[0]?.message?.content?.trim() || "";
   const jsonText = extractJsonObject(rawText);
   if (!jsonText) {
     logIntentAnalyzeError({
@@ -507,7 +547,7 @@ async function requestAnalyzeFromModel(input: string, sourcesSummary: string, ou
     return requestAnalyzeFromOpenAICompat(systemPrompt, userPrompt);
   }
   try {
-    return JSON.parse(jsonText) as Partial<IntentAnalysis>;
+    return { result: JSON.parse(jsonText) as Partial<IntentAnalysis>, providerPath: "gptsapi" };
   } catch {
     logIntentAnalyzeError({
       code: "INTENT_ANALYZE_PRIMARY_JSON_PARSE_FAILED",
@@ -519,9 +559,12 @@ async function requestAnalyzeFromModel(input: string, sourcesSummary: string, ou
   }
 }
 
-async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: string) {
+async function requestAnalyzeFromOpenAICompat(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<{ result: Partial<IntentAnalysis> | null; providerPath: IntentProviderPath }> {
   if (!OPENAI_COMPAT_KEY || !OPENAI_COMPAT_ENDPOINT) {
-    return null;
+    return { result: null, providerPath: "fallback" };
   }
   let response: Response;
   try {
@@ -555,7 +598,7 @@ async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: 
       source: "openai-compat",
       details: { model: OPENAI_COMPAT_MODEL },
     });
-    return null;
+    return { result: null, providerPath: "fallback" };
   }
   if (!response.ok) {
     logIntentAnalyzeError({
@@ -564,7 +607,7 @@ async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: 
       source: "openai-compat",
       details: { model: OPENAI_COMPAT_MODEL, status: response.status },
     });
-    return null;
+    return { result: null, providerPath: "fallback" };
   }
   const data = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
@@ -578,10 +621,10 @@ async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: 
       source: "openai-compat",
       details: { model: OPENAI_COMPAT_MODEL },
     });
-    return null;
+    return { result: null, providerPath: "fallback" };
   }
   try {
-    return JSON.parse(jsonText) as Partial<IntentAnalysis>;
+    return { result: JSON.parse(jsonText) as Partial<IntentAnalysis>, providerPath: "openai-compat" };
   } catch {
     logIntentAnalyzeError({
       code: "INTENT_ANALYZE_COMPAT_JSON_PARSE_FAILED",
@@ -589,7 +632,7 @@ async function requestAnalyzeFromOpenAICompat(systemPrompt: string, userPrompt: 
       source: "openai-compat",
       details: { model: OPENAI_COMPAT_MODEL },
     });
-    return null;
+    return { result: null, providerPath: "fallback" };
   }
 }
 
@@ -604,6 +647,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         analysis: fallback,
+        providerPath: "fallback" satisfies IntentProviderPath,
       });
     }
     const sourcesSummary = sources
@@ -618,16 +662,19 @@ export async function POST(request: NextRequest) {
       .join("\n");
 
     const modelResult = await requestAnalyzeFromModel(input, sourcesSummary, outputLanguage);
-    const analysis = normalizeAnalyzeResult(modelResult || {}, fallback, outputLanguage);
+    const normalizedAnalysis = normalizeAnalyzeResult(modelResult.result || {}, fallback, outputLanguage);
+    const analysis = repairClarificationResultForInput(normalizedAnalysis, input, outputLanguage);
     return NextResponse.json({
       ok: true,
       analysis,
+      providerPath: modelResult.providerPath,
     });
   } catch {
     return NextResponse.json(
       {
         ok: true,
         analysis: heuristicAnalyze("", 0, "en"),
+        providerPath: "fallback" satisfies IntentProviderPath,
       },
       { status: 200 },
     );

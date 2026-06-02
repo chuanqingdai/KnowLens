@@ -229,6 +229,12 @@ type GenerationTaskUiState = {
   lastUpdatedAt?: number;
 };
 
+type CreditsPaywallContext = {
+  scene: "count_limit" | "billing_insufficient";
+  kind?: "poster" | "ppt" | "video";
+  count?: number;
+};
+
 type GenerationConfirmResponse = {
   ok?: boolean;
   error?: string;
@@ -360,8 +366,14 @@ function isAuthRelatedLlmErrorTurn(turn: ChatTurn) {
   return isAuthRequiredErrorMessage(turn.content) || LLM_SIGNIN_ERROR_PATTERN.test(turn.content);
 }
 
+function isStaleRetryableLlmErrorTurn(turn: ChatTurn) {
+  return turn.meta?.kind === "llm_error" && turn.meta.retryable !== false;
+}
+
 function sanitizeAuthRelatedChatTurns(turns: ChatTurn[]) {
-  const withoutAuthLlmErrors = turns.filter((turn) => !isAuthRelatedLlmErrorTurn(turn));
+  const withoutAuthLlmErrors = turns.filter(
+    (turn) => !isAuthRelatedLlmErrorTurn(turn) && !isStaleRetryableLlmErrorTurn(turn),
+  );
   const dedupedGuardTurns: ChatTurn[] = [];
   let hasSignInGuard = false;
   for (let i = 0; i < withoutAuthLlmErrors.length; i += 1) {
@@ -586,7 +598,7 @@ const styleOptions = [
     englishName: "Clean Science Infographic",
     fit: "Precise and polished scientific infographic style for broad educational explainers.",
     prompt:
-      "Clean scientific infographic style with precise simplified diagrams, restrained colors, crisp vector shapes, clear arrows, subtle gradients, accurate educational icons, and polished scientific clarity.",
+      "Use a premium editorial infographic style. Palette: off-white background, charcoal text, one muted accent color. Details: subtle paper grain, thin divider lines, refined serif or modern sans-serif typography, restrained line icons, clean vector illustrations, polished magazine-style visual finish.",
     suitableTopics: "通用科普、自然科学、物理、地理、人体、机制解释",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["科普", "自然", "物理", "地理", "人体", "机制", "原理", "解释"],
@@ -599,7 +611,7 @@ const styleOptions = [
     englishName: "Scientific Cutaway Diagram",
     fit: "Textbook-like cutaway clarity for layered structures and mechanism internals.",
     prompt:
-      "Scientific cutaway diagram style with clear structural cross-sections, layered depth, accurate simplified components, clean labels, spatial explanation, and textbook-quality diagram clarity.",
+      "Use a black high-tech financial dashboard style. Palette: deep black background, white text, neon green accent. Details: glass-like dark panels, soft green glow, subtle server-grid texture, thin circuit traces, compact numeric styling, sharp line icons, high-contrast data visualization finish.",
     suitableTopics: "宇宙、AI、深海、灾难、人体、科技热点",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
@@ -612,7 +624,7 @@ const styleOptions = [
     englishName: "Cinematic Science Visual",
     fit: "Dramatic but controlled science storytelling with explanatory overlays.",
     prompt:
-      "Cinematic science visual style with dramatic but controlled lighting, realistic atmosphere, strong subject presence, documentary-quality composition, and educational visual overlays. Keep it explanatory and scientific, not like a disaster movie poster.",
+      "Use a black-and-gold premium technology style. Palette: matte black background, warm white text, champagne gold accent. Details: metallic gold highlights, glossy black surfaces, soft cinematic shadows, thin gold-line icons, elegant typography, precise luxury-tech visual finish.",
     suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
@@ -625,7 +637,7 @@ const styleOptions = [
     englishName: "Minimal Flat Explainer",
     fit: "Simple geometric clarity and clean hierarchy for direct concept teaching.",
     prompt:
-      "Minimal flat explainer style with simple geometric shapes, clean iconography, soft modern colors, clear hierarchy, uncluttered layout, and direct concept visualization.",
+      "Use a 3D isometric technology style. Palette: dark navy background, cool gray base, electric blue accent. Details: clean isometric 3D objects, soft shadows, polished surfaces, subtle blue glow, small technical labels, miniature system icons, precise spatial visual finish.",
     suitableTopics: "基础概念、产品说明、AI原理、简单科学机制",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["基础", "概念", "产品", "ai原理", "机制", "结构", "说明"],
@@ -634,14 +646,14 @@ const styleOptions = [
   },
   {
     id: "hand-drawn-explainer",
-    name: "数据商业编辑风",
-    englishName: "Data Business Editorial Style",
-    fit: "Refined analytical infographic style for business, policy, and trend narratives.",
+    name: "手绘讲解风",
+    englishName: "Hand-drawn Explainer Style",
+    fit: "Clean hand-drawn educational diagram style for approachable visual explanations.",
     prompt:
-      "Data-driven business editorial infographic style with refined charts, clean comparison modules, restrained colors, elegant typography, clear hierarchy, and professional analytical tone. Avoid flashy trading-dashboard aesthetics, excessive glow, and fake financial data.",
-    suitableTopics: "商业分析、经济趋势、政策解读、产业研究、社会议题",
+      "Use a clean hand-drawn explainer style. Palette: warm off-white background, charcoal hand-drawn linework, one muted accent color. Details: neat sketch lines, simple hand-drawn icons, subtle paper texture, marker-style highlights, clean annotation labels, thin arrows, soft shadow accents, consistent line weight, polished educational diagram finish.",
+    suitableTopics: "科普解释、学习笔记、教程讲解、概念拆解、教育图解",
     carrierPriority: ["video", "ppt", "poster"],
-    topicKeywords: ["商业", "经济", "政策", "产业", "数据", "趋势", "研究", "分析"],
+    topicKeywords: ["手绘", "讲解", "教程", "概念", "学习", "教育", "科普", "图解"],
     palette: ["#0f172a", "#3b82f6", "#e2e8f0"],
     coverImage: styleCoverById("hand-drawn-explainer"),
   },
@@ -651,7 +663,7 @@ const styleOptions = [
     englishName: "Cute 3D Educational Style",
     fit: "Friendly rounded 3D visuals for approachable educational storytelling.",
     prompt:
-      "Cute 3D educational style with soft rounded objects, friendly simplified forms, polished toy-like materials, gentle lighting, approachable visual storytelling, and clean explanatory structure.",
+      "Use a clean medical science illustration style. Palette: clinical white background, soft blue base, medical green accent. Details: smooth biological illustration, gentle gradients, soft shadows, clean anatomical labels, medical line icons, precise health-diagram visual finish.",
     suitableTopics: "儿童科普、动物、人体健康、营养、低龄教育",
     carrierPriority: ["video", "poster", "ppt"],
     topicKeywords: ["儿童", "动物", "人体健康", "营养", "低龄", "亲子", "启蒙"],
@@ -664,7 +676,7 @@ const styleOptions = [
     englishName: "3D Isometric Tech Explainer",
     fit: "Structured isometric system visualization for technical mechanisms and architectures.",
     prompt:
-      "3D isometric technology explainer style with clean spatial structure, miniature system components, precise icon-like objects, soft shadows, modern tech aesthetics, and clear system-level explanation.",
+      "Use a cinematic science visual style. Palette: deep atmospheric background, neutral base tones, one controlled highlight color. Details: realistic texture, dramatic lighting, volumetric depth, soft glow, subtle particles, restrained scientific labels, documentary-quality visual finish.",
     suitableTopics: "AI系统、数据中心、芯片、城市系统、互联网、能源",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["ai系统", "数据中心", "芯片", "城市系统", "互联网", "能源", "架构", "模块"],
@@ -673,14 +685,14 @@ const styleOptions = [
   },
   {
     id: "dark-premium-tech",
-    name: "玻璃拟态知识卡风",
-    englishName: "Glassmorphism Knowledge Card",
-    fit: "Subtle glass-layer polish for modern knowledge cards and UI-like explainers.",
+    name: "深色高级科技信息图风",
+    englishName: "Dark Premium Tech Infographic Style",
+    fit: "Dark premium technology infographic system for polished data and AI-product visuals.",
     prompt:
-      "Glassmorphism knowledge-card style with translucent layered surfaces, soft gradients, gentle glow, clean depth, elegant UI-inspired composition, and modern visual polish. Keep glass layers subtle and integrated, not like separate dashboard panels.",
-    suitableTopics: "产品机制、科技科普、商业分析、教育卡片、趋势解读",
+      "Use a dark premium technology infographic style as a complete visual system. Visual Look: deep black or dark navy background, warm white typography, one controlled accent color, subtle glassmorphism panels, soft neon glow, fine technical grid texture, and cinematic depth. Layout Skeleton: clear outer margin, modular information cards, compact data blocks, strong visual hierarchy, balanced negative space, and a smooth top-to-bottom reading path. Component Style: glowing data cards, thin luminous dividers, precise line icons, small status badges, clean charts, restrained callout labels, and polished AI-product interface details. Avoid clutter, excessive decoration, tiny text, and overly complex dashboard density.",
+    suitableTopics: "AI产品、科技商业、数据摘要、芯片、云计算、财报、趋势解读",
     carrierPriority: ["poster", "ppt", "video"],
-    topicKeywords: ["ui", "产品", "科技", "商业", "机制", "卡片", "趋势", "信息图"],
+    topicKeywords: ["科技", "ai", "产品", "数据", "芯片", "云计算", "财报", "趋势", "信息图"],
     palette: ["#0f172a", "#a78bfa", "#dbeafe"],
     coverImage: styleCoverById("dark-premium-tech"),
   },
@@ -690,7 +702,7 @@ const styleOptions = [
     englishName: "Tech Blueprint Diagram",
     fit: "Technical linework and annotation discipline for engineering-style explanations.",
     prompt:
-      "Tech blueprint diagram style with crisp technical lines, structured annotations, subtle grid texture, precise geometry, blueprint-inspired layout, and futuristic educational clarity.",
+      "Use a minimal flat explainer style. Palette: clean light background, neutral text, one bright accent color. Details: flat vector shapes, simple geometry, crisp edges, large readable labels, low visual noise, consistent flat icons, clean educational diagram finish.",
     suitableTopics: "航空航天、机械、潜艇、机器人、军事科技、工程结构",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["航天", "机械", "潜艇", "机器人", "军事", "工程", "结构", "蓝图"],
@@ -703,7 +715,7 @@ const styleOptions = [
     englishName: "Medical Biological Illustration",
     fit: "Clinical clarity with calm precision for anatomy and biological mechanisms.",
     prompt:
-      "Professional medical and biological illustration style with clean anatomical clarity, soft clinical colors, accurate simplified structures, gentle depth, readable educational labeling, and calm scientific precision.",
+      "Use a refined notebook science style. Palette: warm paper background, pencil-gray text, one muted marker accent. Details: paper texture, delicate hand-drawn lines, neat sketch marks, underlines, small annotation symbols, soft shadows, organized notebook visual finish.",
     suitableTopics: "心血管、人体器官、代谢、疾病机制、营养健康",
     carrierPriority: ["ppt", "video", "poster"],
     topicKeywords: ["心血管", "器官", "代谢", "疾病", "营养", "医学", "健康", "人体"],
@@ -716,7 +728,7 @@ const styleOptions = [
     englishName: "Premium Editorial Infographic",
     fit: "High-end editorial infographic polish for premium knowledge publication feel.",
     prompt:
-      "Premium editorial infographic style with magazine-inspired composition, refined typography, elegant spacing, subtle sophistication, calm professional colors, and a high-end knowledge publication feel.",
+      "Use a premium sketchnote style. Palette: clean white background, black linework, one accent color. Details: structured hand-drawn strokes, bold doodle icons, consistent line weight, circled keywords, emphasis marks, clean whiteboard visual finish.",
     suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
@@ -729,7 +741,7 @@ const styleOptions = [
     englishName: "Premium Sketchnote Science Style",
     fit: "Neat sketchnote educational style with structured visual-thinking flow.",
     prompt:
-      "Premium sketchnote science style with neat hand-drawn lines, structured annotations, warm educational charm, light sketch textures, visual-thinking flow, and carefully organized explanation.",
+      "Use a soft 3D educational style. Palette: warm light background, soft pastel base, one clear accent color. Details: rounded 3D objects, smooth clay-like materials, gentle shadows, soft lighting, simple callout labels, rounded icons, polished educational 3D visual finish.",
     suitableTopics: "心理学、健康、生活科学、儿童科普、学习方法、认知科学、经济学入门",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["心理学", "健康", "生活科学", "儿童科普", "学习方法", "认知科学", "经济学", "入门"],
@@ -1889,7 +1901,7 @@ function normalizeChatHistory(raw: unknown): ChatTurn[] {
             : undefined,
       } satisfies ChatTurn;
     })
-    .filter((turn) => turn.content.trim().length > 0);
+    .filter((turn) => turn.content.trim().length > 0 && turn.meta?.kind !== "image_error");
 }
 
 function dedupeAdjacentChatTurns(turns: ChatTurn[]) {
@@ -1970,7 +1982,9 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
     return;
   }
   const key = buildWorkspaceChatHistoryStorageKey(scopeKey);
-  const normalizedUpdates = sanitizeAuthRelatedChatTurns(dedupeAdjacentChatTurns(updates)).slice(-160);
+  const normalizedUpdates = sanitizeAuthRelatedChatTurns(dedupeAdjacentChatTurns(updates))
+    .filter((turn) => turn.meta?.kind !== "image_error")
+    .slice(-160);
   const safeMeta = (meta: ChatTurnMeta | undefined) => {
     if (!meta || typeof meta !== "object") {
       return undefined;
@@ -1980,15 +1994,6 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
         kind: "llm_error" as const,
         source: "draft_generation" as const,
         code: typeof meta.code === "string" ? meta.code.slice(0, 120) : undefined,
-        retryable: meta.retryable !== false,
-      };
-    }
-    if (meta.kind === "image_error") {
-      return {
-        kind: "image_error" as const,
-        source: "image_generation" as const,
-        code: typeof meta.code === "string" ? meta.code.slice(0, 120) : undefined,
-        taskIndex: Number.isFinite(meta.taskIndex) ? Number(meta.taskIndex) : undefined,
         retryable: meta.retryable !== false,
       };
     }
@@ -2089,6 +2094,7 @@ export default function WorkspacePage() {
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
   const [intentAnalysis, setIntentAnalysis] = useState<IntentAnalysis | null>(null);
   const [intentAnalysisLoading, setIntentAnalysisLoading] = useState(false);
+  const [prompt1LoadingVisible, setPrompt1LoadingVisible] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [generationTaskStateByIndex, setGenerationTaskStateByIndex] = useState<Record<number, GenerationTaskUiState>>({});
   const [currentGenerationRunId, setCurrentGenerationRunId] = useState<string | null>(null);
@@ -2096,6 +2102,7 @@ export default function WorkspacePage() {
   const [generationConfirmError, setGenerationConfirmError] = useState<string | null>(null);
   const [retryingErrorTurnIds, setRetryingErrorTurnIds] = useState<Record<string, boolean>>({});
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
+  const [creditsPaywallContext, setCreditsPaywallContext] = useState<CreditsPaywallContext | null>(null);
 
   const [manualIntent, setManualIntent] = useState<Exclude<WorkspaceIntent, "unknown"> | null>(() => {
     if (sessionPrefs?.intent === "ppt" || sessionPrefs?.intent === "video" || sessionPrefs?.intent === "poster") {
@@ -2175,7 +2182,9 @@ export default function WorkspacePage() {
   const [isComposingVideo, setIsComposingVideo] = useState(false);
   const posterDraftRequestRef = useRef(0);
   const chatHistoryWriteTimerRef = useRef<number | null>(null);
-  const intentAnalysisRequestedRef = useRef(false);
+  const intentAnalyzeAbortRef = useRef<AbortController | null>(null);
+  const intentAnalyzeRequestSeqRef = useRef(0);
+  const lastIntentAnalyzeSignatureRef = useRef<string | null>(null);
 
   const modeActionsRef = useRef<{
     exportPpt: () => void;
@@ -2192,6 +2201,7 @@ export default function WorkspacePage() {
   const currentGenerationRunIdRef = useRef<string | null>(null);
   const currentGenerationJobIdRef = useRef<string | null>(null);
   const autoGenerationTriggeredRunIdsRef = useRef<Record<string, boolean>>({});
+  const autoGenerationSuccessLockedRunIdsRef = useRef<Record<string, boolean>>({});
   const debugGoGenerateStepAppliedRef = useRef(false);
   const debugImageBridgeAppliedRef = useRef(false);
 
@@ -2271,6 +2281,7 @@ export default function WorkspacePage() {
       setIsPlanningBillingStep(false);
       setGenerationConfirmError(null);
       setGenerationTaskStateByIndex({});
+      autoGenerationSuccessLockedRunIdsRef.current = {};
       setGenerationRunContext(null, null);
       setGenerationSessionSeed((prev) => prev + 1);
       logGenerationCacheGuard("clear-current-generation-state", { reason });
@@ -2304,7 +2315,8 @@ export default function WorkspacePage() {
     router.replace(`${url.pathname}?${url.searchParams.toString()}`, { scroll: false });
   }, [router, initialEntry.project?.projectId, initialEntry.project?.projectTraceId]);
 
-  const openCreditsPaywall = useCallback(() => {
+  const openCreditsPaywall = useCallback((context?: CreditsPaywallContext) => {
+    setCreditsPaywallContext(context ?? null);
     setCreditsPaywallOpen(true);
   }, []);
   const openMembershipFromWorkspace = useCallback(() => {
@@ -2342,56 +2354,170 @@ export default function WorkspacePage() {
   const uiLanguage: "en" | "zh" = outputLanguage === "zh" ? "zh" : "en";
   const isZhOutput = uiLanguage === "zh";
   const tr = (en: string, _zh: string) => en;
+  const paywallCopy = useMemo(() => {
+    const scene = creditsPaywallContext?.scene;
+    if (scene === "count_limit") {
+      const count = creditsPaywallContext?.count;
+      const kind = creditsPaywallContext?.kind;
+      const countLabel = (() => {
+        if (!count) {
+          return null;
+        }
+        if (kind === "poster") {
+          return `${count} posters`;
+        }
+        if (kind === "ppt") {
+          return `${count} PPT slides`;
+        }
+        if (kind === "video") {
+          return `${count} storyboard frames`;
+        }
+        return `${count} outputs`;
+      })();
+      return {
+        title: "This batch size requires a paid plan",
+        description: `${countLabel ? `${countLabel} ` : "This count "}is a paid-plan option. Free users can start with a smaller batch, then upgrade to unlock larger poster, slide, or storyboard batches before generation.`,
+        confirmLabel: "View Plans",
+        source: "workspace_count_limit_paywall",
+      };
+    }
+    if (scene === "billing_insufficient") {
+      return {
+        title: isZhOutput ? "积分不足，暂无法继续" : "Not enough credits to continue",
+        description: isZhOutput
+          ? "当前配置所需积分高于你的可用积分。升级会员后可获得更多额度并继续生成。"
+          : "This configuration needs more credits than your current balance. Upgrade to continue generation.",
+        confirmLabel: isZhOutput ? "升级并继续" : "Upgrade and Continue",
+        source: "workspace_billing_insufficient_paywall",
+      };
+    }
+    return {
+      title: isFreeUser
+        ? (isZhOutput ? "免费额度已用完" : "Free credits used up")
+        : (isZhOutput ? "积分不足" : "Credits required"),
+      description: isFreeUser
+        ? (isZhOutput
+          ? "你本月免费额度已用完。升级会员后可继续生成。"
+          : "Your free monthly credits are used up. Upgrade to continue generation.")
+        : (isZhOutput
+          ? "当前积分不足，升级会员后可继续生成。"
+          : "Your current credits are not enough. Upgrade to continue."),
+      confirmLabel: isZhOutput ? "前往会员中心" : "Go to Membership",
+      source: "workspace_default_paywall",
+    };
+  }, [creditsPaywallContext, isZhOutput, isFreeUser]);
 
-  useEffect(() => {
-    if (intentAnalysisRequestedRef.current) {
-      return;
-    }
-    const firstInput = initialEntry.prompt.trim();
-    if (!firstInput && !initialEntry.sources.length) {
-      return;
-    }
-    intentAnalysisRequestedRef.current = true;
-    setIntentAnalysisLoading(true);
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
-    void fetch("/api/workspace/intent-analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  const requestIntentAnalysis = useCallback(
+    async (
+      input: string,
+      sources: HomeSourceItem[],
+      options?: {
+        force?: boolean;
+        clearPrevious?: boolean;
       },
-      body: JSON.stringify({
+    ) => {
+      const firstInput = input.trim();
+      const sourcePayload = sources.map((item) => ({
+        kind: item.kind,
+        name: item.name,
+        origin: item.origin,
+        excerpt: item.excerpt,
+      }));
+      if (!firstInput && !sourcePayload.length) {
+        setIntentAnalysis(null);
+        setIntentAnalysisLoading(false);
+        return;
+      }
+      const signature = JSON.stringify({
         input: firstInput,
         outputLanguage,
-        sources: initialEntry.sources.map((item) => ({
-          kind: item.kind,
-          name: item.name,
-          origin: item.origin,
-          excerpt: item.excerpt,
-        })),
-      }),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
+        sources: sourcePayload,
+      });
+      if (!options?.force && signature === lastIntentAnalyzeSignatureRef.current) {
+        return;
+      }
+      lastIntentAnalyzeSignatureRef.current = signature;
+      intentAnalyzeAbortRef.current?.abort();
+      const controller = new AbortController();
+      intentAnalyzeAbortRef.current = controller;
+      const requestSeq = intentAnalyzeRequestSeqRef.current + 1;
+      intentAnalyzeRequestSeqRef.current = requestSeq;
+      const loadingStartedAt = Date.now();
+      if (options?.clearPrevious ?? true) {
+        setIntentAnalysis(null);
+      }
+      setIntentAnalysisLoading(true);
+      setPrompt1LoadingVisible(true);
+      const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+      try {
+        const response = await fetch("/api/workspace/intent-analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            input: firstInput,
+            outputLanguage,
+            sources: sourcePayload,
+          }),
+          signal: controller.signal,
+        });
+        if (intentAnalyzeRequestSeqRef.current !== requestSeq) {
+          return;
+        }
         if (!response.ok) {
+          setIntentAnalysis(null);
           return;
         }
         const data = (await response.json()) as { analysis?: IntentAnalysis };
         if (!data.analysis) {
+          setIntentAnalysis(null);
           return;
         }
         setIntentAnalysis(data.analysis);
-      })
-      .catch(() => undefined)
-      .finally(() => {
+      } catch {
+        if (intentAnalyzeRequestSeqRef.current === requestSeq) {
+          setIntentAnalysis(null);
+        }
+      } finally {
         window.clearTimeout(timeoutId);
-        setIntentAnalysisLoading(false);
-      });
+        if (intentAnalyzeRequestSeqRef.current === requestSeq) {
+          setIntentAnalysisLoading(false);
+          const remainingLoadingMs = Math.max(0, 900 - (Date.now() - loadingStartedAt));
+          window.setTimeout(() => {
+            if (intentAnalyzeRequestSeqRef.current === requestSeq) {
+              setPrompt1LoadingVisible(false);
+            }
+          }, remainingLoadingMs);
+        }
+        if (intentAnalyzeAbortRef.current === controller) {
+          intentAnalyzeAbortRef.current = null;
+        }
+      }
+    },
+    [outputLanguage],
+  );
+
+  useEffect(() => {
+    const firstInput = initialEntry.prompt.trim();
+    const hasSources = initialEntry.sources.length > 0;
+    if (!firstInput && !hasSources) {
+      return;
+    }
+    void requestIntentAnalysis(initialEntry.prompt, initialEntry.sources, {
+      force: true,
+      clearPrevious: true,
+    });
     return () => {
-      window.clearTimeout(timeoutId);
-      controller.abort();
+      intentAnalyzeAbortRef.current?.abort();
     };
-  }, [initialEntry.prompt, initialEntry.sources, outputLanguage]);
+  }, [initialEntry.prompt, initialEntry.sources, requestIntentAnalysis]);
+
+  useEffect(() => {
+    return () => {
+      intentAnalyzeAbortRef.current?.abort();
+    };
+  }, []);
 
   const detectedIntent = useMemo(
     () => detectIntent(contextPrompt, entrySources),
@@ -2414,16 +2540,20 @@ export default function WorkspacePage() {
     () => buildMissingHints(effectiveIntent, contextPrompt, posterSizeId, outputLanguage),
     [effectiveIntent, contextPrompt, posterSizeId, outputLanguage],
   );
-  const prompt1Pending = intentAnalysisLoading && !intentAnalysis;
-  const shouldClarifyIntent = intentAnalysis?.clarifyMode === "topic";
+  const prompt1Pending = intentAnalysisLoading || prompt1LoadingVisible;
+  const shouldClarifyIntent =
+    intentAnalysis?.clarifyMode === "topic" ||
+    intentAnalysis?.classification === "need_topic_clarification" ||
+    intentAnalysis?.classification === "invalid";
   const needsFreshSourcesClarify = intentAnalysis?.clarifyMode === "fresh_sources";
   const topicSuggestions = useMemo(() => {
-    if (intentAnalysis?.clarifyMode === "topic" && intentAnalysis.suggestions.length) {
+    if (intentAnalysis?.clarifyMode !== "fresh_sources" && intentAnalysis?.suggestions.length) {
       return intentAnalysis.suggestions.slice(0, 4);
     }
     return [] as string[];
   }, [
     intentAnalysis?.clarifyMode,
+    intentAnalysis?.classification,
     intentAnalysis?.suggestions,
   ]);
   const waitingTopicSuggestionConfirm =
@@ -2440,6 +2570,7 @@ export default function WorkspacePage() {
   const hasCanvasPanel = showStoryboard || showPosterCanvas;
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
   const showCanvasPanelInLayout = hasCanvasPanel && (!isMobileViewport || mobileWorkspaceView === "canvas");
+  const showChatComposer = flowStage === "intent" || flowStage === "config" || flowStage === "content";
 
   useEffect(() => {
     if (!intentAnalysis) {
@@ -2448,7 +2579,7 @@ export default function WorkspacePage() {
     if (intentAnalysis.direction === "unknown") {
       return;
     }
-    if (manualIntent === intentAnalysis.direction) {
+    if (manualIntent !== null) {
       return;
     }
     setManualIntent(intentAnalysis.direction);
@@ -2508,48 +2639,35 @@ export default function WorkspacePage() {
   }, [contextPrompt, effectiveIntent, outputLanguage, posterSizeLabel, showPosterSizeSelector, topic]);
 
   const summaryText = useMemo(() => {
-    if (!contextPrompt && !entrySources.length) {
-      return tr(
-        "No source content yet. Enter a topic directly, or go back to Home and upload files, webpages, or YouTube links.",
-        "你还没有传入素材。可以直接输入主题，或返回首页上传文件、网页链接、YouTube 链接。",
-      );
+    if (showDirectionGuide && !shouldClarifyIntent) {
+      return "";
     }
-    const sourcePart = entrySources.length
-      ? tr(`I received ${entrySources.length} source item(s). `, `我收到了 ${entrySources.length} 条素材。`)
-      : tr("Current input is text-only. ", "当前是纯文本输入。");
+    if (!contextPrompt && !entrySources.length) {
+      return "Choose an output format and settings to continue.";
+    }
     const intentPart = shouldClarifyIntent
-      ? tr("Your request is still incomplete. I need to confirm the output direction first.", "你的需求还不够完整，我先和你确认一下生成方向。")
-      : tr("I recognized your output direction and prepared the base configuration.", "我已识别你的目标方向，并完成基础配置。");
+      ? "Choose a clearer topic first, then continue with output settings."
+      : "Choose an output format and settings to continue.";
     if (manualIntent === "ppt") {
-      return isZhOutput
-        ? `${sourcePart}${intentPart} 默认按 ${pptPageCount} 页、${pptRatio} 比例生成。`
-        : `${sourcePart}${intentPart} Default: ${pptPageCount} slides at ${pptRatio}.`;
+      return `${intentPart} Default: ${pptPageCount} slide(s), ${pptRatio}.`;
     }
     if (manualIntent === "video") {
-      return isZhOutput
-        ? `${sourcePart}${intentPart} 默认按 ${videoStoryboardCount} 个分镜（约 ${
-            videoStoryboardCount * 10
-          } 秒）、${videoRatio} 比例生成。`
-        : `${sourcePart}${intentPart} Default: ${videoStoryboardCount} storyboard frames (~${
-            videoStoryboardCount * 10
-          }s) at ${videoRatio}.`;
+      return `${intentPart} Default: ${videoStoryboardCount} frame(s), ${videoRatio}.`;
     }
     if (manualIntent === "poster") {
       const sizeLabel = posterSizeOptions.find((item) => item.id === posterSizeId)?.label ?? tr("Size not selected", "未选尺寸");
-      return isZhOutput
-        ? `${sourcePart}${intentPart} 默认生成 ${posterCount} 张，尺寸 ${sizeLabel}。`
-        : `${sourcePart}${intentPart} Default: ${posterCount} poster(s), size ${sizeLabel}.`;
+      return `${intentPart} Default: ${posterCount} poster(s), ${sizeLabel}.`;
     }
-    return `${sourcePart}${intentPart}`;
+    return intentPart;
   }, [
     contextPrompt,
     entrySources.length,
-    isZhOutput,
     manualIntent,
     posterCount,
     posterSizeId,
     pptPageCount,
     pptRatio,
+    showDirectionGuide,
     shouldClarifyIntent,
     tr,
     videoStoryboardCount,
@@ -2560,24 +2678,20 @@ export default function WorkspacePage() {
     if (prompt1Pending) {
       return isZhOutput ? "正在分析你的需求上下文..." : "Analyzing your request context...";
     }
-    if (intentAnalysis?.assistantHint) {
-      return intentAnalysis.assistantHint;
+    if (showDirectionGuide && !shouldClarifyIntent) {
+      return "I understood your request. Confirm output direction and settings to continue.";
     }
     if (!contextPrompt && !entrySources.length) {
-      return isZhOutput
-        ? "我还没有收到明确需求。你可以先选择生成方向，我会引导你补齐配置并开始生成。"
-        : "I have not received a clear request yet. Choose an output direction first and I will guide the configuration.";
+      return "Choose an output direction first, then I will prepare the draft.";
     }
-    return isZhOutput
-      ? `我已理解主题“${topicHintText(topic, outputLanguage)}”。接下来请选择生成方向并确认配置，我会据此生成对应的结构化内容。`
-      : `I understood the topic "${topicHintText(topic, outputLanguage)}". Next, choose output direction and confirm configuration to generate structured content.`;
+    return `I understood "${topicHintText(topic, outputLanguage)}". Choose a format and settings to continue.`;
   }, [
     contextPrompt,
     entrySources.length,
-    isZhOutput,
-    intentAnalysis,
     outputLanguage,
     prompt1Pending,
+    showDirectionGuide,
+    shouldClarifyIntent,
     topic,
   ]);
 
@@ -2993,38 +3107,8 @@ export default function WorkspacePage() {
           ),
         );
       };
-      const upsertImageErrorTurn = (task: ImageGenerationTask, errorText: string) => {
-        const codeMatch = errorText.match(/\(([A-Z0-9_:-]+)\)\s*$/);
-        const code = codeMatch?.[1] ?? undefined;
-        const nextMessage = `Image ${task.index} failed to generate. ${errorText}`;
-        setUpdates((prev) => {
-          const next = [...prev];
-          const foundIndex = next.findIndex(
-            (item) => item.meta?.kind === "image_error" && item.meta.taskIndex === task.index,
-          );
-          const nextTurn: ChatTurn = {
-            id:
-              foundIndex >= 0
-                ? next[foundIndex].id
-                : `err-img-${task.index}-${Date.now()}-${Math.round(Math.random() * 9999)}`,
-            role: "assistant",
-            module: "Image Generation Error",
-            content: nextMessage,
-            meta: {
-              kind: "image_error",
-              source: "image_generation",
-              code,
-              taskIndex: task.index,
-              retryable: true,
-            },
-          };
-          if (foundIndex >= 0) {
-            next[foundIndex] = nextTurn;
-          } else {
-            next.push(nextTurn);
-          }
-          return next;
-        });
+      const upsertImageErrorTurn = (_task: ImageGenerationTask, _errorText: string) => {
+        // Image errors belong on the canvas card, not in the conversation flow.
       };
       setGenerationConfirmError(null);
       setGenerationTaskStateByIndex((prev) => {
@@ -3341,6 +3425,7 @@ export default function WorkspacePage() {
             renderImageUrl,
           });
           if (shouldMarkSuccess) {
+            autoGenerationSuccessLockedRunIdsRef.current[activeRunId] = true;
             removeImageErrorTurnByTaskIndex(task.index);
             setGenerationTaskStateByIndex((prev) => {
               if (!activeRunId) {
@@ -3768,7 +3853,9 @@ export default function WorkspacePage() {
       });
       return;
     }
-    if (flowStage !== "generate" || !billingConfirmed || effectiveIntent !== "poster") {
+    const supportsAutoCanvasGeneration =
+      effectiveIntent === "poster" || effectiveIntent === "ppt";
+    if (flowStage !== "generate" || !billingConfirmed || !supportsAutoCanvasGeneration) {
       emitFlowAudit({
         stage: "6.auto-trigger-check",
         status: "skipped",
@@ -3778,6 +3865,7 @@ export default function WorkspacePage() {
           flowStage,
           billingConfirmed,
           effectiveIntent,
+          supportsAutoCanvasGeneration,
         },
       });
       return;
@@ -3797,6 +3885,21 @@ export default function WorkspacePage() {
     }
 
     const currentRunId = normalizeGenerationRunId(currentGenerationRunIdRef.current);
+    if (currentRunId && autoGenerationSuccessLockedRunIdsRef.current[currentRunId]) {
+      logWorkspaceVerbose("[WorkspaceFlowAudit] auto-trigger blocked: already has success", {
+        currentRunId,
+      });
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "auto-trigger-blocked-already-has-success",
+        keyFields: {
+          currentRunId,
+        },
+      });
+      return;
+    }
     const states = Object.values(generationTaskStateByIndex);
     const currentRunStates = currentRunId
       ? states.filter(
@@ -4251,38 +4354,8 @@ export default function WorkspacePage() {
     };
   }, []);
 
-  const upsertImageErrorCard = useCallback((task: ImageGenerationTask, errorText: string) => {
-    const codeMatch = errorText.match(/\(([A-Z0-9_:-]+)\)\s*$/);
-    const code = codeMatch?.[1] ?? undefined;
-    const nextMessage = `Image ${task.index} failed to generate. ${errorText}`;
-    setUpdates((prev) => {
-      const next = [...prev];
-      const foundIndex = next.findIndex(
-        (item) => item.meta?.kind === "image_error" && item.meta.taskIndex === task.index,
-      );
-      const nextTurn: ChatTurn = {
-        id:
-          foundIndex >= 0
-            ? next[foundIndex].id
-            : `err-img-${task.index}-${Date.now()}-${Math.round(Math.random() * 9999)}`,
-        role: "assistant",
-        module: "Image Generation Error",
-        content: nextMessage,
-        meta: {
-          kind: "image_error",
-          source: "image_generation",
-          code,
-          taskIndex: task.index,
-          retryable: true,
-        },
-      };
-      if (foundIndex >= 0) {
-        next[foundIndex] = nextTurn;
-      } else {
-        next.push(nextTurn);
-      }
-      return next;
-    });
+  const upsertImageErrorCard = useCallback((_task: ImageGenerationTask, _errorText: string) => {
+    // Image generation failures are shown on the canvas task card only.
   }, []);
 
   useEffect(() => {
@@ -4750,6 +4823,7 @@ export default function WorkspacePage() {
     setDraftLlmUsage(null);
     setEditablePosterDraft(null);
     setEditablePosterPlanList([]);
+    setUpdates((prev) => prev.filter((item) => item.meta?.kind !== "llm_error"));
     startThinking(
       tr("Poster Draft", "海报文案草稿"),
       tr("Generating poster draft with the language model...", "正在调用语言模型生成海报文案草稿..."),
@@ -5592,6 +5666,10 @@ export default function WorkspacePage() {
 
     if (likelyTopicText && (flowStage === "intent" || flowStage === "config" || shouldClarifyIntent)) {
       setTopicContextPrompt(value);
+      void requestIntentAnalysis(value, entrySources, {
+        force: true,
+        clearPrevious: true,
+      });
     }
 
     if (!shouldPrioritizeDraftEdit && waitingTopicSuggestionConfirm && topicSuggestions.length > 0 && !hasDirectionHint) {
@@ -6136,35 +6214,37 @@ export default function WorkspacePage() {
                 />
               </div>
 
-              <div className="z-20 pt-2">
-                <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]">
-                  <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <textarea
-                        value={chatInput}
-                        onChange={(event) => setChatInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            void handleSendInput();
-                          }
-                        }}
-                        className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
-                        placeholder={tr("Add more instructions", "继续补充需求")}
-                      />
-                      <button
-                        type="button"
-                        disabled={!chatInput.trim() || isSending}
-                        onClick={() => void handleSendInput()}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-                        aria-label={tr("Send", "发送")}
-                      >
-                        {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
-                      </button>
+              {showChatComposer ? (
+                <div className="z-20 pt-2">
+                  <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]">
+                    <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <textarea
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              void handleSendInput();
+                            }
+                          }}
+                          className="max-h-32 min-h-[38px] w-full resize-none bg-transparent py-1 text-sm text-zinc-800 outline-none"
+                          placeholder={tr("Add more instructions", "继续补充需求")}
+                        />
+                        <button
+                          type="button"
+                          disabled={!chatInput.trim() || isSending}
+                          onClick={() => void handleSendInput()}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                          aria-label={tr("Send", "发送")}
+                        >
+                          {isSending ? <LoaderCircle size={14} className="animate-spin" /> : <ArrowUp size={14} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           </section>
 
@@ -6240,19 +6320,20 @@ export default function WorkspacePage() {
 
       <PaywallDialog
         open={creditsPaywallOpen}
-        title={isFreeUser ? "Membership required" : "Credits required"}
-        description={
-          isFreeUser
-            ? "Your free monthly credits are used up. Please go to the membership page to continue."
-            : "Your credits are used up. Extra credit purchase will be added later."
-        }
+        title={paywallCopy.title}
+        description={paywallCopy.description}
         compact
-        onClose={() => setCreditsPaywallOpen(false)}
+        source={paywallCopy.source}
+        onClose={() => {
+          setCreditsPaywallOpen(false);
+          setCreditsPaywallContext(null);
+        }}
         onConfirm={() => {
           setCreditsPaywallOpen(false);
+          setCreditsPaywallContext(null);
           openMembershipFromWorkspace();
         }}
-        confirmLabel="Go to Membership"
+        confirmLabel={paywallCopy.confirmLabel}
       />
 
     </div>
