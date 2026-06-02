@@ -27,7 +27,7 @@ import {
 } from "@/lib/workspace/tuzi-image";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 type GenerateBatchPayload = {
   idempotencyKey?: string;
@@ -102,12 +102,13 @@ type GenerateBatchPayload = {
   }>;
 };
 
-type OrderedImageProvider = "tuzi";
+type OrderedImageProvider = "tuzi" | "duomi" | "gptsapi";
 type ImageGenerationMode = "mock" | "real" | "dry-run";
 
-const DEFAULT_PROVIDER_POLICY: OrderedImageProvider[] = ["tuzi"];
-const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "300000", 10);
-const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "300000", 10);
+const DEFAULT_PROVIDER_POLICY: OrderedImageProvider[] = ["tuzi", "duomi", "gptsapi"];
+const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "500000", 10);
+const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_FALLBACK_CALL_TIMEOUT_MS || "500000", 10);
+const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "590000", 10);
 const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "150000", 10);
 const PROMPT_MAX_CHARS = Number.parseInt(process.env.IMAGE2_PROMPT_MAX_CHARS || "2000", 10);
 const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
@@ -291,8 +292,25 @@ function clampPromptForImage(prompt: string) {
 }
 
 function parseProviderPolicy(rawPolicy?: string) {
-  void rawPolicy;
-  return DEFAULT_PROVIDER_POLICY;
+  const raw = (process.env.IMAGE2_PROVIDER_POLICY || rawPolicy || "").trim().toLowerCase();
+  if (!raw || raw === "tuzi") {
+    return DEFAULT_PROVIDER_POLICY;
+  }
+  const seen = new Set<OrderedImageProvider>();
+  const providers = raw
+    .split(/[,\s>]+/)
+    .map((item) => item.trim())
+    .filter((item): item is OrderedImageProvider =>
+      item === "tuzi" || item === "duomi" || item === "gptsapi",
+    )
+    .filter((item) => {
+      if (seen.has(item)) {
+        return false;
+      }
+      seen.add(item);
+      return true;
+    });
+  return providers.length ? providers : DEFAULT_PROVIDER_POLICY;
 }
 
 function resolveTaskStorageKey(task: {
@@ -359,16 +377,23 @@ function resolveImageGenerationMode(request: NextRequest): ImageGenerationMode {
 
 function normalizeProviderTimeoutMs() {
   if (!Number.isFinite(PROVIDER_CALL_TIMEOUT_MS)) {
-    return 300_000;
+    return 500_000;
   }
-  return Math.max(30_000, Math.min(300_000, PROVIDER_CALL_TIMEOUT_MS));
+  return Math.max(30_000, Math.min(500_000, PROVIDER_CALL_TIMEOUT_MS));
+}
+
+function normalizeFallbackProviderTimeoutMs() {
+  if (!Number.isFinite(FALLBACK_PROVIDER_CALL_TIMEOUT_MS)) {
+    return 500_000;
+  }
+  return Math.max(30_000, Math.min(500_000, FALLBACK_PROVIDER_CALL_TIMEOUT_MS));
 }
 
 function normalizeRouteBudgetMs() {
   if (!Number.isFinite(ROUTE_EXECUTION_BUDGET_MS)) {
-    return 300_000;
+    return 590_000;
   }
-  return Math.max(90_000, Math.min(300_000, ROUTE_EXECUTION_BUDGET_MS));
+  return Math.max(90_000, Math.min(600_000, ROUTE_EXECUTION_BUDGET_MS));
 }
 
 function normalizeAssetDownloadTimeoutMs() {
@@ -417,9 +442,8 @@ async function requestImageByPolicy(input: {
   routeStartedAt: number;
   allowProviderFallback: boolean;
 }) {
-  const provider = "tuzi" satisfies OrderedImageProvider;
   const skippedProviderSet = new Set<OrderedImageProvider>();
-  const providerFallbackDisabled = true;
+  const providerFallbackDisabled = !input.allowProviderFallback;
   const attemptedProviders: OrderedImageProvider[] = [];
   const attempts: Array<{
     provider: OrderedImageProvider;
@@ -429,90 +453,103 @@ async function requestImageByPolicy(input: {
     errorMessage?: string;
   }> = [];
   const routeBudgetMs = normalizeRouteBudgetMs();
-  const elapsed = Date.now() - input.routeStartedAt;
-  const remainingBudget = routeBudgetMs - elapsed;
-  if (remainingBudget < 18_000) {
-    const result = buildProviderFailure(
-      provider,
-      "IMAGE_ROUTE_BUDGET_EXHAUSTED",
-      "Image generation exceeded route execution budget.",
-      `remainingBudget=${remainingBudget}`,
-    );
-    return {
-      providerUsed: provider,
-      attemptedProviders,
-      skippedProviders: Array.from(skippedProviderSet),
-      providerFallbackDisabled,
-      attempts,
-      result,
-    };
-  }
+  const orderedProviders = input.allowProviderFallback
+    ? input.providerPolicy
+    : input.providerPolicy.slice(0, 1);
+  let lastFailure: Image2ProviderFailure | null = null;
+  let lastProvider: OrderedImageProvider = orderedProviders[0] ?? "tuzi";
 
-  attemptedProviders.push(provider);
-  const config = buildImage2ProviderConfig("tuzi");
-  if (!config) {
-    const result = buildProviderFailure(
-      provider,
-      "TUZI_KEY_MISSING",
-      "Tuzi provider key is not configured.",
-    );
-    attempts.push({
-      provider,
-      ok: false,
-      elapsedMs: 0,
-      errorCode: result.errorCode,
-      errorMessage: result.errorMessage,
-    });
-    return {
-      providerUsed: provider,
-      attemptedProviders,
-      skippedProviders: Array.from(skippedProviderSet),
-      providerFallbackDisabled,
-      attempts,
-      result,
-    };
-  }
+  for (const provider of orderedProviders) {
+    const elapsed = Date.now() - input.routeStartedAt;
+    const remainingBudget = routeBudgetMs - elapsed;
+    if (remainingBudget < 18_000) {
+      const result = buildProviderFailure(
+        provider,
+        "IMAGE_ROUTE_BUDGET_EXHAUSTED",
+        "Image generation exceeded route execution budget.",
+        `remainingBudget=${remainingBudget}`,
+      );
+      return {
+        providerUsed: provider,
+        attemptedProviders,
+        skippedProviders: Array.from(skippedProviderSet),
+        providerFallbackDisabled,
+        attempts,
+        result,
+      };
+    }
 
-  config.model = input.imageModel;
-  const endpoint = (process.env.IMAGE2_TUZI_PROVIDER_ENDPOINT || "https://api.tu-zi.com/v1/images/generations").trim();
-  config.endpoint = /\/images\/edits(?:$|\?)/i.test(endpoint)
-    ? endpoint.replace(/\/images\/edits(?=$|\?)/i, "/images/generations")
-    : endpoint;
+    const config = buildImage2ProviderConfig(provider);
+    if (!config) {
+      skippedProviderSet.add(provider);
+      attempts.push({
+        provider,
+        ok: false,
+        elapsedMs: 0,
+        errorCode: `${provider.toUpperCase()}_KEY_MISSING`,
+        errorMessage: `${provider} provider key is not configured.`,
+      });
+      continue;
+    }
 
-  const timeoutMs = Math.min(normalizeProviderTimeoutMs(), Math.max(18_000, remainingBudget));
-  const providerStartedAt = Date.now();
-  try {
-    const result = await withTimeout(
-      requestImage2Generation(config, {
-        size: input.size,
-        aspectRatio: input.aspectRatio,
-        prompt: input.prompt,
-      }),
-      timeoutMs,
-      "tuzi provider timeout",
-    );
+    attemptedProviders.push(provider);
+    lastProvider = provider;
+    config.model = provider === "tuzi" ? input.imageModel : config.model;
+    if (provider === "tuzi") {
+      const endpoint = (process.env.IMAGE2_TUZI_PROVIDER_ENDPOINT || "https://api.tu-zi.com/v1/images/generations").trim();
+      config.endpoint = /\/images\/edits(?:$|\?)/i.test(endpoint)
+        ? endpoint.replace(/\/images\/edits(?=$|\?)/i, "/images/generations")
+        : endpoint;
+    }
 
-    if (result.ok) {
-      const parsedFromRaw = parseTuziImageUrl((() => {
-        try {
-          return result.rawText ? JSON.parse(result.rawText) : null;
-        } catch {
-          return null;
+    const fallbackAwareTimeoutMs = input.allowProviderFallback
+      ? normalizeFallbackProviderTimeoutMs()
+      : normalizeProviderTimeoutMs();
+    const timeoutMs = Math.min(fallbackAwareTimeoutMs, Math.max(18_000, remainingBudget));
+    const providerStartedAt = Date.now();
+    try {
+      const result = await withTimeout(
+        requestImage2Generation(config, {
+          size: input.size,
+          aspectRatio: input.aspectRatio,
+          prompt: input.prompt,
+        }),
+        timeoutMs,
+        `${provider} provider timeout`,
+      );
+
+      if (result.ok) {
+        const parsedFromRaw =
+          provider === "tuzi"
+            ? parseTuziImageUrl((() => {
+                try {
+                  return result.rawText ? JSON.parse(result.rawText) : null;
+                } catch {
+                  return null;
+                }
+              })())
+            : "";
+        const resolvedImageUrl = parsedFromRaw || result.imageUrl;
+        if (!resolvedImageUrl) {
+          const missingUrlFailure = buildProviderFailure(
+            provider,
+            `${provider.toUpperCase()}_IMAGE_URL_MISSING`,
+            "Image provider response did not include image URL.",
+          );
+          attempts.push({
+            provider,
+            ok: false,
+            elapsedMs: Date.now() - providerStartedAt,
+            errorCode: missingUrlFailure.errorCode,
+            errorMessage: missingUrlFailure.errorMessage,
+          });
+          lastFailure = missingUrlFailure;
+          continue;
         }
-      })());
-      const resolvedImageUrl = parsedFromRaw || result.imageUrl;
-      if (!resolvedImageUrl) {
-        const missingUrlFailure = buildProviderFailure(
-          provider,
-          "TUZI_IMAGE_URL_MISSING",
-          "Tuzi response did not include image URL.",
-        );
         attempts.push({
           provider,
-          ok: false,
+          ok: true,
           elapsedMs: Date.now() - providerStartedAt,
-          errorCode: missingUrlFailure.errorCode,
-          errorMessage: missingUrlFailure.errorMessage,
         });
         return {
           providerUsed: provider,
@@ -520,69 +557,61 @@ async function requestImageByPolicy(input: {
           skippedProviders: Array.from(skippedProviderSet),
           providerFallbackDisabled,
           attempts,
-          result: missingUrlFailure,
+          result: {
+            ...result,
+            imageUrl: resolvedImageUrl,
+          },
         };
       }
+
+      const mappedFailure: Image2ProviderFailure = {
+        ...result,
+        errorCode:
+          result.errorCode === "IMAGE2_NO_URL"
+            ? `${provider.toUpperCase()}_IMAGE_URL_MISSING`
+            : result.errorCode,
+      };
       attempts.push({
         provider,
-        ok: true,
+        ok: false,
         elapsedMs: Date.now() - providerStartedAt,
+        errorCode: mappedFailure.errorCode,
+        errorMessage: mappedFailure.errorMessage,
       });
-      return {
-        providerUsed: provider,
-        attemptedProviders,
-        skippedProviders: Array.from(skippedProviderSet),
-        providerFallbackDisabled,
-        attempts,
-        result: {
-          ...result,
-          imageUrl: resolvedImageUrl,
-        },
-      };
+      lastFailure = mappedFailure;
+    } catch (error) {
+      const timeoutFailure = buildProviderFailure(
+        provider,
+        `${provider.toUpperCase()}_TIMEOUT`,
+        "Image provider request timed out.",
+        error instanceof Error ? error.message : "Unknown timeout",
+      );
+      attempts.push({
+        provider,
+        ok: false,
+        elapsedMs: Date.now() - providerStartedAt,
+        errorCode: timeoutFailure.errorCode,
+        errorMessage: timeoutFailure.errorMessage,
+      });
+      lastFailure = timeoutFailure;
     }
-
-    const mappedFailure: Image2ProviderFailure = {
-      ...result,
-      errorCode: result.errorCode === "IMAGE2_NO_URL" ? "TUZI_IMAGE_URL_MISSING" : result.errorCode,
-    };
-    attempts.push({
-      provider,
-      ok: false,
-      elapsedMs: Date.now() - providerStartedAt,
-      errorCode: mappedFailure.errorCode,
-      errorMessage: mappedFailure.errorMessage,
-    });
-    return {
-      providerUsed: provider,
-      attemptedProviders,
-      skippedProviders: Array.from(skippedProviderSet),
-      providerFallbackDisabled,
-      attempts,
-      result: mappedFailure,
-    };
-  } catch (error) {
-    const timeoutFailure = buildProviderFailure(
-      provider,
-      "TUZI_TIMEOUT",
-      "Tuzi provider request timed out.",
-      error instanceof Error ? error.message : "Unknown timeout",
-    );
-    attempts.push({
-      provider,
-      ok: false,
-      elapsedMs: Date.now() - providerStartedAt,
-      errorCode: timeoutFailure.errorCode,
-      errorMessage: timeoutFailure.errorMessage,
-    });
-    return {
-      providerUsed: provider,
-      attemptedProviders,
-      skippedProviders: Array.from(skippedProviderSet),
-      providerFallbackDisabled,
-      attempts,
-      result: timeoutFailure,
-    };
   }
+
+  const result =
+    lastFailure ||
+    buildProviderFailure(
+      lastProvider,
+      "IMAGE_PROVIDER_NOT_CONFIGURED",
+      "No image provider is configured.",
+    );
+  return {
+    providerUsed: lastProvider,
+    attemptedProviders,
+    skippedProviders: Array.from(skippedProviderSet),
+    providerFallbackDisabled,
+    attempts,
+    result,
+  };
 }
 
 function isFreeUserBySubscription(email: string) {
@@ -723,9 +752,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const imageModelPolicy = "tuzi";
+    const imageModelPolicy = process.env.IMAGE2_PROVIDER_POLICY || payload.imageModelPolicy || "tuzi,duomi,gptsapi";
     const providerPolicy = parseProviderPolicy(imageModelPolicy);
-    const allowProviderFallback = false;
+    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", true) && providerPolicy.length > 1;
     const fallbackSkippedProviders = [] as OrderedImageProvider[];
     const idempotencyKey = (payload.idempotencyKey || "").trim().slice(0, 220);
     const generationRunId =

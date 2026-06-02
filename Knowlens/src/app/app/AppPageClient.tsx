@@ -547,6 +547,9 @@ function ProgressiveCover({
 }
 
 function toOptimizedCaseCover(path: string) {
+  if (!path || path.startsWith("/api/") || /^https?:\/\//i.test(path)) {
+    return path;
+  }
   return `/app-optimized${path}`;
 }
 
@@ -1783,7 +1786,6 @@ export default function Home() {
     if (!currentEmail) {
       return recentProjects;
     }
-    const covers = recentProjects.map((item) => item.cover);
     const ownedProjects = getProjectsByUser(currentEmail)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
@@ -1791,7 +1793,7 @@ export default function Home() {
       id: project.id,
       title: formatRecentProjectTitle(project.title, locale, index),
       updatedAt: `Updated ${project.updatedAt}`,
-      cover: covers[index % covers.length] || recentProjects[0].cover,
+      cover: project.cover || "",
       format: normalizeFormatLabel(project.format || "海报"),
       duration: project.duration,
     }));
@@ -2125,15 +2127,30 @@ export default function Home() {
                 {resolvedRecentProjects.map((project) => (
                   <article
                     key={project.id}
-                    className="group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/workspace?projectId=${encodeURIComponent(project.id)}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        router.push(`/workspace?projectId=${encodeURIComponent(project.id)}`);
+                      }
+                    }}
+                    className="group cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative aspect-video w-full overflow-hidden bg-zinc-100">
-                      <ProgressiveCover
-                        src={toOptimizedCaseCover(project.cover)}
-                        fallbackSrc={project.cover}
-                        alt={project.title}
-                        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
-                      />
+                      {project.cover ? (
+                        <ProgressiveCover
+                          src={toOptimizedCaseCover(project.cover)}
+                          fallbackSrc={project.cover}
+                          alt={project.title}
+                          className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-zinc-50 text-xs text-zinc-400">
+                          No cover yet
+                        </div>
+                      )}
                       <span className="absolute left-2 top-2 inline-flex items-center rounded-md border border-white/25 bg-black/78 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-[2px]">
                         {normalizeFormatLabel(project.format)}
                       </span>

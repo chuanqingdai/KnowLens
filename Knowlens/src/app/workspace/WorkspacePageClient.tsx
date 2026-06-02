@@ -31,6 +31,7 @@ import {
   getAdminProjects,
   getAdminUserByEmail,
   getProjectsByUser,
+  updateUserProjectMetadata,
 } from "@/lib/admin";
 import { getVisualizationRecommendation } from "@/lib/prompts/content-draft";
 import {
@@ -242,6 +243,7 @@ type GenerationTaskUiState = {
   jobId?: string;
   source?: "current-run";
   error?: string;
+  errorCode?: string;
   startedAt?: number;
   lastUpdatedAt?: number;
 };
@@ -308,7 +310,7 @@ const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
-const GENERATION_REQUEST_TIMEOUT_MS = 420000;
+const GENERATION_REQUEST_TIMEOUT_MS = 620000;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
 const GENERATION_UI_HARD_TIMEOUT_MS = 450000;
@@ -839,6 +841,54 @@ function cleanTopicText(input: string) {
 
 function compactLineText(input: string | null | undefined) {
   return (input || "").replace(/\s+/g, " ").trim();
+}
+
+function cleanProjectTitleCandidate(input: string | null | undefined, outputLanguage: OutputLanguage) {
+  const compact = compactLineText(input)
+    .replace(/^(title|标题|主题|page focus|本页重点)\s*[:：]\s*/i, "")
+    .replace(/\s*[·\-|]\s*(用户意图总结|工作区草稿|workspace draft|intent summary)\s*$/i, "")
+    .replace(/^(请把|请将|把|将|please\s+turn|turn)\s*/i, "")
+    .trim();
+  if (!compact) {
+    return "";
+  }
+  const firstUnit = compact
+    .split(/[。！？!?]/)
+    .map((part) => part.trim())
+    .filter(Boolean)[0] || compact;
+  const maxLength = isChineseLanguage(outputLanguage) ? 28 : 72;
+  return firstUnit.slice(0, maxLength).trim();
+}
+
+function deriveWorkspaceProjectTitle(input: {
+  outputLanguage: OutputLanguage;
+  topic: string;
+  intent: WorkspaceIntent;
+  posterDraft?: PosterDraft | null;
+  planList?: PosterPlanItem[];
+  slides?: SlideDraft[];
+}) {
+  const candidates =
+    input.intent === "poster"
+      ? [
+          input.posterDraft?.headline,
+          input.posterDraft?.subtitle,
+          input.planList?.[0]?.title,
+          input.topic,
+        ]
+      : [
+          input.slides?.find((slide) => slide.isCover)?.title,
+          input.slides?.[0]?.title,
+          input.topic,
+        ];
+
+  for (const candidate of candidates) {
+    const cleaned = cleanProjectTitleCandidate(candidate, input.outputLanguage);
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+  return topicHintText(input.topic, input.outputLanguage);
 }
 
 function splitToShortLabels(input: string[], maxCount: number) {
@@ -2069,6 +2119,7 @@ export default function WorkspacePage() {
   const [sessionPrefsScopeKey] = useState(() => buildWorkspaceSessionScopeKey(initialEntry));
   const [sessionPrefs] = useState(() => readWorkspaceSessionPrefs(sessionPrefsScopeKey));
   const [topicContextPrompt, setTopicContextPrompt] = useState(() => initialEntry.prompt);
+  const [workspaceProjectTitle, setWorkspaceProjectTitle] = useState(() => initialEntry.project?.projectTitle || "");
   const [creditVersion, setCreditVersion] = useState(0);
   const credits = useMemo(() => {
     void creditVersion;
@@ -2193,6 +2244,7 @@ export default function WorkspacePage() {
     return pickSmartStyle(initialEntry.prompt, initialEntry.sources).id;
   });
   const [billingConfirmed, setBillingConfirmed] = useState(false);
+  const [workspaceToast, setWorkspaceToast] = useState<{ id: string; message: string } | null>(null);
   const [draftLlmUsage, setDraftLlmUsage] = useState<DraftLlmUsage | null>(null);
   const [isDraftGenerationPending, setIsDraftGenerationPending] = useState(false);
   const [isPlanningNextStep, setIsPlanningNextStep] = useState(false);
@@ -2218,6 +2270,8 @@ export default function WorkspacePage() {
   const [isComposingVideo, setIsComposingVideo] = useState(false);
   const posterDraftRequestRef = useRef(0);
   const chatHistoryWriteTimerRef = useRef<number | null>(null);
+  const workspaceToastTimerRef = useRef<number | null>(null);
+  const lastGenerationToastRef = useRef<string | null>(null);
   const intentAnalyzeAbortRef = useRef<AbortController | null>(null);
   const intentAnalyzeRequestSeqRef = useRef(0);
   const lastIntentAnalyzeSignatureRef = useRef<string | null>(null);
@@ -2237,7 +2291,9 @@ export default function WorkspacePage() {
   const currentGenerationRunIdRef = useRef<string | null>(null);
   const currentGenerationJobIdRef = useRef<string | null>(null);
   const autoGenerationTriggeredRunIdsRef = useRef<Record<string, boolean>>({});
+  const autoGenerationArmedRunIdsRef = useRef<Record<string, boolean>>({});
   const autoGenerationSuccessLockedRunIdsRef = useRef<Record<string, boolean>>({});
+  const autoGenerationFailureLockedRunIdsRef = useRef<Record<string, boolean>>({});
   const debugGoGenerateStepAppliedRef = useRef(false);
   const debugImageBridgeAppliedRef = useRef(false);
 
@@ -2311,19 +2367,59 @@ export default function WorkspacePage() {
     setCurrentGenerationRunId(normalizedRunId);
     setCurrentGenerationJobId(normalizedJobId);
   }, []);
+  const pushWorkspaceToast = useCallback((message: string) => {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return;
+    }
+    if (workspaceToastTimerRef.current) {
+      window.clearTimeout(workspaceToastTimerRef.current);
+      workspaceToastTimerRef.current = null;
+    }
+    setWorkspaceToast({
+      id: `workspace-toast-${Date.now()}`,
+      message: trimmed,
+    });
+    workspaceToastTimerRef.current = window.setTimeout(() => {
+      setWorkspaceToast(null);
+      workspaceToastTimerRef.current = null;
+    }, 3200);
+  }, []);
   const clearCurrentGenerationState = useCallback(
     (reason: string) => {
       generationRequestInFlightRef.current = false;
       setIsPlanningBillingStep(false);
       setGenerationConfirmError(null);
       setGenerationTaskStateByIndex({});
+      autoGenerationArmedRunIdsRef.current = {};
       autoGenerationSuccessLockedRunIdsRef.current = {};
+      autoGenerationFailureLockedRunIdsRef.current = {};
       setGenerationRunContext(null, null);
       setGenerationSessionSeed((prev) => prev + 1);
       logGenerationCacheGuard("clear-current-generation-state", { reason });
     },
     [setGenerationRunContext],
   );
+
+  useEffect(() => {
+    if (!generationConfirmError) {
+      lastGenerationToastRef.current = null;
+      return;
+    }
+    if (lastGenerationToastRef.current === generationConfirmError) {
+      return;
+    }
+    lastGenerationToastRef.current = generationConfirmError;
+    pushWorkspaceToast(generationConfirmError);
+  }, [generationConfirmError, pushWorkspaceToast]);
+
+  useEffect(() => {
+    return () => {
+      if (workspaceToastTimerRef.current) {
+        window.clearTimeout(workspaceToastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (initialEntry.project?.projectId) {
@@ -2333,6 +2429,24 @@ export default function WorkspacePage() {
       projectTraceIdRef.current = initialEntry.project.projectTraceId;
     }
   }, [initialEntry.project]);
+
+  useEffect(() => {
+    if (!currentEmail || !initialEntry.project?.projectId) {
+      return;
+    }
+    const existingProject = getProjectsByUser(currentEmail).find(
+      (project) => project.id === initialEntry.project?.projectId,
+    );
+    if (!existingProject) {
+      return;
+    }
+    if (!workspaceProjectTitle && existingProject.title) {
+      setWorkspaceProjectTitle(existingProject.title);
+    }
+    if (!topicContextPrompt.trim() && existingProject.title) {
+      setTopicContextPrompt(existingProject.title);
+    }
+  }, [currentEmail, initialEntry.project?.projectId, topicContextPrompt, workspaceProjectTitle]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2600,6 +2714,9 @@ export default function WorkspacePage() {
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
   const showCanvasPanelInLayout = hasCanvasPanel && (!isMobileViewport || mobileWorkspaceView === "canvas");
   const showChatComposer = flowStage === "intent" || flowStage === "config" || flowStage === "content";
+  const generationInProgress = Object.values(generationTaskStateByIndex).some(
+    (item) => item.status === "queued" || item.status === "generating" || item.status === "retrying",
+  );
 
   useEffect(() => {
     if (!intentAnalysis) {
@@ -3179,6 +3296,7 @@ export default function WorkspacePage() {
             jobId: currentGenerationJobIdRef.current || undefined,
             source: "current-run",
             error: undefined,
+            errorCode: undefined,
             startedAt: prevState?.startedAt ?? now,
             lastUpdatedAt: now,
           };
@@ -3205,6 +3323,7 @@ export default function WorkspacePage() {
             jobId: currentGenerationJobIdRef.current || undefined,
             source: "current-run",
             error: undefined,
+            errorCode: undefined,
             startedAt: prev[task.index]?.startedAt ?? now,
             lastUpdatedAt: now,
           },
@@ -3293,6 +3412,7 @@ export default function WorkspacePage() {
             "Generation response is missing run identity. Please retry.",
             "生成响应缺少 runId，请重试。",
           );
+          autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           logGenerationCacheGuard("reject-state-write", {
             reason: "missing-response-run",
             requestRunId: activeRunId,
@@ -3308,6 +3428,7 @@ export default function WorkspacePage() {
                 attempts: 1,
                 maxAttempts,
                 error: missingRunMessage,
+                errorCode: "IMAGE_RUN_ID_MISSING",
                 runId: activeRunId,
                 jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
                 source: "current-run",
@@ -3344,6 +3465,7 @@ export default function WorkspacePage() {
             "Generation response is missing job identity. Please retry.",
             "生成响应缺少 jobId，请重试。",
           );
+          autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           logGenerationCacheGuard("reject-state-write", {
             reason: "job-id-mismatch",
             requestRunId: activeRunId,
@@ -3359,6 +3481,7 @@ export default function WorkspacePage() {
                 attempts: 1,
                 maxAttempts,
                 error: missingJobMessage,
+                errorCode: "IMAGE_JOB_ID_MISSING",
                 runId: activeRunId,
                 source: "current-run",
                 startedAt: prev[task.index]?.startedAt ?? Date.now(),
@@ -3398,6 +3521,7 @@ export default function WorkspacePage() {
           const failureMessage =
             payload?.error ||
             (response.ok ? tr("Generation failed.", "生成失败。") : `generation batch failed (${response.status})`);
+          autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           tasks.forEach((task) => {
             setGenerationTaskStateByIndex((prev) => ({
               ...prev,
@@ -3407,6 +3531,7 @@ export default function WorkspacePage() {
                 attempts: 1,
                 maxAttempts,
                 error: failureMessage,
+                errorCode: payload?.code || `HTTP_${response.status}`,
                 runId: activeRunId,
                 jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
                 source: "current-run",
@@ -3479,6 +3604,16 @@ export default function WorkspacePage() {
           if (shouldMarkSuccess) {
             autoGenerationSuccessLockedRunIdsRef.current[activeRunId] = true;
             removeImageErrorTurnByTaskIndex(task.index);
+            const successfulImageUrl = renderImageUrl || finalImageUrl;
+            if (task.index === 1 && successfulImageUrl) {
+              updateUserProjectMetadata({
+                email: currentEmail,
+                projectId: projectIdRef.current,
+                cover: successfulImageUrl,
+                format: task.outputType === "ppt" ? "PPT" : task.outputType === "video" ? "视频" : "海报",
+                status: "已完成",
+              });
+            }
             setGenerationTaskStateByIndex((prev) => {
               if (!activeRunId) {
                 logGenerationCacheGuard("reject-state-write", {
@@ -3493,11 +3628,13 @@ export default function WorkspacePage() {
                 status: "success",
                 attempts: 1,
                 maxAttempts,
-                imageUrl: renderImageUrl || finalImageUrl,
+                imageUrl: successfulImageUrl,
                 rawImageUrl: result?.rawImageUrl || undefined,
                 runId: activeRunId,
                 jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
                 source: "current-run",
+                error: undefined,
+                errorCode: undefined,
                 startedAt: prev[task.index]?.startedAt ?? Date.now(),
                 lastUpdatedAt: Date.now(),
               };
@@ -3540,7 +3677,7 @@ export default function WorkspacePage() {
               projectId: projectIdRef.current ?? null,
               details: {
                 taskIndex: task.index,
-                imageUrl: renderImageUrl || finalImageUrl,
+                imageUrl: successfulImageUrl,
                 outputType: task.outputType,
                 taskStatus: result?.status || null,
                 taskId: result?.taskId || null,
@@ -3549,6 +3686,7 @@ export default function WorkspacePage() {
             return;
           }
           hasFailed = true;
+          autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           const nextError =
             result?.error ||
             tr("Generation failed.", "生成失败。");
@@ -3559,6 +3697,7 @@ export default function WorkspacePage() {
               attempts: 1,
               maxAttempts,
               error: nextError,
+              errorCode: result?.errorCode || "IMAGE_TASK_FAILED",
               imageUrl: undefined,
               rawImageUrl: result?.rawImageUrl || undefined,
               runId: activeRunId,
@@ -3617,6 +3756,7 @@ export default function WorkspacePage() {
             : error instanceof Error
               ? error.message
               : tr("Generation failed.", "生成失败。");
+        autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
         tasks.forEach((task) => {
           setGenerationTaskStateByIndex((prev) => ({
             ...prev,
@@ -3626,6 +3766,10 @@ export default function WorkspacePage() {
               attempts: 1,
               maxAttempts,
               error: lastError,
+              errorCode:
+                error instanceof DOMException && error.name === "AbortError"
+                  ? "IMAGE_REQUEST_TIMEOUT"
+                  : "IMAGE_REQUEST_FAILED",
               imageUrl: undefined,
               rawImageUrl: undefined,
               runId: activeRunId,
@@ -3703,9 +3847,6 @@ export default function WorkspacePage() {
         return;
       }
       if (generationRequestInFlightRef.current) {
-        setGenerationConfirmError(
-          tr("Generation is in progress. Please retry after current tasks finish.", "当前仍在生成中，请等待本轮结束后重试。"),
-        );
         return;
       }
       const nextRunId = createGenerationRunId();
@@ -3715,7 +3856,7 @@ export default function WorkspacePage() {
         generationRequestInFlightRef.current = false;
       });
     },
-    [imageGenerationTaskByIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
+    [imageGenerationTaskByIndex, runGenerationTasksOrdered, setGenerationRunContext],
   );
   const handleRedrawGenerationTask = useCallback(
     (index: number, copy: string) => {
@@ -3724,9 +3865,6 @@ export default function WorkspacePage() {
         return;
       }
       if (generationRequestInFlightRef.current) {
-        setGenerationConfirmError(
-          tr("Generation is in progress. Please retry after current tasks finish.", "当前仍在生成中，请等待本轮结束后重试。"),
-        );
         return;
       }
 
@@ -3814,6 +3952,25 @@ export default function WorkspacePage() {
       if (generationRequestInFlightRef.current) {
         return;
       }
+      const existingFailedStates = Object.values(generationTaskStateByIndex).filter(
+        (item) => item.status === "failed",
+      );
+      if (existingFailedStates.length) {
+        logWorkspaceVerbose("[WorkspaceFlowAudit] auto-trigger blocked: visible failed card exists", {
+          failedTaskIndexes: existingFailedStates.map((item) => item.index),
+        });
+        emitFlowAudit({
+          stage: "6.auto-trigger-exec",
+          status: "aborted",
+          decision: "no-request",
+          reason: "visible-failed-card-requires-manual-retry",
+          keyFields: {
+            failedTaskIndexes: existingFailedStates.map((item) => item.index),
+            failedCodes: existingFailedStates.map((item) => item.errorCode || null),
+          },
+        });
+        return;
+      }
       let tasksToGenerate: ImageGenerationTask[] = [];
       try {
         tasksToGenerate = buildFreshImageGenerationTasks();
@@ -3856,7 +4013,13 @@ export default function WorkspacePage() {
           lastUpdatedAt: startedAt,
         };
       });
-      setGenerationTaskStateByIndex(pendingState);
+      setGenerationTaskStateByIndex((prev) => {
+        const prevFailedStates = Object.values(prev).filter((item) => item.status === "failed");
+        if (prevFailedStates.length) {
+          return prev;
+        }
+        return pendingState;
+      });
       setGenerationConfirmError(null);
       logGenerationCacheGuard("auto-run-triggered", {
         reason,
@@ -3870,7 +4033,14 @@ export default function WorkspacePage() {
         generationRequestInFlightRef.current = false;
       }
     },
-    [buildFreshImageGenerationTasks, emitFlowAudit, runGenerationTasksOrdered, setGenerationRunContext, tr],
+    [
+      buildFreshImageGenerationTasks,
+      emitFlowAudit,
+      generationTaskStateByIndex,
+      runGenerationTasksOrdered,
+      setGenerationRunContext,
+      tr,
+    ],
   );
 
   const stageLabel = useMemo(() => {
@@ -3937,6 +4107,19 @@ export default function WorkspacePage() {
     }
 
     const currentRunId = normalizeGenerationRunId(currentGenerationRunIdRef.current);
+    if (!currentRunId || !autoGenerationArmedRunIdsRef.current[currentRunId]) {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "auto-trigger-not-armed",
+        keyFields: {
+          currentRunId,
+          hasArmedRun: Boolean(currentRunId && autoGenerationArmedRunIdsRef.current[currentRunId]),
+        },
+      });
+      return;
+    }
     if (currentRunId && autoGenerationSuccessLockedRunIdsRef.current[currentRunId]) {
       logWorkspaceVerbose("[WorkspaceFlowAudit] auto-trigger blocked: already has success", {
         currentRunId,
@@ -3952,7 +4135,37 @@ export default function WorkspacePage() {
       });
       return;
     }
+    if (currentRunId && autoGenerationFailureLockedRunIdsRef.current[currentRunId]) {
+      logWorkspaceVerbose("[WorkspaceFlowAudit] auto-trigger blocked: already has failure", {
+        currentRunId,
+      });
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "auto-trigger-blocked-already-has-failure",
+        keyFields: {
+          currentRunId,
+        },
+      });
+      return;
+    }
     const states = Object.values(generationTaskStateByIndex);
+    const visibleFailedStates = states.filter((item) => item.status === "failed");
+    if (visibleFailedStates.length) {
+      emitFlowAudit({
+        stage: "6.auto-trigger-check",
+        status: "skipped",
+        decision: "no-auto-trigger",
+        reason: "visible-failed-card-requires-manual-retry",
+        keyFields: {
+          currentRunId,
+          failedTaskIndexes: visibleFailedStates.map((item) => item.index),
+          failedCodes: visibleFailedStates.map((item) => item.errorCode || null),
+        },
+      });
+      return;
+    }
     const currentRunStates = currentRunId
       ? states.filter(
           (item) =>
@@ -4176,9 +4389,11 @@ export default function WorkspacePage() {
       },
     });
   }, [billingConfirmed, emitFlowAudit, flowStage, generationTaskStateByIndex, imageGenerationTasks.length]);
-  const projectTitle = isZhOutput
-    ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
-    : `${topicHintText(topic, outputLanguage)} · Intent Summary`;
+  const projectTitle =
+    workspaceProjectTitle ||
+    (isZhOutput
+      ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
+      : `${topicHintText(topic, outputLanguage)} · Intent Summary`);
 
   const isHydrated = useSyncExternalStore(
     useCallback(() => () => undefined, []),
@@ -4441,6 +4656,10 @@ export default function WorkspacePage() {
           }
           if (taskState.status === "success" || taskState.status === "failed") {
             return;
+          }
+          const timedOutRunId = normalizeGenerationRunId(taskState.runId);
+          if (timedOutRunId) {
+            autoGenerationFailureLockedRunIdsRef.current[timedOutRunId] = true;
           }
           next[index] = {
             ...taskState,
@@ -4815,6 +5034,19 @@ export default function WorkspacePage() {
         }
         setEditableOutlineItems(nextOutline.length ? nextOutline : baseOutlineItems);
         setEditableSlideDrafts(nextSlides.length ? nextSlides : baseSlideDrafts);
+        const nextProjectTitle = deriveWorkspaceProjectTitle({
+          outputLanguage,
+          topic,
+          intent: effectiveIntent,
+          slides: nextSlides.length ? nextSlides : baseSlideDrafts,
+        });
+        setWorkspaceProjectTitle(nextProjectTitle);
+        updateUserProjectMetadata({
+          email: currentEmail,
+          projectId: projectIdRef.current,
+          title: nextProjectTitle,
+          format: effectiveIntent === "video" ? "视频" : "PPT",
+        });
         logClientEvent({
           category: "llm",
           action: "draft_generation_success",
@@ -4947,6 +5179,20 @@ export default function WorkspacePage() {
       }
       setEditablePosterDraft(data.posterDraft ?? null);
       setEditablePosterPlanList(Array.isArray(data.planList) ? data.planList : []);
+      const nextProjectTitle = deriveWorkspaceProjectTitle({
+        outputLanguage,
+        topic,
+        intent: effectiveIntent,
+        posterDraft: data.posterDraft ?? null,
+        planList: Array.isArray(data.planList) ? data.planList : [],
+      });
+      setWorkspaceProjectTitle(nextProjectTitle);
+      updateUserProjectMetadata({
+        email: currentEmail,
+        projectId: projectIdRef.current,
+        title: nextProjectTitle,
+        format: "海报",
+      });
       logClientEvent({
         category: "llm",
         action: "draft_generation_success",
@@ -5011,6 +5257,7 @@ export default function WorkspacePage() {
     basePosterDraft,
     basePosterPlanList,
     baseSlideDrafts,
+    currentEmail,
     draftPrompt,
     effectiveIntent,
     initialEntry.models?.textModel,
@@ -5308,6 +5555,9 @@ export default function WorkspacePage() {
     setGenerationConfirmError(null);
     setGenerationSessionSeed((prev) => prev + 1);
     const nextRunId = createGenerationRunId();
+    autoGenerationArmedRunIdsRef.current[nextRunId] = true;
+    delete autoGenerationSuccessLockedRunIdsRef.current[nextRunId];
+    delete autoGenerationFailureLockedRunIdsRef.current[nextRunId];
     setGenerationRunContext(nextRunId, null);
     logGenerationCacheGuard("run-started", {
       runId: nextRunId,
@@ -5458,6 +5708,7 @@ export default function WorkspacePage() {
         projectId: projectIdRef.current ?? null,
       });
     } finally {
+      delete autoGenerationArmedRunIdsRef.current[nextRunId];
       emitFlowAudit({
         stage: "7.confirm-generation",
         status: "finished",
@@ -6174,6 +6425,14 @@ export default function WorkspacePage() {
         onOpenCanvas={() => setMobileWorkspaceView("canvas")}
       />
 
+      {workspaceToast ? (
+        <div className="pointer-events-none fixed left-1/2 top-20 z-50 w-[min(92vw,520px)] -translate-x-1/2">
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 shadow-lg shadow-zinc-900/10">
+            {workspaceToast.message}
+          </div>
+        </div>
+      ) : null}
+
       <main className="mx-auto flex h-full min-h-0 max-w-none flex-col overflow-hidden px-2 pb-1 pt-16 sm:px-3">
         <div
           className={`grid min-h-0 flex-1 gap-2 ${
@@ -6254,7 +6513,7 @@ export default function WorkspacePage() {
                   billingConfirmed={billingConfirmed}
                   canConfirmBilling={canConfirmBilling}
                   isFreeUser={isFreeUser}
-                  generationConfirmError={generationConfirmError}
+                  generationConfirmError={null}
                   billingSummary={{
                     styleName: selectedStyle.englishName ?? selectedStyle.name,
                     languageModelCredits,
@@ -6341,6 +6600,7 @@ export default function WorkspacePage() {
                 generationSeedSlides={canvasSeedSlides}
                 generationClearToken={`generation-${generationSessionSeed}`}
                 generationTaskStateByIndex={generationTaskStateByIndex}
+                generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
                 onModeActionRegister={(actions) => {
                   modeActionsRef.current = actions;
@@ -6373,6 +6633,7 @@ export default function WorkspacePage() {
                 posterAspectRatio={posterCanvasAspectRatio}
                 generationSessionSeed={generationSessionSeed}
                 generationTaskStateByIndex={generationTaskStateByIndex}
+                generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
                 onRedrawGenerationTask={handleRedrawGenerationTask}
                 onSaveStateChange={(nextState, unsaved) => {

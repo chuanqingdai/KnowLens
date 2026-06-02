@@ -38,6 +38,18 @@ type SourceItem = {
   progress?: number;
 };
 
+function toUserFacingErrorCode(code?: string) {
+  const raw = (code || "").trim().toUpperCase();
+  if (!raw) {
+    return "";
+  }
+  if (/TIMEOUT|TIMED_OUT|BUDGET/.test(raw)) return "GEN-408";
+  if (/AUTH|KEY|API/.test(raw)) return "GEN-401";
+  if (/NETWORK|FETCH|ABORT/.test(raw)) return "GEN-503";
+  if (/MODEL|PROVIDER|GPTSAPI|TUZI|DUOMI/.test(raw)) return "GEN-502";
+  return "GEN-500";
+}
+
 type SlideDraft = {
   page: number;
   title: string;
@@ -913,7 +925,7 @@ export const ChatPanel = memo(function ChatPanel({
       update.meta?.kind === "llm_error";
     if (isErrorCard) {
       const isRetrying = Boolean(retryingErrorTurnIds?.[update.id]);
-      const errorCode = update.meta?.code?.trim();
+      const errorCode = toUserFacingErrorCode(update.meta?.code);
       const canRetry = update.meta?.retryable !== false;
       return (
         <article

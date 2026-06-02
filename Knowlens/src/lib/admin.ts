@@ -19,6 +19,7 @@ export type AdminProject = {
   updatedAt: string;
   format?: "海报" | "PPT" | "视频";
   duration?: string;
+  cover?: string;
 };
 
 export type FeaturedCaseConfig = {
@@ -395,6 +396,51 @@ export function ensureUserProjectByEmail(input: {
   const allProjects = getAdminProjects();
   write(ADMIN_PROJECTS_KEY, [createdProject, ...allProjects.filter((item) => item.id !== createdProject.id)]);
   return createdProject;
+}
+
+export function updateUserProjectMetadata(input: {
+  email?: string | null;
+  projectId?: string | null;
+  title?: string;
+  cover?: string;
+  format?: "海报" | "PPT" | "视频";
+  status?: "进行中" | "已完成";
+}) {
+  const email = input.email?.trim().toLowerCase();
+  const projectId = input.projectId?.trim();
+  if (!email || !projectId) {
+    return null;
+  }
+
+  const current = getProjectsByUser(email);
+  const existing = current.find((project) => project.id === projectId);
+  if (!existing) {
+    return null;
+  }
+
+  const nextProject: AdminProject = {
+    ...existing,
+    title: input.title?.trim() || existing.title,
+    cover: input.cover?.trim() || existing.cover,
+    format: input.format || existing.format,
+    status: input.status || existing.status,
+    updatedAt: formatProjectUpdatedAt(),
+  };
+  const nextScoped = [
+    nextProject,
+    ...current.filter((project) => project.id !== projectId),
+  ];
+  write(scopedKey(USER_SCOPED_PROJECTS_KEY, email), nextScoped);
+
+  const allProjects = getAdminProjects();
+  const existingGlobal = allProjects.find((project) => project.id === projectId);
+  const nextGlobal = existingGlobal ? { ...existingGlobal, ...nextProject } : nextProject;
+  write(ADMIN_PROJECTS_KEY, [
+    nextGlobal,
+    ...allProjects.filter((project) => project.id !== projectId),
+  ]);
+
+  return nextProject;
 }
 
 export function getFeaturedCaseConfigs() {

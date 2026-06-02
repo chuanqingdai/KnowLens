@@ -214,7 +214,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
           <div className="flex items-center gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
             <Link
-              href={isLanding ? "#pricing" : "/#pricing"}
+              href="/membership"
               className="inline-flex h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
             >
               Pricing
@@ -222,6 +222,10 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
             <button
               type="button"
               onClick={() => {
+                if (status === "authenticated" || status === "loading") {
+                  router.push("/app");
+                  return;
+                }
                 if (useGoogleFallback) {
                   void handleGoogleFallback();
                   return;

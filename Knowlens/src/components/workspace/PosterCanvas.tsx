@@ -60,10 +60,12 @@ type PosterCanvasProps = {
       maxAttempts: number;
       imageUrl?: string;
       error?: string;
+      errorCode?: string;
       startedAt?: number;
       lastUpdatedAt?: number;
     }
   >;
+  generationInProgress?: boolean;
   onRetryGenerationTask?: (index: number) => void;
   onRedrawGenerationTask?: (index: number, copy: string) => void;
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
@@ -81,6 +83,7 @@ type PosterCard = {
   initialCopy: string;
   history: string[];
   errorMessage?: string;
+  errorCode?: string;
   timeoutAt?: number;
   imageLoading?: boolean;
   imageLoadError?: string;
@@ -95,6 +98,7 @@ type PosterNodeData = {
   card: PosterCard;
   isSelected: boolean;
   frameAspectRatioCss: string;
+  generationInProgress: boolean;
   onUpdate: (id: string, patch: Partial<PosterCard>) => void;
   onRetry: (id: string) => void;
   onRedraw: (id: string) => void;
@@ -181,6 +185,34 @@ function toConciseImageErrorMessage(message?: string) {
     return "Save failed. Please retry.";
   }
   return "Failed. Please retry.";
+}
+
+function toImageErrorDisplayCode(errorCode?: string, message?: string) {
+  const rawCode = (errorCode || "").trim().toUpperCase();
+  const rawMessage = (message || "").trim().toUpperCase();
+  const bag = `${rawCode} ${rawMessage}`;
+  return (() => {
+    if (/TIMEOUT|TIMED_OUT|BUDGET/.test(bag)) return "IMG-408";
+    if (/STORAGE|PERSIST|DOWNLOAD|ASSET/.test(bag)) return "IMG-512";
+    if (/FETCH|NETWORK|ABORT|INTERRUPT/.test(bag)) return "IMG-503";
+    if (/ALL_FAILED|PROVIDER|TUZI|GPTSAPI|DUOMI/.test(bag)) return "IMG-502";
+    return "IMG-500";
+  })();
+}
+
+function toImageFailureSentence(message?: string, errorCode?: string) {
+  const displayCode = toImageErrorDisplayCode(errorCode, message);
+  const raw = (message || "").trim();
+  if (/timeout|timed out|budget/i.test(raw)) {
+    return `Generation timed out; please retry manually. Code: ${displayCode}.`;
+  }
+  if (/aborted|network|fetch/i.test(raw)) {
+    return `The image request was interrupted; please retry manually. Code: ${displayCode}.`;
+  }
+  if (/storage|persist|download/i.test(raw)) {
+    return `The image could not be saved; please retry manually. Code: ${displayCode}.`;
+  }
+  return `The image could not be generated right now; please retry manually. Code: ${displayCode}.`;
 }
 
 function resolvePosterAspectRatio(input?: string) {
@@ -381,6 +413,7 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
     card,
     isSelected,
     frameAspectRatioCss,
+    generationInProgress,
     onUpdate,
     onRetry,
     onRedraw,
@@ -580,22 +613,23 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
         ) : null}
         {card.status === "failed" ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
-            <div className="max-w-[220px] rounded-lg border border-red-200 bg-white px-3 py-2 text-center shadow-sm">
-              <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600">
-                <AlertCircle size={15} />
+            <div className="max-w-[250px] rounded-lg border border-red-100 bg-white px-4 py-3 text-center shadow-sm">
+              <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <AlertCircle size={14} />
               </div>
-              <p className="text-xs font-medium text-zinc-800">Generation failed</p>
-              <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
-                {toConciseImageErrorMessage(card.errorMessage)}
+              <p className="text-xs leading-5 text-zinc-700">
+                {toImageFailureSentence(card.errorMessage, card.errorCode)}
               </p>
-              <button
-                type="button"
-                onClick={() => onRetry(card.id)}
-                className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
-              >
-                <RefreshCw size={12} />
-                Retry
-              </button>
+              {!generationInProgress ? (
+                <button
+                  type="button"
+                  onClick={() => onRetry(card.id)}
+                  className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
+                >
+                  <RefreshCw size={12} />
+                  Retry
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -640,7 +674,8 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
   return (
     prev.data.card === next.data.card &&
     prev.data.isSelected === next.data.isSelected &&
-    prev.data.frameAspectRatioCss === next.data.frameAspectRatioCss
+    prev.data.frameAspectRatioCss === next.data.frameAspectRatioCss &&
+    prev.data.generationInProgress === next.data.generationInProgress
   );
 });
 
@@ -651,6 +686,7 @@ export function PosterCanvas({
   posterAspectRatio,
   generationSessionSeed = 0,
   generationTaskStateByIndex,
+  generationInProgress = false,
   onRetryGenerationTask,
   onRedrawGenerationTask,
   onSaveStateChange,
@@ -794,6 +830,7 @@ export function PosterCanvas({
             imageSrc: taskState.imageUrl,
             colorHex: POSTER_PLACEHOLDER_COLORS[(item.index + 2) % POSTER_PLACEHOLDER_COLORS.length],
             errorMessage: undefined,
+            errorCode: undefined,
             imageLoading: true,
             imageLoadError: undefined,
             timeoutAt: undefined,
@@ -814,6 +851,7 @@ export function PosterCanvas({
             status: "failed",
             imageSrc: "",
             errorMessage: toConciseImageErrorMessage(taskState.error),
+            errorCode: taskState.errorCode,
             imageLoading: false,
             imageLoadError: undefined,
             timeoutAt: undefined,
@@ -837,6 +875,7 @@ export function PosterCanvas({
             status: taskState.status,
             imageSrc: "",
             errorMessage: undefined,
+            errorCode: undefined,
             imageLoading: false,
             imageLoadError: undefined,
             timeoutAt: taskState.startedAt,
@@ -1100,6 +1139,7 @@ export function PosterCanvas({
           card,
           isSelected: selectedCardId === card.id,
           frameAspectRatioCss,
+          generationInProgress,
           onUpdate: handleUpdateCard,
           onRetry: handleRetryCard,
           onRedraw: handleRedrawCard,

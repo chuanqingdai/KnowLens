@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 
 function isLocalNetworkHost() {
@@ -37,6 +38,8 @@ function GoogleMark() {
 }
 
 export default function AuthPage() {
+  const router = useRouter();
+  const { status: sessionStatus } = useSession();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isLocalLoginLoading, setIsLocalLoginLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -70,6 +73,13 @@ export default function AuthPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted || sessionStatus !== "authenticated") {
+      return;
+    }
+    router.replace(callbackUrl);
+  }, [callbackUrl, mounted, router, sessionStatus]);
 
   useEffect(() => {
     if (!mounted || !oneTapClientId) {

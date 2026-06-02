@@ -9,7 +9,7 @@ import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 
-const heroImage = "/picture/ai-infographic-generator-learning-hero.jpg";
+const heroImage = "/picture/hero picture.jpg";
 const LANDING_ASSET_VERSION = "20260528c";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 const MEMBERSHIP_SOURCE = "landing-page";
@@ -102,7 +102,7 @@ const capabilityFlows = [
     id: "explainer-video",
     tabEn: "Explainer Video",
     tabZh: "讲解视频",
-    previewImage: "/picture/video-to-video-workflow.jpg",
+    previewImage: "/picture/text to video.jpg",
   },
 ];
 
@@ -594,19 +594,19 @@ export default function LandingPage() {
         <h1 className="sr-only">{t("KnowLens.ai visual creation platform", "KnowLens.ai 知识可视化创作平台")}</h1>
 
         <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
-          <div className="max-w-[620px]">
+          <div className="mx-auto max-w-[620px] text-center lg:mx-0 lg:text-left">
             <div className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-[11px] text-zinc-600">
               Powered by GPT-image2
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
               AI Infographic Generator for Learning
             </h2>
-            <p className="mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base">
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base lg:mx-0">
               Paste your text or describe a topic. KnowLens turns it into infographic posters, presentation slides, and explainer videos in minutes.
             </p>
-            <div className="mt-5 flex items-center sm:mt-6">
+            <div className="mt-5 flex items-center justify-center sm:mt-6 lg:justify-start">
               <Link
-                href="/auth?callbackUrl=%2Fapp"
+                href="/app"
                 className="inline-flex h-12 min-w-[176px] items-center justify-center gap-2 rounded-xl bg-zinc-900 px-8 text-[15px] font-medium text-white transition hover:bg-zinc-700 sm:h-[52px]"
               >
                 Generate Free
@@ -618,7 +618,7 @@ export default function LandingPage() {
           <div className="w-full overflow-hidden rounded-lg lg:justify-self-end">
             <AspectSkeleton ratioClassName="aspect-square">
               <ProgressiveImage
-                src={toOptimized(heroImage)}
+                src={toOriginal(heroImage)}
                 fallbackSrc={toOriginal(heroImage)}
                 alt="KnowLens Hero"
                 className="absolute inset-0 block h-full w-full scale-[1.02] object-cover align-top"
@@ -640,13 +640,13 @@ export default function LandingPage() {
 
             <div className="mt-5">
               <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
-                <div className="inline-flex min-w-full gap-2 sm:grid sm:w-full sm:max-w-6xl sm:grid-cols-3 lg:grid-cols-7">
+                <div className="flex min-w-full justify-center gap-2 sm:mx-auto sm:min-w-0 sm:w-auto">
                 {capabilityFlows.map((flow) => (
                   <button
                     key={flow.id}
                     type="button"
                     onClick={() => setActiveFlowId(flow.id)}
-                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-center text-[10px] leading-4 transition sm:shrink sm:px-2 lg:whitespace-nowrap ${
+                    className={`shrink-0 rounded-lg border px-3 py-1.5 text-center text-[10px] leading-4 transition sm:px-4 lg:whitespace-nowrap ${
                       activeFlowId === flow.id
                         ? "border-zinc-900 bg-zinc-900 text-white"
                         : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
@@ -993,7 +993,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-5">
               <Link
-                href="/auth?callbackUrl=%2Fapp"
+                href="/app"
                 className="inline-flex h-11 min-w-[164px] items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-700"
               >
                 Generate Free

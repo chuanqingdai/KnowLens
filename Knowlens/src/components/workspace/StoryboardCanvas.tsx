@@ -47,8 +47,10 @@ type StoryboardCanvasProps = {
       maxAttempts: number;
       imageUrl?: string;
       error?: string;
+      errorCode?: string;
     }
   >;
+  generationInProgress?: boolean;
   onRetryGenerationTask?: (index: number) => void;
   onModeActionRegister?: (actions: {
     exportPpt: () => void;
@@ -205,6 +207,34 @@ function toConciseImageErrorMessage(error?: string) {
     return "Save failed. Please retry.";
   }
   return "Failed. Please retry.";
+}
+
+function toImageErrorDisplayCode(errorCode?: string, error?: string) {
+  const rawCode = (errorCode || "").trim().toUpperCase();
+  const rawError = (error || "").trim().toUpperCase();
+  const bag = `${rawCode} ${rawError}`;
+  return (() => {
+    if (/TIMEOUT|TIMED_OUT|BUDGET/.test(bag)) return "IMG-408";
+    if (/STORAGE|PERSIST|DOWNLOAD|ASSET/.test(bag)) return "IMG-512";
+    if (/FETCH|NETWORK|ABORT|INTERRUPT/.test(bag)) return "IMG-503";
+    if (/ALL_FAILED|PROVIDER|TUZI|GPTSAPI|DUOMI/.test(bag)) return "IMG-502";
+    return "IMG-500";
+  })();
+}
+
+function toImageFailureSentence(error?: string, errorCode?: string) {
+  const displayCode = toImageErrorDisplayCode(errorCode, error);
+  const normalized = (error || "").toLowerCase();
+  if (normalized.includes("timeout") || normalized.includes("budget")) {
+    return `Generation timed out; please retry manually. Code: ${displayCode}.`;
+  }
+  if (normalized.includes("abort") || normalized.includes("network") || normalized.includes("fetch")) {
+    return `The image request was interrupted; please retry manually. Code: ${displayCode}.`;
+  }
+  if (normalized.includes("save") || normalized.includes("storage") || normalized.includes("persist")) {
+    return `The image could not be saved; please retry manually. Code: ${displayCode}.`;
+  }
+  return `The image could not be generated right now; please retry manually. Code: ${displayCode}.`;
 }
 
 function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
@@ -375,6 +405,7 @@ export function StoryboardCanvas({
   generationSeedSlides,
   generationClearToken,
   generationTaskStateByIndex,
+  generationInProgress = false,
   onRetryGenerationTask,
   onModeActionRegister,
 }: StoryboardCanvasProps) {
@@ -2527,32 +2558,33 @@ export function StoryboardCanvas({
                         ) : null}
                         {isGenerationFailed ? (
                           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
-                            <div className="max-w-[220px] rounded-lg border border-red-200 bg-white px-3 py-2 text-center shadow-sm">
-                              <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600">
-                                <AlertCircle size={15} />
+                            <div className="max-w-[250px] rounded-lg border border-red-100 bg-white px-4 py-3 text-center shadow-sm">
+                              <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600">
+                                <AlertCircle size={14} />
                               </div>
-                              <p className="text-xs font-medium text-zinc-800">Generation failed</p>
-                              <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
-                                {toConciseImageErrorMessage(generationState.error)}
+                              <p className="text-xs leading-5 text-zinc-700">
+                                {toImageFailureSentence(generationState.error, generationState.errorCode)}
                               </p>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  commitChange((prev) => ({
-                                    ...prev,
-                                    historyOpenBySlideId: {
-                                      ...prev.historyOpenBySlideId,
-                                      [slide.id]: true,
-                                    },
-                                  }));
-                                  regenerateSlideImage(slide.id, slide.page);
-                                }}
-                                className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
-                              >
-                                <RotateCcw size={12} />
-                                Retry
-                              </button>
+                              {!generationInProgress ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    commitChange((prev) => ({
+                                      ...prev,
+                                      historyOpenBySlideId: {
+                                        ...prev.historyOpenBySlideId,
+                                        [slide.id]: true,
+                                      },
+                                    }));
+                                    regenerateSlideImage(slide.id, slide.page);
+                                  }}
+                                  className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
+                                >
+                                  <RotateCcw size={12} />
+                                  Retry
+                                </button>
+                              ) : null}
                             </div>
                           </div>
                         ) : null}

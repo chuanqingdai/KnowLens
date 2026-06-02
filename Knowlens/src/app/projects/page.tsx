@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { FolderOpen, Home as HomeIcon, Menu, UserCircle2 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
+import { getProjectsByUser } from "@/lib/admin";
 
 const navItems = [
   { label: "Home", icon: HomeIcon, href: "/app" },
@@ -47,7 +50,23 @@ const projectItems = [
 ];
 
 export default function ProjectsPage() {
+  const router = useRouter();
+  const { data: session } = useSession();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
+  const visibleProjects = currentEmail
+    ? getProjectsByUser(currentEmail)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((project) => ({
+          id: project.id,
+          title: project.title,
+          updatedAt: project.updatedAt,
+          status: project.status === "已完成" ? "Completed" : "In Progress",
+          cover: project.cover || "",
+          format: project.format === "视频" ? "Video" : project.format === "PPT" ? "PPT" : "Poster",
+          duration: project.duration,
+        }))
+    : projectItems;
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">
@@ -87,15 +106,33 @@ export default function ProjectsPage() {
               </button>
             </div>
             <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {projectItems.map((item) => (
+              {visibleProjects.map((item) => (
                 <article
                   key={item.id}
-                  className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => router.push(`/workspace?projectId=${encodeURIComponent(item.id)}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(`/workspace?projectId=${encodeURIComponent(item.id)}`);
+                    }
+                  }}
+                  className="cursor-pointer overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
                 >
-                  <div
-                    className="relative aspect-video w-full bg-zinc-100 bg-cover bg-center"
-                    style={{ backgroundImage: `url("${item.cover}")` }}
-                  >
+                  <div className="relative aspect-video w-full overflow-hidden bg-zinc-100">
+                    {item.cover ? (
+                      <img
+                        src={item.cover}
+                        alt={item.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-zinc-50 text-xs text-zinc-400">
+                        No cover yet
+                      </div>
+                    )}
                     <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[11px] text-white">
                       {item.format}
                     </span>
