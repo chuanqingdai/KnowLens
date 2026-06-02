@@ -23,6 +23,9 @@ const FIRST_SLIDE_TITLE_PADDING_X = 0.6;
 const FIRST_SLIDE_TITLE_PADDING_Y = 0.2;
 
 async function toDataUrl(url: string) {
+  if (!url.trim()) {
+    throw new Error("Missing image URL");
+  }
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error("图片下载失败");
@@ -63,8 +66,27 @@ export async function POST(request: NextRequest) {
     for (let idx = 0; idx < slides.length; idx += 1) {
       const slide = slides[idx];
       const page = pptx.addSlide();
-      const imageUrl = new URL(slide.imageSrc, request.nextUrl.origin).toString();
-      const imageData = await toDataUrl(imageUrl);
+      let imageData: string;
+      try {
+        const imageUrl = new URL(slide.imageSrc, request.nextUrl.origin).toString();
+        imageData = await toDataUrl(imageUrl);
+      } catch (downloadError) {
+        const message =
+          downloadError instanceof Error
+            ? `Slide ${slide.page} image is not ready: ${downloadError.message}`
+            : `Slide ${slide.page} image is not ready.`;
+        logOpsEvent({
+          category: "download",
+          action: "ppt_export_image_download_failed",
+          status: "error",
+          source: "ppt",
+          userEmail: email,
+          code: "PPT_IMAGE_DOWNLOAD_FAILED",
+          message,
+        });
+        throw new Error(message);
+      }
+
       page.addImage({
         data: imageData,
         x: 0,

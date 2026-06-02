@@ -20,6 +20,7 @@ import {
   appendCreditRecord,
   getCreditRecords,
   getSubscriptionByUser,
+  syncCreditRecordsFromServer,
 } from "@/lib/billing";
 import {
   STANDARD_OUTPUT_PROMO_CREDITS,
@@ -90,6 +91,7 @@ type SlideDraft = {
   visual: string;
   imagePrompt?: string;
   imagePromptDraft?: string;
+  isCover?: boolean;
 };
 
 type PosterDraft = {
@@ -123,6 +125,21 @@ type DraftLlmUsage = {
   source?: "provider" | "estimated";
   model?: string;
 };
+
+function getLanguageModelCreditTokenUnit(model?: string) {
+  const normalized = (model || "").trim().toLowerCase();
+  if (!normalized) {
+    return 1000;
+  }
+  const compact = normalized.replace(/[\s_]+/g, "-");
+  const isGemini25Flash =
+    compact.includes("gemini-2.5-flash") ||
+    (compact.includes("gemini-2.5") && !compact.includes("pro"));
+  if (isGemini25Flash) {
+    return 5000;
+  }
+  return 1000;
+}
 
 type FlowStage = "intent" | "config" | "content" | "style" | "billing" | "generate";
 
@@ -594,11 +611,11 @@ function styleCoverById(styleId: string) {
 const styleOptions = [
   {
     id: "clean-science-infographic",
-    name: "简洁科普信息图风",
-    englishName: "Clean Science Infographic",
+    name: "高端杂志信息图风",
+    englishName: "Premium Editorial Infographic Style",
     fit: "Precise and polished scientific infographic style for broad educational explainers.",
     prompt:
-      "Use a premium editorial infographic style. Palette: off-white background, charcoal text, one muted accent color. Details: subtle paper grain, thin divider lines, refined serif or modern sans-serif typography, restrained line icons, clean vector illustrations, polished magazine-style visual finish.",
+      "Use a premium editorial infographic style with a controlled 4-color palette. Main tone: warm off-white #F7F3EA. Panel color: soft warm gray #E8E1D6. Text and line color: charcoal #1F1F1F. Accent color: muted editorial blue #4F6F8F. Details: subtle paper grain, thin divider lines, refined serif or modern sans-serif typography, restrained line icons, clean vector illustrations, polished magazine-style finish.",
     suitableTopics: "通用科普、自然科学、物理、地理、人体、机制解释",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["科普", "自然", "物理", "地理", "人体", "机制", "原理", "解释"],
@@ -607,11 +624,11 @@ const styleOptions = [
   },
   {
     id: "youtube-science-thumbnail",
-    name: "科学剖面结构图风",
-    englishName: "Scientific Cutaway Diagram",
+    name: "黑绿科技财报仪表盘风",
+    englishName: "Black Tech Investor Dashboard Style",
     fit: "Textbook-like cutaway clarity for layered structures and mechanism internals.",
     prompt:
-      "Use a black high-tech financial dashboard style. Palette: deep black background, white text, neon green accent. Details: glass-like dark panels, soft green glow, subtle server-grid texture, thin circuit traces, compact numeric styling, sharp line icons, high-contrast data visualization finish.",
+      "Use a black high-tech financial dashboard style with a controlled 4-color palette. Main tone: deep black #050607. Panel color: graphite #1A1D21. Text and line color: soft white #F5F7FA. Accent color: neon green #7CFF4E. Details: glass-like dark panels, soft green glow, subtle server-grid texture, thin circuit traces, compact numeric styling, sharp line icons, high-contrast data-interface finish.",
     suitableTopics: "宇宙、AI、深海、灾难、人体、科技热点",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
@@ -620,11 +637,11 @@ const styleOptions = [
   },
   {
     id: "cinematic-science-illustration",
-    name: "电影级科普视觉风",
-    englishName: "Cinematic Science Visual",
+    name: "黑金高端科技风",
+    englishName: "Black Gold Premium Tech Style",
     fit: "Dramatic but controlled science storytelling with explanatory overlays.",
     prompt:
-      "Use a black-and-gold premium technology style. Palette: matte black background, warm white text, champagne gold accent. Details: metallic gold highlights, glossy black surfaces, soft cinematic shadows, thin gold-line icons, elegant typography, precise luxury-tech visual finish.",
+      "Use a black-and-gold premium technology style with a controlled 4-color palette. Main tone: matte black #070707. Panel color: dark graphite #202020. Text and line color: warm white #F4EFE3. Accent color: champagne gold #D6B56D. Details: metallic gold highlights, glossy black surfaces, soft cinematic shadows, thin gold-line icons, elegant typography, precise luxury-tech finish.",
     suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
@@ -633,11 +650,11 @@ const styleOptions = [
   },
   {
     id: "minimal-line-art",
-    name: "极简扁平讲解风",
-    englishName: "Minimal Flat Explainer",
+    name: "3D 等距科技图解风",
+    englishName: "3D Isometric Tech Explainer Style",
     fit: "Simple geometric clarity and clean hierarchy for direct concept teaching.",
     prompt:
-      "Use a 3D isometric technology style. Palette: dark navy background, cool gray base, electric blue accent. Details: clean isometric 3D objects, soft shadows, polished surfaces, subtle blue glow, small technical labels, miniature system icons, precise spatial visual finish.",
+      "Use a 3D isometric technology style with a controlled 4-color palette. Main tone: dark navy #071426. Panel color: cool slate gray #2A3442. Text and line color: ice white #F4F8FF. Accent color: electric blue #2F80FF. Details: clean isometric 3D objects, soft shadows, polished surfaces, subtle blue glow, small technical labels, miniature system icons, precise spatial finish.",
     suitableTopics: "基础概念、产品说明、AI原理、简单科学机制",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["基础", "概念", "产品", "ai原理", "机制", "结构", "说明"],
@@ -646,11 +663,11 @@ const styleOptions = [
   },
   {
     id: "hand-drawn-explainer",
-    name: "手绘讲解风",
-    englishName: "Hand-drawn Explainer Style",
+    name: "科技蓝图工程图风",
+    englishName: "Blueprint Technical Diagram Style",
     fit: "Clean hand-drawn educational diagram style for approachable visual explanations.",
     prompt:
-      "Use a clean hand-drawn explainer style. Palette: warm off-white background, charcoal hand-drawn linework, one muted accent color. Details: neat sketch lines, simple hand-drawn icons, subtle paper texture, marker-style highlights, clean annotation labels, thin arrows, soft shadow accents, consistent line weight, polished educational diagram finish.",
+      "Use a technical blueprint style with a controlled 4-color palette. Main tone: deep blueprint blue #071E3D. Panel color: darker blue #0B2A50. Text and line color: blueprint white #F2F8FF. Accent color: cyan #21D4FD. Details: fine grid texture, schematic outlines, thin technical strokes, measurement marks, outline engineering icons, precise arrows, clean blueprint drawing finish.",
     suitableTopics: "科普解释、学习笔记、教程讲解、概念拆解、教育图解",
     carrierPriority: ["video", "ppt", "poster"],
     topicKeywords: ["手绘", "讲解", "教程", "概念", "学习", "教育", "科普", "图解"],
@@ -659,11 +676,11 @@ const styleOptions = [
   },
   {
     id: "cute-3d-educational",
-    name: "3D 可爱教育风",
-    englishName: "Cute 3D Educational Style",
+    name: "医学科普插画风",
+    englishName: "Medical Science Illustration Style",
     fit: "Friendly rounded 3D visuals for approachable educational storytelling.",
     prompt:
-      "Use a clean medical science illustration style. Palette: clinical white background, soft blue base, medical green accent. Details: smooth biological illustration, gentle gradients, soft shadows, clean anatomical labels, medical line icons, precise health-diagram visual finish.",
+      "Use a clean medical science illustration style with a controlled 4-color palette. Main tone: clinical white #FFFFFF. Panel color: soft blue #DCEEFF. Text and line color: medical gray #3F4A56. Accent color: medical green #35B779. Details: smooth biological illustration, gentle gradients, soft shadows, clean anatomical labels, medical line icons, precise health-diagram finish.",
     suitableTopics: "儿童科普、动物、人体健康、营养、低龄教育",
     carrierPriority: ["video", "poster", "ppt"],
     topicKeywords: ["儿童", "动物", "人体健康", "营养", "低龄", "亲子", "启蒙"],
@@ -672,11 +689,11 @@ const styleOptions = [
   },
   {
     id: "3d-isometric-tech",
-    name: "3D 等距科技风",
-    englishName: "3D Isometric Tech Explainer",
+    name: "电影级科普视觉风",
+    englishName: "Cinematic Science Visual Style",
     fit: "Structured isometric system visualization for technical mechanisms and architectures.",
     prompt:
-      "Use a cinematic science visual style. Palette: deep atmospheric background, neutral base tones, one controlled highlight color. Details: realistic texture, dramatic lighting, volumetric depth, soft glow, subtle particles, restrained scientific labels, documentary-quality visual finish.",
+      "Use a cinematic science visual style with a controlled 4-color palette. Main tone: deep atmospheric blue #081522. Panel color: dark neutral gray #252A30. Text and line color: soft silver #D7DEE8. Accent color: cinematic amber #F0A33A. Details: realistic texture, dramatic lighting, volumetric depth, soft glow, subtle particles, restrained scientific labels, documentary-quality finish.",
     suitableTopics: "AI系统、数据中心、芯片、城市系统、互联网、能源",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["ai系统", "数据中心", "芯片", "城市系统", "互联网", "能源", "架构", "模块"],
@@ -685,11 +702,11 @@ const styleOptions = [
   },
   {
     id: "dark-premium-tech",
-    name: "深色高级科技信息图风",
-    englishName: "Dark Premium Tech Infographic Style",
+    name: "深色高级科技风",
+    englishName: "Dark Premium Tech Style",
     fit: "Dark premium technology infographic system for polished data and AI-product visuals.",
     prompt:
-      "Use a dark premium technology infographic style as a complete visual system. Visual Look: deep black or dark navy background, warm white typography, one controlled accent color, subtle glassmorphism panels, soft neon glow, fine technical grid texture, and cinematic depth. Layout Skeleton: clear outer margin, modular information cards, compact data blocks, strong visual hierarchy, balanced negative space, and a smooth top-to-bottom reading path. Component Style: glowing data cards, thin luminous dividers, precise line icons, small status badges, clean charts, restrained callout labels, and polished AI-product interface details. Avoid clutter, excessive decoration, tiny text, and overly complex dashboard density.",
+      "Use a dark premium technology style with a controlled 4-color palette. Main tone: deep navy black #060B14. Panel color: dark slate #151C28. Text and line color: cool white #F2F6FA. Accent color: electric cyan #39D5FF. Details: refined dark surfaces, subtle gradient lighting, soft edge glow, clean technical line icons, polished digital materials, precise typography, premium AI product visual finish.",
     suitableTopics: "AI产品、科技商业、数据摘要、芯片、云计算、财报、趋势解读",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["科技", "ai", "产品", "数据", "芯片", "云计算", "财报", "趋势", "信息图"],
@@ -698,11 +715,11 @@ const styleOptions = [
   },
   {
     id: "technical-blueprint",
-    name: "科技蓝图风",
-    englishName: "Tech Blueprint Diagram",
+    name: "极简扁平解释图风",
+    englishName: "Minimal Flat Explainer Style",
     fit: "Technical linework and annotation discipline for engineering-style explanations.",
     prompt:
-      "Use a minimal flat explainer style. Palette: clean light background, neutral text, one bright accent color. Details: flat vector shapes, simple geometry, crisp edges, large readable labels, low visual noise, consistent flat icons, clean educational diagram finish.",
+      "Use a minimal flat explainer style with a controlled 4-color palette. Main tone: clean white #FFFFFF. Panel color: light gray #EEF1F4. Text and line color: neutral gray #606975. Accent color: bright blue #2F80FF. Details: flat vector shapes, simple geometry, crisp edges, large readable labels, low visual noise, consistent flat icons, clean educational diagram finish.",
     suitableTopics: "航空航天、机械、潜艇、机器人、军事科技、工程结构",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["航天", "机械", "潜艇", "机器人", "军事", "工程", "结构", "蓝图"],
@@ -711,11 +728,11 @@ const styleOptions = [
   },
   {
     id: "medical-educational-illustration",
-    name: "医学科普插画风",
-    englishName: "Medical Biological Illustration",
+    name: "精致手账科普风",
+    englishName: "Refined Notebook Science Style",
     fit: "Clinical clarity with calm precision for anatomy and biological mechanisms.",
     prompt:
-      "Use a refined notebook science style. Palette: warm paper background, pencil-gray text, one muted marker accent. Details: paper texture, delicate hand-drawn lines, neat sketch marks, underlines, small annotation symbols, soft shadows, organized notebook visual finish.",
+      "Use a refined notebook science style with a controlled 4-color palette. Main tone: warm paper beige #F3E7D0. Panel color: light kraft paper #E6D1B3. Text and line color: pencil gray #4A4A4A. Accent color: muted olive #7A8F5A. Details: paper texture, delicate hand-drawn lines, neat sketch marks, underlines, small annotation symbols, soft shadows, organized notebook visual finish.",
     suitableTopics: "心血管、人体器官、代谢、疾病机制、营养健康",
     carrierPriority: ["ppt", "video", "poster"],
     topicKeywords: ["心血管", "器官", "代谢", "疾病", "营养", "医学", "健康", "人体"],
@@ -724,11 +741,11 @@ const styleOptions = [
   },
   {
     id: "premium-editorial-infographic",
-    name: "高级报告信息图风",
-    englishName: "Premium Editorial Infographic",
+    name: "高级手绘白板科普风",
+    englishName: "Premium Sketchnote Science Style",
     fit: "High-end editorial infographic polish for premium knowledge publication feel.",
     prompt:
-      "Use a premium sketchnote style. Palette: clean white background, black linework, one accent color. Details: structured hand-drawn strokes, bold doodle icons, consistent line weight, circled keywords, emphasis marks, clean whiteboard visual finish.",
+      "Use a premium sketchnote style with a controlled 4-color palette. Main tone: clean white #FFFFFF. Panel color: light gray #E8E8E8. Text and line color: black #111111. Accent color: clear orange #F28C28. Details: structured hand-drawn strokes, bold doodle icons, consistent line weight, circled keywords, emphasis marks, clean whiteboard visual finish.",
     suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
@@ -737,11 +754,11 @@ const styleOptions = [
   },
   {
     id: "premium-sketchnote-science",
-    name: "精致手账科普风",
-    englishName: "Premium Sketchnote Science Style",
+    name: "柔和 3D 教育风",
+    englishName: "Soft 3D Educational Style",
     fit: "Neat sketchnote educational style with structured visual-thinking flow.",
     prompt:
-      "Use a soft 3D educational style. Palette: warm light background, soft pastel base, one clear accent color. Details: rounded 3D objects, smooth clay-like materials, gentle shadows, soft lighting, simple callout labels, rounded icons, polished educational 3D visual finish.",
+      "Use a soft 3D educational style with a controlled 4-color palette. Main tone: warm light cream #FFF4DF. Panel color: warm white #FFFDF8. Text and line color: soft gray #5F6B76. Accent color: pastel blue #7DB7FF. Details: rounded 3D objects, smooth clay-like materials, gentle shadows, soft lighting, simple callout labels, rounded icons, polished educational 3D finish.",
     suitableTopics: "心理学、健康、生活科学、儿童科普、学习方法、认知科学、经济学入门",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["心理学", "健康", "生活科学", "儿童科普", "学习方法", "认知科学", "经济学", "入门"],
@@ -2057,6 +2074,24 @@ export default function WorkspacePage() {
     void creditVersion;
     return getCreditRecords(currentEmail)[0]?.balance ?? 50;
   }, [currentEmail, creditVersion]);
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    let isCancelled = false;
+    syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        if (!isCancelled) {
+          setCreditVersion((prev) => prev + 1);
+        }
+      })
+      .catch(() => {
+        // Keep the cached local balance if server sync is unavailable.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentEmail]);
   const isFreeUser = useMemo(() => {
     const subscription = getSubscriptionByUser(currentEmail);
     if (!subscription) {
@@ -2179,6 +2214,7 @@ export default function WorkspacePage() {
     text: "",
   });
   const [isExportingPpt, setIsExportingPpt] = useState(false);
+  const [isPptExportReady, setIsPptExportReady] = useState(false);
   const [isComposingVideo, setIsComposingVideo] = useState(false);
   const posterDraftRequestRef = useRef(0);
   const chatHistoryWriteTimerRef = useRef<number | null>(null);
@@ -2375,37 +2411,30 @@ export default function WorkspacePage() {
         return `${count} outputs`;
       })();
       return {
-        title: "This batch size requires a paid plan",
-        description: `${countLabel ? `${countLabel} ` : "This count "}is a paid-plan option. Free users can start with a smaller batch, then upgrade to unlock larger poster, slide, or storyboard batches before generation.`,
+        title: "This batch size is available on paid plans",
+        description: `${countLabel ? `${countLabel} ` : "This count "}requires a paid plan. You can start with a smaller batch for now, or view plans to unlock larger poster, slide, and storyboard batches.`,
         confirmLabel: "View Plans",
         source: "workspace_count_limit_paywall",
       };
     }
     if (scene === "billing_insufficient") {
       return {
-        title: isZhOutput ? "积分不足，暂无法继续" : "Not enough credits to continue",
-        description: isZhOutput
-          ? "当前配置所需积分高于你的可用积分。升级会员后可获得更多额度并继续生成。"
-          : "This configuration needs more credits than your current balance. Upgrade to continue generation.",
-        confirmLabel: isZhOutput ? "升级并继续" : "Upgrade and Continue",
+        title: "Not enough credits to continue",
+        description:
+          "This generation needs more credits than your current balance. Please view the available plans to add more credits and continue when you are ready.",
+        confirmLabel: "View Plans",
         source: "workspace_billing_insufficient_paywall",
       };
     }
     return {
-      title: isFreeUser
-        ? (isZhOutput ? "免费额度已用完" : "Free credits used up")
-        : (isZhOutput ? "积分不足" : "Credits required"),
+      title: isFreeUser ? "Free credits used up" : "Credits required",
       description: isFreeUser
-        ? (isZhOutput
-          ? "你本月免费额度已用完。升级会员后可继续生成。"
-          : "Your free monthly credits are used up. Upgrade to continue generation.")
-        : (isZhOutput
-          ? "当前积分不足，升级会员后可继续生成。"
-          : "Your current credits are not enough. Upgrade to continue."),
-      confirmLabel: isZhOutput ? "前往会员中心" : "Go to Membership",
+        ? "Your free monthly credits have been used. Please view the available plans to keep creating with KnowLens."
+        : "Your current credit balance is not enough for this generation. Please view the available plans to add more credits.",
+      confirmLabel: "View Plans",
       source: "workspace_default_paywall",
     };
-  }, [creditsPaywallContext, isZhOutput, isFreeUser]);
+  }, [creditsPaywallContext, isFreeUser]);
 
   const requestIntentAnalysis = useCallback(
     async (
@@ -2728,6 +2757,21 @@ export default function WorkspacePage() {
     }
     return slideDrafts;
   }, [effectiveIntent, slideDrafts]);
+  const displaySlideDrafts = useMemo<SlideDraft[]>(() => {
+    return densityAdjustedSlideDrafts;
+  }, [densityAdjustedSlideDrafts]);
+  const canvasSeedSlides = useMemo(
+    () =>
+      displaySlideDrafts.map((slide, idx) => ({
+        id: `slide-${idx + 1}`,
+        page: idx + 1,
+        title: slide.title?.trim() || `Slide ${idx + 1}`,
+        body: slide.body?.trim() || "",
+        visual: slide.visual?.trim() || "",
+        isCover: slide.isCover,
+      })),
+    [displaySlideDrafts],
+  );
   const posterDraftRaw = editablePosterDraft ?? (configConfirmed ? null : basePosterDraft);
   const posterDraft = useMemo(
     () =>
@@ -2766,7 +2810,11 @@ export default function WorkspacePage() {
   );
 
   const standardOutputCount =
-    effectiveIntent === "unknown" ? 0 : normalizedGenerationConfig.normalizedCount;
+    effectiveIntent === "unknown"
+      ? 0
+      : effectiveIntent === "ppt" || effectiveIntent === "video"
+        ? normalizedGenerationConfig.normalizedCount + 1
+        : normalizedGenerationConfig.normalizedCount;
   const draftOutputCharCount = useMemo(() => {
     if (effectiveIntent === "poster" && posterDraft) {
       const posterText = [
@@ -2781,13 +2829,13 @@ export default function WorkspacePage() {
     }
     if (effectiveIntent === "ppt" || effectiveIntent === "video") {
       const outlineText = outlineItems.join(" ");
-      const slidesText = densityAdjustedSlideDrafts
+      const slidesText = displaySlideDrafts
         .map((slide) => `${slide.title} ${slide.body} ${slide.visual}`)
         .join(" ");
       return `${outlineText} ${slidesText}`.trim().length;
     }
     return 0;
-  }, [densityAdjustedSlideDrafts, effectiveIntent, outlineItems, posterDraft]);
+  }, [displaySlideDrafts, effectiveIntent, outlineItems, posterDraft]);
   const inputTokenEstimate = useMemo(() => {
     const normalized = (draftPrompt || "").trim();
     if (!normalized) {
@@ -2803,7 +2851,10 @@ export default function WorkspacePage() {
     1,
     usageTotalTokens > 0 ? usageTotalTokens : inputTokenEstimate + outputTokenEstimate,
   );
-  const languageModelCredits = Math.max(1, Math.ceil(totalTokenEstimate / 1000));
+  const languageModelBillingUnit = getLanguageModelCreditTokenUnit(
+    draftLlmUsage?.model || initialEntry.models?.textModel,
+  );
+  const languageModelCredits = Math.max(1, Math.ceil(totalTokenEstimate / languageModelBillingUnit));
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const billingCost = languageModelCredits + imageModelCredits;
   const buildFreshImageGenerationTasks = useCallback(() => {
@@ -2823,7 +2874,7 @@ export default function WorkspacePage() {
       posterDraft: effectiveIntent === "poster" ? posterDraft : null,
       posterPlanList: editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList,
       outlineItems,
-      slideDrafts: densityAdjustedSlideDrafts,
+      slideDrafts: effectiveIntent === "ppt" || effectiveIntent === "video" ? displaySlideDrafts : densityAdjustedSlideDrafts,
     });
     return compiled.map((task) => ({
       ...task,
@@ -2838,6 +2889,7 @@ export default function WorkspacePage() {
   }, [
     basePosterPlanList,
     densityAdjustedSlideDrafts,
+    displaySlideDrafts,
     editablePosterPlanList,
     effectiveIntent,
     normalizedGenerationConfig,
@@ -2872,7 +2924,7 @@ export default function WorkspacePage() {
     }
     return "9:16";
   }, [effectiveIntent, imageGenerationTasks, normalizedGenerationConfig.normalizedRatio, posterSizeId, posterSizeLabel]);
-  const canConfirmBilling = credits >= billingCost || debugGoGenerateStepEnabled;
+  const canConfirmBilling = credits >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
   const imageGenerationTaskByIndex = useMemo(() => {
     return new Map(imageGenerationTasks.map((task) => [task.index, task] as const));
@@ -3036,11 +3088,11 @@ export default function WorkspacePage() {
     (tasks: ImageGenerationTask[]) => ({
       intent: effectiveIntent,
       normalizedDirection: normalizedGenerationConfig.normalizedDirection,
-      normalizedCount: normalizedGenerationConfig.normalizedCount,
+      normalizedCount: standardOutputCount,
       normalizedRatio: normalizedGenerationConfig.normalizedRatio,
       projectId: projectIdRef.current ?? undefined,
       projectTraceId: projectTraceIdRef.current ?? undefined,
-      outputs: normalizedGenerationConfig.normalizedCount,
+      outputs: standardOutputCount,
       style: {
         id: selectedStyle.id,
         name: selectedStyle.englishName ?? selectedStyle.name,
@@ -3052,13 +3104,13 @@ export default function WorkspacePage() {
     }),
     [
       effectiveIntent,
-      normalizedGenerationConfig.normalizedCount,
       normalizedGenerationConfig.normalizedDirection,
       normalizedGenerationConfig.normalizedRatio,
       selectedStyle.englishName,
       selectedStyle.id,
       selectedStyle.name,
       selectedStyle.prompt,
+      standardOutputCount,
     ],
   );
   const runGenerationBatch = useCallback(
@@ -3709,7 +3761,7 @@ export default function WorkspacePage() {
       };
       redrawTask.composedPrompt = buildTuziImagePrompt({
         draftContent: compactLineText([redrawTask.contentTitle, redrawTask.contentBody, redrawTask.visualHint].join("\n")),
-        selectedStyle: redrawTask.styleName || redrawTask.stylePrompt,
+        selectedStyle: redrawTask.stylePrompt || redrawTask.styleName,
         aspectRatio: redrawTask.aspectRatio,
         posterIndex: redrawTask.index,
         totalCount: normalizedGenerationConfig.normalizedCount,
@@ -4669,7 +4721,8 @@ export default function WorkspacePage() {
       setEditablePosterDraft(null);
       setEditablePosterPlanList([]);
       try {
-        const count = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
+        const bodyCount = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
+        const count = bodyCount + 1;
         const ratioOrSize = effectiveIntent === "ppt" ? pptRatio : videoRatio;
         const response = await fetch("/api/content/poster-draft", {
           method: "POST",
@@ -4712,6 +4765,7 @@ export default function WorkspacePage() {
             visual?: string;
             imagePrompt?: string;
             imagePromptDraft?: string;
+            isCover?: boolean;
           }>;
           llmUsage?: DraftLlmUsage;
         };
@@ -4742,6 +4796,7 @@ export default function WorkspacePage() {
             visual: item.visual?.trim() || "",
             imagePromptDraft: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
             imagePrompt: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+            isCover: item.isCover === true,
           }));
         } else if (
           effectiveIntent === "video" &&
@@ -4755,6 +4810,7 @@ export default function WorkspacePage() {
             visual: item.visual?.trim() || "",
             imagePromptDraft: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
             imagePrompt: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+            isCover: item.isCover === true,
           }));
         }
         setEditableOutlineItems(nextOutline.length ? nextOutline : baseOutlineItems);
@@ -5077,17 +5133,27 @@ export default function WorkspacePage() {
   ]);
 
   async function handleConfirmBilling() {
+    if (
+      (effectiveIntent === "ppt" || effectiveIntent === "video") &&
+      standardOutputCount > 1 &&
+      (!displaySlideDrafts.length || displaySlideDrafts.length !== standardOutputCount || displaySlideDrafts[0]?.isCover !== true)
+    ) {
+      setGenerationConfirmError(null);
+      setBillingConfirmed(false);
+      clearCurrentGenerationState("stale-draft-missing-cover");
+      setFlowStage("content");
+      await handleConfirmConfig();
+      return;
+    }
     let tasksToGenerate: ImageGenerationTask[] = [];
     try {
       tasksToGenerate = buildFreshImageGenerationTasks();
     } catch (error) {
       const message = error instanceof Error ? error.message : tr("Generation tasks are invalid.", "生成任务参数无效。");
       setGenerationConfirmError(message);
-      pushAssistantMessage(message, tr("Generation", "生成"));
       return;
     }
-    const expectedCount =
-      effectiveIntent === "poster" ? posterCount : effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
+    const expectedCount = standardOutputCount;
     const invalidTask = tasksToGenerate.find(
       (task) =>
         !task.composedPrompt?.trim() ||
@@ -5136,7 +5202,7 @@ export default function WorkspacePage() {
       });
       return;
     }
-    if (credits < billingCost && !debugGoGenerateStepEnabled) {
+    if (credits < billingCost) {
       logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "insufficientCredits",
         credits,
@@ -5149,12 +5215,11 @@ export default function WorkspacePage() {
         reason: "insufficientCredits",
         keyFields: { credits, billingCost },
       });
-      pushAssistantMessage(
-        isZhOutput
-          ? `当前积分不足（余额 ${credits}，需要 ${billingCost}）。请先升级后再继续。`
-          : `Insufficient credits (balance: ${credits}, required: ${billingCost}). Please upgrade first.`,
-        tr("Billing Check", "账单确认"),
-      );
+      setGenerationConfirmError(null);
+      openCreditsPaywall({
+        scene: "billing_insufficient",
+        kind: effectiveIntent === "unknown" ? undefined : effectiveIntent,
+      });
       return;
     }
     if (isPlanningBillingStep) {
@@ -5183,7 +5248,6 @@ export default function WorkspacePage() {
         keyFields: { flowStage },
       });
       setGenerationConfirmError(message);
-      pushAssistantMessage(message, tr("Generation", "生成"));
       return;
     }
     if (!tasksToGenerate.length) {
@@ -5198,7 +5262,6 @@ export default function WorkspacePage() {
         reason: "emptyGenerationTasks",
       });
       setGenerationConfirmError(message);
-      pushAssistantMessage(message, tr("Generation", "生成"));
       return;
     }
     if (tasksToGenerate.length !== expectedCount) {
@@ -5219,7 +5282,6 @@ export default function WorkspacePage() {
         },
       });
       setGenerationConfirmError(message);
-      pushAssistantMessage(message, tr("Generation", "生成"));
       return;
     }
     if (invalidTask) {
@@ -5239,7 +5301,6 @@ export default function WorkspacePage() {
         keyFields: { invalidTaskIndex: invalidTask.index },
       });
       setGenerationConfirmError(message);
-      pushAssistantMessage(message, tr("Generation", "生成"));
       return;
     }
     generationRequestInFlightRef.current = true;
@@ -6103,7 +6164,10 @@ export default function WorkspacePage() {
               }
             : undefined
         }
-        actionsDisabled={!showStoryboard}
+        actionsDisabled={!showStoryboard || (lockedCanvasMode === "ppt" && !isPptExportReady)}
+        disabledPrimaryActionLabel={
+          lockedCanvasMode === "ppt" && !isPptExportReady ? "Generating slides..." : undefined
+        }
         isExportingPpt={isExportingPpt}
         isComposingVideo={isComposingVideo}
         showOpenCanvasButton={isMobileViewport && hasCanvasPanel && mobileWorkspaceView === "chat"}
@@ -6173,7 +6237,7 @@ export default function WorkspacePage() {
                   configConfirmed={configConfirmed}
                   onConfirmConfig={handleConfirmConfig}
                   outlineItems={outlineItems}
-                  slideDrafts={densityAdjustedSlideDrafts}
+                  slideDrafts={effectiveIntent === "ppt" || effectiveIntent === "video" ? displaySlideDrafts : densityAdjustedSlideDrafts}
                   posterDraft={posterDraft}
                   posterPlanList={editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList}
                   summaryText={summaryText}
@@ -6272,7 +6336,10 @@ export default function WorkspacePage() {
                 }}
                 canvasModeExternal={lockedCanvasMode}
                 onExportingPptChange={setIsExportingPpt}
+                onPptExportReadyChange={setIsPptExportReady}
                 onComposingVideoChange={setIsComposingVideo}
+                generationSeedSlides={canvasSeedSlides}
+                generationClearToken={`generation-${generationSessionSeed}`}
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 onRetryGenerationTask={handleRetryGenerationTask}
                 onModeActionRegister={(actions) => {

@@ -43,6 +43,7 @@ type SlideDraft = {
   title: string;
   body: string;
   visual: string;
+  isCover?: boolean;
 };
 
 type PosterDraft = {
@@ -88,21 +89,6 @@ type StyleOption = {
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 
-const STYLE_COVER_JPG_ALLOWLIST = new Set([
-  "Clean Science Infographic Style.jpg",
-  "Premium Editorial Infographic Style.jpg",
-  "Hero Science Cover Style.jpg",
-  "Minimal Line Art Style.jpg",
-  "Hand-drawn Explainer Style.jpg",
-  "Cute 3D Educational Style.jpg",
-  "3D Isometric Tech Style.jpg",
-  "Dark Premium Tech Style.jpg",
-  "Technical Blueprint Style.jpg",
-  "Medical Educational Illustration Style.jpg",
-  "Cinematic Science Illustration Style.jpg",
-  "Premium Sketchnote Science Style.jpg",
-]);
-
 function styleCoverCandidates(coverImage?: string) {
   if (!coverImage) {
     return [];
@@ -110,10 +96,6 @@ function styleCoverCandidates(coverImage?: string) {
   const normalized = coverImage.trim();
   const [path, query = ""] = normalized.split("?");
   if (!path.startsWith("/style/") || !path.toLowerCase().endsWith(".jpg")) {
-    return [];
-  }
-  const filename = decodeURIComponent(path.slice("/style/".length));
-  if (!STYLE_COVER_JPG_ALLOWLIST.has(filename)) {
     return [];
   }
   return [query ? `${path}?${query}` : path];
@@ -143,13 +125,13 @@ function StyleCover({ style }: { style: StyleOption }) {
   }
   return (
     <>
-      {!imageLoaded ? <div className="skeleton-shimmer absolute inset-0" /> : null}
+      {!imageLoaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10" /> : null}
       <img
         src={coverSrc}
         alt={style.name}
         loading="eager"
         decoding="async"
-        className={`absolute inset-0 block h-full w-full rounded-none object-cover align-top transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+        className="absolute inset-0 block h-full w-full rounded-none object-cover align-top"
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           const currentIndex = candidates.findIndex((candidate) => candidate === coverSrc);
@@ -210,11 +192,44 @@ function compactDraftLine(text: string, max = 160) {
   return `${normalized.slice(0, Math.max(32, max - 1)).trim()}…`;
 }
 
+function formatDraftBlock(text: string, max = 520) {
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/^(?:page\s*content|content|页面内容|正文|本页内容)\s*[：:]\s*/i, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  const withSoftBreaks = normalized
+    .replace(/\s*•\s*/g, "\n• ")
+    .replace(/(^|\n)\s*•\s*(\d+)\.\s*(?:\n\s*)?/g, "$1$2. ")
+    .replace(/(^|\n)\s*(\d+)\.\s*\n\s*/g, "$1$2. ")
+    .replace(/([。！？.!?])\s+(?=(?:[\u4e00-\u9fffA-Za-z0-9]|[•]))/g, "$1\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (withSoftBreaks.length <= max) {
+    return withSoftBreaks;
+  }
+  return `${withSoftBreaks.slice(0, Math.max(80, max - 1)).trim()}…`;
+}
+
 function normalizeSlashLineBreaks(text: string) {
   return text
     .replace(/\s*\/\s*/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function formatDraftVisualLine(text: string, max = 140) {
+  return compactDraftLine(
+    text
+      .replace(/^(?:visual\s*structure|visual|画面结构|画面设计|视觉结构)\s*[：:]\s*/i, "")
+      .trim(),
+    max,
+  );
 }
 
 function splitDraftDisplaySentences(text: string) {
@@ -233,6 +248,13 @@ function isDraftModulePlaceholder(text: string) {
 function isDraftInstructionArtifact(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return /(?:请把下面内容|把下面内容|一页聚焦把|适合投资者快速理解|重点展示|做成一组|生成一组)/i.test(
+    normalized,
+  );
+}
+
+function isGenericMechanismDraftLine(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return /(?:核心机制|关键变量与现实影响|最先变化的变量|3-4\s*个步骤|可观测指标|现实案例|因果关系|机制链路|触发条件|机制传导|回到现实场景验证结论|补充一个现实案例)/i.test(
     normalized,
   );
 }
@@ -262,10 +284,56 @@ function normalizeDraftDisplayLine(text: string, max = 180) {
   if (!cleaned) {
     return "";
   }
-  if (isDraftModulePlaceholder(cleaned) || isDraftInstructionArtifact(cleaned) || isStandaloneDraftFragment(cleaned)) {
+  if (
+    isDraftModulePlaceholder(cleaned) ||
+    isDraftInstructionArtifact(cleaned) ||
+    isGenericMechanismDraftLine(cleaned) ||
+    isStandaloneDraftFragment(cleaned)
+  ) {
     return "";
   }
   return cleaned;
+}
+
+function extractReadableFactsFromUserPrompt(prompt: string) {
+  return splitDraftDisplaySentences(prompt)
+    .map((line) => normalizeDraftDisplayLine(line, 210))
+    .filter((line) => {
+      if (!line) {
+        return false;
+      }
+      return /(?:\d|营收|收入|净利润|毛利率|每股收益|EPS|Data Center|数据中心|股票回购|现金分红|回购授权|股息|下季度|第二季度|指引|风险|增长|业务结构|Edge Computing|Hyperscale|ACIE|护城河|资本开支)/i.test(
+        line,
+      );
+    });
+}
+
+function inferPosterReviewTitleFromPrompt(prompt: string) {
+  const normalized = prompt.replace(/\s+/g, " ").trim();
+  const financialSentence =
+    splitDraftDisplaySentences(normalized).find((line) => /公布.*财报|财报.*季度|earnings|financial report/i.test(line)) ||
+    normalized;
+  const cnFinancialMatch = financialSentence.match(
+    /([\u4e00-\u9fa5A-Za-z0-9]{2,12})公布\s*((?:20\d{2}\s*)?财年)?第([一二三四1234])季度财报/,
+  );
+  if (cnFinancialMatch) {
+    const company = cnFinancialMatch[1]?.trim();
+    const fiscalYear = cnFinancialMatch[2]?.replace(/\s+/g, " ").trim();
+    const quarter = cnFinancialMatch[3]?.trim();
+    return `${company}${fiscalYear ? ` ${fiscalYear}` : ""}第${quarter}季度财报速览`;
+  }
+  const financialMatch = normalized.match(/([A-Za-z][A-Za-z0-9 .-]{1,30})\s+(?:Q[1-4]|quarterly|earnings|financial report)/i);
+  if (financialMatch) {
+    return `${financialMatch[1].trim()} earnings overview`;
+  }
+  return "";
+}
+
+function inferPosterReviewSubtitleFromPrompt(prompt: string) {
+  if (/财报|营收|净利润|毛利率|Data Center|数据中心|指引|回购|股息/.test(prompt)) {
+    return "核心业绩、业务结构变化、增长驱动、风险点与下季度指引";
+  }
+  return "";
 }
 
 function compactChatTurnsForDisplay(turns: ChatTurn[]) {
@@ -897,15 +965,29 @@ export const ChatPanel = memo(function ChatPanel({
     if (!posterDraft) {
       return null;
     }
-    const visibleTitle = formatPosterHeadline(posterDraft.headline);
-    const visibleSubtitle = formatPosterSubtitle(posterDraft.subtitle);
     const planItems = posterPlanList
       .slice()
       .sort((a, b) => a.index - b.index)
       .slice(0, posterCount);
     const singlePlanItem = planItems.length === 1 ? planItems[0] : null;
+    const inferredTitle = singlePlanItem ? inferPosterReviewTitleFromPrompt(userPrompt) : "";
+    const rawVisibleTitle = formatPosterHeadline(posterDraft.headline);
+    const visibleTitle =
+      inferredTitle ||
+      (isDraftInstructionArtifact(rawVisibleTitle) || isGenericMechanismDraftLine(rawVisibleTitle)
+        ? ""
+        : rawVisibleTitle);
+    const inferredSubtitle = singlePlanItem ? inferPosterReviewSubtitleFromPrompt(userPrompt) : "";
+    const rawVisibleSubtitle = formatPosterSubtitle(posterDraft.subtitle);
+    const visibleSubtitle =
+      inferredSubtitle ||
+      (isDraftInstructionArtifact(rawVisibleSubtitle) || isGenericMechanismDraftLine(rawVisibleSubtitle)
+        ? ""
+        : rawVisibleSubtitle);
+    const sourcePromptFacts = singlePlanItem ? extractReadableFactsFromUserPrompt(userPrompt) : [];
     const displayFactSources: string[] = singlePlanItem
       ? [
+          ...sourcePromptFacts,
           ...(posterDraft.body ? splitDraftDisplaySentences(posterDraft.body) : []),
           ...posterDraft.points,
           ...(singlePlanItem.keyFacts ?? []),
@@ -1052,35 +1134,46 @@ export const ChatPanel = memo(function ChatPanel({
         ) : null}
         {!!slideDrafts.length ? (
           <div className="mt-3 divide-y divide-zinc-200">
-            {slideDrafts.map((slide) => {
-              const narration = compactDraftLine(slide.body, 200);
+            {slideDrafts.map((slide, idx) => {
+              const narration = formatDraftBlock(slide.body, 360);
+              const isCover = slide.isCover === true;
+              const bodyOrdinal = slideDrafts[0]?.isCover ? idx : idx + 1;
+              const draftBody = formatDraftBlock(slide.body, 720);
+              const visualLine = formatDraftVisualLine(slide.visual, 160);
               return (
                 <section key={`${slide.page}-${slide.title}`} className="py-3">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                    {intent === "video" ? `Frame ${slide.page}` : `Page ${slide.page}`}
+                    {isCover ? (intent === "video" ? "Cover Frame" : "Cover Page") : intent === "video" ? `Frame ${bodyOrdinal}` : `Page ${bodyOrdinal}`}
                   </p>
-                  <p className="mt-1 whitespace-pre-line text-sm font-semibold text-zinc-900">
+                  <p className={`mt-1 whitespace-pre-line font-semibold text-zinc-900 ${isCover ? "text-lg leading-7" : "text-sm"}`}>
                     {normalizeSlashLineBreaks(compactDraftLine(slide.title, 120))}
                   </p>
-                  {intent === "video" ? (
+                  {!isCover && intent === "video" ? (
                     <>
                       <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
-                        {t("Storyboard content", "分镜内容")}: {normalizeSlashLineBreaks(compactDraftLine(slide.visual, 180))}
+                        <span className="font-medium text-zinc-800">{t("Scene", "画面")}:</span>{" "}
+                        {normalizeSlashLineBreaks(visualLine)}
                       </p>
                       <p className="mt-1 whitespace-pre-line text-sm text-zinc-600">
-                        {t("Narration", "讲解文稿")}: {normalizeSlashLineBreaks(narration)}
+                        <span className="font-medium text-zinc-800">{t("Narration", "讲解")}:</span>{" "}
+                        {normalizeSlashLineBreaks(narration)}
                       </p>
                     </>
-                  ) : (
+                  ) : !isCover ? (
                     <>
-                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
-                        {t("Page content", "页面内容")}: {normalizeSlashLineBreaks(compactDraftLine(slide.body, 360))}
-                      </p>
-                      <p className="mt-1 whitespace-pre-line text-sm text-zinc-700">
-                        {t("Visual structure", "画面结构")}: {normalizeSlashLineBreaks(compactDraftLine(slide.visual, 120))}
-                      </p>
+                      {draftBody ? (
+                        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-zinc-700">
+                          {normalizeSlashLineBreaks(draftBody)}
+                        </p>
+                      ) : null}
+                      {visualLine ? (
+                        <p className="mt-1.5 whitespace-pre-line text-xs leading-5 text-zinc-500">
+                          <span className="font-medium text-zinc-600">{t("Visual", "画面")}:</span>{" "}
+                          {normalizeSlashLineBreaks(visualLine)}
+                        </p>
+                      ) : null}
                     </>
-                  )}
+                  ) : null}
                 </section>
               );
             })}

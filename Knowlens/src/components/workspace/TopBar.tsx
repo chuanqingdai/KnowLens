@@ -16,6 +16,7 @@ type TopBarProps = {
   onDownloadPpt?: () => void;
   onDownloadVideo?: () => void;
   actionsDisabled?: boolean;
+  disabledPrimaryActionLabel?: string;
   isExportingPpt?: boolean;
   isComposingVideo?: boolean;
   showOpenCanvasButton?: boolean;
@@ -42,6 +43,7 @@ export function TopBar({
   onDownloadPpt,
   onDownloadVideo,
   actionsDisabled = false,
+  disabledPrimaryActionLabel,
   isExportingPpt = false,
   isComposingVideo = false,
   showOpenCanvasButton = false,
@@ -52,10 +54,14 @@ export function TopBar({
   const showPptAction = canvasMode === "ppt";
   const isPrimaryBusy = showPptAction ? isExportingPpt : isComposingVideo;
   const primaryActionLabel = showPptAction
-    ? isExportingPpt
+    ? actionsDisabled && disabledPrimaryActionLabel
+      ? disabledPrimaryActionLabel
+      : isExportingPpt
       ? "Exporting PPT..."
       : "Export PPT"
-    : isComposingVideo
+    : actionsDisabled && disabledPrimaryActionLabel
+      ? disabledPrimaryActionLabel
+      : isComposingVideo
       ? "Composing..."
       : "Compose Video";
 

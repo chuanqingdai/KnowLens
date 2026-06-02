@@ -72,6 +72,7 @@ type PptSlideDraft = {
   visual?: string;
   imagePrompt?: string;
   imagePromptDraft?: string;
+  isCover?: boolean;
 };
 
 type VideoStoryboardDraft = {
@@ -83,6 +84,7 @@ type VideoStoryboardDraft = {
   onScreenText?: string;
   imagePrompt?: string;
   imagePromptDraft?: string;
+  isCover?: boolean;
 };
 
 type GptsApiGenerateResponse = {
@@ -2459,9 +2461,12 @@ function normalizeSlideDrafts(
       const support = normalizeTextItem(row.supportNote);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
-      const bodyLines = [mainPoint, body, support].filter(Boolean);
+      const isCover = row.isCover === true;
+      const bodyLines = isCover ? [body || mainPoint].filter(Boolean) : [mainPoint, body, support].filter(Boolean);
       const safeBody = !bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line))
-        ? fallback?.body || fallback?.mainPoint || ""
+        ? isCover
+          ? ""
+          : fallback?.body || fallback?.mainPoint || ""
         : bodyLines.join("\n");
       return {
         page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
@@ -2470,9 +2475,10 @@ function normalizeSlideDrafts(
         visual: visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "",
         imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
         imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
+        isCover,
       };
     })
-    .filter((item): item is { page: number; title: string; body: string; visual: string; imagePromptDraft: string; imagePrompt: string } => Boolean(item));
+    .filter((item): item is { page: number; title: string; body: string; visual: string; imagePromptDraft: string; imagePrompt: string; isCover: boolean } => Boolean(item));
 
   if (drafts.length >= count) {
     return drafts.slice(0, count);
@@ -2490,6 +2496,7 @@ function normalizeSlideDrafts(
       visual: fallbackSlides[idx]?.visual || "",
       imagePromptDraft: fallbackSlides[idx]?.imagePrompt || "",
       imagePrompt: fallbackSlides[idx]?.imagePrompt || "",
+      isCover: false,
     };
   });
 }
@@ -2516,7 +2523,10 @@ function normalizeStoryboardDrafts(
       const narration = normalizeTextItem(row.narration);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
-      const safeNarration = narration && !isTemplateInstructionText(narration)
+      const isCover = row.isCover === true;
+      const safeNarration = isCover
+        ? ""
+        : narration && !isTemplateInstructionText(narration)
         ? narration
         : fallback?.narration || fallback?.mainPoint || "";
       return {
@@ -2526,9 +2536,10 @@ function normalizeStoryboardDrafts(
         visual: visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "",
         imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
         imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
+        isCover,
       };
     })
-    .filter((item): item is { index: number; title: string; narration: string; visual: string; imagePromptDraft: string; imagePrompt: string } => Boolean(item));
+    .filter((item): item is { index: number; title: string; narration: string; visual: string; imagePromptDraft: string; imagePrompt: string; isCover: boolean } => Boolean(item));
 
   if (drafts.length >= count) {
     return drafts.slice(0, count);
@@ -2546,6 +2557,7 @@ function normalizeStoryboardDrafts(
       visual: fallbackFrames[idx]?.visual || "",
       imagePromptDraft: fallbackFrames[idx]?.imagePrompt || "",
       imagePrompt: fallbackFrames[idx]?.imagePrompt || "",
+      isCover: false,
     };
   });
 }

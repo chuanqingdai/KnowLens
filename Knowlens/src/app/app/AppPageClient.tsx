@@ -39,7 +39,7 @@ import { SidebarNav } from "@/components/app-shell/SidebarNav";
 import { getProjectsByUser } from "@/lib/admin";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
-import { getCreditRecords, getSubscriptionByUser } from "@/lib/billing";
+import { getCreditRecords, getSubscriptionByUser, syncCreditRecordsFromServer } from "@/lib/billing";
 import {
   getCaseMetrics,
   incrementCaseView,
@@ -736,7 +736,29 @@ export default function Home() {
     const subscription = getSubscriptionByUser(currentEmail);
     return !!subscription && (subscription.status === "active" || subscription.status === "canceling");
   }, [currentEmail]);
-  const currentCredits = useMemo(() => getCreditRecords(currentEmail)[0]?.balance ?? 80, [currentEmail]);
+  const [creditVersion, setCreditVersion] = useState(0);
+  const currentCredits = useMemo(() => {
+    void creditVersion;
+    return getCreditRecords(currentEmail)[0]?.balance ?? 80;
+  }, [currentEmail, creditVersion]);
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    let isCancelled = false;
+    syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        if (!isCancelled) {
+          setCreditVersion((prev) => prev + 1);
+        }
+      })
+      .catch(() => {
+        // Keep the cached local balance if server sync is unavailable.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentEmail]);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");

@@ -186,7 +186,7 @@ function uniquePromptItems(items: string[], maxItems: number) {
 function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["tasks"]>[number]) {
   const outputType = compactPromptText(task.outputType || "poster", 20) || "poster";
   const aspectRatio = compactPromptText(task.aspectRatio || "9:16", 24) || "9:16";
-  const stylePrompt = compactPromptText(task.stylePrompt || "", 180);
+  const stylePrompt = compactPromptText(task.stylePrompt || "", 520);
   const title = compactPromptText(task.contentTitle || "", 120);
   const contentBody = compactPromptText(
     task.contentBody || task.prompt || task.composedPrompt || "",
@@ -246,6 +246,9 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
     mainVisual ? `Hero visual: ${mainVisual}` : "",
     composition ? `Composition: ${composition}` : "",
     stylePrompt ? `Style: ${stylePrompt}` : "",
+    stylePrompt
+      ? "Style priority: the selected style is mandatory and must override topic/company brand color associations, logos, trademark marks, and corporate visual identity."
+      : "",
     "Use one dominant hero visual, integrated infographic composition, embedded callouts, whitespace, and readable hierarchy.",
     "Only use this current page/frame; do not pull facts, labels, titles, or body text from other pages.",
     textMode === "strict" && visibleTitle ? `Source title fact/text: ${visibleTitle}` : "",

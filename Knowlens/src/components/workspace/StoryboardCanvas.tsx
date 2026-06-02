@@ -3,7 +3,6 @@
 import "@xyflow/react/dist/style.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import {
   AlertCircle,
   CheckCircle2,
@@ -36,6 +35,7 @@ type StoryboardCanvasProps = {
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
   canvasModeExternal?: CanvasMode;
   onExportingPptChange?: (value: boolean) => void;
+  onPptExportReadyChange?: (value: boolean) => void;
   onComposingVideoChange?: (value: boolean) => void;
   generationSeedSlides?: CanvasSeedSlide[];
   generationClearToken?: string;
@@ -64,6 +64,7 @@ type SlideItem = {
   title: string;
   body: string;
   visual: string;
+  isCover?: boolean;
   coverTitle?: string;
   coverSubtitle?: string;
   coverTitleX?: number;
@@ -96,6 +97,7 @@ type CanvasSeedSlide = {
   title: string;
   body: string;
   visual: string;
+  isCover?: boolean;
 };
 
 type ValidationIssue = {
@@ -141,6 +143,16 @@ const HISTORY_LIMIT = 60;
 const LENS_MODES = ["广角建立镜头", "剖面特写", "流程箭头跟拍", "对比双画面"];
 const TRANSITIONS = ["溶解", "推镜", "平移", "淡入淡出"];
 const CASE_IMAGES = Array.from({ length: 36 }, (_, idx) => `/case/${idx + 1}.png`);
+
+function isUsableImageSrc(src?: string | null) {
+  const value = (src || "").trim();
+  return Boolean(value) && value !== "undefined" && value !== "null";
+}
+
+function getActiveImageSrc(history: string[] | undefined, activeIndex: number, fallback?: string) {
+  const safeHistory = (history ?? []).filter(isUsableImageSrc);
+  return safeHistory[activeIndex] ?? safeHistory[0] ?? (isUsableImageSrc(fallback) ? fallback : "");
+}
 
 const TTS_OPTIONS = [
   { id: "openai-alloy", label: "Alloy", profile: "neutral" },
@@ -198,14 +210,14 @@ function toConciseImageErrorMessage(error?: string) {
 function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
   return seedSlides.map((item) => ({
     ...item,
-    coverTitle: item.page === 1 ? item.title : undefined,
-    coverSubtitle: item.page === 1 ? "Waiting for generation" : undefined,
-    coverTitleX: item.page === 1 ? 50 : undefined,
-    coverTitleY: item.page === 1 ? 22 : undefined,
-    coverTitleSize: item.page === 1 ? 50 : undefined,
-    coverSubtitleX: item.page === 1 ? 50 : undefined,
-    coverSubtitleY: item.page === 1 ? 33 : undefined,
-    coverSubtitleSize: item.page === 1 ? 22 : undefined,
+    coverTitle: item.page === 1 && !item.isCover ? item.title : undefined,
+    coverSubtitle: item.page === 1 && !item.isCover ? "Waiting for generation" : undefined,
+    coverTitleX: item.page === 1 && !item.isCover ? 50 : undefined,
+    coverTitleY: item.page === 1 && !item.isCover ? 22 : undefined,
+    coverTitleSize: item.page === 1 && !item.isCover ? 50 : undefined,
+    coverSubtitleX: item.page === 1 && !item.isCover ? 50 : undefined,
+    coverSubtitleY: item.page === 1 && !item.isCover ? 33 : undefined,
+    coverSubtitleSize: item.page === 1 && !item.isCover ? 22 : undefined,
   }));
 }
 
@@ -220,7 +232,11 @@ function buildSeedSlides(count: number): CanvasSeedSlide[] {
 }
 
 function createInitialCanvasState(seedCount = 6): PersistedCanvasState {
-  const baseSlides = buildSlides(buildSeedSlides(seedCount));
+  return createCanvasStateFromSeed(buildSeedSlides(seedCount));
+}
+
+function createCanvasStateFromSeed(seedSlides: CanvasSeedSlide[]): PersistedCanvasState {
+  const baseSlides = buildSlides(seedSlides.length ? seedSlides : buildSeedSlides(1));
   return {
     version: 1,
     slides: baseSlides,
@@ -251,12 +267,11 @@ function sanitizeCanvasState(state: PersistedCanvasState): PersistedCanvasState 
       state.ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
     promptBySlideId[slide.id] =
       state.promptBySlideId[slide.id] ?? buildPrompt(slide.title, slide.visual);
-    const history =
-      state.imageHistoryBySlideId[slide.id] ?? [CASE_IMAGES[idx % CASE_IMAGES.length]];
-    imageHistoryBySlideId[slide.id] = history.length > 0 ? history : [CASE_IMAGES[0]];
+    const history = state.imageHistoryBySlideId[slide.id] ?? [];
+    imageHistoryBySlideId[slide.id] = history.filter(isUsableImageSrc);
     activeImageIndexBySlideId[slide.id] = Math.min(
       Math.max(state.activeImageIndexBySlideId[slide.id] ?? 0, 0),
-      imageHistoryBySlideId[slide.id].length - 1,
+      Math.max(0, imageHistoryBySlideId[slide.id].length - 1),
     );
     historyOpenBySlideId[slide.id] = Boolean(state.historyOpenBySlideId[slide.id]);
   });
@@ -355,6 +370,7 @@ export function StoryboardCanvas({
   onSaveStateChange,
   canvasModeExternal,
   onExportingPptChange,
+  onPptExportReadyChange,
   onComposingVideoChange,
   generationSeedSlides,
   generationClearToken,
@@ -379,7 +395,7 @@ export function StoryboardCanvas({
         // ignore
       }
       const seedSlides = generationSeedSlides?.length ? generationSeedSlides : buildSeedSlides(6);
-      const seededState = createInitialCanvasState(seedSlides.length);
+      const seededState = createCanvasStateFromSeed(seedSlides);
       return {
         state: seededState,
         snapshot: JSON.stringify(seededState),
@@ -468,6 +484,31 @@ export function StoryboardCanvas({
   const historyOpenBySlideId = present.historyOpenBySlideId;
 
   const canvasMode: CanvasMode = canvasModeExternal ?? "free";
+  const pptExportReady = useMemo(() => {
+    if (canvasMode !== "ppt" || !slides.length) {
+      return false;
+    }
+    return slides.every((slide) => {
+      const taskState = generationTaskStateByIndex?.[slide.page];
+      if (
+        taskState?.status === "queued" ||
+        taskState?.status === "generating" ||
+        taskState?.status === "retrying" ||
+        taskState?.status === "failed"
+      ) {
+        return false;
+      }
+      const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
+      const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
+      return Boolean(getActiveImageSrc(historyImages, activeIdx));
+    });
+  }, [
+    activeImageIndexBySlideId,
+    canvasMode,
+    generationTaskStateByIndex,
+    imageHistoryBySlideId,
+    slides,
+  ]);
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
   const isCanvasInteractive = canvasMode === "free";
@@ -481,6 +522,23 @@ export function StoryboardCanvas({
     const idx = slides.findIndex((slide) => slide.id === selectedSlideId);
     return idx >= 0 ? idx : 0;
   }, [selectedSlideId, slides]);
+
+  useEffect(() => {
+    if (!generationClearToken) {
+      return;
+    }
+    const seedSlides = generationSeedSlides?.length ? generationSeedSlides : buildSeedSlides(6);
+    const seededState = sanitizeCanvasState(createCanvasStateFromSeed(seedSlides));
+    setHistory({
+      past: [],
+      present: seededState,
+      future: [],
+    });
+    setSelectedSlideId(seededState.slides[0]?.id ?? null);
+    lastSavedSnapshotRef.current = JSON.stringify(seededState);
+    setSaveState("saved");
+    setHasUnsavedChanges(false);
+  }, [generationClearToken, generationSeedSlides]);
 
   useEffect(() => {
     hasAutoFocusedFirstSlideRef.current = false;
@@ -510,23 +568,26 @@ export function StoryboardCanvas({
     return "正在合成，请稍候";
   }, [composeSteps.finalize, composeSteps.prepare, composeSteps.render, composeSteps.tts]);
   const exportPptHint = useMemo(() => {
+    if (pptExportStatus === "error") {
+      return pptExportError || "Export failed. Please try again.";
+    }
     if (exportPptPhase === "prepare") {
-      return "正在准备导出参数";
+      return "Preparing export...";
     }
     if (exportPptPhase === "images") {
-      return "正在处理分镜图片";
+      return "Collecting slide images...";
     }
     if (exportPptPhase === "slides") {
-      return "正在写入 PPT 页面";
+      return "Writing PPT pages...";
     }
     if (exportPptPhase === "file") {
-      return "正在生成可下载文件";
+      return "Creating download file...";
     }
     if (exportPptPhase === "done") {
-      return "PPT 已生成，浏览器会自动下载";
+      return "Export ready.";
     }
-    return "";
-  }, [exportPptPhase]);
+    return "Preparing export...";
+  }, [pptExportError, exportPptPhase, pptExportStatus]);
 
   const commitChange = useCallback(
     (updater: (prev: PersistedCanvasState) => PersistedCanvasState) => {
@@ -574,7 +635,7 @@ export function StoryboardCanvas({
         if (!slide) {
           return;
         }
-        const currentHistory = (next.imageHistoryBySlideId[slide.id] ?? []).filter(Boolean);
+        const currentHistory = (next.imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const lastUrl = currentHistory[currentHistory.length - 1] ?? "";
         if (lastUrl === imageUrl) {
           const activeIndex = currentHistory.length ? currentHistory.length - 1 : 0;
@@ -628,6 +689,10 @@ export function StoryboardCanvas({
   useEffect(() => {
     onExportingPptChange?.(isExportingPpt);
   }, [isExportingPpt, onExportingPptChange]);
+
+  useEffect(() => {
+    onPptExportReadyChange?.(pptExportReady);
+  }, [onPptExportReadyChange, pptExportReady]);
 
   useEffect(() => {
     onComposingVideoChange?.(composeStatus === "running");
@@ -1267,11 +1332,14 @@ export function StoryboardCanvas({
         }
 
         const slide = slides[idx];
-        const historyImages = imageHistoryBySlideId[slide.id] ?? [
+        const historyImages = (imageHistoryBySlideId[slide.id] ?? [
           CASE_IMAGES[idx % CASE_IMAGES.length],
-        ];
+        ]).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-        const src = historyImages[activeIdx] ?? historyImages[0];
+        const src = getActiveImageSrc(historyImages, activeIdx, CASE_IMAGES[idx % CASE_IMAGES.length]);
+        if (!src) {
+          continue;
+        }
         setPreviewFrame({
           imageSrc: src,
           title: slide.title,
@@ -1429,12 +1497,6 @@ export function StoryboardCanvas({
         const drawX = (canvas.width - drawW) / 2;
         const drawY = 36 - sceneProgress * 9;
         ctx.drawImage(image, drawX, drawY, drawW, drawH);
-
-        ctx.fillStyle = "rgba(255,255,255,0.97)";
-        ctx.fillRect(76, 670, 1128, 36);
-        ctx.fillStyle = "#111827";
-        ctx.font = "600 16px 'PingFang SC','Microsoft YaHei',sans-serif";
-        ctx.fillText(`第${slide.page}页 · ${slide.title}`, 92, 694);
       };
 
       let elapsedSec = 0;
@@ -1442,11 +1504,14 @@ export function StoryboardCanvas({
       for (let i = 0; i < slides.length; i += 1) {
         const slide = slides[i];
         const sceneAsset = sceneAssets[i];
-        const historyImages = imageHistoryBySlideId[slide.id] ?? [
+        const historyImages = (imageHistoryBySlideId[slide.id] ?? [
           CASE_IMAGES[i % CASE_IMAGES.length],
-        ];
+        ]).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-        const src = historyImages[activeIdx] ?? historyImages[0];
+        const src = getActiveImageSrc(historyImages, activeIdx, CASE_IMAGES[i % CASE_IMAGES.length]);
+        if (!src) {
+          throw new Error("加载分镜图片失败");
+        }
 
         const image = new window.Image();
         image.src = src;
@@ -1573,6 +1638,16 @@ export function StoryboardCanvas({
     }
 
     setShowPptExportModal(true);
+    if (!pptExportReady) {
+      setPptExportStatus("error");
+      setIsExportingPpt(false);
+      setExportPptProgress(0);
+      setExportPptPhase("prepare");
+      setPptExportError("Please wait until every slide image has finished generating.");
+      setExportedPptUrl(null);
+      return;
+    }
+
     setPptExportStatus("running");
     setIsExportingPpt(true);
     setExportPptProgress(8);
@@ -1582,15 +1657,13 @@ export function StoryboardCanvas({
 
     try {
       const payload = slides.map((slide, idx) => {
-        const historyImages = imageHistoryBySlideId[slide.id] ?? [
-          CASE_IMAGES[idx % CASE_IMAGES.length],
-        ];
+        const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
         return {
           page: slide.page,
           title: slide.title,
           body: slide.body,
-          imageSrc: historyImages[activeIdx] ?? historyImages[0] ?? CASE_IMAGES[0],
+          imageSrc: getActiveImageSrc(historyImages, activeIdx),
         };
       });
 
@@ -1643,7 +1716,7 @@ export function StoryboardCanvas({
         setIsExportingPpt(false);
       }, 420);
     }
-  }, [activeImageIndexBySlideId, imageHistoryBySlideId, isExportingPpt, slides]);
+  }, [activeImageIndexBySlideId, imageHistoryBySlideId, isExportingPpt, pptExportReady, slides]);
 
   useEffect(() => {
     if (!onModeActionRegister) {
@@ -1832,11 +1905,11 @@ export function StoryboardCanvas({
       });
 
       const imageNodes = slides.map((slide, idx) => {
-        const imageHistory = imageHistoryBySlideId[slide.id] ?? [
+        const imageHistory = (imageHistoryBySlideId[slide.id] ?? [
           CASE_IMAGES[idx % CASE_IMAGES.length],
-        ];
+        ]).filter(isUsableImageSrc);
         const activeImageIndex = activeImageIndexBySlideId[slide.id] ?? 0;
-        const storyboardImage = imageHistory[activeImageIndex] ?? imageHistory[0];
+        const storyboardImage = getActiveImageSrc(imageHistory, activeImageIndex, CASE_IMAGES[idx % CASE_IMAGES.length]);
         const historyOpen = historyOpenBySlideId[slide.id] ?? false;
         const selectedTts = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
         const selectedTtsOption =
@@ -1893,13 +1966,18 @@ export function StoryboardCanvas({
                       <span>A 轴 · 画面轨</span>
                       <span>{audioDuration}</span>
                     </div>
-                    <Image
-                      src={storyboardImage}
-                      alt={`分镜${slide.page}参考图`}
-                      width={360}
-                      height={212}
-                      className="h-[212px] w-full rounded object-cover"
-                    />
+                    {storyboardImage ? (
+                      <img
+                        src={storyboardImage}
+                        alt={`分镜${slide.page}参考图`}
+                        className="h-[212px] w-full rounded object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-[212px] w-full items-center justify-center rounded bg-white text-xs text-zinc-400">
+                        Waiting for generation
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1962,12 +2040,11 @@ export function StoryboardCanvas({
                                 : "border-zinc-200"
                             }`}
                           >
-                            <Image
+                            <img
                               src={historyImage}
                               alt={`历史分镜${historyIdx + 1}`}
-                              width={72}
-                              height={56}
                               className="h-14 w-full object-cover"
+                              loading="lazy"
                             />
                           </button>
                         ))}
@@ -2394,20 +2471,24 @@ export function StoryboardCanvas({
             <div className="mx-auto w-full max-w-[1100px] px-3 py-3">
               <div className="space-y-4">
                 {slides.map((slide, idx) => {
-                  const historyImages = imageHistoryBySlideId[slide.id] ?? [
-                    CASE_IMAGES[idx % CASE_IMAGES.length],
-                  ];
+                  const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
                   const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-                  const currentImage = historyImages[activeIdx] ?? historyImages[0];
+                  const currentImage = getActiveImageSrc(historyImages, activeIdx);
                   const isActive = selectedSlideId === slide.id;
-                  const prompt = promptBySlideId[slide.id] ?? buildPrompt(slide.title, slide.visual);
-                  const historyOpen = historyOpenBySlideId[slide.id] ?? false;
+                  const showHistory = historyOpenBySlideId[slide.id] ?? false;
                   const generationState = generationTaskStateByIndex?.[slide.page];
                   const isGenerating =
                     generationState?.status === "queued" ||
                     generationState?.status === "generating" ||
                     generationState?.status === "retrying";
                   const isGenerationFailed = generationState?.status === "failed";
+                  const pageContent = [
+                    slide.title.trim(),
+                    slide.body.trim(),
+                    slide.visual.trim() ? `Visual structure: ${slide.visual.trim()}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join("\n");
                   return (
                     <section
                       key={`ppt-page-flow-${slide.id}`}
@@ -2418,24 +2499,26 @@ export function StoryboardCanvas({
                     >
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-xs font-medium text-zinc-600">
-                          第 {slide.page} / {slides.length} 页
+                          Slide {slide.page} / {slides.length}
                         </p>
                         {isActive ? (
                           <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-white">
-                            当前编辑
+                            Editing
                           </span>
                         ) : null}
                       </div>
 
-                      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-                        <Image
-                          src={currentImage}
-                          alt={`PPT预览第${slide.page}页`}
-                          fill
-                          className="object-cover"
-                        />
+                      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-md border border-zinc-200 bg-white">
+                        {currentImage && !isGenerating ? (
+                          <img
+                            src={currentImage}
+                            alt={`PPT preview slide ${slide.page}`}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : null}
                         {isGenerating ? (
-                          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[1px]">
+                          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white">
                             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
                               <LoaderCircle size={12} className="animate-spin text-blue-500" />
                               Generating image (2-3 min)
@@ -2456,6 +2539,13 @@ export function StoryboardCanvas({
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
+                                  commitChange((prev) => ({
+                                    ...prev,
+                                    historyOpenBySlideId: {
+                                      ...prev.historyOpenBySlideId,
+                                      [slide.id]: true,
+                                    },
+                                  }));
                                   regenerateSlideImage(slide.id, slide.page);
                                 }}
                                 className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
@@ -2466,7 +2556,7 @@ export function StoryboardCanvas({
                             </div>
                           </div>
                         ) : null}
-                        {slide.page === 1 ? (
+                        {slide.page === 1 && !slide.isCover && currentImage && !isGenerating && !isGenerationFailed ? (
                           <div className="absolute inset-0">
                             <textarea
                               value={slide.coverTitle || slide.title}
@@ -2478,7 +2568,7 @@ export function StoryboardCanvas({
                               rows={2}
                             />
                             <textarea
-                              value={slide.coverSubtitle || "中学生科普演示文稿"}
+                              value={slide.coverSubtitle || "Science presentation"}
                               onChange={(event) =>
                                 updateSlideField(slide.id, "coverSubtitle", event.target.value)
                               }
@@ -2490,84 +2580,61 @@ export function StoryboardCanvas({
                         ) : null}
                       </div>
 
-                      <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2">
-                        <p className="text-[11px] text-zinc-500">本页文稿</p>
-                        <p className="mt-1 text-xs font-semibold text-zinc-900">{slide.title}</p>
-                        {slide.body.trim() ? (
-                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-zinc-700">
-                            {slide.body}
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs text-zinc-500">正在等待文稿内容…</p>
-                        )}
-                        {slide.visual.trim() ? (
-                          <p className="mt-1 text-xs text-zinc-600">画面结构：{slide.visual}</p>
+                      <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2">
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <p className="text-[11px] text-zinc-600">Page content</p>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                commitChange((prev) => ({
+                                  ...prev,
+                                  historyOpenBySlideId: {
+                                    ...prev.historyOpenBySlideId,
+                                    [slide.id]: true,
+                                  },
+                                }));
+                                regenerateSlideImage(slide.id, slide.page);
+                              }}
+                              className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700"
+                            >
+                              Redraw
+                            </button>
+                          </div>
+                        </div>
+                        <textarea
+                          value={pageContent || "Waiting for page content..."}
+                          readOnly
+                          className="h-24 w-full resize-none rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs leading-5 text-zinc-700 outline-none"
+                        />
+                        {showHistory && historyImages.length > 0 ? (
+                          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                            {historyImages.map((historyImage, historyIdx) => (
+                              <button
+                                key={`ppt-history-${slide.id}-${historyImage}-${historyIdx}`}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  selectHistoryImage(slide.id, historyIdx);
+                                }}
+                                className={`w-[72px] shrink-0 overflow-hidden border ${
+                                  historyIdx === activeIdx
+                                    ? "border-zinc-900 ring-1 ring-zinc-900/30"
+                                    : "border-zinc-200"
+                                }`}
+                              >
+                                <img
+                                  src={historyImage}
+                                  alt={`PPT history image ${historyIdx + 1}`}
+                                  className="h-[52px] w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            ))}
+                          </div>
                         ) : null}
                       </div>
-
-                      {isActive ? (
-                        <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2">
-                          <div className="mb-1.5 flex items-center justify-between">
-                            <p className="text-[11px] text-zinc-600">画面提示词</p>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  toggleHistoryPanel(slide.id);
-                                }}
-                                className="h-7 rounded-md border border-zinc-300 bg-white px-2 text-[11px] text-zinc-700 hover:bg-zinc-100"
-                              >
-                                {historyOpen ? "收起历史" : "查看历史"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  regenerateSlideImage(slide.id, slide.page);
-                                }}
-                                className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700"
-                              >
-                                重绘
-                              </button>
-                            </div>
-                          </div>
-                          <textarea
-                            value={prompt}
-                            onChange={(event) => {
-                              updatePromptForSlide(slide.id, event.target.value);
-                            }}
-                            className="h-16 w-full resize-none rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs leading-5 text-zinc-700 outline-none focus:border-zinc-400"
-                          />
-                          {historyOpen ? (
-                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-                              {historyImages.map((historyImage, historyIdx) => (
-                                <button
-                                  key={`ppt-history-${slide.id}-${historyImage}-${historyIdx}`}
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    selectHistoryImage(slide.id, historyIdx);
-                                  }}
-                                  className={`w-[72px] shrink-0 overflow-hidden rounded border ${
-                                    historyIdx === activeIdx
-                                      ? "border-zinc-900 ring-1 ring-zinc-900/30"
-                                      : "border-zinc-200"
-                                  }`}
-                                >
-                                  <Image
-                                    src={historyImage}
-                                    alt={`PPT历史分镜${historyIdx + 1}`}
-                                    width={80}
-                                    height={52}
-                                    className="h-[52px] w-full object-cover"
-                                  />
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
                     </section>
                   );
                 })}
@@ -2577,15 +2644,13 @@ export function StoryboardCanvas({
           </div>
         ) : null}
 
-        {isPreviewing && previewFrame ? (
+        {isPreviewing && previewFrame?.imageSrc ? (
           <div className="pointer-events-none absolute inset-0 z-20 bg-black">
             <div className="relative h-full w-full">
-              <Image
+              <img
                 src={previewFrame.imageSrc}
                 alt={`预览分镜${previewFrame.page}`}
-                fill
-                className="object-contain"
-                priority
+                className="h-full w-full object-contain"
               />
               <div className="absolute left-4 top-4 rounded-lg bg-black/55 px-3 py-1.5 text-xs text-white">
                 第{previewFrame.page}页 · {previewFrame.title}
@@ -2768,13 +2833,11 @@ export function StoryboardCanvas({
 
       {showPptExportModal ? (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-900/28 backdrop-blur-[1px]">
-          <div className="w-[560px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
-            <div className="mb-3 flex items-center justify-between">
+          <div className="w-[520px] rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
+            <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-900">PPT 导出</h3>
-                <p className="mt-1 text-xs text-zinc-500">
-                  正在打包页面、图片与文案，生成可下载 PPT 文件
-                </p>
+                <h3 className="text-sm font-semibold text-zinc-900">Export PPT</h3>
+                <p className="mt-1 text-xs text-zinc-500">Preparing a downloadable slide deck.</p>
               </div>
               <button
                 type="button"
@@ -2787,38 +2850,49 @@ export function StoryboardCanvas({
                 className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                 disabled={pptExportStatus === "running"}
               >
-                关闭
+                Close
               </button>
             </div>
 
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
               <div className="flex items-center justify-between text-sm text-zinc-700">
                 <div className="flex items-center gap-2">
                   {pptExportStatus === "running" ? (
                     <LoaderCircle className="animate-spin" size={16} />
+                  ) : pptExportStatus === "success" ? (
+                    <CheckCircle2 size={16} className="text-emerald-600" />
+                  ) : pptExportStatus === "error" ? (
+                    <AlertCircle size={16} className="text-red-500" />
                   ) : null}
-                  {exportPptHint}
+                  <span
+                    className={
+                      pptExportStatus === "error" ? "text-red-600" : "text-zinc-700"
+                    }
+                  >
+                    {exportPptHint}
+                  </span>
                 </div>
                 <span className="text-xs font-medium text-zinc-500">{exportPptProgress}%</span>
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
                 <div
-                  className="h-full rounded-full bg-zinc-900 transition-[width] duration-300"
+                  className={`h-full rounded-full transition-[width] duration-300 ${
+                    pptExportStatus === "error" ? "bg-red-500" : "bg-zinc-900"
+                  }`}
                   style={{ width: `${exportPptProgress}%` }}
                 />
               </div>
             </div>
 
-            {pptExportStatus === "error" && pptExportError ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-                <p className="text-sm text-red-600">{pptExportError}</p>
-                <div className="mt-2 flex justify-end gap-2">
+            <div className="mt-4 flex justify-end gap-2">
+              {pptExportStatus === "error" ? (
+                <>
                   <button
                     type="button"
                     onClick={() => setShowPptExportModal(false)}
                     className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
                   >
-                    返回编辑
+                    Back to editor
                   </button>
                   <button
                     type="button"
@@ -2827,27 +2901,22 @@ export function StoryboardCanvas({
                     }}
                     className="inline-flex items-center rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-700"
                   >
-                    重试导出
+                    Retry export
                   </button>
-                </div>
-              </div>
-            ) : null}
+                </>
+              ) : null}
 
-            {pptExportStatus === "success" && exportedPptUrl ? (
-              <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                <p className="text-sm text-zinc-700">PPT 已生成，可立即下载。</p>
-                <div className="mt-3 flex justify-end">
-                  <a
-                    href={exportedPptUrl}
-                    download="KnowLens.ai-科普分镜-PPT版.pptx"
-                    className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
-                  >
-                    <Download size={13} />
-                    下载PPT
-                  </a>
-                </div>
-              </div>
-            ) : null}
+              {pptExportStatus === "success" && exportedPptUrl ? (
+                <a
+                  href={exportedPptUrl}
+                  download="KnowLens.ai-visual-deck.pptx"
+                  className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
+                >
+                  <Download size={13} />
+                  Download PPT
+                </a>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

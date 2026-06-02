@@ -115,6 +115,7 @@ type BuildGenerationTasksInput = {
     visual: string;
     imagePrompt?: string;
     imagePromptDraft?: string;
+    isCover?: boolean;
   }>;
 };
 
@@ -124,6 +125,20 @@ function clamp(value: number, min: number, max: number) {
 
 function cleanText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function sanitizeBrandSensitiveVisualText(value: string | null | undefined) {
+  const source = cleanText(value);
+  if (!source) {
+    return "";
+  }
+  return cleanText(
+    source
+      .replace(/公司\s*logo|公司\s*Logo|公司标志|品牌\s*logo|品牌\s*Logo/gi, "公司名称文字标识")
+      .replace(/\bofficial\s+logo\b/gi, "plain company name wordmark")
+      .replace(/\bbrand\s+logo\b/gi, "plain brand name wordmark")
+      .replace(/\blogo\b/gi, "plain text wordmark"),
+  );
 }
 
 const PROMPT_NOISE_PATTERNS = [
@@ -329,7 +344,7 @@ function buildSeriesStyle(styleName: string, outputLanguage: string): SeriesStyl
     titleArea: "Consistent top title zone with stable spacing and alignment.",
     iconSystem: "Use one icon style family and stroke weight across all pages.",
     colorSystem: `Primary style anchored by ${styleName}, with fixed accent and neutral palette.`,
-    pageModuleStyle: "Use consistent section cards, divider rhythm, and page index marker treatment.",
+    pageModuleStyle: "Use consistent section cards and divider rhythm. Do not add visible page numbers or pagination markers.",
     languageRule: isZh
       ? "All visible text must stay in Chinese and use concise labels."
       : "All visible text must stay in English and use concise labels.",
@@ -348,7 +363,8 @@ function buildSharedRules(outputType: NormalizedDirection) {
     "No long paragraph blocks.",
     "No overcrowded layout.",
     "No unrelated information or decorative fake UI.",
-    "No brand logo, watermark, or pseudo product screenshot.",
+    "No official brand logo, trademark mark, watermark, or pseudo product screenshot.",
+    "If a company identity is needed, use plain text company names or abstract brand-safe symbols instead of official logos.",
   ];
   if (outputType === "video") {
     negativeRules.push("No dense on-screen text; frame must be understandable within short viewing time.");
@@ -451,7 +467,9 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       const isDataLike = isHighRiskDataContent(
         [contentTitle, contentBody, input.posterDraft?.headline, input.posterDraft?.body, ...(input.posterDraft?.points || [])].join(" "),
       );
-      const imagePromptDraft = normalizePosterFreeText(plan?.imagePromptDraft || plan?.imagePrompt || "", singlePoster);
+      const imagePromptDraft = sanitizeBrandSensitiveVisualText(
+        normalizePosterFreeText(plan?.imagePromptDraft || plan?.imagePrompt || "", singlePoster),
+      );
       const visibleLabelCandidates: string[] = [];
       if (!singlePoster && focusForBody && isFirstPoster) {
         visibleLabelCandidates.push(focusForBody);
@@ -479,7 +497,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
           : "Single-focus poster page: one main idea, one central visual, no repeated overview panels.",
         mainVisual: isDataLike
           ? "Metrics summary infographic with business breakdown"
-          : cleanText(plan?.visualType || input.posterDraft?.visualType) || "Causal explainer illustration",
+          : sanitizeBrandSensitiveVisualText(plan?.visualType || input.posterDraft?.visualType) || "Causal explainer illustration",
         composition: cleanText([
           pageRole === "cover"
             ? "Overview treatment for the opening page."
@@ -488,7 +506,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
               : pageRole === "comparison"
                 ? "Comparison treatment for this page's single contrast."
                 : "Single-focus treatment for this page's idea.",
-          (plan?.visualElements || input.posterDraft?.visualElements || []).join(", "),
+          sanitizeBrandSensitiveVisualText((plan?.visualElements || input.posterDraft?.visualElements || []).join(", ")),
           isDataLike
             ? "Preserve supplied numbers exactly; use an integrated data editorial layout, not generic causal mechanism panels."
             : "",
@@ -547,7 +565,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       ].join(" | "));
       const composedPrompt = buildTuziImagePrompt({
         draftContent: cleanText([contentTitle, contentBody].join("\n")),
-        selectedStyle: input.style.name || input.style.prompt,
+        selectedStyle: input.style.prompt || input.style.name,
         aspectRatio: normalizedAspectRatio,
         posterIndex: index,
         totalCount: normalizedCount,
@@ -584,62 +602,126 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
 
   const outline = input.outlineItems || [];
   const slides = input.slideDrafts || [];
-  return Array.from({ length: normalizedCount }, (_, idx) => {
+  const generatedCount = Math.max(normalizedCount, slides.length || 0);
+  return Array.from({ length: generatedCount }, (_, idx) => {
     const index = idx + 1;
     const slide = slides[idx];
     const contentTitle = cleanText(slide?.title) || cleanText(outline[idx]) || `${normalizedDirection === "ppt" ? "Slide" : "Frame"} ${index}`;
     const contentBody = cleanText(slide?.body) || cleanText(outline[idx]) || input.topic;
-    const imagePromptDraft = sanitizePromptLine(cleanText(slide?.imagePromptDraft || slide?.imagePrompt));
+    const rawSlideVisual = sanitizeBrandSensitiveVisualText(slide?.visual || "");
+    const imagePromptDraft = sanitizeBrandSensitiveVisualText(
+      sanitizePromptLine(cleanText(slide?.imagePromptDraft || slide?.imagePrompt)),
+    );
+    const isIndependentCover = slide?.isCover === true;
+    const isDataLikeSlide =
+      !isIndependentCover &&
+      (isHighRiskDataContent([contentTitle, contentBody, rawSlideVisual, imagePromptDraft].join(" ")) ||
+        /metrics|data|指标|数据|财报|营收|利润|同比|环比|EPS|每股收益|guidance|revenue|profit|earnings/i.test(
+          [contentTitle, contentBody, rawSlideVisual].join(" "),
+        ));
     const visibleText: VisibleText = {
       title: contentTitle,
-      labels: splitLabels(sanitizePromptLine(cleanText(slide?.visual)) || sanitizePromptLine(cleanText(contentBody)), normalizedDirection === "video" ? 2 : 4),
+      labels: isIndependentCover
+        ? []
+        : splitLabels(sanitizePromptLine(rawSlideVisual) || sanitizePromptLine(cleanText(contentBody)), normalizedDirection === "video" ? 2 : 4),
     };
     const pageRole: CompiledGenerationTask["pageRole"] =
-      index === 1 ? "cover" : index === normalizedCount ? "system-model" : "mechanism";
+      isIndependentCover
+        ? "cover"
+        : isDataLikeSlide
+        ? index === normalizedCount
+          ? "system-model"
+          : "comparison"
+        : index === 1
+          ? "cover"
+          : index === normalizedCount
+            ? "system-model"
+            : "mechanism";
     const visualDesign: VisualDesign = {
-      layout: normalizedDirection === "video"
+      layout: isIndependentCover
+          ? "Independent cover visual with one simple hero subject and one large title only."
+        : normalizedDirection === "video"
         ? "Short-view frame with one focal action and minimal text."
-        : "Presentation page with one core point and one central visual.",
-      mainVisual: cleanText(slide?.visual) || cleanText(input.visualizationTypeHint) || "Knowledge explainer visual",
+          : isDataLikeSlide
+          ? "Presentation data-summary page with core metrics, business breakdown, guidance, and investor takeaways."
+          : "Presentation page with one core point and one central visual.",
+      mainVisual: isIndependentCover
+        ? rawSlideVisual || "One simple symbolic hero object representing the full topic"
+        : isDataLikeSlide
+        ? "Financial metrics summary with supplied data and investor-oriented structure"
+        : rawSlideVisual || sanitizeBrandSensitiveVisualText(input.visualizationTypeHint) || "Knowledge explainer visual",
       composition: cleanText([
-        pageRole === "cover"
+        isIndependentCover
+          ? "Title-only independent cover composition with exactly one main subject element, clean background, and one large title text only."
+          : pageRole === "cover"
           ? "Opening visual treatment."
           : pageRole === "system-model"
             ? "Closing framework treatment."
             : "Single-point visual treatment.",
         normalizedDirection === "video" ? "Frame-first storytelling composition" : "Slide-first explanatory composition",
+        isDataLikeSlide
+          ? "Preserve supplied metrics exactly; use an integrated data editorial layout, not generic mechanism panels."
+          : "",
         imagePromptDraft,
       ].join(" | ")),
-      informationStructure: normalizedDirection === "video" ? "single-frame-keypoint" : "single-slide-keypoint",
+      informationStructure: isIndependentCover
+        ? "title-only-cover"
+        : isDataLikeSlide
+        ? "metrics-summary"
+        : normalizedDirection === "video"
+          ? "single-frame-keypoint"
+          : "single-slide-keypoint",
       pageRole,
-      textDensity: normalizedDirection === "video" ? "low" : "medium",
-      chartType: /chart|趋势|对比|柱|折线/i.test(slide?.visual || "") ? "comparison-or-trend-chart" : undefined,
-      workflowType: /流程|步骤|闭环|workflow|loop/i.test(slide?.visual || "") ? "step-or-flow-workflow" : undefined,
-      mapRegion: /地图|map|区域|东亚|中国|全球/i.test(slide?.visual || "") ? cleanText(slide?.visual) : undefined,
+      textDensity: isIndependentCover || normalizedDirection === "video" ? "low" : "medium",
+      chartType: isDataLikeSlide || /chart|趋势|对比|柱|折线/i.test(rawSlideVisual) ? "comparison-or-trend-chart" : undefined,
+      workflowType: /流程|步骤|闭环|workflow|loop/i.test(rawSlideVisual) ? "step-or-flow-workflow" : undefined,
+      mapRegion: /地图|map|区域|东亚|中国|全球/i.test(rawSlideVisual) ? rawSlideVisual : undefined,
     };
     const textStrategy: TextStrategy = {
-      mode: "guided",
-      titleIdea: contentTitle,
-      keyConcepts: splitLabels([contentTitle, contentBody].join(" | "), normalizedDirection === "video" ? 3 : 5),
+      mode: isIndependentCover ? "minimal" : isDataLikeSlide ? "strict" : "guided",
+      titleIdea: isIndependentCover ? "" : contentTitle,
+      keyConcepts: isIndependentCover ? [] : splitLabels([contentTitle, contentBody].join(" | "), normalizedDirection === "video" ? 3 : 5),
       language: input.outputLanguage.toLowerCase().startsWith("zh") ? "Simplified Chinese" : "English",
       density: visualDesign.textDensity,
-      allowRewrite: true,
+      allowRewrite: !isIndependentCover && !isDataLikeSlide,
     };
-    const visualHint = cleanText([sanitizePromptLine(slide?.visual || ""), imagePromptDraft].join(" | "));
+    const taskFactualRules = isDataLikeSlide
+      ? [
+          ...factualRules,
+          "For supplied metrics, preserve exact numbers, dates, currency units, percentages, company/segment names, and comparison direction.",
+          "Do not invent missing financial figures, axes, rankings, sources, or official logos.",
+        ]
+      : factualRules;
+    const taskNegativeRules = isIndependentCover
+        ? [
+            ...negativeRules,
+          "Cover image must contain only the supplied title as large prominent text. No subtitle, small captions, labels, numbers, notes, charts, interface text, or logo marks.",
+          "Use only one simple hero subject element; avoid clutter, detailed data, and multi-panel information layout.",
+        ]
+      : isDataLikeSlide
+      ? [
+          ...negativeRules,
+          "No fake trading dashboard, unsupported official logo, or made-up financial data.",
+          "Avoid generic mechanism-flow templates when the content is a metric summary.",
+        ]
+      : negativeRules;
+    const visualHint = cleanText([sanitizePromptLine(rawSlideVisual), imagePromptDraft].join(" | "));
     const composedPrompt = buildTuziImagePrompt({
-      draftContent: cleanText([contentTitle, sanitizePromptLine(contentBody)].join("\n")),
-      selectedStyle: input.style.name || input.style.prompt,
+      draftContent: isIndependentCover
+        ? cleanText([contentTitle, "Independent title-only cover image. Use this title as the only on-image text. One simple hero subject."].join("\n"))
+        : cleanText([contentTitle, sanitizePromptLine(contentBody)].join("\n")),
+      selectedStyle: input.style.prompt || input.style.name,
       aspectRatio: normalizedAspectRatio,
       posterIndex: index,
-      totalCount: normalizedCount,
+      totalCount: generatedCount,
       outputType: normalizedDirection,
       imagePromptDraft,
       visibleText,
       visualDesign,
       pageRole,
       textStrategy,
-      factualRules,
-      negativeRules,
+      factualRules: taskFactualRules,
+      negativeRules: taskNegativeRules,
       seriesStyle,
     });
     return {
@@ -651,8 +733,8 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       contentBody,
       visibleText,
       visualDesign,
-      factualRules,
-      negativeRules,
+      factualRules: taskFactualRules,
+      negativeRules: taskNegativeRules,
       seriesStyle,
       pageRole,
       textStrategy,

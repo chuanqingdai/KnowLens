@@ -96,7 +96,7 @@ function describeTextDensity(role: string, outputType: string, density: string) 
     return "Text density: very low; prioritize the scene, motion cue, and one short label only when useful.";
   }
   if (role === "cover") {
-    return "Text density: low; use a concise title and at most one supporting phrase.";
+    return "Text density: low; for title-only cover tasks, use the supplied title as the only visible text.";
   }
   if (role === "comparison") {
     return "Text density: medium; use 3-5 short comparison points if they help explain the contrast.";
@@ -179,6 +179,9 @@ function describePageRole(role: string) {
 }
 
 function describeInformationLayout(layout: string) {
+  if (layout === "title-only-cover") {
+    return "Use a title-only cover layout with one simple hero subject, generous negative space, and one large title as the only text.";
+  }
   if (layout === "comparison-cards") {
     return "Use a comparison layout with two or three clearly separated but visually integrated zones.";
   }
@@ -295,7 +298,7 @@ export function buildTuziImagePrompt(input: {
   // Prompt3: compile one confirmed draft page/frame into one image-generation prompt.
   // Visual-translation composition: current-page task first, optional fields only when they sharpen that task.
   const currentContent = sanitizePromptSignal(input.draftContent, 420);
-  const style = compactText(input.selectedStyle, 220);
+  const style = compactText(input.selectedStyle, 520);
   const ratio = compactText(input.aspectRatio, 24) || "9:16";
   const index = Number.isFinite(input.posterIndex) ? Math.max(1, Math.round(input.posterIndex)) : 1;
   const total = Number.isFinite(input.totalCount) ? Math.max(1, Math.round(input.totalCount)) : 1;
@@ -362,6 +365,11 @@ export function buildTuziImagePrompt(input: {
   const seriesLanguageRule = sanitizePromptSignal(input.seriesStyle?.languageRule || "", 120);
 
   const mediumGuidance = (() => {
+    if (pageRole === "cover" && textStrategyMode === "minimal") {
+      return outputType === "video"
+        ? "Independent video cover frame: one large title only, one simple hero subject, strong clean cover composition, cinematic educational mood."
+        : "Independent presentation cover image: one large title only, one simple hero subject, clean premium cover composition, generous whitespace.";
+    }
     if (outputType === "ppt") {
       return index === 1
         ? "Presentation slide 1: create a title/cover slide with a strong thematic visual, minimal body text, generous whitespace, and readable title for desktop/projector viewing."
@@ -401,6 +409,13 @@ export function buildTuziImagePrompt(input: {
       ].join(" ");
     }
     if (textStrategyMode === "minimal") {
+      if (pageRole === "cover") {
+        return [
+          "Text strategy: title-only cover.",
+          "Render the supplied title as the only visible text, large and prominent.",
+          "Do not add subtitles, labels, numbers, captions, interface text, logo text, small notes, or extra words.",
+        ].join(" ");
+      }
       return [
         "Text strategy: minimal.",
         "Use little to no on-image text; prioritize visual explanation with very short labels only if needed.",
@@ -417,17 +432,20 @@ export function buildTuziImagePrompt(input: {
   })();
 
   const coreSections = [
-    `Create one ${ratio} ${outputType} visual for page/frame ${index} of ${total}.`,
+    `Create one ${ratio} ${outputType} visual for the current page/frame.`,
     currentContent ? `Current-page brief: ${currentContent}` : "",
     protectedFacts ? `Must keep accurate: ${protectedFacts}` : "",
     visualDesignMainVisual ? `Hero visual: ${visualDesignMainVisual}` : "",
     visualDesignComposition ? `Composition: ${visualDesignComposition}` : describedRole,
     `Style: ${style || "Clean modern educational infographic."}`,
+    "Style priority: the user-selected style is mandatory. Its palette, background, texture, typography, lighting, and component language must override topic or company brand associations.",
     mediumGuidance,
     describedLayout,
     describeTextDensity(pageRole, outputType, textStrategyDensity),
     textStrategyGuidance,
     "Only use this current page/frame. Do not import other pages' facts or labels.",
+    "Do not infer or render official brand colors, logos, trademark symbols, product marks, or corporate visual identity unless the selected style prompt or user text explicitly asks for them.",
+    "Do not render page numbers, slide numbers, scene numbers, pagination markers, or fraction labels such as 4/7 unless the user explicitly provided them as content.",
     "Avoid heavy boxed segmentation, dashboard-like panels, many large rectangular cards, scenic-background-plus-arrows, UI/billing/workflow words, and internal field names.",
   ];
   const optionalSections = [
@@ -436,6 +454,7 @@ export function buildTuziImagePrompt(input: {
     sourceImagePromptDraft ? `Optional visual hint: ${sourceImagePromptDraft}` : "",
     textStrategyTitleIdea ? `Main title idea: ${textStrategyTitleIdea}` : "",
     textStrategyConcepts ? `Key concepts to express visually: ${textStrategyConcepts}` : "",
+    visibleTitle && pageRole === "cover" && textStrategyMode === "minimal" ? `Cover title to render exactly as the only text: ${visibleTitle}` : "",
     visibleTitle && textStrategyMode === "strict" ? `Source title fact/text: ${visibleTitle}` : "",
     visibleSubtitle && textStrategyMode === "strict" ? `Source subtitle fact/text: ${visibleSubtitle}` : "",
     visibleLabels && textStrategyMode === "strict" ? `Optional short label ideas: ${visibleLabels}` : "",
