@@ -32,7 +32,7 @@ import {
 } from "@/lib/workspace/tuzi-image";
 
 export const runtime = "nodejs";
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 type GenerateBatchPayload = {
   idempotencyKey?: string;
