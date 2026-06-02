@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
+import {
+  getImageGenerationTaskWithJob,
+  readImageAsset,
+} from "@/lib/server/image-generation-jobs";
 import { logOpsEvent } from "@/lib/server/store";
 
 type ExportSlidePayload = {
@@ -22,13 +26,44 @@ const FIRST_SLIDE_TITLE_BAND_HEIGHT = 1.02;
 const FIRST_SLIDE_TITLE_PADDING_X = 0.6;
 const FIRST_SLIDE_TITLE_PADDING_Y = 0.2;
 
-async function toDataUrl(url: string) {
+function extractWorkspaceAssetTaskId(url: string, origin: string) {
+  try {
+    const parsed = new URL(url, origin);
+    const match = parsed.pathname.match(/^\/api\/workspace\/image\/assets\/([^/]+)$/);
+    return match?.[1] ? decodeURIComponent(match[1]) : "";
+  } catch {
+    return "";
+  }
+}
+
+async function toDataUrl(url: string, origin: string, userEmail?: string | null) {
   if (!url.trim()) {
     throw new Error("Missing image URL");
   }
+  const taskId = extractWorkspaceAssetTaskId(url, origin);
+  if (taskId) {
+    const taskWithJob = await getImageGenerationTaskWithJob(taskId);
+    if (!taskWithJob) {
+      throw new Error("Image asset was not found");
+    }
+    if (userEmail && taskWithJob.job.userEmail.trim().toLowerCase() !== userEmail) {
+      throw new Error("Image asset is not available for this account");
+    }
+    const asset = await readImageAsset(taskId);
+    if (!asset) {
+      throw new Error("Image asset is not available");
+    }
+    if (asset.redirectUrl) {
+      return toDataUrl(asset.redirectUrl, origin, userEmail);
+    }
+    if (!asset.bytes) {
+      throw new Error("Image asset is not ready");
+    }
+    return `data:${asset.mimeType || "image/png"};base64,${asset.bytes.toString("base64")}`;
+  }
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error("图片下载失败");
+    throw new Error("Image download failed");
   }
   const contentType = response.headers.get("content-type") ?? "image/png";
   const buffer = Buffer.from(await response.arrayBuffer());
@@ -69,12 +104,12 @@ export async function POST(request: NextRequest) {
       let imageData: string;
       try {
         const imageUrl = new URL(slide.imageSrc, request.nextUrl.origin).toString();
-        imageData = await toDataUrl(imageUrl);
+        imageData = await toDataUrl(imageUrl, request.nextUrl.origin, email);
       } catch (downloadError) {
         const message =
           downloadError instanceof Error
-            ? `Slide ${slide.page} image is not ready: ${downloadError.message}`
-            : `Slide ${slide.page} image is not ready.`;
+            ? `Slide ${slide.page} image could not be prepared: ${downloadError.message}`
+            : `Slide ${slide.page} image could not be prepared.`;
         logOpsEvent({
           category: "download",
           action: "ppt_export_image_download_failed",
@@ -157,15 +192,16 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "PPT 生成失败";
+    const message = error instanceof Error ? error.message : "PPT export failed";
+    const code = /image/i.test(message) ? "PPT_IMAGE_DOWNLOAD_FAILED" : "PPT_EXPORT_INTERNAL";
     logOpsEvent({
       category: "download",
       action: "ppt_export_failed",
       status: "error",
       source: "ppt",
-      code: "PPT_EXPORT_INTERNAL",
+      code,
       message,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, code }, { status: 500 });
   }
 }

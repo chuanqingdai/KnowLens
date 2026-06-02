@@ -41,6 +41,7 @@ import {
 } from "@/lib/language";
 import {
   buildGenerationTaskStateByIndexFromNormalized,
+  normalizeImageTaskStatus,
   normalizeImageBatchTaskResults,
   type ImageBatchTaskResultLike,
 } from "@/lib/workspace/image-task-bridge";
@@ -94,6 +95,66 @@ type SlideDraft = {
   imagePromptDraft?: string;
   isCover?: boolean;
 };
+
+type RestoredProjectPage = {
+  pageIndex?: number;
+  outputType?: string;
+  pageRole?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  body?: string | null;
+  visual?: string | null;
+  imagePromptDraft?: string | null;
+};
+
+function buildRestoredSlideDrafts(
+  intent: "ppt" | "video",
+  totalCount: number,
+  existingSlides: SlideDraft[],
+  restoredPages: RestoredProjectPage[] = [],
+) {
+  const safeTotalCount = Math.max(1, Math.round(totalCount || 0));
+  const label = intent === "ppt" ? "Slide" : "Frame";
+  const pageByIndex = new Map<number, RestoredProjectPage>();
+  restoredPages.forEach((page) => {
+    const index = Math.max(1, Math.round(Number(page.pageIndex || 0)));
+    if (index > 0) {
+      pageByIndex.set(index, page);
+    }
+  });
+  return Array.from({ length: safeTotalCount }, (_, idx) => {
+    const pageIndex = idx + 1;
+    const restoredPage = pageByIndex.get(pageIndex);
+    const existing = existingSlides[idx];
+    if (restoredPage) {
+      return {
+        page: pageIndex,
+        title: restoredPage.title?.trim() || (idx === 0 ? "Cover" : `${label} ${pageIndex}`),
+        body: restoredPage.body?.trim() || "",
+        visual: restoredPage.visual?.trim() || "",
+        imagePrompt: restoredPage.imagePromptDraft?.trim() || "",
+        imagePromptDraft: restoredPage.imagePromptDraft?.trim() || "",
+        isCover: restoredPage.pageRole === "cover" || (idx === 0 && safeTotalCount > 1),
+      };
+    }
+    if (existing) {
+      return {
+        ...existing,
+        page: pageIndex,
+        isCover: idx === 0 ? existing.isCover === true || safeTotalCount > 1 : existing.isCover,
+      };
+    }
+    return {
+      page: pageIndex,
+      title: idx === 0 ? "Cover" : `${label} ${pageIndex}`,
+      body: "",
+      visual: "",
+      imagePrompt: "",
+      imagePromptDraft: "",
+      isCover: idx === 0 && safeTotalCount > 1,
+    };
+  });
+}
 
 type PosterDraft = {
   headline: string;
@@ -241,7 +302,7 @@ type GenerationTaskUiState = {
   rawImageUrl?: string;
   runId?: string;
   jobId?: string;
-  source?: "current-run";
+  source?: "current-run" | "restored";
   error?: string;
   errorCode?: string;
   startedAt?: number;
@@ -299,11 +360,72 @@ type ImageGenerateBatchResponse = {
   }>;
 };
 
+type ImageGenerationRestoreResponse = {
+  ok?: boolean;
+  error?: string;
+  job?: {
+    id?: string;
+    runId?: string | null;
+    intent?: string | null;
+    status?: string | null;
+  } | null;
+  tasks?: Array<{
+    taskId?: string;
+    index?: number;
+    status?: string;
+    attempts?: number;
+    imageUrl?: string;
+    renderUrl?: string;
+    rawImageUrl?: string | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+  }>;
+  pages?: RestoredProjectPage[];
+};
+
 type StructuredWorkspaceError = {
   userMessage: string;
   code?: string;
   authRequired?: boolean;
 };
+
+function persistWorkspaceProjectPages(input: {
+  projectId?: string | null;
+  outputType: "poster" | "ppt" | "video";
+  pages: Array<{
+    index: number;
+    pageRole?: string | null;
+    title?: string;
+    subtitle?: string;
+    body?: string;
+    visual?: string;
+    imagePromptDraft?: string;
+  }>;
+}) {
+  const projectId = input.projectId?.trim();
+  if (!projectId || !input.pages.length || typeof window === "undefined") {
+    return;
+  }
+  void fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/pages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      outputType: input.outputType,
+      pages: input.pages,
+    }),
+  }).catch((error) => {
+    if (WORKSPACE_VERBOSE_LOG) {
+      console.warn("[WorkspaceProjectPages] save failed", {
+        projectId,
+        outputType: input.outputType,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  });
+}
 
 const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
@@ -311,6 +433,7 @@ const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const GENERATION_REQUEST_TIMEOUT_MS = 620000;
+const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
 const GENERATION_UI_HARD_TIMEOUT_MS = 450000;
@@ -574,6 +697,11 @@ function createGenerationRunId() {
 function normalizeGenerationRunId(value: string | null | undefined) {
   const normalized = (value || "").trim();
   return normalized ? normalized.slice(0, 120) : null;
+}
+
+function buildImageTaskCreditKey(runId: string | null | undefined, taskIndex: number) {
+  const normalizedRunId = normalizeGenerationRunId(runId) || "unknown-run";
+  return `${normalizedRunId}:${Math.max(1, Math.round(taskIndex))}`;
 }
 
 type StyleDirection = "ppt" | "poster" | "video";
@@ -2294,6 +2422,8 @@ export default function WorkspacePage() {
   const autoGenerationArmedRunIdsRef = useRef<Record<string, boolean>>({});
   const autoGenerationSuccessLockedRunIdsRef = useRef<Record<string, boolean>>({});
   const autoGenerationFailureLockedRunIdsRef = useRef<Record<string, boolean>>({});
+  const chargedImageTaskCreditsRef = useRef<Record<string, number>>({});
+  const refundedImageTaskCreditsRef = useRef<Record<string, boolean>>({});
   const debugGoGenerateStepAppliedRef = useRef(false);
   const debugImageBridgeAppliedRef = useRef(false);
 
@@ -2675,6 +2805,72 @@ export default function WorkspacePage() {
     () => extractTopic(contextPrompt, entrySources, outputLanguage),
     [contextPrompt, entrySources, outputLanguage],
   );
+  const getAvailableCredits = useCallback(() => {
+    return getCreditRecords(currentEmail)[0]?.balance ?? 50;
+  }, [currentEmail]);
+  const chargeImageTaskCredits = useCallback(
+    (input: { runId: string; taskIndex: number; action: "retry" | "redraw" }) => {
+      const taskIndex = Math.max(1, Math.round(input.taskIndex));
+      const runId = normalizeGenerationRunId(input.runId);
+      if (!runId) {
+        return false;
+      }
+      const availableCredits = getAvailableCredits();
+      if (availableCredits < SINGLE_IMAGE_REGENERATION_CREDITS) {
+        setCreditVersion((prev) => prev + 1);
+        openCreditsPaywall({
+          scene: "billing_insufficient",
+          kind: effectiveIntent === "unknown" ? undefined : effectiveIntent,
+        });
+        return false;
+      }
+      const creditKey = buildImageTaskCreditKey(runId, taskIndex);
+      if (chargedImageTaskCreditsRef.current[creditKey]) {
+        return true;
+      }
+      const projectTitle = workspaceProjectTitle || topic || "Image generation";
+      const actionLabel = input.action === "redraw" ? "Image redraw" : "Image retry";
+      appendCreditRecord({
+        type: "consume",
+        description: `${projectTitle} · ${actionLabel} (${SINGLE_IMAGE_REGENERATION_CREDITS} credits)`,
+        delta: -SINGLE_IMAGE_REGENERATION_CREDITS,
+        userEmail: currentEmail || undefined,
+        projectId: projectIdRef.current ?? undefined,
+        projectTitle,
+      }, currentEmail);
+      chargedImageTaskCreditsRef.current[creditKey] = SINGLE_IMAGE_REGENERATION_CREDITS;
+      delete refundedImageTaskCreditsRef.current[creditKey];
+      setCreditVersion((prev) => prev + 1);
+      return true;
+    },
+    [currentEmail, effectiveIntent, getAvailableCredits, openCreditsPaywall, topic, workspaceProjectTitle],
+  );
+  const refundImageTaskCredits = useCallback(
+    (input: { runId: string | null | undefined; taskIndex: number; reason?: string }) => {
+      const taskIndex = Math.max(1, Math.round(input.taskIndex));
+      const creditKey = buildImageTaskCreditKey(input.runId, taskIndex);
+      const amount = chargedImageTaskCreditsRef.current[creditKey] || 0;
+      if (refundedImageTaskCreditsRef.current[creditKey]) {
+        return true;
+      }
+      if (!amount) {
+        return false;
+      }
+      refundedImageTaskCreditsRef.current[creditKey] = true;
+      const projectTitle = workspaceProjectTitle || topic || "Image generation";
+      appendCreditRecord({
+        type: "refund",
+        description: `${projectTitle} · Image generation failed, credits refunded`,
+        delta: amount,
+        userEmail: currentEmail || undefined,
+        projectId: projectIdRef.current ?? undefined,
+        projectTitle,
+      }, currentEmail);
+      setCreditVersion((prev) => prev + 1);
+      return true;
+    },
+    [currentEmail, topic, workspaceProjectTitle],
+  );
   const posterSizeLabel = useMemo(
     () => posterSizeOptions.find((item) => item.id === posterSizeId)?.label,
     [posterSizeId],
@@ -3041,20 +3237,22 @@ export default function WorkspacePage() {
     }
     return "9:16";
   }, [effectiveIntent, imageGenerationTasks, normalizedGenerationConfig.normalizedRatio, posterSizeId, posterSizeLabel]);
-  const canConfirmBilling = credits >= billingCost;
+  const canConfirmBilling = getAvailableCredits() >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
   const imageGenerationTaskByIndex = useMemo(() => {
     return new Map(imageGenerationTasks.map((task) => [task.index, task] as const));
   }, [imageGenerationTasks]);
   useEffect(() => {
-    if (initializedWorkspaceScopeKeys.has(sessionPrefsScopeKey)) {
+    const scopeAlreadyInitialized = initializedWorkspaceScopeKeys.has(sessionPrefsScopeKey);
+    if (scopeAlreadyInitialized) {
       logGenerationCacheGuard("skip-clear-current-generation-state", {
         reason: "scope-already-initialized",
         scope: sessionPrefsScopeKey,
       });
-      return;
+    } else {
+      initializedWorkspaceScopeKeys.add(sessionPrefsScopeKey);
     }
-    initializedWorkspaceScopeKeys.add(sessionPrefsScopeKey);
+    let cancelled = false;
     const cachedImageTurns = readWorkspaceChatHistory(sessionPrefsScopeKey).filter((turn) =>
       typeof turn.content === "string" &&
       /(\/api\/workspace\/image\/assets\/|https?:\/\/\S+\.(png|jpe?g|webp))/i.test(turn.content),
@@ -3071,23 +3269,193 @@ export default function WorkspacePage() {
         scope: sessionPrefsScopeKey,
       });
     }
-    clearCurrentGenerationState("scope-init");
-    setGenerationTaskStateByIndex((prev) => {
-      const successEntries = Object.values(prev).filter((item) => item.status === "success" && item.imageUrl);
-      if (successEntries.length) {
-        logGenerationCacheGuard("reject-state-write", {
-          reason: "previous-result",
-          successEntries: successEntries.map((item) => ({
-            index: item.index,
-            imageUrl: item.imageUrl,
-            runId: item.runId || null,
-            jobId: item.jobId || null,
-          })),
-        });
+
+    const clearStateForFreshScope = () => {
+      clearCurrentGenerationState("scope-init");
+      setGenerationTaskStateByIndex((prev) => {
+        const successEntries = Object.values(prev).filter((item) => item.status === "success" && item.imageUrl);
+        if (successEntries.length) {
+          logGenerationCacheGuard("reject-state-write", {
+            reason: "previous-result",
+            successEntries: successEntries.map((item) => ({
+              index: item.index,
+              imageUrl: item.imageUrl,
+              runId: item.runId || null,
+              jobId: item.jobId || null,
+            })),
+          });
+        }
+        return {};
+      });
+    };
+
+    const restorePersistedGenerationState = async () => {
+      const projectId =
+        projectIdRef.current?.trim() ||
+        initialEntry.project?.projectId?.trim() ||
+        "";
+      if (!projectId) {
+        clearStateForFreshScope();
+        return;
       }
-      return {};
-    });
-  }, [clearCurrentGenerationState, sessionPrefsScopeKey]);
+      try {
+        const response = await fetch(
+          `/api/workspace/image/projects/${encodeURIComponent(projectId)}/latest`,
+          {
+            method: "GET",
+            credentials: "same-origin",
+          },
+        );
+        if (!response.ok) {
+          clearStateForFreshScope();
+          return;
+        }
+        const payload = (await response.json()) as ImageGenerationRestoreResponse;
+        if (cancelled) {
+          return;
+        }
+        const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+        const restoredPages = Array.isArray(payload.pages) ? payload.pages : [];
+        if (!payload.ok || (!payload.job?.id && restoredPages.length === 0) || (tasks.length === 0 && restoredPages.length === 0)) {
+          clearStateForFreshScope();
+          return;
+        }
+
+        const jobId = payload.job?.id?.trim() || "";
+        const restoredRunId =
+          normalizeGenerationRunId(payload.job?.runId) ||
+          normalizeGenerationRunId(jobId ? `restored-${jobId}` : `restored-pages-${projectId}`);
+        const now = Date.now();
+        const restoredState: Record<number, GenerationTaskUiState> = {};
+        for (const task of tasks) {
+          const index = Math.round(Number(task.index));
+          if (!Number.isFinite(index) || index <= 0) {
+            continue;
+          }
+          const status = normalizeImageTaskStatus(task.status);
+          const imageUrl = (task.renderUrl || task.imageUrl || "").trim();
+          const attempts = Math.max(1, Math.round(Number(task.attempts || 1)));
+          if (imageUrl && ["asset_ready", "completed", "success", "succeeded"].includes(status)) {
+            restoredState[index] = {
+              index,
+              status: "success",
+              attempts,
+              maxAttempts: 1,
+              imageUrl,
+              rawImageUrl: task.rawImageUrl?.trim() || undefined,
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+            continue;
+          }
+          if (status === "failed") {
+            restoredState[index] = {
+              index,
+              status: "failed",
+              attempts,
+              maxAttempts: 1,
+              error: task.errorMessage?.trim() || "Generation failed. Please retry this page.",
+              errorCode: task.errorCode?.trim() || "IMG-500",
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+          }
+        }
+
+        const restoredEntries = Object.values(restoredState);
+        if (!restoredEntries.length && !restoredPages.length) {
+          clearStateForFreshScope();
+          return;
+        }
+
+        if (restoredRunId) {
+          currentGenerationRunIdRef.current = restoredRunId;
+          currentGenerationJobIdRef.current = jobId;
+          setCurrentGenerationRunId(restoredRunId);
+          setCurrentGenerationJobId(jobId);
+          autoGenerationArmedRunIdsRef.current[restoredRunId] = false;
+          if (restoredEntries.some((item) => item.status === "success")) {
+            autoGenerationSuccessLockedRunIdsRef.current[restoredRunId] = true;
+          }
+          if (restoredEntries.some((item) => item.status === "failed")) {
+            autoGenerationFailureLockedRunIdsRef.current[restoredRunId] = true;
+          }
+        }
+
+        const restoredIntent = (
+          payload.job?.intent ||
+          restoredPages.find((page) => page.outputType?.trim())?.outputType ||
+          ""
+        ).trim();
+        if (restoredIntent === "poster" || restoredIntent === "ppt" || restoredIntent === "video") {
+          setManualIntent(restoredIntent);
+        }
+        if (restoredIntent === "ppt" || restoredIntent === "video") {
+          const restoredImageCount = restoredEntries.reduce(
+            (max, item) => Math.max(max, Math.round(Number(item.index || 0))),
+            0,
+          );
+          const restoredPageCount = restoredPages.reduce(
+            (max, item) => Math.max(max, Math.round(Number(item.pageIndex || 0))),
+            0,
+          );
+          const restoredTotalCount = Math.max(restoredImageCount, restoredPageCount);
+          if (restoredTotalCount > 0) {
+            const restoredBodyCount = clamp(restoredTotalCount > 6 ? restoredTotalCount - 1 : restoredTotalCount, 6, 24);
+            if (restoredIntent === "ppt") {
+              setPptPageCount(restoredBodyCount);
+            } else {
+              setVideoStoryboardCount(restoredBodyCount);
+            }
+            setEditableSlideDrafts((prev) =>
+              buildRestoredSlideDrafts(restoredIntent, restoredTotalCount, prev, restoredPages),
+            );
+            setEditableOutlineItems((prev) =>
+              restoredPages.length
+                ? Array.from({ length: restoredTotalCount }, (_, idx) => {
+                    const restoredPage = restoredPages.find((item) => Math.round(Number(item.pageIndex || 0)) === idx + 1);
+                    return restoredPage?.title?.trim() || prev[idx] || `${restoredIntent === "ppt" ? "Slide" : "Frame"} ${idx + 1}`;
+                  })
+                : prev.length >= restoredTotalCount
+                  ? prev
+                  : Array.from({ length: restoredTotalCount }, (_, idx) => prev[idx] || `${restoredIntent === "ppt" ? "Slide" : "Frame"} ${idx + 1}`),
+            );
+          }
+        }
+        setGenerationTaskStateByIndex(restoredState);
+        setGenerationConfirmError(null);
+        setConfigConfirmed(true);
+        setBillingConfirmed(true);
+        setFlowStage("generate");
+        logGenerationCacheGuard("restored-persisted-generation-state", {
+          reason: "project-image-job",
+          projectId,
+          jobId,
+          runId: restoredRunId,
+          count: restoredEntries.length,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          logGenerationCacheGuard("restore-persisted-generation-state-failed", {
+            reason: "fetch-error",
+            message: error instanceof Error ? error.message : "Unknown restore error",
+          });
+          clearStateForFreshScope();
+        }
+      }
+    };
+
+    void restorePersistedGenerationState();
+    return () => {
+      cancelled = true;
+    };
+  }, [clearCurrentGenerationState, initialEntry.project?.projectId, sessionPrefsScopeKey]);
   useEffect(() => {
     if (!debugGoGenerateStepEnabled) {
       debugGoGenerateStepAppliedRef.current = false;
@@ -3279,6 +3647,13 @@ export default function WorkspacePage() {
       const upsertImageErrorTurn = (_task: ImageGenerationTask, _errorText: string) => {
         // Image errors belong on the canvas card, not in the conversation flow.
       };
+      const appendRefundNotice = (message: string, wasRefunded: boolean) => {
+        const trimmed = (message || tr("Generation failed.", "生成失败。")).trim();
+        if (!wasRefunded || /credit[s]?\s+(have\s+been\s+)?refunded/i.test(trimmed)) {
+          return trimmed;
+        }
+        return `${trimmed} Credits have been refunded.`;
+      };
       setGenerationConfirmError(null);
       setGenerationTaskStateByIndex((prev) => {
         const next = { ...prev };
@@ -3420,6 +3795,12 @@ export default function WorkspacePage() {
             responseJobId,
           });
           tasks.forEach((task) => {
+            const wasRefunded = refundImageTaskCredits({
+              runId: activeRunId,
+              taskIndex: task.index,
+              reason: "IMAGE_RUN_ID_MISSING",
+            });
+            const taskError = appendRefundNotice(missingRunMessage, wasRefunded);
             setGenerationTaskStateByIndex((prev) => ({
               ...prev,
               [task.index]: {
@@ -3427,7 +3808,7 @@ export default function WorkspacePage() {
                 status: "failed",
                 attempts: 1,
                 maxAttempts,
-                error: missingRunMessage,
+                error: taskError,
                 errorCode: "IMAGE_RUN_ID_MISSING",
                 runId: activeRunId,
                 jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
@@ -3436,7 +3817,7 @@ export default function WorkspacePage() {
                 lastUpdatedAt: Date.now(),
               },
             }));
-            upsertImageErrorTurn(task, missingRunMessage);
+            upsertImageErrorTurn(task, taskError);
           });
           setGenerationConfirmError(missingRunMessage);
           return;
@@ -3473,6 +3854,12 @@ export default function WorkspacePage() {
             responseJobId,
           });
           tasks.forEach((task) => {
+            const wasRefunded = refundImageTaskCredits({
+              runId: activeRunId,
+              taskIndex: task.index,
+              reason: "IMAGE_JOB_ID_MISSING",
+            });
+            const taskError = appendRefundNotice(missingJobMessage, wasRefunded);
             setGenerationTaskStateByIndex((prev) => ({
               ...prev,
               [task.index]: {
@@ -3480,7 +3867,7 @@ export default function WorkspacePage() {
                 status: "failed",
                 attempts: 1,
                 maxAttempts,
-                error: missingJobMessage,
+                error: taskError,
                 errorCode: "IMAGE_JOB_ID_MISSING",
                 runId: activeRunId,
                 source: "current-run",
@@ -3488,7 +3875,7 @@ export default function WorkspacePage() {
                 lastUpdatedAt: Date.now(),
               },
             }));
-            upsertImageErrorTurn(task, missingJobMessage);
+            upsertImageErrorTurn(task, taskError);
           });
           setGenerationConfirmError(missingJobMessage);
           return;
@@ -3521,8 +3908,15 @@ export default function WorkspacePage() {
           const failureMessage =
             payload?.error ||
             (response.ok ? tr("Generation failed.", "生成失败。") : `generation batch failed (${response.status})`);
+          const failureCode = payload?.code || `HTTP_${response.status}`;
           autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           tasks.forEach((task) => {
+            const wasRefunded = refundImageTaskCredits({
+              runId: activeRunId,
+              taskIndex: task.index,
+              reason: failureCode,
+            });
+            const taskError = appendRefundNotice(failureMessage, wasRefunded);
             setGenerationTaskStateByIndex((prev) => ({
               ...prev,
               [task.index]: {
@@ -3530,8 +3924,8 @@ export default function WorkspacePage() {
                 status: "failed",
                 attempts: 1,
                 maxAttempts,
-                error: failureMessage,
-                errorCode: payload?.code || `HTTP_${response.status}`,
+                error: taskError,
+                errorCode: failureCode,
                 runId: activeRunId,
                 jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
                 source: "current-run",
@@ -3539,7 +3933,7 @@ export default function WorkspacePage() {
                 lastUpdatedAt: Date.now(),
               },
             }));
-            upsertImageErrorTurn(task, failureMessage);
+            upsertImageErrorTurn(task, taskError);
           });
           setGenerationConfirmError(failureMessage);
           logClientEvent({
@@ -3690,14 +4084,21 @@ export default function WorkspacePage() {
           const nextError =
             result?.error ||
             tr("Generation failed.", "生成失败。");
+          const nextErrorCode = result?.errorCode || "IMAGE_TASK_FAILED";
+          const wasRefunded = refundImageTaskCredits({
+            runId: activeRunId,
+            taskIndex: task.index,
+            reason: nextErrorCode,
+          });
+          const taskError = appendRefundNotice(nextError, wasRefunded);
           setGenerationTaskStateByIndex((prev) => {
             const nextState: GenerationTaskUiState = {
               index: task.index,
               status: "failed",
               attempts: 1,
               maxAttempts,
-              error: nextError,
-              errorCode: result?.errorCode || "IMAGE_TASK_FAILED",
+              error: taskError,
+              errorCode: nextErrorCode,
               imageUrl: undefined,
               rawImageUrl: result?.rawImageUrl || undefined,
               runId: activeRunId,
@@ -3726,19 +4127,19 @@ export default function WorkspacePage() {
                 index: task.index,
                 runId: activeRunId,
                 jobId: responseJobId || currentGenerationJobIdRef.current || null,
-                error: nextError,
+                error: taskError,
               },
             });
             return next;
           });
-          upsertImageErrorTurn(task, nextError);
+          upsertImageErrorTurn(task, taskError);
           logClientEvent({
             category: "image",
             action: "image_generation_result_failed",
             status: "error",
             source: imageModel,
-            code: result?.errorCode || "IMAGE_TASK_FAILED",
-            message: nextError,
+            code: nextErrorCode,
+            message: taskError,
             projectId: projectIdRef.current ?? null,
             details: {
               taskIndex: task.index,
@@ -3758,6 +4159,16 @@ export default function WorkspacePage() {
               : tr("Generation failed.", "生成失败。");
         autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
         tasks.forEach((task) => {
+          const errorCode =
+            error instanceof DOMException && error.name === "AbortError"
+              ? "IMAGE_REQUEST_TIMEOUT"
+              : "IMAGE_REQUEST_FAILED";
+          const wasRefunded = refundImageTaskCredits({
+            runId: activeRunId,
+            taskIndex: task.index,
+            reason: errorCode,
+          });
+          const taskError = appendRefundNotice(lastError, wasRefunded);
           setGenerationTaskStateByIndex((prev) => ({
             ...prev,
             [task.index]: {
@@ -3765,11 +4176,8 @@ export default function WorkspacePage() {
               status: "failed",
               attempts: 1,
               maxAttempts,
-              error: lastError,
-              errorCode:
-                error instanceof DOMException && error.name === "AbortError"
-                  ? "IMAGE_REQUEST_TIMEOUT"
-                  : "IMAGE_REQUEST_FAILED",
+              error: taskError,
+              errorCode,
               imageUrl: undefined,
               rawImageUrl: undefined,
               runId: activeRunId,
@@ -3779,7 +4187,7 @@ export default function WorkspacePage() {
               lastUpdatedAt: Date.now(),
             },
           }));
-          upsertImageErrorTurn(task, lastError);
+          upsertImageErrorTurn(task, taskError);
         });
         setGenerationConfirmError(lastError);
         logClientEvent({
@@ -3798,7 +4206,7 @@ export default function WorkspacePage() {
         window.clearTimeout(timeoutId);
       }
     },
-    [buildGenerationRequestPayload, currentEmail, emitFlowAudit, imageModel, setGenerationRunContext, tr],
+    [buildGenerationRequestPayload, currentEmail, emitFlowAudit, imageModel, refundImageTaskCredits, setGenerationRunContext, tr],
   );
   const runGenerationTasksOrdered = useCallback(
     async (tasks: ImageGenerationTask[], runId: string, isRetry = false) => {
@@ -3850,13 +4258,16 @@ export default function WorkspacePage() {
         return;
       }
       const nextRunId = createGenerationRunId();
+      if (!chargeImageTaskCredits({ runId: nextRunId, taskIndex: index, action: "retry" })) {
+        return;
+      }
       setGenerationRunContext(nextRunId, null);
       generationRequestInFlightRef.current = true;
       void runGenerationTasksOrdered([task], nextRunId, true).finally(() => {
         generationRequestInFlightRef.current = false;
       });
     },
-    [imageGenerationTaskByIndex, runGenerationTasksOrdered, setGenerationRunContext],
+    [chargeImageTaskCredits, imageGenerationTaskByIndex, runGenerationTasksOrdered, setGenerationRunContext],
   );
   const handleRedrawGenerationTask = useCallback(
     (index: number, copy: string) => {
@@ -3924,6 +4335,9 @@ export default function WorkspacePage() {
       });
 
       const nextRunId = createGenerationRunId();
+      if (!chargeImageTaskCredits({ runId: nextRunId, taskIndex: index, action: "redraw" })) {
+        return;
+      }
       setGenerationRunContext(nextRunId, null);
       generationRequestInFlightRef.current = true;
       setGenerationConfirmError(null);
@@ -3932,6 +4346,7 @@ export default function WorkspacePage() {
       });
     },
     [
+      chargeImageTaskCredits,
       imageGenerationTaskByIndex,
       normalizedGenerationConfig.normalizedCount,
       outputLanguage,
@@ -4633,6 +5048,9 @@ export default function WorkspacePage() {
       return;
     }
     const timer = window.setInterval(() => {
+      if (generationRequestInFlightRef.current) {
+        return;
+      }
       const now = Date.now();
       const timedOutTaskIndexes = Object.values(generationTaskStateByIndex)
         .filter((item) => {
@@ -5047,6 +5465,18 @@ export default function WorkspacePage() {
           title: nextProjectTitle,
           format: effectiveIntent === "video" ? "视频" : "PPT",
         });
+        persistWorkspaceProjectPages({
+          projectId: projectIdRef.current,
+          outputType: effectiveIntent === "video" ? "video" : "ppt",
+          pages: (nextSlides.length ? nextSlides : baseSlideDrafts).map((slide, idx) => ({
+            index: Number.isFinite(slide.page) ? slide.page : idx + 1,
+            pageRole: slide.isCover ? "cover" : "content",
+            title: slide.title,
+            body: slide.body,
+            visual: slide.visual,
+            imagePromptDraft: slide.imagePromptDraft || slide.imagePrompt || "",
+          })),
+        });
         logClientEvent({
           category: "llm",
           action: "draft_generation_success",
@@ -5179,6 +5609,41 @@ export default function WorkspacePage() {
       }
       setEditablePosterDraft(data.posterDraft ?? null);
       setEditablePosterPlanList(Array.isArray(data.planList) ? data.planList : []);
+      const restoredPosterPlanList = Array.isArray(data.planList) ? data.planList : [];
+      if (projectIdRef.current && restoredPosterPlanList.length > 0) {
+        persistWorkspaceProjectPages({
+          projectId: projectIdRef.current,
+          outputType: "poster",
+          pages: restoredPosterPlanList.map((item, idx) => ({
+            index: Number.isFinite(item.index) ? item.index : idx + 1,
+            pageRole: item.role || "content",
+            title: item.title,
+            body: [item.focus, ...(Array.isArray(item.keyFacts) ? item.keyFacts : [])]
+              .filter((value) => typeof value === "string" && value.trim())
+              .join("\n"),
+            visual: item.visualType || item.layoutHint || "",
+            imagePromptDraft: item.imagePromptDraft || item.imagePrompt || "",
+          })),
+        });
+      } else if (projectIdRef.current && data.posterDraft) {
+        persistWorkspaceProjectPages({
+          projectId: projectIdRef.current,
+          outputType: "poster",
+          pages: [
+            {
+              index: 1,
+              pageRole: "content",
+              title: data.posterDraft.headline,
+              subtitle: data.posterDraft.subtitle,
+              body: [data.posterDraft.body, ...(Array.isArray(data.posterDraft.points) ? data.posterDraft.points : [])]
+                .filter((value) => typeof value === "string" && value.trim())
+                .join("\n"),
+              visual: data.posterDraft.visualType || data.posterDraft.layoutSuggestion || "",
+              imagePromptDraft: "",
+            },
+          ],
+        });
+      }
       const nextProjectTitle = deriveWorkspaceProjectTitle({
         outputLanguage,
         topic,
@@ -5449,10 +5914,11 @@ export default function WorkspacePage() {
       });
       return;
     }
-    if (credits < billingCost) {
+    const availableCredits = getAvailableCredits();
+    if (availableCredits < billingCost) {
       logWorkspaceVerbose("[workspace-generation] handleConfirmBilling early return", {
         reason: "insufficientCredits",
-        credits,
+        credits: availableCredits,
         billingCost,
       });
       emitFlowAudit({
@@ -5460,9 +5926,10 @@ export default function WorkspacePage() {
         status: "early-return",
         decision: "abort",
         reason: "insufficientCredits",
-        keyFields: { credits, billingCost },
+        keyFields: { credits: availableCredits, billingCost },
       });
       setGenerationConfirmError(null);
+      setCreditVersion((prev) => prev + 1);
       openCreditsPaywall({
         scene: "billing_insufficient",
         kind: effectiveIntent === "unknown" ? undefined : effectiveIntent,
@@ -5662,6 +6129,11 @@ export default function WorkspacePage() {
         projectId: selectedProject?.id,
         projectTitle: selectedProject?.title,
       }, currentEmail);
+      tasksToGenerate.forEach((task) => {
+        const creditKey = buildImageTaskCreditKey(nextRunId, task.index);
+        chargedImageTaskCreditsRef.current[creditKey] = SINGLE_IMAGE_REGENERATION_CREDITS;
+        delete refundedImageTaskCreditsRef.current[creditKey];
+      });
       logClientEvent({
         category: "billing",
         action: "billing_confirmed",
@@ -5670,8 +6142,8 @@ export default function WorkspacePage() {
         message: `${selectedProject?.title ?? "project"} confirmed and consumed ${billingCost} credits.`,
         projectId: selectedProject?.id ?? null,
         details: {
-          creditsBefore: credits,
-          creditsAfter: Math.max(0, credits - billingCost),
+          creditsBefore: availableCredits,
+          creditsAfter: Math.max(0, availableCredits - billingCost),
           billingCost,
           effectiveIntent,
         },

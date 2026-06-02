@@ -21,6 +21,11 @@ import {
 } from "@/lib/server/image-generation-jobs";
 import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
 import {
+  bindWorkspaceProjectPageTask,
+  updateWorkspaceProjectPageImage,
+  upsertWorkspaceProjectPages,
+} from "@/lib/server/workspace-project-pages";
+import {
   parseTuziImageUrl,
   normalizeTuziAspectRatio,
   resolveTuziImageSize,
@@ -109,7 +114,7 @@ const DEFAULT_PROVIDER_POLICY: OrderedImageProvider[] = ["tuzi", "duomi", "gptsa
 const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "500000", 10);
 const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_FALLBACK_CALL_TIMEOUT_MS || "500000", 10);
 const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "590000", 10);
-const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "150000", 10);
+const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "500000", 10);
 const PROMPT_MAX_CHARS = Number.parseInt(process.env.IMAGE2_PROMPT_MAX_CHARS || "2000", 10);
 const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
 
@@ -398,9 +403,9 @@ function normalizeRouteBudgetMs() {
 
 function normalizeAssetDownloadTimeoutMs() {
   if (!Number.isFinite(ASSET_DOWNLOAD_TIMEOUT_MS)) {
-    return 150_000;
+    return 500_000;
   }
-  return Math.max(20_000, Math.min(150_000, ASSET_DOWNLOAD_TIMEOUT_MS));
+  return Math.max(20_000, Math.min(500_000, ASSET_DOWNLOAD_TIMEOUT_MS));
 }
 
 function buildProviderFailure(
@@ -660,6 +665,32 @@ function normalizeTasksFromPayload(payload: GenerateBatchPayload) {
   return normalized;
 }
 
+function buildProjectPagesFromPayload(payload: GenerateBatchPayload, normalizedTasks: ImageGenerationTaskPayload[]) {
+  const rawTasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  return normalizedTasks.map((task) => {
+    const rawTask =
+      rawTasks.find((item) => Math.round(Number(item.index || 0)) === task.index) ||
+      rawTasks[task.index - 1] ||
+      null;
+    const visualDesign = rawTask?.visualDesign;
+    return {
+      index: task.index,
+      outputType: task.outputType,
+      pageRole: rawTask?.pageRole || visualDesign?.pageRole || null,
+      title: rawTask?.contentTitle || rawTask?.visibleText?.title || "",
+      subtitle: rawTask?.visibleText?.subtitle || "",
+      body: rawTask?.contentBody || "",
+      visual:
+        visualDesign?.mainVisual ||
+        visualDesign?.composition ||
+        visualDesign?.layout ||
+        rawTask?.visualHint ||
+        "",
+      imagePromptDraft: rawTask?.imagePromptDraft || rawTask?.visualHint || "",
+    };
+  });
+}
+
 function getImageGenerationMockUrl() {
   return (process.env.IMAGE_GENERATION_MOCK_URL || "https://picsum.photos/1024/1024").trim();
 }
@@ -886,6 +917,26 @@ export async function POST(request: NextRequest) {
       tasks: normalizedTasks,
     });
 
+    if (projectId) {
+      const projectPages = buildProjectPagesFromPayload(payload, normalizedTasks);
+      upsertWorkspaceProjectPages({
+        userEmail: email,
+        projectId,
+        outputType: payload.intent || payload.normalizedDirection || normalizedTasks[0]?.outputType || "poster",
+        pages: projectPages,
+      });
+      for (const task of job.tasks) {
+        bindWorkspaceProjectPageTask({
+          userEmail: email,
+          projectId,
+          outputType: task.outputType || payload.intent || "poster",
+          pageIndex: task.taskIndex,
+          taskId: task.id,
+          status: "queued",
+        });
+      }
+    }
+
     if (imageGenerationMode === "dry-run") {
       logOpsEvent({
         category: "image",
@@ -1061,6 +1112,17 @@ export async function POST(request: NextRequest) {
           errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
           errorMessage: generated.errorMessage || "Image generation failed.",
         });
+        if (projectId) {
+          updateWorkspaceProjectPageImage({
+            userEmail: email,
+            projectId,
+            outputType: task.outputType || payload.intent || "poster",
+            pageIndex: task.taskIndex,
+            taskId: task.id,
+            status: "failed",
+            errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
+          });
+        }
         logOpsEvent({
           category: "image",
           action: "image_generation_failed",
@@ -1136,6 +1198,20 @@ export async function POST(request: NextRequest) {
           assetPath: persisted.assetPath,
           mimeType: persisted.mimeType,
         });
+        if (projectId) {
+          updateWorkspaceProjectPageImage({
+            userEmail: email,
+            projectId,
+            outputType: task.outputType || payload.intent || "poster",
+            pageIndex: task.taskIndex,
+            taskId: task.id,
+            status: "asset_ready",
+            imageUrl: renderUrl,
+            rawImageUrl: generated.imageUrl,
+            assetPath: persisted.assetPath,
+            errorCode: null,
+          });
+        }
         logOpsEvent({
           category: "image",
           action: "image_generation_success",
@@ -1179,6 +1255,18 @@ export async function POST(request: NextRequest) {
           errorCode: mappedCode,
           errorMessage: message,
         });
+        if (projectId) {
+          updateWorkspaceProjectPageImage({
+            userEmail: email,
+            projectId,
+            outputType: task.outputType || payload.intent || "poster",
+            pageIndex: task.taskIndex,
+            taskId: task.id,
+            status: "failed",
+            rawImageUrl: generated.imageUrl,
+            errorCode: mappedCode,
+          });
+        }
         logWorkspaceFlowAudit({
           stage: "9.backend-asset-persist",
           status: "persist-failed",

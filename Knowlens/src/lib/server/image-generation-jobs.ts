@@ -113,6 +113,12 @@ function getImageGenerationJobIndexPath(userEmail: string, idempotencyKey: strin
   return `knowlens/image-generation/index/${emailKey}/${idempotencyKeyHash}.json`;
 }
 
+function getImageGenerationProjectIndexPath(userEmail: string, projectId: string) {
+  const emailKey = stableSha256(userEmail.trim().toLowerCase()).slice(0, 16);
+  const projectKeyHash = stableSha256(projectId.trim()).slice(0, 24);
+  return `knowlens/image-generation/project-index/${emailKey}/${projectKeyHash}.json`;
+}
+
 function normalizeStorageProjectId(projectId: string | null | undefined) {
   const normalized = (projectId || "").trim().replace(/[^a-zA-Z0-9._-]/g, "_");
   return normalized || "no-project";
@@ -134,6 +140,11 @@ function getImageGenerationTaskIndexPath(taskId: string) {
 type StoredImageGenerationManifest = {
   job: ImageGenerationJobRow;
   tasks: ImageGenerationTaskRow[];
+};
+
+type StoredImageGenerationProjectIndex = {
+  jobId?: string;
+  jobIds?: string[];
 };
 
 async function readBlobJson<T>(pathname: string): Promise<T | null> {
@@ -234,6 +245,26 @@ function mapTaskRow(row: Record<string, unknown>): ImageGenerationTaskRow {
     createdAt: String(row.created_at || ""),
     updatedAt: String(row.updated_at || ""),
   };
+}
+
+function hasPersistedImageAsset(task: ImageGenerationTaskRow) {
+  return Boolean(
+    task.status === "asset_ready" &&
+      task.renderUrl?.trim() &&
+      task.assetPath?.trim(),
+  );
+}
+
+function compareProjectRestoreTasks(a: ImageGenerationTaskRow, b: ImageGenerationTaskRow) {
+  if (a.taskIndex !== b.taskIndex) {
+    return a.taskIndex - b.taskIndex;
+  }
+  const aReady = hasPersistedImageAsset(a);
+  const bReady = hasPersistedImageAsset(b);
+  if (aReady !== bReady) {
+    return aReady ? -1 : 1;
+  }
+  return Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || "");
 }
 
 export async function findImageGenerationJobByIdempotency(input: {
@@ -337,10 +368,11 @@ export async function createImageGenerationJob(input: {
   }
 
   if (shouldUseBlobImageGenerationStore()) {
+    const normalizedProjectId = normalizeOptionalText(input.projectId, 120);
     const jobRow: ImageGenerationJobRow = {
       id: jobId,
       userEmail,
-      projectId: normalizeOptionalText(input.projectId, 120),
+      projectId: normalizedProjectId,
       intent: normalizeOptionalText(input.intent, 48),
       ratio: normalizeOptionalText(input.ratio, 64),
       imageModelPolicy: normalizeOptionalText(input.imageModelPolicy, 120),
@@ -360,6 +392,17 @@ export async function createImageGenerationJob(input: {
     await writeBlobJson(getImageGenerationJobManifestPath(jobId), manifest);
     if (input.idempotencyKey) {
       await writeBlobJson(getImageGenerationJobIndexPath(userEmail, input.idempotencyKey), { jobId });
+    }
+    if (normalizedProjectId) {
+      const projectIndexPath = getImageGenerationProjectIndexPath(userEmail, normalizedProjectId);
+      const projectIndex = await readBlobJson<StoredImageGenerationProjectIndex>(projectIndexPath);
+      const existingJobIds = Array.isArray(projectIndex?.jobIds) ? projectIndex.jobIds : [];
+      const legacyJobId = typeof projectIndex?.jobId === "string" ? projectIndex.jobId : "";
+      const jobIds = Array.from(new Set([jobId, legacyJobId, ...existingJobIds].filter(Boolean))).slice(
+        0,
+        100,
+      );
+      await writeBlobJson(projectIndexPath, { jobId, jobIds });
     }
     await Promise.all(
       taskRows.map((task) =>
@@ -422,6 +465,151 @@ export async function createImageGenerationJob(input: {
   return {
     jobId,
     tasks: taskRows,
+  };
+}
+
+export async function getLatestImageGenerationJobByProject(input: {
+  userEmail: string;
+  projectId: string;
+  intent?: string | null;
+}): Promise<StoredImageGenerationManifest | null> {
+  const userEmail = input.userEmail.trim().toLowerCase();
+  const projectId = normalizeOptionalText(input.projectId, 120);
+  const intent = normalizeOptionalText(input.intent || undefined, 48);
+  if (!userEmail || !projectId) {
+    return null;
+  }
+
+  if (shouldUseBlobImageGenerationStore()) {
+    const indexPath = getImageGenerationProjectIndexPath(userEmail, projectId);
+    const index = await readBlobJson<StoredImageGenerationProjectIndex>(indexPath);
+    const jobIds = Array.from(
+      new Set([
+        ...(Array.isArray(index?.jobIds) ? index.jobIds : []),
+        typeof index?.jobId === "string" ? index.jobId : "",
+      ].filter(Boolean)),
+    );
+    if (jobIds.length === 0) {
+      return null;
+    }
+    const manifests = (await Promise.all(jobIds.map((jobId) => readStoredManifest(jobId)))).filter(
+      (manifest): manifest is StoredImageGenerationManifest => Boolean(manifest?.job),
+    );
+    const projectManifests = manifests.filter((manifest) => {
+      if (manifest.job.userEmail.trim().toLowerCase() !== userEmail) {
+        return false;
+      }
+      if (manifest.job.projectId !== projectId) {
+        return false;
+      }
+      if (intent && manifest.job.intent !== intent) {
+        return false;
+      }
+      return true;
+    });
+    if (projectManifests.length === 0) {
+      return null;
+    }
+    const [latestManifest] = projectManifests.sort(
+      (a, b) =>
+        Date.parse(b.job.updatedAt || b.job.createdAt || "") -
+        Date.parse(a.job.updatedAt || a.job.createdAt || ""),
+    );
+    const latestTaskByIndex = new Map<number, ImageGenerationTaskRow>();
+    const tasks = projectManifests
+      .flatMap((manifest) => manifest.tasks || [])
+      .sort(compareProjectRestoreTasks);
+    for (const task of tasks) {
+      if (!task.taskIndex || latestTaskByIndex.has(task.taskIndex)) {
+        continue;
+      }
+      latestTaskByIndex.set(task.taskIndex, task);
+    }
+    return {
+      job: latestManifest.job,
+      tasks: Array.from(latestTaskByIndex.values()).sort((a, b) => a.taskIndex - b.taskIndex),
+    };
+  }
+
+  const { db } = getDb();
+  const row = (intent
+    ? db
+        .prepare(
+          `SELECT *
+           FROM image_generation_jobs
+           WHERE user_email = ? AND project_id = ? AND intent = ?
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT 1`,
+        )
+        .get(userEmail, projectId, intent)
+    : db
+        .prepare(
+          `SELECT *
+           FROM image_generation_jobs
+           WHERE user_email = ? AND project_id = ?
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT 1`,
+        )
+        .get(userEmail, projectId)) as Record<string, unknown> | undefined;
+  const jobId = typeof row?.id === "string" ? row.id : "";
+  if (!row || !jobId) {
+    return null;
+  }
+  const latestJob = mapJobRow(row);
+  const taskRows = (intent
+    ? db
+        .prepare(
+          `SELECT t.*
+             FROM image_generation_tasks t
+            JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ? AND j.project_id = ? AND j.intent = ?
+            ORDER BY
+              t.task_index ASC,
+              CASE
+                WHEN t.status = 'asset_ready'
+                 AND t.render_url IS NOT NULL
+                 AND t.render_url != ''
+                 AND t.asset_path IS NOT NULL
+                 AND t.asset_path != ''
+                THEN 0
+                ELSE 1
+              END ASC,
+              t.updated_at DESC,
+              t.created_at DESC`,
+        )
+        .all(userEmail, projectId, intent)
+    : db
+        .prepare(
+          `SELECT t.*
+             FROM image_generation_tasks t
+             JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ? AND j.project_id = ?
+            ORDER BY
+              t.task_index ASC,
+              CASE
+                WHEN t.status = 'asset_ready'
+                 AND t.render_url IS NOT NULL
+                 AND t.render_url != ''
+                 AND t.asset_path IS NOT NULL
+                 AND t.asset_path != ''
+                THEN 0
+                ELSE 1
+              END ASC,
+              t.updated_at DESC,
+              t.created_at DESC`,
+        )
+        .all(userEmail, projectId)) as Array<Record<string, unknown>>;
+  const latestTaskByIndex = new Map<number, ImageGenerationTaskRow>();
+  for (const taskRow of taskRows) {
+    const task = mapTaskRow(taskRow);
+    if (!task.taskIndex || latestTaskByIndex.has(task.taskIndex)) {
+      continue;
+    }
+    latestTaskByIndex.set(task.taskIndex, task);
+  }
+  return {
+    job: latestJob,
+    tasks: Array.from(latestTaskByIndex.values()).sort((a, b) => a.taskIndex - b.taskIndex),
   };
 }
 

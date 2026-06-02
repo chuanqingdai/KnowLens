@@ -240,6 +240,34 @@ function createTables(db: DatabaseSync) {
       ON image_generation_tasks(job_id, task_index ASC);
     CREATE INDEX IF NOT EXISTS idx_image_generation_tasks_status
       ON image_generation_tasks(status, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS workspace_project_pages (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      user_email TEXT NOT NULL,
+      page_index INTEGER NOT NULL,
+      output_type TEXT NOT NULL,
+      page_role TEXT,
+      title TEXT,
+      subtitle TEXT,
+      body TEXT,
+      visual TEXT,
+      image_prompt_draft TEXT,
+      image_task_id TEXT,
+      image_url TEXT,
+      raw_image_url TEXT,
+      asset_path TEXT,
+      status TEXT,
+      error_code TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(project_id, user_email, output_type, page_index)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workspace_project_pages_project
+      ON workspace_project_pages(user_email, project_id, output_type, page_index ASC);
+    CREATE INDEX IF NOT EXISTS idx_workspace_project_pages_task
+      ON workspace_project_pages(image_task_id);
   `);
 
   const uploadJobColumns = [

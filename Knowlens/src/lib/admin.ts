@@ -328,15 +328,8 @@ export function getProjectsByUser(email?: string | null) {
     return scoped;
   }
 
-  const user = getAdminUserByEmail(normalizedEmail);
-  if (!user) {
-    write(key, []);
-    return [] as AdminProject[];
-  }
-
-  const base = getAdminProjects().filter((project) => project.userId === user.id);
-  write(key, base);
-  return base;
+  write(key, []);
+  return [] as AdminProject[];
 }
 
 function formatProjectUpdatedAt(date = new Date()) {

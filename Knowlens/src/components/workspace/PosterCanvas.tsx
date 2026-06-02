@@ -203,16 +203,21 @@ function toImageErrorDisplayCode(errorCode?: string, message?: string) {
 function toImageFailureSentence(message?: string, errorCode?: string) {
   const displayCode = toImageErrorDisplayCode(errorCode, message);
   const raw = (message || "").trim();
+  const code = (errorCode || "").trim();
+  const refunded = /credit[s]?\s+(have\s+been\s+)?refunded/i.test(raw);
+  const retryCopy = refunded
+    ? "credits have been refunded, please retry manually"
+    : "please retry manually";
   if (/timeout|timed out|budget/i.test(raw)) {
-    return `Generation timed out; please retry manually. Code: ${displayCode}.`;
+    return `Generation timed out; ${retryCopy}. Code: ${displayCode}.`;
+  }
+  if (/storage|persist|download|asset/i.test(`${code} ${raw}`)) {
+    return `The image could not be saved; ${retryCopy}. Code: ${displayCode}.`;
   }
   if (/aborted|network|fetch/i.test(raw)) {
-    return `The image request was interrupted; please retry manually. Code: ${displayCode}.`;
+    return `The image request was interrupted; ${retryCopy}. Code: ${displayCode}.`;
   }
-  if (/storage|persist|download/i.test(raw)) {
-    return `The image could not be saved; please retry manually. Code: ${displayCode}.`;
-  }
-  return `The image could not be generated right now; please retry manually. Code: ${displayCode}.`;
+  return `The image could not be generated right now; ${retryCopy}. Code: ${displayCode}.`;
 }
 
 function resolvePosterAspectRatio(input?: string) {

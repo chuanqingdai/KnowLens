@@ -779,7 +779,6 @@ export default function Home() {
   const [isDragOverPage, setIsDragOverPage] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [, setMetricVersion] = useState(0);
-  const homeProjectIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -836,7 +835,6 @@ export default function Home() {
       const parsed = JSON.parse(raw) as HomeDraftPayload;
       const normalizedPrompt = String(parsed.prompt || "");
       const normalizedTextModel = String(parsed.textModel || "").trim();
-      const normalizedProjectId = String(parsed.project?.projectId || "").trim();
       const normalizedSources: SourceItem[] = Array.isArray(parsed.sources)
         ? parsed.sources
             .filter((item): item is Partial<SourceItem> => Boolean(item && typeof item === "object"))
@@ -874,9 +872,6 @@ export default function Home() {
           }
           return normalizedSources;
         });
-      }
-      if (normalizedProjectId) {
-        homeProjectIdRef.current = normalizedProjectId;
       }
     } catch {
       // ignore broken cached payload
@@ -1475,16 +1470,14 @@ export default function Home() {
 
   function buildWorkspacePayload() {
     const readySources = sourceItems.filter((item) => item.status === "ready");
-    if (!homeProjectIdRef.current) {
-      homeProjectIdRef.current = `p-${Date.now()}-${globalThis.crypto.randomUUID().slice(0, 8)}`;
-    }
+    const projectId = `p-${Date.now()}-${globalThis.crypto.randomUUID().slice(0, 8)}`;
     return {
       prompt: composeInput.trim(),
       textModel: resolvedTextModel,
       imageModel: "gpt-image2",
       sources: readySources,
       project: {
-        projectId: homeProjectIdRef.current,
+        projectId,
       },
     };
   }
@@ -1636,7 +1629,7 @@ export default function Home() {
         });
         if (response.status >= 500 && typeof window !== "undefined") {
           persistHomeDraft(payload);
-          const nextProjectId = payload.project?.projectId || homeProjectIdRef.current;
+          const nextProjectId = payload.project?.projectId;
           const workspaceUrl =
             nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
           router.prefetch(workspaceUrl);
@@ -1660,7 +1653,7 @@ export default function Home() {
         model: resolvedTextModel,
         source_count: payload.sources.length,
       });
-      const nextProjectId = data.payload?.project?.projectId || payload.project?.projectId || homeProjectIdRef.current;
+      const nextProjectId = data.payload?.project?.projectId || payload.project?.projectId;
       const workspaceUrl =
         nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
       router.prefetch(workspaceUrl);
@@ -1674,7 +1667,7 @@ export default function Home() {
         code: "NETWORK_OR_RUNTIME",
         model: resolvedTextModel,
       });
-      const nextProjectId = payload.project?.projectId || homeProjectIdRef.current;
+      const nextProjectId = payload.project?.projectId;
       const workspaceUrl =
         nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
       router.prefetch(workspaceUrl);
@@ -1968,7 +1961,7 @@ export default function Home() {
                     onPaste={(event) => {
                       void handleComposerPaste(event);
                     }}
-                    className="w-full resize-none rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400"
+                    className="block min-h-[168px] max-h-[320px] w-full resize-none overflow-y-auto rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300"
                     placeholder={typedPlaceholder}
                   />
                 </label>

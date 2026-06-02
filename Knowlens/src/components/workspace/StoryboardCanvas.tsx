@@ -16,6 +16,7 @@ import {
   Redo2,
   RotateCcw,
   Volume2,
+  X,
 } from "lucide-react";
 
 import {
@@ -225,16 +226,21 @@ function toImageErrorDisplayCode(errorCode?: string, error?: string) {
 function toImageFailureSentence(error?: string, errorCode?: string) {
   const displayCode = toImageErrorDisplayCode(errorCode, error);
   const normalized = (error || "").toLowerCase();
+  const code = (errorCode || "").trim();
+  const refunded = /credit[s]?\s+(have\s+been\s+)?refunded/i.test(error || "");
+  const retryCopy = refunded
+    ? "credits have been refunded, please retry manually"
+    : "please retry manually";
   if (normalized.includes("timeout") || normalized.includes("budget")) {
-    return `Generation timed out; please retry manually. Code: ${displayCode}.`;
+    return `Generation timed out; ${retryCopy}. Code: ${displayCode}.`;
+  }
+  if (/storage|persist|download|asset/i.test(`${code} ${error || ""}`)) {
+    return `The image could not be saved; ${retryCopy}. Code: ${displayCode}.`;
   }
   if (normalized.includes("abort") || normalized.includes("network") || normalized.includes("fetch")) {
-    return `The image request was interrupted; please retry manually. Code: ${displayCode}.`;
+    return `The image request was interrupted; ${retryCopy}. Code: ${displayCode}.`;
   }
-  if (normalized.includes("save") || normalized.includes("storage") || normalized.includes("persist")) {
-    return `The image could not be saved; please retry manually. Code: ${displayCode}.`;
-  }
-  return `The image could not be generated right now; please retry manually. Code: ${displayCode}.`;
+  return `The image could not be generated right now; ${retryCopy}. Code: ${displayCode}.`;
 }
 
 function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
@@ -600,22 +606,22 @@ export function StoryboardCanvas({
   }, [composeSteps.finalize, composeSteps.prepare, composeSteps.render, composeSteps.tts]);
   const exportPptHint = useMemo(() => {
     if (pptExportStatus === "error") {
-      return pptExportError || "Export failed. Please try again.";
+      return pptExportError || "Export failed. Please retry when all slide images are ready.";
     }
     if (exportPptPhase === "prepare") {
-      return "Preparing export...";
+      return "Checking slide images...";
     }
     if (exportPptPhase === "images") {
-      return "Collecting slide images...";
+      return "Preparing images...";
     }
     if (exportPptPhase === "slides") {
-      return "Writing PPT pages...";
+      return "Writing slides...";
     }
     if (exportPptPhase === "file") {
-      return "Creating download file...";
+      return "Finalizing the file...";
     }
     if (exportPptPhase === "done") {
-      return "Export ready.";
+      return "Ready to download.";
     }
     return "Preparing export...";
   }, [pptExportError, exportPptPhase, pptExportStatus]);
@@ -1674,7 +1680,7 @@ export function StoryboardCanvas({
       setIsExportingPpt(false);
       setExportPptProgress(0);
       setExportPptPhase("prepare");
-      setPptExportError("Please wait until every slide image has finished generating.");
+      setPptExportError("Some slide images are still missing. Please retry after every slide is ready.");
       setExportedPptUrl(null);
       return;
     }
@@ -1716,12 +1722,16 @@ export function StoryboardCanvas({
       setExportPptProgress(66);
 
       if (!response.ok) {
-        let message = "PPT 生成失败";
+        let message = "PPT export failed. Please try again.";
         try {
-          const body = (await response.json()) as { error?: string };
-          message = body.error?.trim() || message;
+          const body = (await response.json()) as { error?: string; code?: string };
+          const errorText = body.error?.trim();
+          const codeText = body.code?.trim();
+          message = errorText
+            ? `${errorText}${codeText ? ` (${codeText})` : ""}`
+            : message;
         } catch {
-          message = "PPT 生成失败";
+          message = "PPT export failed. Please try again.";
         }
         throw new Error(message);
       }
@@ -1740,7 +1750,7 @@ export function StoryboardCanvas({
       setExportPptPhase("done");
       setPptExportStatus("success");
     } catch (error) {
-      setPptExportError(error instanceof Error ? error.message : "PPT 生成失败");
+      setPptExportError(error instanceof Error ? error.message : "PPT export failed. Please try again.");
       setPptExportStatus("error");
     } finally {
       window.setTimeout(() => {
@@ -2869,7 +2879,13 @@ export function StoryboardCanvas({
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-zinc-900">Export PPT</h3>
-                <p className="mt-1 text-xs text-zinc-500">Preparing a downloadable slide deck.</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {pptExportStatus === "success"
+                    ? "Your slide deck is ready."
+                    : pptExportStatus === "error"
+                      ? "Please fix the issue below and retry."
+                      : "Preparing a downloadable slide deck."}
+                </p>
               </div>
               <button
                 type="button"
@@ -2879,10 +2895,11 @@ export function StoryboardCanvas({
                   }
                   setShowPptExportModal(false);
                 }}
-                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-500 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                 disabled={pptExportStatus === "running"}
+                aria-label="Close export dialog"
               >
-                Close
+                <X size={15} />
               </button>
             </div>
 
@@ -2922,7 +2939,7 @@ export function StoryboardCanvas({
                   <button
                     type="button"
                     onClick={() => setShowPptExportModal(false)}
-                    className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                    className="inline-flex items-center rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-600 hover:bg-zinc-100"
                   >
                     Back to editor
                   </button>
@@ -2931,7 +2948,7 @@ export function StoryboardCanvas({
                     onClick={() => {
                       void exportPptx();
                     }}
-                    className="inline-flex items-center rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-700"
+                    className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white hover:bg-zinc-700"
                   >
                     Retry export
                   </button>
