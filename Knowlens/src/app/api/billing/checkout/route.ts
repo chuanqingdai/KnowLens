@@ -53,6 +53,48 @@ function hasWechatClientConstraintError(message: string) {
   return normalized.includes("wechat_pay") && normalized.includes("client");
 }
 
+function isDatabaseConnectivityError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("connect_timeout") ||
+    normalized.includes("connection terminated") ||
+    normalized.includes("connection refused") ||
+    normalized.includes("connection reset") ||
+    normalized.includes("connection error") ||
+    normalized.includes("timeout") && normalized.includes("neon") ||
+    normalized.includes("postgres")
+  );
+}
+
+async function enforceCheckoutRateLimit(email: string) {
+  try {
+    await rateLimitOrThrow({
+      scopeKey: `user:${email}`,
+      endpoint: "billing-checkout",
+      limit: RATE_LIMIT_CONFIG.billingCheckout.limit,
+      windowMs: RATE_LIMIT_CONFIG.billingCheckout.windowMs,
+    });
+    return;
+  } catch (error) {
+    if ((error as Error & { retryAfterSeconds?: number }).retryAfterSeconds) {
+      throw error;
+    }
+    if (!isDatabaseConnectivityError(error)) {
+      throw error;
+    }
+    logOpsEvent({
+      category: "billing",
+      action: "checkout_rate_limit_degraded",
+      status: "info",
+      source: "server",
+      userEmail: email,
+      code: "BILLING_CHECKOUT_RATE_LIMIT_DB_UNAVAILABLE",
+      message: error instanceof Error ? error.message : String(error ?? "Database unavailable during checkout rate limit."),
+    });
+  }
+}
+
 async function createCheckoutSessionWithFallback(
   stripe: ReturnType<typeof getStripeServerClient>,
   params: Parameters<ReturnType<typeof getStripeServerClient>["checkout"]["sessions"]["create"]>[0],
@@ -94,12 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Please sign in before checkout." }, { status: 401 });
     }
 
-    await rateLimitOrThrow({
-      scopeKey: `user:${email}`,
-      endpoint: "billing-checkout",
-      limit: RATE_LIMIT_CONFIG.billingCheckout.limit,
-      windowMs: RATE_LIMIT_CONFIG.billingCheckout.windowMs,
-    });
+    await enforceCheckoutRateLimit(email);
 
     const body = (await request.json()) as {
       planId?: string;
