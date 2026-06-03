@@ -194,67 +194,67 @@ type TtsVoiceConfig = {
 const TTS_OPTIONS: TtsVoiceConfig[] = [
   {
     id: "basic_narrator_male",
-    displayName: "Owen",
+    displayName: "Guy",
     tier: "basic",
     provider: "edge",
     voiceName: "en-US-GuyNeural",
     languageCode: "en-US",
     gender: "male",
     ageGroup: "adult",
-    description: "Included voice for clear narration.",
+    description: "Steady male tone for general science explainers.",
     notes: "Included male voice",
     creditPer1000Chars: 1,
     profile: "male",
   },
   {
     id: "basic_narrator_female",
-    displayName: "Clara",
+    displayName: "Jenny",
     tier: "basic",
     provider: "edge",
     voiceName: "en-US-JennyNeural",
     languageCode: "en-US",
     gender: "female",
     ageGroup: "adult",
-    description: "Included voice for friendly narration.",
+    description: "Warm female tone for friendly classroom explainers.",
     notes: "Included female voice",
     creditPer1000Chars: 1,
     profile: "female",
   },
   {
     id: "pro_documentary_male",
-    displayName: "Marcus",
+    displayName: "Cedar",
     tier: "pro",
     provider: "openai",
     voiceName: "cedar",
     gender: "male",
     ageGroup: "middle_aged",
-    description: "Premium voice for serious explainers.",
+    description: "Deep documentary tone for science, finance, and history.",
     notes: "Premium documentary voice",
     creditPer1000Chars: 3,
     profile: "male",
   },
   {
     id: "pro_documentary_female",
-    displayName: "Marina",
+    displayName: "Marin",
     tier: "pro",
     provider: "openai",
     voiceName: "marin",
     gender: "female",
     ageGroup: "adult",
-    description: "Premium voice for polished explainers.",
+    description: "Smooth presenter tone for polished educational explainers.",
     notes: "Premium warm narrator",
     creditPer1000Chars: 3,
     profile: "female",
   },
   {
     id: "pro_deep_science",
-    displayName: "Orion",
+    displayName: "Onyx",
     tier: "pro",
     provider: "openai",
     voiceName: "onyx",
     gender: "male",
     ageGroup: "mature",
-    description: "Premium voice for science and history.",
+    description: "Low, serious tone for research, science, and history topics.",
     notes: "Premium deep narrator",
     creditPer1000Chars: 3,
     profile: "male",
@@ -267,7 +267,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "nova",
     gender: "female",
     ageGroup: "young_adult",
-    description: "Premium voice for energetic short videos.",
+    description: "Bright, energetic tone for fast-paced short explainers.",
     notes: "Premium bright explainer",
     creditPer1000Chars: 3,
     profile: "youth",
@@ -280,7 +280,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "echo",
     gender: "neutral",
     ageGroup: "adult",
-    description: "Premium voice for AI and product topics.",
+    description: "Neutral tech tone for AI, product, and software topics.",
     notes: "Premium tech voice",
     creditPer1000Chars: 3,
     profile: "neutral",
@@ -293,7 +293,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "coral",
     gender: "female",
     ageGroup: "young_adult",
-    description: "Premium voice for friendly social explainers.",
+    description: "Friendly host tone for lifestyle and social explainers.",
     notes: "Premium friendly host",
     creditPer1000Chars: 3,
     profile: "youth",
@@ -306,7 +306,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "sage",
     gender: "neutral",
     ageGroup: "middle_aged",
-    description: "Premium voice for lessons and tutorials.",
+    description: "Calm teaching tone for lessons, tutorials, and training.",
     notes: "Premium calm teacher",
     creditPer1000Chars: 3,
     profile: "neutral",
@@ -319,7 +319,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "fable",
     gender: "neutral",
     ageGroup: "mature",
-    description: "Premium voice for narrative content.",
+    description: "Narrative tone for story-led educational videos.",
     notes: "Premium storyteller",
     creditPer1000Chars: 3,
     profile: "neutral",
@@ -332,7 +332,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "shimmer",
     gender: "female",
     ageGroup: "adult",
-    description: "Premium voice for relaxed education.",
+    description: "Soft presenter tone for gentle learning videos.",
     notes: "Premium soft presenter",
     creditPer1000Chars: 3,
     profile: "female",
@@ -345,7 +345,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "alloy",
     gender: "neutral",
     ageGroup: "adult",
-    description: "Premium general-purpose narration.",
+    description: "Balanced all-purpose tone for mixed explainer content.",
     notes: "Premium balanced narrator",
     creditPer1000Chars: 3,
     profile: "neutral",
@@ -741,6 +741,25 @@ export function StoryboardCanvas({
   useEffect(() => {
     generatedAudioRef.current = generatedAudioBySlideId;
   }, [generatedAudioBySlideId]);
+
+  useEffect(() => {
+    if (!openTtsMenuSlideId) {
+      return;
+    }
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-tts-menu-root='true']")
+      ) {
+        return;
+      }
+      setOpenTtsMenuSlideId(null);
+    };
+    document.addEventListener("click", handleDocumentClick);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick);
+    };
+  }, [openTtsMenuSlideId]);
 
   const present = history.present;
   const slides = present.slides;
@@ -1967,12 +1986,22 @@ export function StoryboardCanvas({
       const sceneAssets: SceneAudioAsset[] = [];
       for (let i = 0; i < slides.length; i += 1) {
         const slide = slides[i];
+        const narrationText = slide.isCover ? "" : slide.body.trim();
         const ttsId = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
-        await ensureAudioFileForSlide(slide.id, slide.body, ttsId);
-        const audioBuffer = await synthesizeSceneAudioFromApi(slide.body, ttsId);
+        if (!narrationText) {
+          sceneAssets.push({
+            slideId: slide.id,
+            buffer: null,
+            durationSec: slide.isCover ? 2.8 : 3.4,
+          });
+          setComposeProgress(Math.round(((i + 1) / Math.max(1, slides.length)) * 28));
+          continue;
+        }
+        await ensureAudioFileForSlide(slide.id, narrationText, ttsId);
+        const audioBuffer = await synthesizeSceneAudioFromApi(narrationText, ttsId);
         const fallbackDuration = Math.max(
           2.6,
-          Math.min(8, slide.body.trim().length / 6 + 1.2),
+          Math.min(8, narrationText.length / 6 + 1.2),
         );
         const durationSec = Math.max(
           2.2,
@@ -2675,7 +2704,7 @@ export function StoryboardCanvas({
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
                     <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
                       <span>Narration</span>
-                      <span>{slide.isCover ? "Cover has no narration" : "For voice-over"}</span>
+                      <span>{slide.isCover ? "Cover has no narration" : "Voice-over script"}</span>
                     </div>
                     <textarea
                       value={narrationText}
@@ -2693,141 +2722,147 @@ export function StoryboardCanvas({
                   </div>
                 </div>
 
-                <div className="px-3 pb-3 pt-3">
-                  <div
-                    className={`rounded-md border px-2 py-2 ${
-                      playingAudioSlideId === slide.id
-                        ? "border-zinc-900 bg-zinc-100"
-                        : "border-zinc-200 bg-zinc-50"
-                    }`}
-                  >
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>B Track · Audio</span>
-                      <span>{selectedTtsOption.tier === "pro" ? "Premium voice" : "Included voice"}</span>
-                    </div>
-                    <div className="mb-2 h-px bg-zinc-200" />
+                {hasNarration ? (
+                  <div className="px-3 pb-3 pt-3">
+                    <div
+                      className={`rounded-md border px-2 py-2 ${
+                        playingAudioSlideId === slide.id
+                          ? "border-zinc-900 bg-zinc-100"
+                          : "border-zinc-200 bg-zinc-50"
+                      }`}
+                    >
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>B Track · Audio</span>
+                        <span>{selectedTtsOption.tier === "pro" ? "Premium voice" : "Included voice"}</span>
+                      </div>
+                      <div className="mb-2 h-px bg-zinc-200" />
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleAudioPreviewForSlide(slide.id, narrationText)}
-                        className={`nodrag nopan nowheel inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] ${
-                          isAudioPlaying
-                            ? "border-zinc-900 bg-zinc-900 text-white"
-                            : isAudioPaused
-                              ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                            : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
-                        }`}
-                      >
-                        {isAudioPlaying ? <PauseCircle size={12} /> : <Volume2 size={12} />}
-                        {audioPreviewLabel}
-                      </button>
-                      <div className="relative flex-1">
+                      <div data-tts-menu-root="true" className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setOpenTtsMenuSlideId((prev) =>
-                              prev === slide.id ? null : slide.id,
-                            );
+                            toggleAudioPreviewForSlide(slide.id, narrationText);
                           }}
-                          className="nodrag nopan nowheel inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-2 text-left text-[11px] text-zinc-800 outline-none hover:bg-zinc-50"
+                          className={`nodrag nopan nowheel inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] ${
+                            isAudioPlaying
+                              ? "border-zinc-900 bg-zinc-900 text-white"
+                              : isAudioPaused
+                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                          }`}
                         >
-                          <span className="min-w-0 flex-1 truncate">
-                            {selectedTtsOption.displayName}
-                          </span>
-                          {selectedTtsOption.tier === "pro" ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                              <Crown size={10} />
-                              Pro
-                            </span>
-                          ) : null}
-                          <ChevronDown
-                            size={13}
-                            className={`shrink-0 text-zinc-500 transition ${
-                              openTtsMenuSlideId === slide.id ? "rotate-180" : ""
-                            }`}
-                          />
+                          {isAudioPlaying ? <PauseCircle size={12} /> : <Volume2 size={12} />}
+                          {audioPreviewLabel}
                         </button>
-                        {openTtsMenuSlideId === slide.id ? (
-                          <div className="nodrag nopan nowheel absolute left-0 top-8 z-50 max-h-[420px] w-[340px] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
-                            {TTS_OPTIONS.map((option) => {
-                              const isSelected = selectedTts === option.id;
-                              const isPremiumVoice = option.provider === "openai";
+                        <div className="relative flex-1">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenTtsMenuSlideId((prev) =>
+                                prev === slide.id ? null : slide.id,
+                              );
+                            }}
+                            className="nodrag nopan nowheel inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-2 text-left text-[11px] text-zinc-800 outline-none hover:bg-zinc-50"
+                          >
+                            <span className="min-w-0 flex-1 truncate">
+                              {selectedTtsOption.displayName}
+                            </span>
+                            {selectedTtsOption.tier === "pro" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                <Crown size={10} />
+                                Pro
+                              </span>
+                            ) : null}
+                            <ChevronDown
+                              size={13}
+                              className={`shrink-0 text-zinc-500 transition ${
+                                openTtsMenuSlideId === slide.id ? "rotate-180" : ""
+                              }`}
+                            />
+                          </button>
+                          {openTtsMenuSlideId === slide.id ? (
+                            <div
+                              className="nodrag nopan nowheel absolute left-0 top-8 z-50 max-h-[420px] w-[340px] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {TTS_OPTIONS.map((option) => {
+                                const isSelected = selectedTts === option.id;
+                                const isPremiumVoice = option.provider === "openai";
+                                return (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      updateTtsForSlide(slide.id, option.id);
+                                    }}
+                                    className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
+                                  >
+                                    <span className="flex items-center justify-between gap-2 text-xs font-medium text-zinc-900">
+                                      <span className="min-w-0">
+                                        {option.displayName}
+                                      </span>
+                                      <span className="inline-flex shrink-0 items-center gap-1.5">
+                                        {isPremiumVoice ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                            <Crown size={10} />
+                                            Pro
+                                          </span>
+                                        ) : null}
+                                        {isSelected ? (
+                                          <Check size={14} className="text-zinc-900" />
+                                        ) : null}
+                                      </span>
+                                    </span>
+                                    <span className="mt-1 block text-[11px] leading-4 text-zinc-500">
+                                      {option.description}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 rounded-xl border border-zinc-200 bg-white px-2.5 py-2">
+                        <div className="relative h-12 w-full overflow-hidden rounded-lg bg-zinc-50 px-3">
+                          <div className="absolute inset-x-3 top-1/2 flex -translate-y-1/2 items-center justify-between gap-1">
+                            {Array.from({ length: 58 }, (_, barIdx) => {
+                              const phase = Math.sin((barIdx + slide.page) * 0.75);
+                              const h = Math.min(24, 7 + (phase + 1) * 7 * waveformScale);
+                              const isPlayed = playingProgress >= (barIdx / 58) * 100;
                               return (
-                                <button
-                                  key={option.id}
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    updateTtsForSlide(slide.id, option.id);
-                                  }}
-                                  className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
-                                >
-                                  <span className="flex items-center justify-between gap-2 text-xs font-medium text-zinc-900">
-                                    <span className="min-w-0">
-                                      {option.displayName}
-                                    </span>
-                                    <span className="inline-flex shrink-0 items-center gap-1.5">
-                                      {isPremiumVoice ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                                          <Crown size={10} />
-                                          Pro
-                                        </span>
-                                      ) : null}
-                                      {isSelected ? (
-                                        <Check size={14} className="text-zinc-900" />
-                                      ) : null}
-                                    </span>
-                                  </span>
-                                  <span className="mt-1 block text-[11px] leading-4 text-zinc-500">
-                                    {option.description}
-                                  </span>
-                                </button>
+                                <span
+                                  key={`wave-${slide.id}-${barIdx}`}
+                                  className={`block w-[3px] rounded-full transition-colors duration-300 ${
+                                    isPlayed ? "bg-zinc-900" : "bg-zinc-300"
+                                  }`}
+                                  style={{ height: `${h}px` }}
+                                />
                               );
                             })}
                           </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="mt-2 rounded-xl border border-zinc-200 bg-white px-2.5 py-2">
-                      <div className="relative h-12 w-full overflow-hidden rounded-lg bg-zinc-50 px-3">
-                        <div className="absolute inset-x-3 top-1/2 flex -translate-y-1/2 items-center justify-between gap-1">
-                          {Array.from({ length: 58 }, (_, barIdx) => {
-                            const phase = Math.sin((barIdx + slide.page) * 0.75);
-                            const h = Math.min(24, 7 + (phase + 1) * 7 * waveformScale);
-                            const isPlayed = playingProgress >= (barIdx / 58) * 100;
-                            return (
-                              <span
-                                key={`wave-${slide.id}-${barIdx}`}
-                                className={`block w-[3px] rounded-full transition-colors duration-300 ${
-                                  isPlayed ? "bg-zinc-900" : "bg-zinc-300"
-                                }`}
-                                style={{ height: `${h}px` }}
-                              />
-                            );
-                          })}
+                          {generatedAudio?.status === "generating" ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-blue-600">
+                              <LoaderCircle size={15} className="animate-spin" />
+                            </div>
+                          ) : null}
+                          <div
+                            className="absolute bottom-0 left-0 h-[2px] bg-blue-500 transition-[width] duration-300 ease-linear"
+                            style={{ width: `${clamp(playingProgress, 0, 100)}%` }}
+                          />
                         </div>
-                        {generatedAudio?.status === "generating" ? (
-                          <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-blue-600">
-                            <LoaderCircle size={15} className="animate-spin" />
-                          </div>
-                        ) : null}
-                        <div
-                          className="absolute bottom-0 left-0 h-[2px] bg-blue-500 transition-[width] duration-300 ease-linear"
-                          style={{ width: `${clamp(playingProgress, 0, 100)}%` }}
-                        />
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
-                        <span>
-                          {hasNarration ? "Audio preview" : "Add narration to generate audio"}
-                        </span>
-                        <span>{hasNarration ? audioTimeLabel : "00:00 / 00:00"}</span>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
+                          <span>Audio preview</span>
+                          <span>{audioTimeLabel}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             ),
           },
@@ -3082,13 +3117,6 @@ export function StoryboardCanvas({
               {isPreviewPaused ? "Resume" : "Pause"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => runPreview(true)}
-              className="inline-flex h-9 items-center rounded-full border border-zinc-300 bg-white px-4 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              Preview From Current Scene
-            </button>
           </div>
         </div>
         ) : null}
