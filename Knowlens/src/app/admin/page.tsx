@@ -156,6 +156,23 @@ function inTimeRange(input: string, range: TimeRangeKey, customStart?: string | 
   return time >= startTime && time <= endTime;
 }
 
+function getUserEmailLabel(userId: string | undefined | null, usersById: Map<string, MockUser>) {
+  if (!userId) {
+    return "-";
+  }
+  return usersById.get(userId)?.email || userId;
+}
+
+function matchesUserEmailFilter(userId: string | undefined | null, filter: string, usersById: Map<string, MockUser>) {
+  const query = filter.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+  const normalizedUserId = (userId || "").trim().toLowerCase();
+  const email = (userId ? usersById.get(userId)?.email || "" : "").trim().toLowerCase();
+  return email.includes(query) || normalizedUserId.includes(query);
+}
+
 function clampPage(page: number, total: number) {
   if (total <= 0) {
     return 1;
@@ -593,7 +610,7 @@ function AdminDashboardPageContent() {
       if (lAction && !item.action.includes(lAction)) {
         return false;
       }
-      if (lUser && item.userId !== lUser) {
+      if (!matchesUserEmailFilter(item.userId, lUser, userMap)) {
         return false;
       }
       if (lProject && item.projectId !== lProject) {
@@ -605,7 +622,7 @@ function AdminDashboardPageContent() {
       return true;
     });
     return sortBy(rows, lSort as keyof MockLog, lOrder);
-  }, [data.logs, lAction, lEnd, lError, lOrder, lProject, lRange, lSort, lStart, lStatus, lType, lUser]);
+  }, [data.logs, lAction, lEnd, lError, lOrder, lProject, lRange, lSort, lStart, lStatus, lType, lUser, userMap]);
   const pagedLogs = paginate(filteredLogs, lPage);
 
   const pRange = (searchParams.get("p_range") as TimeRangeKey) || "30d";
@@ -640,13 +657,13 @@ function AdminDashboardPageContent() {
       if (pImage && item.imageModel !== pImage) {
         return false;
       }
-      if (pUser && item.userId !== pUser) {
+      if (!matchesUserEmailFilter(item.userId, pUser, userMap)) {
         return false;
       }
       return true;
     });
     return sortBy(rows, pSort as keyof MockProject, pOrder);
-  }, [data.projects, pEnd, pImage, pOrder, pRange, pSort, pStage, pStart, pStatus, pText, pType, pUser]);
+  }, [data.projects, pEnd, pImage, pOrder, pRange, pSort, pStage, pStart, pStatus, pText, pType, pUser, userMap]);
   const pagedProjects = paginate(filteredProjects, pPage);
 
   const uRange = (searchParams.get("u_range") as TimeRangeKey) || "30d";
@@ -700,11 +717,11 @@ function AdminDashboardPageContent() {
   const bStatus = searchParams.get("b_status") || "";
   const bPage = safeNumber(searchParams.get("b_page"), 1);
   const billingView = searchParams.get("b_view") || "credits";
-  const filteredCredits = data.creditRecords.filter((item) => !bUser || item.userId === bUser);
-  const filteredOrders = data.orders.filter((item) => (!bUser || item.userId === bUser) && (!bStatus || item.status === bStatus));
-  const filteredSubscriptions = data.subscriptions.filter((item) => !bUser || item.userId === bUser);
+  const filteredCredits = data.creditRecords.filter((item) => matchesUserEmailFilter(item.userId, bUser, userMap));
+  const filteredOrders = data.orders.filter((item) => matchesUserEmailFilter(item.userId, bUser, userMap) && (!bStatus || item.status === bStatus));
+  const filteredSubscriptions = data.subscriptions.filter((item) => matchesUserEmailFilter(item.userId, bUser, userMap));
   const filteredWebhooks = data.webhookLogs.filter((item) => !bStatus || item.status === bStatus);
-  const filteredAnomalies = data.billingAnomalies.filter((item) => (!bUser || item.userId === bUser) && (!bStatus || item.status === bStatus));
+  const filteredAnomalies = data.billingAnomalies.filter((item) => matchesUserEmailFilter(item.userId, bUser, userMap) && (!bStatus || item.status === bStatus));
   const pagedCredits = paginate(filteredCredits, bPage);
   const pagedOrders = paginate(filteredOrders, bPage);
   const pagedSubs = paginate(filteredSubscriptions, bPage);
@@ -728,7 +745,7 @@ function AdminDashboardPageContent() {
     if (tType && item.type !== tType) {
       return false;
     }
-    if (tUser && item.userId !== tUser) {
+    if (!matchesUserEmailFilter(item.userId, tUser, userMap)) {
       return false;
     }
     if (tProject && item.projectId !== tProject) {
@@ -958,7 +975,7 @@ function AdminDashboardPageContent() {
                 <input
                   value={globalQ}
                   onChange={(event) => setQuery({ globalQ: event.target.value || null })}
-                  placeholder="全局搜索 email / userId / projectId / orderId / requestId / errorId"
+                  placeholder="全局搜索 email / projectId / orderId / requestId / errorId"
                   className="w-full bg-transparent text-sm text-zinc-700 outline-none placeholder:text-zinc-400"
                 />
               </div>
@@ -1204,7 +1221,7 @@ function AdminDashboardPageContent() {
                 ))}
               </select>
               <input value={lAction} onChange={(event) => setQuery({ l_action: event.target.value || null, l_page: "1" })} placeholder="动作 action" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
-              <input value={lUser} onChange={(event) => setQuery({ l_user: event.target.value || null, l_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={lUser} onChange={(event) => setQuery({ l_user: event.target.value || null, l_page: "1" })} placeholder="user email" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={lProject} onChange={(event) => setQuery({ l_project: event.target.value || null, l_page: "1" })} placeholder="projectId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={lError} onChange={(event) => setQuery({ l_error: event.target.value || null, l_page: "1" })} placeholder="errorId / errorCode" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <button type="button" onClick={() => setQuery({ l_status: null, l_type: null, l_action: null, l_user: null, l_project: null, l_error: null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100">
@@ -1341,7 +1358,7 @@ function AdminDashboardPageContent() {
               <input value={pStage} onChange={(event) => setQuery({ p_stage: event.target.value || null, p_page: "1" })} placeholder="当前阶段" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={pText} onChange={(event) => setQuery({ p_text: event.target.value || null, p_page: "1" })} placeholder="文本模型" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={pImage} onChange={(event) => setQuery({ p_image: event.target.value || null, p_page: "1" })} placeholder="图片模型" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
-              <input value={pUser} onChange={(event) => setQuery({ p_user: event.target.value || null, p_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={pUser} onChange={(event) => setQuery({ p_user: event.target.value || null, p_page: "1" })} placeholder="user email" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <button type="button" onClick={() => setQuery({ p_type: null, p_status: null, p_stage: null, p_text: null, p_image: null, p_user: null, p_page: "1" })} className="h-9 rounded-lg border border-zinc-300 text-sm hover:bg-zinc-100">
                 清空筛选
               </button>
@@ -1510,18 +1527,18 @@ function AdminDashboardPageContent() {
                           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.subscriptionStatus)}`}>{item.subscriptionStatus}</span>
                         </td>
                         <td className="px-3 py-2">
-                          <button type="button" onClick={() => setQuery({ tab: "billing", b_view: "credits", b_user: item.id, b_page: "1" })} className="underline underline-offset-2">
+                          <button type="button" onClick={() => setQuery({ tab: "billing", b_view: "credits", b_user: item.email, b_page: "1" })} className="underline underline-offset-2">
                             {item.creditBalance}
                           </button>
                         </td>
                         <td className="px-3 py-2">{item.creditConsumed}</td>
                         <td className="px-3 py-2">
-                          <button type="button" onClick={() => setQuery({ tab: "projects", p_user: item.id, p_page: "1" })} className="underline underline-offset-2">
+                          <button type="button" onClick={() => setQuery({ tab: "projects", p_user: item.email, p_page: "1" })} className="underline underline-offset-2">
                             {item.projectCount}
                           </button>
                         </td>
                         <td className="px-3 py-2">
-                          <button type="button" onClick={() => setQuery({ tab: "logs", l_user: item.id, l_status: "failed", l_page: "1" })} className="underline underline-offset-2 text-red-700">
+                          <button type="button" onClick={() => setQuery({ tab: "logs", l_user: item.email, l_status: "failed", l_page: "1" })} className="underline underline-offset-2 text-red-700">
                             {item.failedProjectCount}
                           </button>
                         </td>
@@ -1572,7 +1589,7 @@ function AdminDashboardPageContent() {
                 <option value="webhooks">Webhook 日志</option>
                 <option value="anomalies">账务异常</option>
               </select>
-              <input value={bUser} onChange={(event) => setQuery({ b_user: event.target.value || null, b_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={bUser} onChange={(event) => setQuery({ b_user: event.target.value || null, b_page: "1" })} placeholder="user email" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={bStatus} onChange={(event) => setQuery({ b_status: event.target.value || null, b_page: "1" })} placeholder="status" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <button type="button" onClick={() => setQuery({ b_user: null, b_status: null, b_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm hover:bg-zinc-100">
                 清空筛选
@@ -1600,7 +1617,7 @@ function AdminDashboardPageContent() {
                           <td className="px-3 py-2">{formatDateTime(item.createdAt)}</td>
                           <td className="px-3 py-2">
                             <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
-                              {item.userId}
+                              {getUserEmailLabel(item.userId, userMap)}
                             </button>
                           </td>
                           <td className="px-3 py-2">{item.type}</td>
@@ -1661,7 +1678,7 @@ function AdminDashboardPageContent() {
                           </td>
                           <td className="px-3 py-2">
                             <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
-                              {item.userId}
+                              {getUserEmailLabel(item.userId, userMap)}
                             </button>
                           </td>
                           <td className="px-3 py-2">
@@ -1709,7 +1726,7 @@ function AdminDashboardPageContent() {
                           <td className="px-3 py-2">{item.id}</td>
                           <td className="px-3 py-2">
                             <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
-                              {item.userId}
+                              {getUserEmailLabel(item.userId, userMap)}
                             </button>
                           </td>
                           <td className="px-3 py-2">{item.plan}</td>
@@ -1808,7 +1825,7 @@ function AdminDashboardPageContent() {
                           <td className="px-3 py-2">
                             {item.userId ? (
                               <button type="button" onClick={() => openUserDetail(item.userId || "")} className="underline underline-offset-2">
-                                {item.userId}
+                                {getUserEmailLabel(item.userId, userMap)}
                               </button>
                             ) : (
                               "-"
@@ -1924,7 +1941,7 @@ function AdminDashboardPageContent() {
                 <option value="quality">quality</option>
                 <option value="other">other</option>
               </select>
-              <input value={tUser} onChange={(event) => setQuery({ t_user: event.target.value || null, t_page: "1" })} placeholder="userId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
+              <input value={tUser} onChange={(event) => setQuery({ t_user: event.target.value || null, t_page: "1" })} placeholder="user email" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={tProject} onChange={(event) => setQuery({ t_project: event.target.value || null, t_page: "1" })} placeholder="projectId" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <input value={tAssignee} onChange={(event) => setQuery({ t_assignee: event.target.value || null, t_page: "1" })} placeholder="处理人 assignee" className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               <button type="button" onClick={() => setQuery({ t_status: null, t_priority: null, t_type: null, t_user: null, t_project: null, t_assignee: null, t_page: "1" })} className="h-9 rounded-lg border border-zinc-300 text-sm hover:bg-zinc-100">
@@ -1963,7 +1980,7 @@ function AdminDashboardPageContent() {
                         <td className="px-3 py-2">
                           {item.userId ? (
                             <button type="button" onClick={() => openUserDetail(item.userId || "")} className="underline underline-offset-2">
-                              {item.userId}
+                              {getUserEmailLabel(item.userId, userMap)}
                             </button>
                           ) : (
                             "-"
@@ -2271,7 +2288,7 @@ function AdminDashboardPageContent() {
                 {data.settings.adminRoles.map((item) => (
                   <div key={`${item.userId}-${item.role}`} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
                     <button type="button" onClick={() => openUserDetail(item.userId)} className="underline underline-offset-2">
-                      {item.userId}
+                      {getUserEmailLabel(item.userId, userMap)}
                     </button>
                     <span className="uppercase text-zinc-600">{item.role}</span>
                   </div>
@@ -2338,7 +2355,7 @@ function AdminDashboardPageContent() {
                   用户：
                   {selectedLog.userId ? (
                     <button type="button" onClick={() => openUserDetail(selectedLog.userId || "")} className="underline underline-offset-2">
-                      {selectedLog.userId}
+                      {getUserEmailLabel(selectedLog.userId, userMap)}
                     </button>
                   ) : (
                     "-"
@@ -2417,7 +2434,7 @@ function AdminDashboardPageContent() {
               <p className="mt-1 text-zinc-600">
                 用户：
                 <button type="button" onClick={() => openUserDetail(selectedOrder.userId)} className="underline underline-offset-2">
-                  {selectedOrder.userId}
+                  {getUserEmailLabel(selectedOrder.userId, userMap)}
                 </button>
               </p>
               <p className="mt-1 text-zinc-600">计划：{selectedOrder.plan}</p>
@@ -2451,7 +2468,7 @@ function AdminDashboardPageContent() {
               <p>关联用户：
                 {selectedTicket.userId ? (
                   <button type="button" onClick={() => openUserDetail(selectedTicket.userId || "")} className="ml-1 underline underline-offset-2">
-                    {selectedTicket.userId}
+                    {getUserEmailLabel(selectedTicket.userId, userMap)}
                   </button>
                 ) : (
                   <span className="ml-1">-</span>

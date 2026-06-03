@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Clapperboard, FileDown, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clapperboard, FileDown, LoaderCircle, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UserMenu } from "@/components/auth/UserMenu";
 
@@ -53,6 +53,7 @@ export function TopBar({
   const showWorkspaceActions = Boolean(onDownloadPpt || onDownloadVideo);
   const showPptAction = canvasMode === "ppt";
   const isPrimaryBusy = showPptAction ? isExportingPpt : isComposingVideo;
+  const isPrimaryUnavailable = actionsDisabled || isPrimaryBusy;
   const primaryActionLabel = showPptAction
     ? actionsDisabled && disabledPrimaryActionLabel
       ? disabledPrimaryActionLabel
@@ -110,16 +111,22 @@ export function TopBar({
           {showWorkspaceActions ? (
             <button
               type="button"
-              disabled={actionsDisabled || isPrimaryBusy}
+              disabled={isPrimaryUnavailable}
               onClick={showPptAction ? onDownloadPpt : onDownloadVideo}
-              className={`inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-40 ${
-                showPptAction ? "bg-zinc-900 hover:bg-zinc-700" : "bg-blue-600 hover:bg-blue-500"
+              className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed ${
+                isPrimaryUnavailable
+                  ? "bg-zinc-200 text-zinc-600"
+                  : showPptAction
+                    ? "bg-zinc-900 text-white hover:bg-zinc-700"
+                    : "bg-blue-600 text-white hover:bg-blue-500"
               }`}
             >
-              {showPptAction ? (
-                <FileDown size={13} className="mr-1.5" />
+              {isPrimaryUnavailable ? (
+                <LoaderCircle size={15} className="animate-spin" />
+              ) : showPptAction ? (
+                <FileDown size={15} />
               ) : (
-                <Clapperboard size={13} className="mr-1.5" />
+                <Clapperboard size={15} />
               )}
               {primaryActionLabel}
             </button>

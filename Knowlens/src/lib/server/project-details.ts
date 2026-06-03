@@ -1,6 +1,7 @@
 import {
   buildImageRenderUrl,
   getLatestImageGenerationJobByProject,
+  listImageGenerationTaskHistoryByProject,
   type ImageGenerationTaskRow,
 } from "@/lib/server/image-generation-jobs";
 import { getProjectByIdForUser, listProjectsByUser } from "@/lib/server/store";
@@ -35,6 +36,12 @@ type ProjectTaskResponse = {
   width: number | null;
   height: number | null;
   mimeType: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ProjectPageWithImageHistory = WorkspaceProjectPageRow & {
+  imageHistory: ProjectTaskResponse[];
 };
 
 function normalizeText(value: unknown, fallback = "") {
@@ -81,6 +88,8 @@ function buildTaskResponse(task: ImageGenerationTaskRow): ProjectTaskResponse {
     width: task.width,
     height: task.height,
     mimeType: task.mimeType,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
   };
 }
 
@@ -173,6 +182,25 @@ export async function resolveProjectDetail(input: {
           intent: outputType,
         });
   const tasks = (latestJob?.tasks || []).map(buildTaskResponse);
+  const imageHistoryTasks = await listImageGenerationTaskHistoryByProject({
+    userEmail: input.userEmail,
+    projectId: input.projectId,
+    intent: outputType,
+    maxPerPage: 12,
+  });
+  const imageHistoryByPageIndex = new Map<number, ProjectTaskResponse[]>();
+  imageHistoryTasks.forEach((task) => {
+    if (!task.taskIndex) {
+      return;
+    }
+    const current = imageHistoryByPageIndex.get(task.taskIndex) || [];
+    current.push(buildTaskResponse(task));
+    imageHistoryByPageIndex.set(task.taskIndex, current);
+  });
+  const pagesWithImageHistory: ProjectPageWithImageHistory[] = pages.map((page) => ({
+    ...page,
+    imageHistory: imageHistoryByPageIndex.get(page.pageIndex) || [],
+  }));
   const cover =
     getWorkspaceProjectCover({
       userEmail: input.userEmail,
@@ -183,7 +211,7 @@ export async function resolveProjectDetail(input: {
     "";
   const status = aggregateStatus({
     projectStatus: normalizeText(project.status, "in_progress"),
-    pages,
+    pages: pagesWithImageHistory,
     tasks,
   });
 
@@ -201,7 +229,7 @@ export async function resolveProjectDetail(input: {
       coverImageUrl: cover,
     },
     cover,
-    pages,
+    pages: pagesWithImageHistory,
     job: latestJob?.job ?? null,
     tasks,
   };

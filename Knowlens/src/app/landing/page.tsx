@@ -108,26 +108,33 @@ const capabilityFlows = [
 
 const DEFAULT_CAPABILITY_FLOW_ID = "infographic-poster";
 
-const howItWorksTags = ["Science", "Education", "Business", "Health", "Technology", "Research"];
+const howItWorksTags = [
+  "Science",
+  "Education",
+  "Business",
+  "Health",
+  "Technology",
+  "Research",
+];
 
 const howItWorksCards = [
   {
     id: "understand",
     title: "Understand Your Text",
     description:
-      "KnowLens identifies the topic, key points, relationships, and explanation flow in your text.",
+      "KnowLens identifies the topic, audience, key points, definitions, timelines, data, relationships, and explanation flow in your text.",
   },
   {
     id: "organize",
     title: "Organize the Key Ideas",
     description:
-      "It turns raw text into a clear structure with hierarchy, sections, and visual emphasis.",
+      "It turns notes, lessons, research summaries, investor updates, product ideas, and business analysis into a clear structure with hierarchy, sections, comparisons, and visual emphasis.",
   },
   {
     id: "generate",
     title: "Generate the Right Format",
     description:
-      "Choose the format you need: infographic poster, presentation slides, or explainer video.",
+      "Choose the format you need: infographic poster, presentation slides, or explainer video storyboards for learning, teaching, reporting, training, and content creation.",
   },
 ];
 
@@ -181,49 +188,49 @@ const faqItems = [
     id: "q1",
     question: "What can I use as input?",
     answer:
-      "KnowLens currently supports pasted text and topic descriptions. You can paste notes, explanations, drafts, or simply describe the topic you want to visualize.",
+      "KnowLens currently supports pasted text and topic descriptions. You can paste study notes, lesson outlines, explanations, business drafts, research summaries, product ideas, or simply describe the topic you want to visualize.",
   },
   {
     id: "q2",
-    question: "Can I upload PDFs, files, or links?",
+    question: "Do I need design skills?",
     answer:
-      "Not yet. The current version focuses on text input only. Please paste the content directly into the text box.",
+      "No. KnowLens helps organize your text, plan the visual structure, choose an appropriate format, and generate a clear visual draft automatically. You can start from rough notes or a simple topic without preparing a layout yourself.",
   },
   {
     id: "q3",
-    question: "What can KnowLens generate?",
+    question: "Can I upload PDFs, files, or links?",
     answer:
-      "You can choose one output format each time: Infographic Poster, Presentation Slides, or Explainer Video.",
+      "Not yet. The current version focuses on text input only so the creation flow stays simple and predictable. Please paste the content directly into the text box, or summarize the topic you want KnowLens to explain visually.",
   },
   {
     id: "q4",
-    question: "Does one input generate all formats at once?",
+    question: "What can KnowLens generate?",
     answer:
-      "No. You paste your text first, then choose the format you want to generate. You can create different formats separately if needed.",
+      "You can choose one output format each time: Infographic Poster, Presentation Slides, or Explainer Video. Posters are best for one-page explainers, slides are useful for teaching and business communication, and explainer video drafts help plan scenes and narration.",
   },
   {
     id: "q5",
-    question: "Do I need design skills?",
+    question: "Does one input generate all formats at once?",
     answer:
-      "No. KnowLens helps organize your text, plan the visual structure, and generate a clear visual draft automatically.",
+      "No. You paste your text first, then choose the format you want to generate. This keeps each result focused. If you need multiple formats, you can create posters, slides, and explainer video drafts separately from the same idea.",
   },
   {
     id: "q6",
     question: "Can I try KnowLens for free?",
     answer:
-      "Yes. Free users can generate sample outputs with watermark. Paid plans unlock more generations and watermark-free export.",
+      "Yes. Free users can generate sample outputs with watermark. It is a good way to test how KnowLens turns your text into visual learning content before upgrading.",
   },
   {
     id: "q7",
     question: "What do paid plans unlock?",
     answer:
-      "Paid plans unlock watermark-free export, HD output, more generations, and access to poster, slide, and video generation features.",
+      "Paid plans unlock watermark-free export, HD output, more generations, and broader access to poster, slide, and video generation features. They are designed for users who create visuals regularly for learning, teaching, research, content, or team communication.",
   },
   {
     id: "q8",
     question: "Can I cancel anytime?",
     answer:
-      "Yes. You can cancel your subscription anytime from your account settings.",
+      "Yes. You can cancel your subscription anytime from your account settings. Your plan access remains available during the active billing period according to your subscription status.",
   },
 ];
 
@@ -755,8 +762,8 @@ export default function LandingPage() {
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "KnowLens reads your text, organizes the key ideas, and turns them into clear posters, slides, or explainer video drafts.",
-                "KnowLens reads your text, organizes the key ideas, and turns them into clear posters, slides, or explainer video drafts.",
+                "KnowLens reads your text, organizes key ideas, finds relationships, timelines, data points, processes, and summaries, then turns them into clear posters, slides, or explainer video drafts.",
+                "KnowLens reads your text, organizes key ideas, finds relationships, timelines, data points, processes, and summaries, then turns them into clear posters, slides, or explainer video drafts.",
               )}
             </p>
 
@@ -783,6 +790,9 @@ export default function LandingPage() {
 
             <div className="mt-8 border-t border-zinc-200 pt-5 text-center">
               <p className="text-sm font-medium text-zinc-700">Text Input → Knowledge Structure → Visual Draft</p>
+              <p className="mx-auto mt-2 max-w-3xl text-xs leading-6 text-zinc-500">
+                Built for study notes, lesson plans, research summaries, financial reports, market analysis, product explainers, medical education, employee training, AI learning, and business communication.
+              </p>
             </div>
           </div>
         </section>

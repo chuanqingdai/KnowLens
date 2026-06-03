@@ -2630,7 +2630,8 @@ export function StoryboardCanvas({
                           Slide {slide.page} / {slides.length}
                         </p>
                         {isActive ? (
-                          <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-white">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                            <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" aria-hidden="true" />
                             Editing
                           </span>
                         ) : null}

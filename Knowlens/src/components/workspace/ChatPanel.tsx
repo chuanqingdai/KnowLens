@@ -758,12 +758,18 @@ export const ChatPanel = memo(function ChatPanel({
               event.stopPropagation();
               outputSummaryCard.onDownload();
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 sm:w-auto"
           >
-            <Download size={14} aria-hidden="true" />
-            {outputSummaryCard.canDownload
-              ? outputSummaryCard.downloadLabel
-              : outputSummaryCard.downloadDisabledLabel || "Waiting for generation"}
+            {outputSummaryCard.canDownload ? (
+              <Download size={15} aria-hidden="true" />
+            ) : (
+              <LoaderCircle size={15} className="animate-spin" aria-hidden="true" />
+            )}
+            <span>
+              {outputSummaryCard.canDownload
+                ? outputSummaryCard.downloadLabel
+                : outputSummaryCard.downloadDisabledLabel || "Generating"}
+            </span>
           </button>
         </div>
       </article>
@@ -912,6 +918,40 @@ export const ChatPanel = memo(function ChatPanel({
   const draftGenerationLoadingActive =
     thinkingState.active &&
     /(draft|文稿|海报|分镜|poster|storyboard|ppt)/i.test(thinkingState.module);
+  const shouldAutoScrollDirectionGuide =
+    showDirectionGuide &&
+    !configConfirmed &&
+    !topicSuggestionsLoading &&
+    !showWeakPromptSuggestions &&
+    introPhase === "ask";
+  const directionGuideAutoScrollKeyRef = useRef("");
+
+  useEffect(() => {
+    if (!showDirectionGuide || topicSuggestionsLoading) {
+      directionGuideAutoScrollKeyRef.current = "";
+    }
+  }, [showDirectionGuide, topicSuggestionsLoading]);
+
+  useEffect(() => {
+    if (!shouldAutoScrollDirectionGuide) {
+      return;
+    }
+    const scrollKey = `${userPrompt.trim()}|${topicSuggestionLocked ? "suggestion" : "direct"}`;
+    if (directionGuideAutoScrollKeyRef.current === scrollKey) {
+      return;
+    }
+    directionGuideAutoScrollKeyRef.current = scrollKey;
+
+    const timer = window.setTimeout(() => {
+      scrollToLatestCard();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [
+    scrollToLatestCard,
+    shouldAutoScrollDirectionGuide,
+    topicSuggestionLocked,
+    userPrompt,
+  ]);
   const shouldShowDraftLoadingCard =
     configConfirmed &&
     (isDraftGenerationPending || (draftGenerationLoadingActive && !hasDraftContentCard));
@@ -1048,9 +1088,9 @@ export const ChatPanel = memo(function ChatPanel({
           update.role === "user" ? "ml-auto bg-zinc-900 text-white" : "bg-zinc-100/85 text-zinc-800"
         }`}
       >
-        <div className={`mb-1 text-[11px] ${update.role === "user" ? "text-zinc-300" : "text-zinc-500"}`}>
-          {update.role === "user" ? "You" : "KnowLens.ai"} · {update.module}
-        </div>
+        {update.role !== "user" ? (
+          <div className="mb-1 text-[11px] text-zinc-500">KnowLens.ai · {update.module}</div>
+        ) : null}
         <p className="whitespace-pre-line leading-6">{update.content}</p>
       </article>
     );

@@ -103,6 +103,25 @@ type RestoredProjectPage = {
   body?: string | null;
   visual?: string | null;
   imagePromptDraft?: string | null;
+  imageHistory?: RestoredProjectImageHistoryItem[];
+};
+
+type RestoredProjectImageHistoryItem = {
+  taskId?: string;
+  index?: number;
+  status?: string;
+  attempts?: number;
+  imageUrl?: string;
+  renderUrl?: string;
+  rawImageUrl?: string | null;
+  storageKey?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  width?: number | null;
+  height?: number | null;
+  mimeType?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 function buildRestoredSlideDrafts(
@@ -753,7 +772,7 @@ const styleOptions = [
     englishName: "Premium Editorial Infographic Style",
     fit: "Precise and polished scientific infographic style for broad educational explainers.",
     prompt:
-      "Use a premium editorial infographic style with a controlled 4-color palette. Main tone: warm off-white #F7F3EA. Panel color: soft warm gray #E8E1D6. Text and line color: charcoal #1F1F1F. Accent color: muted editorial blue #4F6F8F. Details: subtle paper grain, thin divider lines, refined serif or modern sans-serif typography, restrained line icons, clean vector illustrations, polished magazine-style finish.",
+      "Use a premium editorial infographic style. Main tone: warm off-white #F7F3EA. Panel color: soft warm gray #E8E1D6. Text and line color: charcoal #1F1F1F. Accent color: muted editorial blue #4F6F8F. Typography: elegant serif title, clean sans-serif body text, tabular sans-serif numbers, small refined uppercase labels. Details: subtle paper grain, thin divider lines, restrained line icons, clean vector illustrations, polished magazine-style finish.",
     suitableTopics: "通用科普、自然科学、物理、地理、人体、机制解释",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["科普", "自然", "物理", "地理", "人体", "机制", "原理", "解释"],
@@ -766,7 +785,7 @@ const styleOptions = [
     englishName: "Black Tech Investor Dashboard Style",
     fit: "Textbook-like cutaway clarity for layered structures and mechanism internals.",
     prompt:
-      "Use a black high-tech financial dashboard style with a controlled 4-color palette. Main tone: deep black #050607. Panel color: graphite #1A1D21. Text and line color: soft white #F5F7FA. Accent color: neon green #7CFF4E. Details: glass-like dark panels, soft green glow, subtle server-grid texture, thin circuit traces, compact numeric styling, sharp line icons, high-contrast data-interface finish.",
+      "Use a black high-tech financial dashboard style. Main tone: deep black #050607. Panel color: graphite #1A1D21. Text and line color: soft white #F5F7FA. Accent color: neon green #7CFF4E. Typography: bold geometric sans-serif title, compact technical sans-serif body text, tabular numeric font for KPIs, small condensed technical labels. Details: glass-like dark panels, soft green glow, subtle server-grid texture, thin circuit traces, sharp line icons, high-contrast data-interface finish.",
     suitableTopics: "宇宙、AI、深海、灾难、人体、科技热点",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "ai", "深海", "灾难", "人体", "热点", "火山", "科技"],
@@ -779,7 +798,7 @@ const styleOptions = [
     englishName: "Black Gold Premium Tech Style",
     fit: "Dramatic but controlled science storytelling with explanatory overlays.",
     prompt:
-      "Use a black-and-gold premium technology style with a controlled 4-color palette. Main tone: matte black #070707. Panel color: dark graphite #202020. Text and line color: warm white #F4EFE3. Accent color: champagne gold #D6B56D. Details: metallic gold highlights, glossy black surfaces, soft cinematic shadows, thin gold-line icons, elegant typography, precise luxury-tech finish.",
+      "Use a black-and-gold premium technology style. Main tone: matte black #070707. Panel color: dark graphite #202020. Text and line color: warm white #F4EFE3. Accent color: champagne gold #D6B56D. Typography: high-contrast luxury serif title, refined modern sans-serif body text, elegant tabular numbers, small premium uppercase labels. Details: metallic gold highlights, glossy black surfaces, soft cinematic shadows, thin gold-line icons, precise luxury-tech finish.",
     suitableTopics: "宇宙、深海、火山、恐龙、灾难、未来城市",
     carrierPriority: ["poster", "video", "ppt"],
     topicKeywords: ["宇宙", "深海", "火山", "恐龙", "灾难", "未来城市", "史前", "行星"],
@@ -792,7 +811,7 @@ const styleOptions = [
     englishName: "3D Isometric Tech Explainer Style",
     fit: "Simple geometric clarity and clean hierarchy for direct concept teaching.",
     prompt:
-      "Use a 3D isometric technology style with a controlled 4-color palette. Main tone: dark navy #071426. Panel color: cool slate gray #2A3442. Text and line color: ice white #F4F8FF. Accent color: electric blue #2F80FF. Details: clean isometric 3D objects, soft shadows, polished surfaces, subtle blue glow, small technical labels, miniature system icons, precise spatial finish.",
+      "Use a 3D isometric technology style. Main tone: dark navy #071426. Panel color: cool slate gray #2A3442. Text and line color: ice white #F4F8FF. Accent color: electric blue #2F80FF. Typography: bold geometric sans-serif title, clean UI sans-serif body text, tabular numeric font, compact node labels with high legibility. Details: clean isometric 3D objects, soft shadows, polished surfaces, subtle blue glow, miniature system icons, precise spatial finish.",
     suitableTopics: "基础概念、产品说明、AI原理、简单科学机制",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["基础", "概念", "产品", "ai原理", "机制", "结构", "说明"],
@@ -805,7 +824,7 @@ const styleOptions = [
     englishName: "Blueprint Technical Diagram Style",
     fit: "Clean hand-drawn educational diagram style for approachable visual explanations.",
     prompt:
-      "Use a technical blueprint style with a controlled 4-color palette. Main tone: deep blueprint blue #071E3D. Panel color: darker blue #0B2A50. Text and line color: blueprint white #F2F8FF. Accent color: cyan #21D4FD. Details: fine grid texture, schematic outlines, thin technical strokes, measurement marks, outline engineering icons, precise arrows, clean blueprint drawing finish.",
+      "Use a technical blueprint style. Main tone: deep blueprint blue #071E3D. Panel color: darker blue #0B2A50. Text and line color: blueprint white #F2F8FF. Accent color: cyan #21D4FD. Typography: monospaced technical title, compact engineering sans-serif body text, monospaced tabular numbers, precise small annotation labels. Details: fine grid texture, schematic outlines, thin technical strokes, measurement marks, outline engineering icons, precise arrows, clean blueprint drawing finish.",
     suitableTopics: "科普解释、学习笔记、教程讲解、概念拆解、教育图解",
     carrierPriority: ["video", "ppt", "poster"],
     topicKeywords: ["手绘", "讲解", "教程", "概念", "学习", "教育", "科普", "图解"],
@@ -818,7 +837,7 @@ const styleOptions = [
     englishName: "Medical Science Illustration Style",
     fit: "Friendly rounded 3D visuals for approachable educational storytelling.",
     prompt:
-      "Use a clean medical science illustration style with a controlled 4-color palette. Main tone: clinical white #FFFFFF. Panel color: soft blue #DCEEFF. Text and line color: medical gray #3F4A56. Accent color: medical green #35B779. Details: smooth biological illustration, gentle gradients, soft shadows, clean anatomical labels, medical line icons, precise health-diagram finish.",
+      "Use a clean medical science illustration style. Main tone: clinical white #FFFFFF. Panel color: soft blue #DCEEFF. Text and line color: medical gray #3F4A56. Accent color: medical green #35B779. Typography: calm humanist sans-serif title, highly readable sans-serif body text, clear tabular numbers, small clinical label typography. Details: smooth biological illustration, gentle gradients, soft shadows, clean anatomical labels, medical line icons, precise health-diagram finish.",
     suitableTopics: "儿童科普、动物、人体健康、营养、低龄教育",
     carrierPriority: ["video", "poster", "ppt"],
     topicKeywords: ["儿童", "动物", "人体健康", "营养", "低龄", "亲子", "启蒙"],
@@ -831,7 +850,7 @@ const styleOptions = [
     englishName: "Cinematic Science Visual Style",
     fit: "Structured isometric system visualization for technical mechanisms and architectures.",
     prompt:
-      "Use a cinematic science visual style with a controlled 4-color palette. Main tone: deep atmospheric blue #081522. Panel color: dark neutral gray #252A30. Text and line color: soft silver #D7DEE8. Accent color: cinematic amber #F0A33A. Details: realistic texture, dramatic lighting, volumetric depth, soft glow, subtle particles, restrained scientific labels, documentary-quality finish.",
+      "Use a cinematic science visual style. Main tone: deep atmospheric blue #081522. Panel color: dark neutral gray #252A30. Text and line color: soft silver #D7DEE8. Accent color: cinematic amber #F0A33A. Typography: bold cinematic sans-serif title, clean documentary sans-serif body text, tabular numeric font, small restrained scientific labels. Details: realistic texture, dramatic lighting, volumetric depth, soft glow, subtle particles, documentary-quality finish.",
     suitableTopics: "AI系统、数据中心、芯片、城市系统、互联网、能源",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["ai系统", "数据中心", "芯片", "城市系统", "互联网", "能源", "架构", "模块"],
@@ -844,7 +863,7 @@ const styleOptions = [
     englishName: "Dark Premium Tech Style",
     fit: "Dark premium technology infographic system for polished data and AI-product visuals.",
     prompt:
-      "Use a dark premium technology style with a controlled 4-color palette. Main tone: deep navy black #060B14. Panel color: dark slate #151C28. Text and line color: cool white #F2F6FA. Accent color: electric cyan #39D5FF. Details: refined dark surfaces, subtle gradient lighting, soft edge glow, clean technical line icons, polished digital materials, precise typography, premium AI product visual finish.",
+      "Use a dark premium technology style. Main tone: deep navy black #060B14. Panel color: dark slate #151C28. Text and line color: cool white #F2F6FA. Accent color: electric cyan #39D5FF. Typography: sharp geometric sans-serif title, clean product UI sans-serif body text, tabular numeric font, compact technical labels. Details: refined dark surfaces, subtle gradient lighting, soft edge glow, clean technical line icons, polished digital materials, premium AI product visual finish.",
     suitableTopics: "AI产品、科技商业、数据摘要、芯片、云计算、财报、趋势解读",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["科技", "ai", "产品", "数据", "芯片", "云计算", "财报", "趋势", "信息图"],
@@ -857,7 +876,7 @@ const styleOptions = [
     englishName: "Minimal Flat Explainer Style",
     fit: "Technical linework and annotation discipline for engineering-style explanations.",
     prompt:
-      "Use a minimal flat explainer style with a controlled 4-color palette. Main tone: clean white #FFFFFF. Panel color: light gray #EEF1F4. Text and line color: neutral gray #606975. Accent color: bright blue #2F80FF. Details: flat vector shapes, simple geometry, crisp edges, large readable labels, low visual noise, consistent flat icons, clean educational diagram finish.",
+      "Use a minimal flat explainer style. Main tone: clean white #FFFFFF. Panel color: light gray #EEF1F4. Text and line color: neutral gray #606975. Accent color: bright blue #2F80FF. Typography: bold rounded sans-serif title, simple readable sans-serif body text, clean tabular numbers, large clear label typography. Details: flat vector shapes, simple geometry, crisp edges, low visual noise, consistent flat icons, clean diagram finish.",
     suitableTopics: "航空航天、机械、潜艇、机器人、军事科技、工程结构",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["航天", "机械", "潜艇", "机器人", "军事", "工程", "结构", "蓝图"],
@@ -870,7 +889,7 @@ const styleOptions = [
     englishName: "Refined Notebook Science Style",
     fit: "Clinical clarity with calm precision for anatomy and biological mechanisms.",
     prompt:
-      "Use a refined notebook science style with a controlled 4-color palette. Main tone: warm paper beige #F3E7D0. Panel color: light kraft paper #E6D1B3. Text and line color: pencil gray #4A4A4A. Accent color: muted olive #7A8F5A. Details: paper texture, delicate hand-drawn lines, neat sketch marks, underlines, small annotation symbols, soft shadows, organized notebook visual finish.",
+      "Use a refined notebook science style. Main tone: warm paper beige #F3E7D0. Panel color: light kraft paper #E6D1B3. Text and line color: pencil gray #4A4A4A. Accent color: muted olive #7A8F5A. Typography: neat hand-lettered title, tidy handwritten body text, clear handwritten numbers, small annotation-style labels. Details: paper texture, delicate hand-drawn lines, neat sketch marks, underlines, small annotation symbols, organized notebook visual finish.",
     suitableTopics: "心血管、人体器官、代谢、疾病机制、营养健康",
     carrierPriority: ["ppt", "video", "poster"],
     topicKeywords: ["心血管", "器官", "代谢", "疾病", "营养", "医学", "健康", "人体"],
@@ -883,7 +902,7 @@ const styleOptions = [
     englishName: "Premium Sketchnote Science Style",
     fit: "High-end editorial infographic polish for premium knowledge publication feel.",
     prompt:
-      "Use a premium sketchnote style with a controlled 4-color palette. Main tone: clean white #FFFFFF. Panel color: light gray #E8E8E8. Text and line color: black #111111. Accent color: clear orange #F28C28. Details: structured hand-drawn strokes, bold doodle icons, consistent line weight, circled keywords, emphasis marks, clean whiteboard visual finish.",
+      "Use a premium sketchnote style. Main tone: clean white #FFFFFF. Panel color: light gray #E8E8E8. Text and line color: black #111111. Accent color: clear orange #F28C28. Typography: bold hand-drawn marker title, neat hand-drawn sans-serif body text, simple handwritten numbers, compact annotation labels. Details: structured hand-drawn strokes, bold doodle icons, consistent line weight, circled keywords, emphasis marks, clean whiteboard visual finish.",
     suitableTopics: "商业分析、经济学、产业研究、AI趋势、社会议题",
     carrierPriority: ["ppt", "poster", "video"],
     topicKeywords: ["商业", "经济", "产业", "趋势", "社会", "市场", "报告", "分析"],
@@ -896,7 +915,7 @@ const styleOptions = [
     englishName: "Soft 3D Educational Style",
     fit: "Neat sketchnote educational style with structured visual-thinking flow.",
     prompt:
-      "Use a soft 3D educational style with a controlled 4-color palette. Main tone: warm light cream #FFF4DF. Panel color: warm white #FFFDF8. Text and line color: soft gray #5F6B76. Accent color: pastel blue #7DB7FF. Details: rounded 3D objects, smooth clay-like materials, gentle shadows, soft lighting, simple callout labels, rounded icons, polished educational 3D finish.",
+      "Use a soft 3D educational style. Main tone: warm light cream #FFF4DF. Panel color: warm white #FFFDF8. Text and line color: soft gray #5F6B76. Accent color: pastel blue #7DB7FF. Typography: rounded geometric sans-serif title, clean rounded sans-serif body text, clear tabular numbers, simple rounded label typography. Details: rounded 3D objects, smooth clay-like materials, gentle shadows, soft lighting, simple callout labels, rounded icons, polished educational 3D finish.",
     suitableTopics: "心理学、健康、生活科学、儿童科普、学习方法、认知科学、经济学入门",
     carrierPriority: ["poster", "ppt", "video"],
     topicKeywords: ["心理学", "健康", "生活科学", "儿童科普", "学习方法", "认知科学", "经济学", "入门"],
@@ -6472,6 +6491,15 @@ export default function WorkspacePage() {
       "fresh source",
     ]);
     const isFreshSourceGateActive = needsFreshSourcesClarify && !wantsContinuePublicOverview;
+    const manualInputShouldRestartEarlyFlow =
+      inputSource === "manual" &&
+      (flowStage === "intent" || flowStage === "config" || flowStage === "content") &&
+      !backNavigationCommand &&
+      !downloadCommand &&
+      !isEditCommand &&
+      !wantsContinuePublicOverview &&
+      !wantsFreshSourcePath &&
+      !(isConfigCommand && !hasDirectionHint && !likelyTopicText);
 
     if (backNavigationCommand) {
       pushAssistantMessage(
@@ -6529,6 +6557,32 @@ export default function WorkspacePage() {
         ),
         tr("Requirement Check", "需求确认"),
       );
+      stopThinking();
+      setIsSending(false);
+      return;
+    }
+
+    if (manualInputShouldRestartEarlyFlow) {
+      setTopicContextPrompt(value);
+      setManualIntent(null);
+      setSelectedTopicSuggestion(null);
+      setTopicSuggestionLocked(false);
+      setLockedTopicSuggestion(null);
+      setTopicSuggestionLockReason(null);
+      setConfigConfirmed(false);
+      setBillingConfirmed(false);
+      setConfirmedConfigSnapshot(null);
+      setEditableOutlineItems([]);
+      setEditableSlideDrafts([]);
+      setEditablePosterDraft(null);
+      setEditablePosterPlanList([]);
+      setIsDraftGenerationPending(false);
+      clearCurrentGenerationState("manual-new-input-before-draft");
+      setFlowStage("intent");
+      await requestIntentAnalysis(value, entrySources, {
+        force: true,
+        clearPrevious: true,
+      });
       stopThinking();
       setIsSending(false);
       return;
@@ -7021,7 +7075,11 @@ export default function WorkspacePage() {
         }
         actionsDisabled={!showStoryboard || (lockedCanvasMode === "ppt" && !isPptExportReady)}
         disabledPrimaryActionLabel={
-          lockedCanvasMode === "ppt" && !isPptExportReady ? "Generating slides..." : undefined
+          lockedCanvasMode === "ppt" && !isPptExportReady
+            ? generationProgressLabel
+              ? `Generating ${generationProgressLabel}`
+              : "Generating"
+            : undefined
         }
         isExportingPpt={isExportingPpt}
         isComposingVideo={isComposingVideo}
@@ -7156,7 +7214,7 @@ export default function WorkspacePage() {
                           : "Download poster",
                     downloadDisabledLabel: generationProgressLabel
                       ? `Generating ${generationProgressLabel}`
-                      : "Waiting for generation",
+                      : "Generating",
                     onToggleCanvas: handleToggleOutputCanvas,
                     onDownload: handleOutputSummaryDownload,
                   }}

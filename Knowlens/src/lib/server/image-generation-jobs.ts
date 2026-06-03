@@ -613,6 +613,119 @@ export async function getLatestImageGenerationJobByProject(input: {
   };
 }
 
+export async function listImageGenerationTaskHistoryByProject(input: {
+  userEmail: string;
+  projectId: string;
+  intent?: string | null;
+  maxPerPage?: number;
+}): Promise<ImageGenerationTaskRow[]> {
+  const userEmail = input.userEmail.trim().toLowerCase();
+  const projectId = normalizeOptionalText(input.projectId, 120);
+  const intent = normalizeOptionalText(input.intent || undefined, 48);
+  const maxPerPage = Math.max(1, Math.min(24, Math.round(input.maxPerPage || 12)));
+  if (!userEmail || !projectId) {
+    return [];
+  }
+
+  if (shouldUseBlobImageGenerationStore()) {
+    const indexPath = getImageGenerationProjectIndexPath(userEmail, projectId);
+    const index = await readBlobJson<StoredImageGenerationProjectIndex>(indexPath);
+    const jobIds = Array.from(
+      new Set([
+        ...(Array.isArray(index?.jobIds) ? index.jobIds : []),
+        typeof index?.jobId === "string" ? index.jobId : "",
+      ].filter(Boolean)),
+    );
+    if (jobIds.length === 0) {
+      return [];
+    }
+    const manifests = (await Promise.all(jobIds.map((jobId) => readStoredManifest(jobId)))).filter(
+      (manifest): manifest is StoredImageGenerationManifest => Boolean(manifest?.job),
+    );
+    const tasks = manifests
+      .filter((manifest) => {
+        if (manifest.job.userEmail.trim().toLowerCase() !== userEmail) {
+          return false;
+        }
+        if (manifest.job.projectId !== projectId) {
+          return false;
+        }
+        if (intent && manifest.job.intent !== intent) {
+          return false;
+        }
+        return true;
+      })
+      .flatMap((manifest) => manifest.tasks || [])
+      .filter(hasPersistedImageAsset)
+      .sort(compareProjectRestoreTasks);
+    const historyByIndex = new Map<number, ImageGenerationTaskRow[]>();
+    for (const task of tasks) {
+      if (!task.taskIndex) {
+        continue;
+      }
+      const history = historyByIndex.get(task.taskIndex) || [];
+      if (history.length >= maxPerPage) {
+        continue;
+      }
+      history.push(task);
+      historyByIndex.set(task.taskIndex, history);
+    }
+    return Array.from(historyByIndex.values())
+      .flat()
+      .sort(compareProjectRestoreTasks);
+  }
+
+  const { db } = getDb();
+  const rows = (intent
+    ? db
+        .prepare(
+          `SELECT t.*
+             FROM image_generation_tasks t
+             JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ?
+              AND j.project_id = ?
+              AND j.intent = ?
+              AND t.status = 'asset_ready'
+              AND t.render_url IS NOT NULL
+              AND t.render_url != ''
+              AND t.asset_path IS NOT NULL
+              AND t.asset_path != ''
+            ORDER BY t.task_index ASC, t.updated_at DESC, t.created_at DESC`,
+        )
+        .all(userEmail, projectId, intent)
+    : db
+        .prepare(
+          `SELECT t.*
+             FROM image_generation_tasks t
+             JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ?
+              AND j.project_id = ?
+              AND t.status = 'asset_ready'
+              AND t.render_url IS NOT NULL
+              AND t.render_url != ''
+              AND t.asset_path IS NOT NULL
+              AND t.asset_path != ''
+            ORDER BY t.task_index ASC, t.updated_at DESC, t.created_at DESC`,
+        )
+        .all(userEmail, projectId)) as Array<Record<string, unknown>>;
+  const historyByIndex = new Map<number, ImageGenerationTaskRow[]>();
+  for (const row of rows) {
+    const task = mapTaskRow(row);
+    if (!task.taskIndex) {
+      continue;
+    }
+    const history = historyByIndex.get(task.taskIndex) || [];
+    if (history.length >= maxPerPage) {
+      continue;
+    }
+    history.push(task);
+    historyByIndex.set(task.taskIndex, history);
+  }
+  return Array.from(historyByIndex.values())
+    .flat()
+    .sort(compareProjectRestoreTasks);
+}
+
 export async function updateImageGenerationJobStatus(input: {
   jobId: string;
   status: ImageGenerationJobStatus;
