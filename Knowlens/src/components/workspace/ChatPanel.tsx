@@ -758,7 +758,7 @@ export const ChatPanel = memo(function ChatPanel({
               event.stopPropagation();
               outputSummaryCard.onDownload();
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 sm:w-auto"
           >
             {outputSummaryCard.canDownload ? (
               <Download size={15} aria-hidden="true" />

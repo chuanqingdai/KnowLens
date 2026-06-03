@@ -5,8 +5,11 @@ import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Copy,
+  Crown,
   Download,
   LoaderCircle,
   LocateFixed,
@@ -53,6 +56,9 @@ type StoryboardCanvasProps = {
   >;
   generationInProgress?: boolean;
   onRetryGenerationTask?: (index: number) => void;
+  hasMembership?: boolean;
+  onRequestTtsUpgrade?: () => void;
+  imageAspectRatio?: string;
   onModeActionRegister?: (actions: {
     exportPpt: () => void;
     downloadVideo: () => void;
@@ -100,6 +106,8 @@ type CanvasSeedSlide = {
   title: string;
   body: string;
   visual: string;
+  imagePrompt?: string;
+  imagePromptDraft?: string;
   isCover?: boolean;
 };
 
@@ -144,8 +152,13 @@ const STORAGE_CLEAR_TOKEN_KEY = "knowlens.workspace.storyboard.clear-token.v1";
 const HISTORY_LIMIT = 60;
 const PPT_DOWNLOAD_FILENAME = "KnowLens.ai-visual-deck.pptx";
 
-const LENS_MODES = ["广角建立镜头", "剖面特写", "流程箭头跟拍", "对比双画面"];
-const TRANSITIONS = ["溶解", "推镜", "平移", "淡入淡出"];
+const LENS_MODES = [
+  "Wide establishing shot",
+  "Cutaway close-up",
+  "Process arrow tracking",
+  "Side-by-side comparison",
+];
+const TRANSITIONS = ["Dissolve", "Push in", "Pan", "Fade"];
 const CASE_IMAGES = Array.from({ length: 36 }, (_, idx) => `/case/${idx + 1}.png`);
 
 function isUsableImageSrc(src?: string | null) {
@@ -158,40 +171,213 @@ function getActiveImageSrc(history: string[] | undefined, activeIndex: number, f
   return safeHistory[activeIndex] ?? safeHistory[0] ?? (isUsableImageSrc(fallback) ? fallback : "");
 }
 
-const TTS_OPTIONS = [
-  { id: "openai-alloy", label: "Alloy", profile: "neutral" },
-  { id: "openai-nova", label: "Nova", profile: "female" },
-  { id: "azure-yunxi", label: "云希", profile: "female" },
-  { id: "elevenlabs-adam", label: "Adam", profile: "male" },
-  { id: "doubao-teen", label: "知新", profile: "youth" },
+type TtsTier = "basic" | "pro";
+type TtsProvider = "edge" | "openai";
+type TtsAgeGroup = "young_adult" | "adult" | "middle_aged" | "mature";
+
+type TtsVoiceConfig = {
+  id: string;
+  displayName: string;
+  tier: TtsTier;
+  provider: TtsProvider;
+  model?: string;
+  voiceName: string;
+  languageCode?: string;
+  gender: "male" | "female" | "neutral";
+  ageGroup: TtsAgeGroup;
+  description: string;
+  notes: string;
+  creditPer1000Chars: number;
+  profile: "male" | "female" | "neutral" | "youth";
+};
+
+const TTS_OPTIONS: TtsVoiceConfig[] = [
+  {
+    id: "basic_narrator_male",
+    displayName: "Owen",
+    tier: "basic",
+    provider: "edge",
+    voiceName: "en-US-GuyNeural",
+    languageCode: "en-US",
+    gender: "male",
+    ageGroup: "adult",
+    description: "Included voice for clear narration.",
+    notes: "Included male voice",
+    creditPer1000Chars: 1,
+    profile: "male",
+  },
+  {
+    id: "basic_narrator_female",
+    displayName: "Clara",
+    tier: "basic",
+    provider: "edge",
+    voiceName: "en-US-JennyNeural",
+    languageCode: "en-US",
+    gender: "female",
+    ageGroup: "adult",
+    description: "Included voice for friendly narration.",
+    notes: "Included female voice",
+    creditPer1000Chars: 1,
+    profile: "female",
+  },
+  {
+    id: "pro_documentary_male",
+    displayName: "Marcus",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "cedar",
+    gender: "male",
+    ageGroup: "middle_aged",
+    description: "Premium voice for serious explainers.",
+    notes: "Premium documentary voice",
+    creditPer1000Chars: 3,
+    profile: "male",
+  },
+  {
+    id: "pro_documentary_female",
+    displayName: "Marina",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "marin",
+    gender: "female",
+    ageGroup: "adult",
+    description: "Premium voice for polished explainers.",
+    notes: "Premium warm narrator",
+    creditPer1000Chars: 3,
+    profile: "female",
+  },
+  {
+    id: "pro_deep_science",
+    displayName: "Orion",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "onyx",
+    gender: "male",
+    ageGroup: "mature",
+    description: "Premium voice for science and history.",
+    notes: "Premium deep narrator",
+    creditPer1000Chars: 3,
+    profile: "male",
+  },
+  {
+    id: "pro_bright_explainer",
+    displayName: "Nova",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "nova",
+    gender: "female",
+    ageGroup: "young_adult",
+    description: "Premium voice for energetic short videos.",
+    notes: "Premium bright explainer",
+    creditPer1000Chars: 3,
+    profile: "youth",
+  },
+  {
+    id: "pro_neutral_tech",
+    displayName: "Echo",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "echo",
+    gender: "neutral",
+    ageGroup: "adult",
+    description: "Premium voice for AI and product topics.",
+    notes: "Premium tech voice",
+    creditPer1000Chars: 3,
+    profile: "neutral",
+  },
+  {
+    id: "pro_warm_host",
+    displayName: "Coral",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "coral",
+    gender: "female",
+    ageGroup: "young_adult",
+    description: "Premium voice for friendly social explainers.",
+    notes: "Premium friendly host",
+    creditPer1000Chars: 3,
+    profile: "youth",
+  },
+  {
+    id: "pro_calm_teacher",
+    displayName: "Sage",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "sage",
+    gender: "neutral",
+    ageGroup: "middle_aged",
+    description: "Premium voice for lessons and tutorials.",
+    notes: "Premium calm teacher",
+    creditPer1000Chars: 3,
+    profile: "neutral",
+  },
+  {
+    id: "pro_classic_storyteller",
+    displayName: "Fable",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "fable",
+    gender: "neutral",
+    ageGroup: "mature",
+    description: "Premium voice for narrative content.",
+    notes: "Premium storyteller",
+    creditPer1000Chars: 3,
+    profile: "neutral",
+  },
+  {
+    id: "pro_soft_presenter",
+    displayName: "Shimmer",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "shimmer",
+    gender: "female",
+    ageGroup: "adult",
+    description: "Premium voice for relaxed education.",
+    notes: "Premium soft presenter",
+    creditPer1000Chars: 3,
+    profile: "female",
+  },
+  {
+    id: "pro_balanced_narrator",
+    displayName: "Alloy",
+    tier: "pro",
+    provider: "openai",
+    voiceName: "alloy",
+    gender: "neutral",
+    ageGroup: "adult",
+    description: "Premium general-purpose narration.",
+    notes: "Premium balanced narrator",
+    creditPer1000Chars: 3,
+    profile: "neutral",
+  },
 ];
 
-const DEFAULT_EMOTION_TTS_ID = "doubao-teen";
-const COMPOSE_STEPS: { key: ComposeStepKey; title: string; description: string }[] = [
-  {
-    key: "prepare",
-    title: "Prepare export",
-    description: "Set up the canvas, encoder, and output settings.",
-  },
-  {
-    key: "tts",
-    title: "Prepare narration",
-    description: "Create or load narration audio for each scene.",
-  },
-  {
-    key: "render",
-    title: "Render scenes",
-    description: "Render each storyboard image with its audio track.",
-  },
-  {
-    key: "finalize",
-    title: "Finalize file",
-    description: "Package the final downloadable video preview.",
-  },
-];
+const TTS_OPTION_IDS = new Set(TTS_OPTIONS.map((option) => option.id));
+const DEFAULT_EMOTION_TTS_ID = "basic_narrator_female";
 
 function buildPrompt(title: string, visual: string) {
-  return `${title}，科普教学插画，构图清晰，知识图解风，16:9，重点表现：${visual}`;
+  return visual.trim() || title.trim();
+}
+
+function buildPromptFromSeed(seedSlide: CanvasSeedSlide) {
+  return (
+    seedSlide.imagePromptDraft?.trim() ||
+    seedSlide.imagePrompt?.trim() ||
+    buildPrompt(seedSlide.title, seedSlide.visual)
+  );
+}
+
+function isLegacyAutoPrompt(currentPrompt: string, slide: SlideItem) {
+  const current = currentPrompt.trim();
+  if (!current) {
+    return true;
+  }
+  if (current.includes("科普教学插画") || current.includes("知识图解风")) {
+    return true;
+  }
+  const title = slide.title.trim();
+  const visual = slide.visual.trim();
+  return Boolean(visual && current === visual) || Boolean(title && current === title);
 }
 
 function toConciseImageErrorMessage(error?: string) {
@@ -273,7 +459,8 @@ function createInitialCanvasState(seedCount = 6): PersistedCanvasState {
 }
 
 function createCanvasStateFromSeed(seedSlides: CanvasSeedSlide[]): PersistedCanvasState {
-  const baseSlides = buildSlides(seedSlides.length ? seedSlides : buildSeedSlides(1));
+  const normalizedSeedSlides = seedSlides.length ? seedSlides : buildSeedSlides(1);
+  const baseSlides = buildSlides(normalizedSeedSlides);
   return {
     version: 1,
     slides: baseSlides,
@@ -281,7 +468,10 @@ function createCanvasStateFromSeed(seedSlides: CanvasSeedSlide[]): PersistedCanv
       baseSlides.map((slide) => [slide.id, DEFAULT_EMOTION_TTS_ID]),
     ),
     promptBySlideId: Object.fromEntries(
-      baseSlides.map((slide) => [slide.id, buildPrompt(slide.title, slide.visual)]),
+      baseSlides.map((slide, idx) => [
+        slide.id,
+        buildPromptFromSeed(normalizedSeedSlides[idx] ?? slide),
+      ]),
     ),
     imageHistoryBySlideId: Object.fromEntries(
       baseSlides.map((slide) => [slide.id, []]),
@@ -300,8 +490,11 @@ function sanitizeCanvasState(state: PersistedCanvasState): PersistedCanvasState 
   const historyOpenBySlideId: Record<string, boolean> = {};
 
   state.slides.forEach((slide, idx) => {
+    const persistedTtsId = state.ttsBySlideId[slide.id];
     ttsBySlideId[slide.id] =
-      state.ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
+      persistedTtsId && TTS_OPTION_IDS.has(persistedTtsId)
+        ? persistedTtsId
+        : DEFAULT_EMOTION_TTS_ID;
     promptBySlideId[slide.id] =
       state.promptBySlideId[slide.id] ?? buildPrompt(slide.title, slide.visual);
     const history = state.imageHistoryBySlideId[slide.id] ?? [];
@@ -403,6 +596,27 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function parseAspectRatioValue(value?: string | null) {
+  const match = (value || "").match(/(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)/);
+  if (!match) {
+    return "16 / 9";
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return "16 / 9";
+  }
+  return `${width} / ${height}`;
+}
+
+function estimateNarrationDurationSec(text: string) {
+  const compactLength = text.trim().replace(/\s+/g, "").length;
+  if (!compactLength) {
+    return 0;
+  }
+  return clamp(Math.ceil(compactLength / 5), 10, 36);
+}
+
 export function StoryboardCanvas({
   onSaveStateChange,
   canvasModeExternal,
@@ -414,11 +628,16 @@ export function StoryboardCanvas({
   generationTaskStateByIndex,
   generationInProgress = false,
   onRetryGenerationTask,
+  hasMembership = false,
+  onRequestTtsUpgrade,
+  imageAspectRatio = "16:9",
   onModeActionRegister,
 }: StoryboardCanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const cancelPreviewRef = useRef(false);
   const audioTokenRef = useRef(0);
+  const audioPausedRef = useRef(false);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const composedVideoUrlRef = useRef<string | null>(null);
   const exportedPptUrlRef = useRef<string | null>(null);
   const generatedAudioRef = useRef<Record<string, GeneratedAudioMeta>>({});
@@ -478,12 +697,21 @@ export function StoryboardCanvas({
   const [playingAudioSlideId, setPlayingAudioSlideId] = useState<string | null>(
     null,
   );
+  const [pausedAudioSlideId, setPausedAudioSlideId] = useState<string | null>(
+    null,
+  );
   const [audioProgressBySlideId, setAudioProgressBySlideId] = useState<
+    Record<string, number>
+  >({});
+  const [audioDurationBySlideId, setAudioDurationBySlideId] = useState<
     Record<string, number>
   >({});
   const [generatedAudioBySlideId, setGeneratedAudioBySlideId] = useState<
     Record<string, GeneratedAudioMeta>
   >({});
+  const [openTtsMenuSlideId, setOpenTtsMenuSlideId] = useState<string | null>(
+    null,
+  );
   const [showComposeModal, setShowComposeModal] = useState(false);
   const [composeStatus, setComposeStatus] = useState<ComposeStatus>("idle");
   const [composeSteps, setComposeSteps] = useState<
@@ -520,9 +748,12 @@ export function StoryboardCanvas({
   const promptBySlideId = present.promptBySlideId;
   const imageHistoryBySlideId = present.imageHistoryBySlideId;
   const activeImageIndexBySlideId = present.activeImageIndexBySlideId;
-  const historyOpenBySlideId = present.historyOpenBySlideId;
 
   const canvasMode: CanvasMode = canvasModeExternal ?? "free";
+  const resolvedImageAspectRatio = useMemo(
+    () => parseAspectRatioValue(imageAspectRatio),
+    [imageAspectRatio],
+  );
   const pptExportReady = useMemo(() => {
     if (canvasMode !== "ppt" || !slides.length) {
       return false;
@@ -578,6 +809,47 @@ export function StoryboardCanvas({
     setSaveState("saved");
     setHasUnsavedChanges(false);
   }, [generationClearToken, generationSeedSlides]);
+
+  useEffect(() => {
+    if (!generationSeedSlides?.length) {
+      return;
+    }
+    const seedPromptByIndex = new Map<number, string>();
+    generationSeedSlides.forEach((seedSlide, idx) => {
+      const prompt = (seedSlide.imagePromptDraft || seedSlide.imagePrompt || "").trim();
+      if (prompt) {
+        seedPromptByIndex.set(idx, prompt);
+      }
+    });
+    if (!seedPromptByIndex.size) {
+      return;
+    }
+    setHistory((prev) => {
+      let changed = false;
+      const nextPromptBySlideId = { ...prev.present.promptBySlideId };
+      prev.present.slides.forEach((slide, idx) => {
+        const seedPrompt = seedPromptByIndex.get(idx);
+        if (!seedPrompt) {
+          return;
+        }
+        const currentPrompt = nextPromptBySlideId[slide.id] || "";
+        if (currentPrompt.trim() !== seedPrompt && isLegacyAutoPrompt(currentPrompt, slide)) {
+          nextPromptBySlideId[slide.id] = seedPrompt;
+          changed = true;
+        }
+      });
+      if (!changed) {
+        return prev;
+      }
+      return {
+        ...prev,
+        present: {
+          ...prev.present,
+          promptBySlideId: nextPromptBySlideId,
+        },
+      };
+    });
+  }, [generationSeedSlides]);
 
   useEffect(() => {
     hasAutoFocusedFirstSlideRef.current = false;
@@ -801,16 +1073,117 @@ export function StoryboardCanvas({
     async (slideId: string, text: string, ttsId: string) => {
       audioTokenRef.current += 1;
       const token = audioTokenRef.current;
+      const generatedAudio = generatedAudioRef.current[slideId];
+      const estimatedDurationSec =
+        generatedAudio?.durationSec || estimateNarrationDurationSec(text);
+      audioPausedRef.current = false;
+      audioPreviewRef.current?.pause();
+      audioPreviewRef.current = null;
       setPlayingAudioSlideId(slideId);
+      setPausedAudioSlideId(null);
       setAudioProgressBySlideId((prev) => ({ ...prev, [slideId]: 0 }));
+      setAudioDurationBySlideId((prev) => ({
+        ...prev,
+        [slideId]: estimatedDurationSec,
+      }));
+
+      if (generatedAudio?.status === "ready" && generatedAudio.url) {
+        await new Promise<void>((resolve) => {
+          const audio = new Audio(generatedAudio.url);
+          audioPreviewRef.current = audio;
+          audio.preload = "metadata";
+
+          const finish = () => {
+            if (token !== audioTokenRef.current) {
+              resolve();
+              return;
+            }
+            const durationSec =
+              Number.isFinite(audio.duration) && audio.duration > 0
+                ? audio.duration
+                : estimatedDurationSec;
+            setAudioDurationBySlideId((prev) => ({
+              ...prev,
+              [slideId]: durationSec,
+            }));
+            setAudioProgressBySlideId((prev) => ({
+              ...prev,
+              [slideId]: durationSec,
+            }));
+            resolve();
+          };
+
+          audio.onloadedmetadata = () => {
+            if (token !== audioTokenRef.current) {
+              return;
+            }
+            const durationSec =
+              Number.isFinite(audio.duration) && audio.duration > 0
+                ? audio.duration
+                : estimatedDurationSec;
+            setAudioDurationBySlideId((prev) => ({
+              ...prev,
+              [slideId]: durationSec,
+            }));
+          };
+
+          audio.ontimeupdate = () => {
+            if (token !== audioTokenRef.current) {
+              return;
+            }
+            const durationSec =
+              Number.isFinite(audio.duration) && audio.duration > 0
+                ? audio.duration
+                : estimatedDurationSec;
+            setAudioDurationBySlideId((prev) => ({
+              ...prev,
+              [slideId]: durationSec,
+            }));
+            setAudioProgressBySlideId((prev) => ({
+              ...prev,
+              [slideId]: clamp(audio.currentTime, 0, durationSec),
+            }));
+          };
+
+          audio.onended = finish;
+          audio.onerror = () => resolve();
+          void audio.play().catch(() => resolve());
+        });
+
+        if (token === audioTokenRef.current) {
+          setPlayingAudioSlideId(null);
+          audioPreviewRef.current = null;
+        }
+        return;
+      }
 
       if (!("speechSynthesis" in window)) {
-        for (let pct = 0; pct <= 100; pct += 8) {
+        const durationSec = estimatedDurationSec || 12;
+        const startedAt = performance.now();
+        let totalPausedMs = 0;
+        let pausedAt: number | null = null;
+        const getElapsedSec = () => {
+          if (audioPausedRef.current) {
+            pausedAt ??= performance.now();
+          } else if (pausedAt !== null) {
+            totalPausedMs += performance.now() - pausedAt;
+            pausedAt = null;
+          }
+          return (performance.now() - startedAt - totalPausedMs) / 1000;
+        };
+        while (true) {
           if (token !== audioTokenRef.current) {
             return;
           }
-          setAudioProgressBySlideId((prev) => ({ ...prev, [slideId]: pct }));
-          await sleep(140);
+          const elapsedSec = getElapsedSec();
+          setAudioProgressBySlideId((prev) => ({
+            ...prev,
+            [slideId]: clamp(elapsedSec, 0, durationSec),
+          }));
+          if (elapsedSec >= durationSec) {
+            break;
+          }
+          await sleep(120);
         }
         setPlayingAudioSlideId(null);
         return;
@@ -822,7 +1195,7 @@ export function StoryboardCanvas({
         const selectedProfile =
           TTS_OPTIONS.find((item) => item.id === ttsId)?.profile ?? "neutral";
         const utterance = new SpeechSynthesisUtterance(
-          text || "请先填写旁白文案，再试听音轨。",
+          text || "Add narration before previewing audio.",
         );
         utterance.lang = "zh-CN";
         utterance.rate = selectedProfile === "youth" ? 1.08 : 1;
@@ -834,27 +1207,55 @@ export function StoryboardCanvas({
               : 1;
         utterance.volume = 1;
 
+        const durationSec = estimatedDurationSec || 12;
+        const startedAt = performance.now();
+        let totalPausedMs = 0;
+        let pausedAt: number | null = null;
+        const getElapsedSec = () => {
+          if (audioPausedRef.current) {
+            pausedAt ??= performance.now();
+          } else if (pausedAt !== null) {
+            totalPausedMs += performance.now() - pausedAt;
+            pausedAt = null;
+          }
+          return (performance.now() - startedAt - totalPausedMs) / 1000;
+        };
         const fallbackTimer = window.setInterval(() => {
+          if (token !== audioTokenRef.current) {
+            window.clearInterval(fallbackTimer);
+            return;
+          }
+          const elapsedSec = getElapsedSec();
           setAudioProgressBySlideId((prev) => {
-            const current = prev[slideId] ?? 0;
-            const next = current >= 96 ? 96 : current + 6;
-            return { ...prev, [slideId]: next };
+            return { ...prev, [slideId]: clamp(elapsedSec, 0, durationSec) };
           });
-        }, 200);
+        }, 120);
 
         utterance.onboundary = (event) => {
           if (token !== audioTokenRef.current) {
             return;
           }
           const total = Math.max(1, utterance.text.length);
-          const pct = Math.min(100, Math.round((event.charIndex / total) * 100));
-          setAudioProgressBySlideId((prev) => ({ ...prev, [slideId]: pct }));
+          const nextSec = (event.charIndex / total) * durationSec;
+          setAudioProgressBySlideId((prev) => ({
+            ...prev,
+            [slideId]: Math.max(prev[slideId] ?? 0, nextSec),
+          }));
         };
 
         utterance.onend = () => {
           window.clearInterval(fallbackTimer);
-          setAudioProgressBySlideId((prev) => ({ ...prev, [slideId]: 100 }));
-          resolve();
+          const elapsedSec = getElapsedSec();
+          const remainingMs = Math.max(0, durationSec - elapsedSec) * 1000;
+          window.setTimeout(() => {
+            if (token === audioTokenRef.current) {
+              setAudioProgressBySlideId((prev) => ({
+                ...prev,
+                [slideId]: durationSec,
+              }));
+            }
+            resolve();
+          }, remainingMs);
         };
 
         utterance.onerror = () => {
@@ -867,6 +1268,7 @@ export function StoryboardCanvas({
 
       if (token === audioTokenRef.current) {
         setPlayingAudioSlideId(null);
+        setPausedAudioSlideId(null);
       }
     },
     [sleep],
@@ -874,24 +1276,18 @@ export function StoryboardCanvas({
 
   const stopAllAudio = useCallback(() => {
     audioTokenRef.current += 1;
+    audioPausedRef.current = false;
+    audioPreviewRef.current?.pause();
+    audioPreviewRef.current = null;
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
     setPlayingAudioSlideId(null);
+    setPausedAudioSlideId(null);
   }, []);
 
-  const normalizeTtsToLocalVoice = useCallback((ttsId: string) => {
-    const isZhVoice = /yunxi|doubao|zh|cn/i.test(ttsId);
-    if (isZhVoice) {
-      return "Ting-Ting";
-    }
-    if (/nova/i.test(ttsId)) {
-      return "Samantha";
-    }
-    if (/adam/i.test(ttsId)) {
-      return "Daniel";
-    }
-    return "Samantha";
+  const normalizeTtsVoiceId = useCallback((ttsId: string) => {
+    return TTS_OPTION_IDS.has(ttsId) ? ttsId : DEFAULT_EMOTION_TTS_ID;
   }, []);
 
   const synthesizeSceneAudioFromApi = useCallback(
@@ -907,12 +1303,12 @@ export function StoryboardCanvas({
         },
         body: JSON.stringify({
           text,
-          voice: normalizeTtsToLocalVoice(ttsId),
+          voice: normalizeTtsVoiceId(ttsId),
         }),
       });
 
       if (!response.ok) {
-        throw new Error("TTS 生成失败");
+        throw new Error("TTS generation failed");
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -924,7 +1320,7 @@ export function StoryboardCanvas({
         await audioContext.close();
       }
     },
-    [normalizeTtsToLocalVoice],
+    [normalizeTtsVoiceId],
   );
 
   const getAudioDurationFromBlob = useCallback((blob: Blob) => {
@@ -955,7 +1351,7 @@ export function StoryboardCanvas({
         return existing;
       }
       if (!body.trim()) {
-        throw new Error("请先填写旁白文案");
+        throw new Error("Add narration before generating audio");
       }
 
       setGeneratedAudioBySlideId((prev) => ({
@@ -974,16 +1370,26 @@ export function StoryboardCanvas({
         },
         body: JSON.stringify({
           text: body,
-          voice: normalizeTtsToLocalVoice(ttsId),
+          voice: normalizeTtsVoiceId(ttsId),
         }),
       });
       if (!response.ok) {
-        throw new Error("音轨生成失败");
+        throw new Error("Audio generation failed");
       }
 
       const audioBlob = await response.blob();
       const nextUrl = URL.createObjectURL(audioBlob);
       const durationSec = await getAudioDurationFromBlob(audioBlob);
+      const fallbackDurationSec = estimateNarrationDurationSec(body) || 12;
+      const readyAudio = {
+        url: nextUrl,
+        durationSec: durationSec || fallbackDurationSec,
+        status: "ready" as const,
+      };
+      generatedAudioRef.current = {
+        ...generatedAudioRef.current,
+        [slideId]: readyAudio,
+      };
 
       setGeneratedAudioBySlideId((prev) => {
         const oldUrl = prev[slideId]?.url;
@@ -992,26 +1398,23 @@ export function StoryboardCanvas({
         }
         return {
           ...prev,
-          [slideId]: {
-            url: nextUrl,
-            durationSec: durationSec || Math.max(2.2, Math.min(12, body.length / 8)),
-            status: "ready",
-          },
+          [slideId]: readyAudio,
         };
       });
 
-      return {
-        url: nextUrl,
-        durationSec: durationSec || Math.max(2.2, Math.min(12, body.length / 8)),
-        status: "ready" as const,
-      };
+      return readyAudio;
     },
-    [generatedAudioBySlideId, getAudioDurationFromBlob, normalizeTtsToLocalVoice],
+    [generatedAudioBySlideId, getAudioDurationFromBlob, normalizeTtsVoiceId],
   );
 
   const previewAudioForSlide = useCallback(
     async (slideId: string, body: string) => {
       const ttsId = ttsBySlideId[slideId] ?? DEFAULT_EMOTION_TTS_ID;
+      const selectedOption = TTS_OPTIONS.find((item) => item.id === ttsId);
+      if (selectedOption?.provider === "openai" && !hasMembership) {
+        onRequestTtsUpgrade?.();
+        return;
+      }
       try {
         await ensureAudioFileForSlide(slideId, body, ttsId);
       } catch (error) {
@@ -1021,13 +1424,72 @@ export function StoryboardCanvas({
             url: prev[slideId]?.url ?? "",
             durationSec: prev[slideId]?.durationSec ?? 0,
             status: "error",
-            error: error instanceof Error ? error.message : "音轨生成失败",
+            error: error instanceof Error ? error.message : "Audio generation failed",
           },
         }));
       }
       await playTtsWithProgress(slideId, body, ttsId);
     },
-    [ensureAudioFileForSlide, playTtsWithProgress, ttsBySlideId],
+    [
+      ensureAudioFileForSlide,
+      hasMembership,
+      onRequestTtsUpgrade,
+      playTtsWithProgress,
+      ttsBySlideId,
+    ],
+  );
+
+  const pauseAudioForSlide = useCallback(
+    (slideId: string) => {
+      if (playingAudioSlideId !== slideId) {
+        return;
+      }
+      audioPausedRef.current = true;
+      audioPreviewRef.current?.pause();
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.pause();
+      }
+      setPlayingAudioSlideId(null);
+      setPausedAudioSlideId(slideId);
+    },
+    [playingAudioSlideId],
+  );
+
+  const resumeAudioForSlide = useCallback((slideId: string) => {
+    audioPausedRef.current = false;
+    if (audioPreviewRef.current) {
+      void audioPreviewRef.current.play().catch(() => {
+        audioTokenRef.current += 1;
+        setPlayingAudioSlideId(null);
+        setPausedAudioSlideId(null);
+      });
+    }
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.resume();
+    }
+    setPausedAudioSlideId(null);
+    setPlayingAudioSlideId(slideId);
+  }, []);
+
+  const toggleAudioPreviewForSlide = useCallback(
+    (slideId: string, text: string) => {
+      if (playingAudioSlideId === slideId) {
+        pauseAudioForSlide(slideId);
+        return;
+      }
+      if (pausedAudioSlideId === slideId) {
+        resumeAudioForSlide(slideId);
+        return;
+      }
+      void previewAudioForSlide(slideId, text);
+    },
+    [
+      pauseAudioForSlide,
+      pausedAudioSlideId,
+      playingAudioSlideId,
+      previewAudioForSlide,
+      resumeAudioForSlide,
+    ],
   );
 
   const addSlideAfter = useCallback(
@@ -1043,7 +1505,7 @@ export function StoryboardCanvas({
         const nextSlide: SlideItem = {
           id: newId,
           page: base.page + 1,
-          title: "新分镜标题",
+          title: "New Scene",
           body: "",
           visual: "",
         };
@@ -1062,7 +1524,7 @@ export function StoryboardCanvas({
           },
           promptBySlideId: {
             ...prev.promptBySlideId,
-            [newId]: buildPrompt("新分镜标题", "待补充视觉描述"),
+            [newId]: buildPrompt("New Scene", "Add a visual direction"),
           },
           imageHistoryBySlideId: {
             ...prev.imageHistoryBySlideId,
@@ -1247,19 +1709,6 @@ export function StoryboardCanvas({
     [commitChange],
   );
 
-  const toggleHistoryPanel = useCallback(
-    (slideId: string) => {
-      commitChange((prev) => ({
-        ...prev,
-        historyOpenBySlideId: {
-          ...prev.historyOpenBySlideId,
-          [slideId]: !prev.historyOpenBySlideId[slideId],
-        },
-      }));
-    },
-    [commitChange],
-  );
-
   const updateSlide = useCallback(
     (slideId: string, key: "title" | "body" | "visual", value: string) => {
       commitChange((prev) => ({
@@ -1286,6 +1735,12 @@ export function StoryboardCanvas({
 
   const updateTtsForSlide = useCallback(
     (slideId: string, ttsId: string) => {
+      const selectedOption = TTS_OPTIONS.find((item) => item.id === ttsId);
+      if (selectedOption?.provider === "openai" && !hasMembership) {
+        setOpenTtsMenuSlideId(null);
+        onRequestTtsUpgrade?.();
+        return;
+      }
       commitChange((prev) => ({
         ...prev,
         ttsBySlideId: {
@@ -1293,8 +1748,9 @@ export function StoryboardCanvas({
           [slideId]: ttsId,
         },
       }));
+      setOpenTtsMenuSlideId(null);
     },
-    [commitChange],
+    [commitChange, hasMembership, onRequestTtsUpgrade],
   );
 
   const updatePromptForSlide = useCallback(
@@ -1824,15 +2280,15 @@ export function StoryboardCanvas({
     const result: Record<string, ValidationIssue> = {};
     slides.forEach((slide) => {
       const issue: ValidationIssue = {};
-      if (!slide.body.trim()) {
-        issue.body = "请补充旁白文案";
+      if (!slide.isCover && !slide.body.trim()) {
+        issue.body = "Add narration text";
       }
       if (!slide.visual.trim()) {
-        issue.visual = "请补充视觉构图";
+        issue.visual = "Add a visual direction";
       }
       const prompt = promptBySlideId[slide.id] ?? "";
       if (!prompt.trim()) {
-        issue.prompt = "请补充分镜提示词";
+        issue.prompt = "Add an image prompt";
       }
       if (issue.body || issue.visual || issue.prompt) {
         result[slide.id] = issue;
@@ -1854,16 +2310,20 @@ export function StoryboardCanvas({
   }, [focusSlide, invalidSlideIds]);
 
   const edges = useMemo<Edge[]>(
-    () =>
-      slides.map((slide) => ({
+    () => {
+      if (canvasMode === "free") {
+        return [];
+      }
+      return slides.map((slide) => ({
         id: `story-image-${slide.id}`,
         source: `story-${slide.id}`,
         target: `image-${slide.id}`,
         type: "smoothstep",
         animated: false,
         style: { stroke: "#71717a", strokeWidth: 1.4 },
-      })),
-    [slides],
+      }));
+    },
+    [canvasMode, slides],
   );
 
   const nodes = useMemo<Node[]>(
@@ -1902,9 +2362,9 @@ export function StoryboardCanvas({
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
-                    分镜 {slide.page.toString().padStart(2, "0")}
+                    Scene {slide.page.toString().padStart(2, "0")}
                   </span>
-                  <span className="text-xs text-zinc-500">建议时长 15-20 秒</span>
+                  <span className="text-xs text-zinc-500">Suggested duration 15-20s</span>
                 </div>
 
                 <input
@@ -1918,7 +2378,7 @@ export function StoryboardCanvas({
                 <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200">
                   <div className="grid grid-cols-[86px_minmax(0,1fr)] text-xs">
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      旁白文案
+                      Narration
                     </p>
                     <textarea
                       value={slide.body}
@@ -1930,13 +2390,13 @@ export function StoryboardCanvas({
                       }`}
                     />
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      画面目标
+                      Visual goal
                     </p>
                     <p className="border-b border-zinc-200 px-2 py-2 leading-5 text-zinc-700">
-                      讲清“{slide.title.replace("？", "") || "当前主题"}”的核心机制，便于课堂理解。
+                      Explain the core idea of "{slide.title.replace("?", "") || "this scene"}" clearly.
                     </p>
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      视觉构图
+                      Composition
                     </p>
                     <textarea
                       value={slide.visual}
@@ -1948,22 +2408,22 @@ export function StoryboardCanvas({
                       }`}
                     />
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      镜头与动效
+                      Camera & motion
                     </p>
                     <p className="border-b border-zinc-200 px-2 py-2 text-zinc-700">
-                      {lensMode}，关键节点使用箭头与高亮脉冲提示。
+                      {lensMode}; highlight key moments with arrows and subtle pulses.
                     </p>
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      屏幕文字
+                      On-screen text
                     </p>
                     <p className="border-b border-zinc-200 px-2 py-2 text-zinc-700">
-                      标题 + 2-3 条关键词（每条不超过 14 字）
+                      Title plus 2-3 short keywords.
                     </p>
                     <p className="border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      转场
+                      Transition
                     </p>
                     <p className="px-2 py-2 text-zinc-700">
-                      {transition}，进入下一页前保留 0.4 秒停顿。
+                      {transition}; keep a short pause before the next scene.
                     </p>
                   </div>
                 </div>
@@ -1981,7 +2441,7 @@ export function StoryboardCanvas({
                     className="nodrag nopan nowheel inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-100"
                   >
                     <Plus size={12} />
-                    添加分镜内容
+                    Add scene
                   </button>
                 </div>
               </div>
@@ -1997,7 +2457,7 @@ export function StoryboardCanvas({
         const imageHistory = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeImageIndex = activeImageIndexBySlideId[slide.id] ?? 0;
         const storyboardImage = getActiveImageSrc(imageHistory, activeImageIndex, generationState?.imageUrl);
-        const historyOpen = historyOpenBySlideId[slide.id] ?? false;
+        const shouldShowImageHistory = imageHistory.length > 1;
         const isGeneratingImage =
           generationState?.status === "queued" ||
           generationState?.status === "generating" ||
@@ -2007,14 +2467,39 @@ export function StoryboardCanvas({
         const selectedTts = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
         const selectedTtsOption =
           TTS_OPTIONS.find((item) => item.id === selectedTts) ?? TTS_OPTIONS[0];
-        const audioFile = `scene-${slide.page.toString().padStart(2, "0")}-${selectedTts}.mp3`;
-        const audioDuration = `${14 + (idx % 4) * 2}s`;
+        const generatedAudio = generatedAudioBySlideId[slide.id];
         const imagePrompt =
           promptBySlideId[slide.id] ?? buildPrompt(slide.title, slide.visual);
         const isPromptEditing = editingPromptSlideId === slide.id;
-        const hasNarration = slide.body.trim().length > 0;
+        const narrationText = slide.isCover ? "" : slide.body;
+        const hasNarration = narrationText.trim().length > 0;
         const isNodeSelected = selectedSlideId === slide.id;
-        const playingProgress = clamp(audioProgressBySlideId[slide.id] ?? 0, 0, 100);
+        const isAudioPlaying = playingAudioSlideId === slide.id;
+        const isAudioPaused = pausedAudioSlideId === slide.id;
+        const audioPreviewLabel = isAudioPlaying
+          ? "Pause"
+          : isAudioPaused
+            ? "Resume"
+            : "Preview";
+        const audioDurationSec = Math.max(
+          0,
+          generatedAudio?.durationSec ||
+            audioDurationBySlideId[slide.id] ||
+            estimateNarrationDurationSec(narrationText),
+        );
+        const currentAudioSec = clamp(
+          audioProgressBySlideId[slide.id] ?? 0,
+          0,
+          audioDurationSec || 1,
+        );
+        const playingProgress =
+          audioDurationSec > 0 ? (currentAudioSec / audioDurationSec) * 100 : 0;
+        const audioTimeLabel =
+          audioDurationSec > 0
+            ? `${formatDuration(currentAudioSec)} / ${formatDuration(audioDurationSec)}`
+            : "00:00 / 00:00";
+        const audioDurationLabel =
+          audioDurationSec > 0 ? `${Math.round(audioDurationSec)}s` : "";
         const waveformScale =
           selectedTtsOption.profile === "male"
             ? 1.2
@@ -2024,12 +2509,12 @@ export function StoryboardCanvas({
 
         return {
           id: `image-${slide.id}`,
-          position: { x: idx * 460, y: 570 },
+          position: { x: idx * 460, y: canvasMode === "free" ? 44 : 570 },
           extent: [
-            [-100000, 520],
-            [100000, 980],
+            [-100000, canvasMode === "free" ? 24 : 520],
+            [100000, canvasMode === "free" ? 520 : 980],
           ] as [[number, number], [number, number]],
-          targetPosition: Position.Top,
+          targetPosition: canvasMode === "free" ? undefined : Position.Top,
           style: {
             border: "none",
             background: "transparent",
@@ -2040,7 +2525,7 @@ export function StoryboardCanvas({
           data: {
             label: (
               <div
-                className={`w-[380px] overflow-hidden rounded-xl border bg-white shadow-sm transition ${
+                className={`w-[380px] overflow-visible rounded-xl border bg-white shadow-sm transition ${
                   activePreviewSlideId === slide.id
                     ? "border-zinc-900 ring-2 ring-zinc-900/20"
                     : isNodeSelected
@@ -2049,25 +2534,35 @@ export function StoryboardCanvas({
                 }`}
               >
                 <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 text-xs">
-                  <span className="text-zinc-500">分镜图片 {slide.page.toString().padStart(2, "0")}</span>
-                  <span className="text-zinc-400">版本 v{activeImageIndex + 1}</span>
+                  <span className="text-zinc-500">
+                    Scene Image {slide.page.toString().padStart(2, "0")}
+                    {slide.isCover ? " (Video cover)" : ""}
+                  </span>
                 </div>
 
                 <div className="px-3 pt-3">
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
                     <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>A 轴 · 画面轨</span>
-                      <span>{audioDuration}</span>
+                      <span>A Track · Visual</span>
+                      <span>{audioDurationLabel}</span>
                     </div>
                     {storyboardImage && !isGeneratingImage ? (
-                      <img
-                        src={storyboardImage}
-                        alt={`分镜${slide.page}参考图`}
-                        className="h-[212px] w-full rounded object-cover"
-                        loading="lazy"
-                      />
+                      <div
+                        className="flex w-full items-center justify-center overflow-hidden rounded bg-white"
+                        style={{ aspectRatio: resolvedImageAspectRatio }}
+                      >
+                        <img
+                          src={storyboardImage}
+                          alt={`Scene ${slide.page} reference image`}
+                          className="h-full w-full object-contain"
+                          loading="lazy"
+                        />
+                      </div>
                     ) : isGenerationFailed ? (
-                      <div className="flex h-[212px] w-full items-center justify-center rounded bg-white px-4">
+                      <div
+                        className="flex w-full items-center justify-center rounded bg-white px-4"
+                        style={{ aspectRatio: resolvedImageAspectRatio }}
+                      >
                         <div className="max-w-[230px] rounded-lg border border-red-100 bg-white px-4 py-3 text-center shadow-sm">
                           <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600">
                             <AlertCircle size={14} />
@@ -2091,14 +2586,20 @@ export function StoryboardCanvas({
                         </div>
                       </div>
                     ) : isGeneratingImage ? (
-                      <div className="flex h-[212px] w-full items-center justify-center rounded bg-white text-xs text-zinc-600">
+                      <div
+                        className="flex w-full items-center justify-center rounded bg-white text-xs text-zinc-600"
+                        style={{ aspectRatio: resolvedImageAspectRatio }}
+                      >
                         <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 shadow-sm">
                           <LoaderCircle size={12} className="animate-spin text-blue-500" />
                           Generating image
                         </span>
                       </div>
                     ) : (
-                      <div className="flex h-[212px] w-full items-center justify-center rounded bg-white text-xs text-zinc-400">
+                      <div
+                        className="flex w-full items-center justify-center rounded bg-white text-xs text-zinc-400"
+                        style={{ aspectRatio: resolvedImageAspectRatio }}
+                      >
                         Waiting for generation
                       </div>
                     )}
@@ -2107,7 +2608,7 @@ export function StoryboardCanvas({
 
                 <div className="px-3 pt-3">
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
-                    <div className="text-[11px] text-zinc-500">分镜图片提示词</div>
+                    <div className="text-[11px] text-zinc-500">Scene image prompt</div>
                     {isPromptEditing ? (
                       <textarea
                         value={imagePrompt}
@@ -2131,27 +2632,20 @@ export function StoryboardCanvas({
                             : "border-zinc-200"
                         }`}
                       >
-                        {imagePrompt || "点击补充分镜提示词"}
+                        {imagePrompt || "Click to add a scene image prompt"}
                       </button>
                     )}
                     <div className="mt-2 flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => toggleHistoryPanel(slide.id)}
-                        className="nodrag nopan nowheel rounded-md border border-zinc-300 bg-white px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-100"
-                      >
-                        {historyOpen ? "收起历史" : "查看历史"}
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => regenerateSlideImage(slide.id, slide.page)}
                         className="nodrag nopan nowheel rounded-md border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
                       >
-                        重新绘制
+                        Redraw
                       </button>
                     </div>
 
-                    {historyOpen ? (
+                    {shouldShowImageHistory ? (
                       <div className="mt-2 grid grid-cols-4 gap-1.5">
                         {imageHistory.map((historyImage, historyIdx) => (
                           <button
@@ -2166,7 +2660,7 @@ export function StoryboardCanvas({
                           >
                             <img
                               src={historyImage}
-                              alt={`历史分镜${historyIdx + 1}`}
+                              alt={`Scene history ${historyIdx + 1}`}
                               className="h-14 w-full object-cover"
                               loading="lazy"
                             />
@@ -2174,6 +2668,28 @@ export function StoryboardCanvas({
                         ))}
                       </div>
                     ) : null}
+                  </div>
+                </div>
+
+                <div className="px-3 pt-3">
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
+                    <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
+                      <span>Narration</span>
+                      <span>{slide.isCover ? "Cover has no narration" : "For voice-over"}</span>
+                    </div>
+                    <textarea
+                      value={narrationText}
+                      onChange={(event) =>
+                        updateSlide(slide.id, "body", event.target.value)
+                      }
+                      placeholder={slide.isCover ? "" : "Narration for this scene..."}
+                      disabled={slide.isCover}
+                      className={`nodrag nopan nowheel h-20 w-full resize-none rounded border bg-white px-2 py-1.5 text-[11px] leading-5 text-zinc-700 outline-none ${
+                        validationMap[slide.id]?.body
+                          ? "border-red-300"
+                          : "border-zinc-200 focus:border-zinc-400"
+                      }`}
+                    />
                   </div>
                 </div>
 
@@ -2186,76 +2702,129 @@ export function StoryboardCanvas({
                     }`}
                   >
                     <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>B 轴 · 音频轨</span>
-                      <span>{audioFile}</span>
+                      <span>B Track · Audio</span>
+                      <span>{selectedTtsOption.tier === "pro" ? "Premium voice" : "Included voice"}</span>
                     </div>
                     <div className="mb-2 h-px bg-zinc-200" />
 
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => previewAudioForSlide(slide.id, slide.body)}
+                        onClick={() => toggleAudioPreviewForSlide(slide.id, narrationText)}
                         className={`nodrag nopan nowheel inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] ${
-                          playingAudioSlideId === slide.id
+                          isAudioPlaying
                             ? "border-zinc-900 bg-zinc-900 text-white"
+                            : isAudioPaused
+                              ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                             : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
                         }`}
                       >
-                        <Volume2 size={12} />
-                        {playingAudioSlideId === slide.id ? "播放中" : "试听"}
+                        {isAudioPlaying ? <PauseCircle size={12} /> : <Volume2 size={12} />}
+                        {audioPreviewLabel}
                       </button>
-                      <select
-                        value={selectedTts}
-                        onChange={(event) =>
-                          updateTtsForSlide(slide.id, event.target.value)
-                        }
-                        className="nodrag nopan nowheel h-7 flex-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] text-zinc-700 outline-none focus:border-zinc-400"
-                      >
-                        {TTS_OPTIONS.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative flex-1">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenTtsMenuSlideId((prev) =>
+                              prev === slide.id ? null : slide.id,
+                            );
+                          }}
+                          className="nodrag nopan nowheel inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-2 text-left text-[11px] text-zinc-800 outline-none hover:bg-zinc-50"
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            {selectedTtsOption.displayName}
+                          </span>
+                          {selectedTtsOption.tier === "pro" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                              <Crown size={10} />
+                              Pro
+                            </span>
+                          ) : null}
+                          <ChevronDown
+                            size={13}
+                            className={`shrink-0 text-zinc-500 transition ${
+                              openTtsMenuSlideId === slide.id ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                        {openTtsMenuSlideId === slide.id ? (
+                          <div className="nodrag nopan nowheel absolute left-0 top-8 z-50 max-h-[420px] w-[340px] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
+                            {TTS_OPTIONS.map((option) => {
+                              const isSelected = selectedTts === option.id;
+                              const isPremiumVoice = option.provider === "openai";
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    updateTtsForSlide(slide.id, option.id);
+                                  }}
+                                  className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
+                                >
+                                  <span className="flex items-center justify-between gap-2 text-xs font-medium text-zinc-900">
+                                    <span className="min-w-0">
+                                      {option.displayName}
+                                    </span>
+                                    <span className="inline-flex shrink-0 items-center gap-1.5">
+                                      {isPremiumVoice ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                          <Crown size={10} />
+                                          Pro
+                                        </span>
+                                      ) : null}
+                                      {isSelected ? (
+                                        <Check size={14} className="text-zinc-900" />
+                                      ) : null}
+                                    </span>
+                                  </span>
+                                  <span className="mt-1 block text-[11px] leading-4 text-zinc-500">
+                                    {option.description}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
 
-                    <div className="mt-2 h-12 rounded-md border border-zinc-200 bg-white px-2 py-1.5">
-                      <svg viewBox="0 0 320 44" className="h-full w-full">
-                        {Array.from({ length: 54 }, (_, barIdx) => {
-                          const x = 2 + barIdx * 5.8;
-                          const phase = Math.sin((barIdx + slide.page) * 0.7);
-                          const ampBase = 6 + (phase + 1) * 8;
-                          const h = Math.min(30, ampBase * waveformScale);
-                          const y = 22 - h / 2;
-                          const barProgressStart = (barIdx / 54) * 100;
-                          const isPlayed = playingProgress >= barProgressStart;
-                          return (
-                            <rect
-                              key={`bar-${slide.id}-${barIdx}`}
-                              x={x}
-                              y={y}
-                              width="3.4"
-                              height={h}
-                              rx="1.4"
-                              fill={isPlayed ? "#111827" : barIdx % 3 === 0 ? "#71717a" : "#a1a1aa"}
-                            />
-                          );
-                        })}
-                        <line
-                          x1={Math.min(318, Math.max(2, (playingProgress / 100) * 320))}
-                          y1="2"
-                          x2={Math.min(318, Math.max(2, (playingProgress / 100) * 320))}
-                          y2="42"
-                          stroke={playingAudioSlideId === slide.id ? "#0f172a" : "#9ca3af"}
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
+                    <div className="mt-2 rounded-xl border border-zinc-200 bg-white px-2.5 py-2">
+                      <div className="relative h-12 w-full overflow-hidden rounded-lg bg-zinc-50 px-3">
+                        <div className="absolute inset-x-3 top-1/2 flex -translate-y-1/2 items-center justify-between gap-1">
+                          {Array.from({ length: 58 }, (_, barIdx) => {
+                            const phase = Math.sin((barIdx + slide.page) * 0.75);
+                            const h = Math.min(24, 7 + (phase + 1) * 7 * waveformScale);
+                            const isPlayed = playingProgress >= (barIdx / 58) * 100;
+                            return (
+                              <span
+                                key={`wave-${slide.id}-${barIdx}`}
+                                className={`block w-[3px] rounded-full transition-colors duration-300 ${
+                                  isPlayed ? "bg-zinc-900" : "bg-zinc-300"
+                                }`}
+                                style={{ height: `${h}px` }}
+                              />
+                            );
+                          })}
+                        </div>
+                        {generatedAudio?.status === "generating" ? (
+                          <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-blue-600">
+                            <LoaderCircle size={15} className="animate-spin" />
+                          </div>
+                        ) : null}
+                        <div
+                          className="absolute bottom-0 left-0 h-[2px] bg-blue-500 transition-[width] duration-300 ease-linear"
+                          style={{ width: `${clamp(playingProgress, 0, 100)}%` }}
                         />
-                      </svg>
-                    </div>
-
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
-                      <span>{hasNarration ? audioDuration : "请先填写旁白后自动生成音轨"}</span>
-                      <span>{Math.round(playingProgress)}%</span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
+                        <span>
+                          {hasNarration ? "Audio preview" : "Add narration to generate audio"}
+                        </span>
+                        <span>{hasNarration ? audioTimeLabel : "00:00 / 00:00"}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2267,28 +2836,32 @@ export function StoryboardCanvas({
         };
       });
 
-      return [...storyNodes, ...imageNodes];
+      return canvasMode === "free" ? imageNodes : [...storyNodes, ...imageNodes];
     },
     [
       activeImageIndexBySlideId,
       activePreviewSlideId,
       addSlideAfter,
+      audioDurationBySlideId,
       audioProgressBySlideId,
+      canvasMode,
       editingPromptSlideId,
+      generatedAudioBySlideId,
       generationInProgress,
       generationTaskStateByIndex,
-      historyOpenBySlideId,
       imageHistoryBySlideId,
       onRetryGenerationTask,
+      openTtsMenuSlideId,
+      pausedAudioSlideId,
       playingAudioSlideId,
-      previewAudioForSlide,
       promptBySlideId,
       regenerateSlideImage,
+      resolvedImageAspectRatio,
       selectHistoryImage,
       selectedSlideId,
       slides,
       ttsBySlideId,
-      toggleHistoryPanel,
+      toggleAudioPreviewForSlide,
       updatePromptForSlide,
       updateSlide,
       updateTtsForSlide,
@@ -2436,7 +3009,7 @@ export function StoryboardCanvas({
             onClick={undo}
             disabled={!canUndo}
             className="inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-35"
-            title="撤销 (Ctrl/Cmd+Z)"
+            title="Undo (Ctrl/Cmd+Z)"
           >
             <RotateCcw size={13} />
           </button>
@@ -2445,7 +3018,7 @@ export function StoryboardCanvas({
             onClick={redo}
             disabled={!canRedo}
             className="inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-35"
-            title="重做 (Shift+Ctrl/Cmd+Z)"
+            title="Redo (Shift+Ctrl/Cmd+Z)"
           >
             <Redo2 size={13} />
           </button>
@@ -2454,10 +3027,10 @@ export function StoryboardCanvas({
               type="button"
               onClick={copySlide}
               className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs text-zinc-600 hover:bg-zinc-100"
-              title="复制分镜 (Ctrl/Cmd+C)"
+              title="Copy scene (Ctrl/Cmd+C)"
           >
               <Copy size={12} />
-              复制
+              Copy
             </button>
             <button
               type="button"
@@ -2468,9 +3041,9 @@ export function StoryboardCanvas({
                 });
               }}
               className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs text-zinc-600 hover:bg-zinc-100"
-              title="适配全画布"
+              title="Fit canvas"
             >
-              适配画布
+              Fit
             </button>
             <button
               type="button"
@@ -2479,37 +3052,12 @@ export function StoryboardCanvas({
               }}
               disabled={!selectedSlideId}
               className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-              title="定位当前分镜"
+              title="Locate current scene"
             >
               <LocateFixed size={12} />
-              定位当前
+              Locate
             </button>
           </div>
-        ) : null}
-
-        {canvasMode === "free" ? (
-          <div className="absolute right-3 top-3 z-30 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
-          <div className="flex items-center gap-2 text-xs">
-            {hasValidationErrors ? (
-              <>
-                <AlertCircle size={13} className="text-red-500" />
-                <span className="text-red-600">待完善 {invalidSlideIds.length} 项</span>
-                <button
-                  type="button"
-                  onClick={locateFirstInvalidSlide}
-                  className="rounded-md border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
-                >
-                  定位缺失项
-                </button>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 size={13} className="text-emerald-600" />
-                <span className="text-zinc-600">校验通过，可继续生成</span>
-              </>
-            )}
-          </div>
-        </div>
         ) : null}
 
         {canvasMode === "free" ? (
@@ -2521,7 +3069,7 @@ export function StoryboardCanvas({
               className="inline-flex h-9 items-center gap-1 rounded-full bg-zinc-900 px-4 text-xs font-medium text-white hover:bg-zinc-700"
             >
               <PlayCircle size={14} />
-              {isPreviewing ? "停止预览" : "预览视频"}
+              {isPreviewing ? "Stop Preview" : "Preview Video"}
             </button>
 
             <button
@@ -2531,7 +3079,7 @@ export function StoryboardCanvas({
               className="inline-flex h-9 items-center gap-1 rounded-full border border-zinc-300 bg-white px-4 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <PauseCircle size={14} />
-              {isPreviewPaused ? "继续" : "暂停"}
+              {isPreviewPaused ? "Resume" : "Pause"}
             </button>
 
             <button
@@ -2539,7 +3087,7 @@ export function StoryboardCanvas({
               onClick={() => runPreview(true)}
               className="inline-flex h-9 items-center rounded-full border border-zinc-300 bg-white px-4 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
             >
-              从当前分镜预览
+              Preview From Current Scene
             </button>
           </div>
         </div>
@@ -2603,7 +3151,7 @@ export function StoryboardCanvas({
                   const generationState = generationTaskStateByIndex?.[slide.page];
                   const currentImage = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
                   const isActive = selectedSlideId === slide.id;
-                  const showHistory = historyOpenBySlideId[slide.id] ?? false;
+                  const shouldShowHistory = historyImages.length > 1;
                   const isGenerating =
                     generationState?.status === "queued" ||
                     generationState?.status === "generating" ||
@@ -2668,13 +3216,6 @@ export function StoryboardCanvas({
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    commitChange((prev) => ({
-                                      ...prev,
-                                      historyOpenBySlideId: {
-                                        ...prev.historyOpenBySlideId,
-                                        [slide.id]: true,
-                                      },
-                                    }));
                                     regenerateSlideImage(slide.id, slide.page);
                                   }}
                                   className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
@@ -2718,13 +3259,6 @@ export function StoryboardCanvas({
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                commitChange((prev) => ({
-                                  ...prev,
-                                  historyOpenBySlideId: {
-                                    ...prev.historyOpenBySlideId,
-                                    [slide.id]: true,
-                                  },
-                                }));
                                 regenerateSlideImage(slide.id, slide.page);
                               }}
                               className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700"
@@ -2738,7 +3272,7 @@ export function StoryboardCanvas({
                           readOnly
                           className="h-24 w-full resize-none rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs leading-5 text-zinc-700 outline-none"
                         />
-                        {showHistory && historyImages.length > 0 ? (
+                        {shouldShowHistory ? (
                           <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
                             {historyImages.map((historyImage, historyIdx) => (
                               <button
@@ -2779,11 +3313,11 @@ export function StoryboardCanvas({
             <div className="relative h-full w-full">
               <img
                 src={previewFrame.imageSrc}
-                alt={`预览分镜${previewFrame.page}`}
+                alt={`Preview scene ${previewFrame.page}`}
                 className="h-full w-full object-contain"
               />
               <div className="absolute left-4 top-4 rounded-lg bg-black/55 px-3 py-1.5 text-xs text-white">
-                第{previewFrame.page}页 · {previewFrame.title}
+                Scene {previewFrame.page} · {previewFrame.title}
               </div>
             </div>
           </div>
@@ -2791,188 +3325,116 @@ export function StoryboardCanvas({
       </div>
 
       {showComposeModal ? (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-900/28 backdrop-blur-[1px]">
-          <div className="w-[640px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
-            <div className="mb-3 flex items-center justify-between">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-zinc-900/28 p-4 backdrop-blur-[1px]">
+          <div className="w-[min(520px,calc(100vw-32px))] rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
+            <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-900">Export Video</h3>
+                <h3 className="text-sm font-semibold text-zinc-900">Download Video</h3>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Preparing a downloadable explainer video from your storyboard.
+                  {composeStatus === "success"
+                    ? "Your video file is ready to download."
+                    : composeStatus === "error"
+                      ? "Please fix the issue below and retry."
+                      : "Preparing your video file."}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowComposeModal(false)}
-                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100"
+                onClick={() => {
+                  if (composeStatus === "running") {
+                    return;
+                  }
+                  setShowComposeModal(false);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-500 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={composeStatus === "running"}
+                aria-label="Close download dialog"
               >
-                Close
+                <X size={15} />
               </button>
             </div>
 
-            <div className="mb-4 rounded-xl border border-zinc-200 bg-zinc-50/70 px-3 py-3">
-              <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs text-zinc-600">
-                <div className="flex items-center justify-between">
-                  <span>Resolution</span>
-                  <span className="font-medium text-zinc-800">
-                    {composeMeta?.resolution ?? "1280×720"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Frame rate</span>
-                  <span className="font-medium text-zinc-800">
-                    {(composeMeta?.fps ?? 24).toString()} fps
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Scenes</span>
-                  <span className="font-medium text-zinc-800">
-                    {(composeMeta?.sceneCount ?? slides.length).toString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Narration</span>
-                  <span className="font-medium text-zinc-800">
-                    {(composeMeta?.voicedSceneCount ?? 0).toString()} scene(s)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Duration</span>
-                  <span className="font-medium text-zinc-800">
-                    {formatDuration(composeMeta?.durationSec ?? 0)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Format</span>
-                  <span className="font-medium text-zinc-800">
-                    {composeMeta?.format?.replace("video/", "") ?? "webm"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-4 space-y-2.5">
-              {COMPOSE_STEPS.map((step) => {
-                const status = composeSteps[step.key];
-                return (
-                  <div
-                    key={step.key}
-                    className={`rounded-xl border px-3 py-2.5 ${
-                      status === "running"
-                        ? "border-zinc-900 bg-zinc-900/5"
-                        : status === "done"
-                          ? "border-emerald-200 bg-emerald-50/60"
-                          : status === "error"
-                            ? "border-red-200 bg-red-50"
-                            : "border-zinc-200 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-zinc-900">{step.title}</p>
-                      <span
-                        className={`text-xs ${
-                          status === "running"
-                            ? "text-zinc-900"
-                            : status === "done"
-                              ? "text-emerald-700"
-                              : status === "error"
-                                ? "text-red-600"
-                                : "text-zinc-400"
-                        }`}
-                      >
-                        {status === "running"
-                          ? "Running"
-                          : status === "done"
-                            ? "Done"
-                            : status === "error"
-                              ? "Failed"
-                              : "Waiting"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-zinc-500">{step.description}</p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {composeStatus === "running" ? (
-              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-zinc-700">
+            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
+              <div className="flex items-center justify-between text-sm text-zinc-700">
+                <div className="flex items-center gap-2">
+                  {composeStatus === "running" ? (
                     <LoaderCircle className="animate-spin" size={16} />
-                    {composeLoadingHint}
-                  </div>
-                  <span className="text-xs font-medium text-zinc-500">{composeProgress}%</span>
+                  ) : composeStatus === "success" ? (
+                    <CheckCircle2 size={16} className="text-emerald-600" />
+                  ) : composeStatus === "error" ? (
+                    <AlertCircle size={16} className="text-red-500" />
+                  ) : null}
+                  <span
+                    className={
+                      composeStatus === "error" ? "text-red-600" : "text-zinc-700"
+                    }
+                  >
+                    {composeStatus === "success"
+                      ? "Video file is ready. If the browser does not start downloading, click Download Video again."
+                      : composeStatus === "error"
+                        ? composeError || "Video export failed. Please retry."
+                        : composeLoadingHint}
+                  </span>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
-                  <div
-                    className="h-full rounded-full bg-zinc-900 transition-[width] duration-300"
-                    style={{ width: `${composeProgress}%` }}
-                  />
-                </div>
-                <div className="mt-2 flex items-center gap-1 text-[11px] text-zinc-500">
-                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
-                  <span>You can keep editing while the export continues.</span>
-                </div>
+                <span className="text-xs font-medium text-zinc-500">{composeProgress}%</span>
               </div>
-            ) : null}
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
+                <div
+                  className={`h-full rounded-full transition-[width] duration-300 ${
+                    composeStatus === "error" ? "bg-red-500" : "bg-zinc-900"
+                  }`}
+                  style={{ width: `${composeProgress}%` }}
+                />
+              </div>
+            </div>
 
-            {composeStatus === "error" && composeError ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-                <p className="text-sm text-red-600">{composeError}</p>
-                <div className="mt-2 flex items-center justify-end gap-2">
+            <div className="mt-4 flex justify-end gap-2">
+              {composeStatus === "error" ? (
+                <>
                   <button
                     type="button"
                     onClick={() => setShowComposeModal(false)}
-                    className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                    className="inline-flex items-center rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-600 hover:bg-zinc-100"
                   >
                     Back to editor
                   </button>
                   <button
                     type="button"
                     onClick={runComposeVideo}
-                    className="inline-flex items-center rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-700"
+                    className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
                   >
-                    Retry export
+                    Retry Download
                   </button>
-                </div>
-              </div>
-            ) : null}
+                </>
+              ) : null}
 
-            {composeStatus === "success" && composedVideoUrl ? (
-              <div>
-                <video
-                  src={composedVideoUrl}
-                  controls
-                  className="w-full rounded-xl border border-zinc-200"
-                />
-                <div className="mt-3 flex justify-end">
+              {composeStatus === "success" && composedVideoUrl ? (
                   <a
                     href={composedVideoUrl}
                     download={composedVideoFilename}
-                    className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
+                    className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
                   >
                     <Download size={13} />
                     Download Video
                   </a>
-                </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
 
       {showPptExportModal ? (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-900/28 backdrop-blur-[1px]">
-          <div className="w-[520px] rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-zinc-900/28 p-4 backdrop-blur-[1px]">
+          <div className="w-[min(520px,calc(100vw-32px))] rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-900">Export PPT</h3>
+                <h3 className="text-sm font-semibold text-zinc-900">Download PPT</h3>
                 <p className="mt-1 text-xs text-zinc-500">
                   {pptExportStatus === "success"
-                    ? "Your slide deck is ready."
+                    ? "Your PPT file is ready to download."
                     : pptExportStatus === "error"
                       ? "Please fix the issue below and retry."
-                      : "Preparing a downloadable slide deck."}
+                      : "Preparing your PPT file."}
                 </p>
               </div>
               <button
@@ -3036,9 +3498,9 @@ export function StoryboardCanvas({
                     onClick={() => {
                       void exportPptx();
                     }}
-                    className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white hover:bg-zinc-700"
+                    className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
                   >
-                    Retry export
+                    Retry Download
                   </button>
                 </>
               ) : null}
@@ -3049,7 +3511,7 @@ export function StoryboardCanvas({
                   onClick={() => {
                     triggerPptDownload();
                   }}
-                  className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
                 >
                   <Download size={13} />
                   Download PPT

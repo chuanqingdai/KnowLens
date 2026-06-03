@@ -716,6 +716,7 @@ function buildVideoPrompt(
       "Each body frame should have a short title, a concrete still-frame visual, and narration that sounds like real voiceover.",
       "Each frame title must be concise and concrete (roughly: Chinese 8-16 chars, English 3-8 words), not a sentence.",
       "durationSec should usually be 8-12 seconds.",
+      "narration is the voiceover script for explaining the frame. Generate it from the frame's draft content and visual idea, make it sound natural for spoken narration, and keep the cover narration empty.",
       "narration should be long enough for that duration but concise; do not write internal goals, process rules, or placeholders.",
       "onScreenText should usually be empty or very short because generated images are not editable subtitle tracks.",
       "visual must describe subject, scene, composition, action, or change; do not write only 'comparison chart' or 'flow diagram'.",
@@ -723,7 +724,8 @@ function buildVideoPrompt(
       "For complete source text, preserve semantic continuity across frames. Do not split one fact into broken narration fragments.",
       "If the user provided explicit modules or focus areas, prioritize that order and structure over generic templates.",
       "For data/business videos, show concrete visual scenes such as metric boards, segment comparison, timeline, analyst desk, or risk checklist; no fake numbers and no dense subtitles.",
-      "imagePrompt should only summarize the frame's visual direction for Prompt3; do not write the final image prompt.",
+      "imagePrompt should match the same frame idea as narration, but it must describe only the visual image direction for Prompt3. Do not include or paraphrase narration in imagePrompt.",
+      "Keep narration, visual, and imagePrompt consistent: same frame topic and facts, different jobs. Narration is for audio; visual/imagePrompt are for the image.",
     ].join("\n");
   }
   return [
@@ -748,6 +750,7 @@ function buildVideoPrompt(
     "Each body frame should have a short title, a concrete still-frame visual, and narration that sounds like real voiceover.",
     "Each frame title must be concise and concrete (roughly: Chinese 8-16 chars, English 3-8 words), not a sentence.",
     "durationSec should usually be 8-12 seconds.",
+    "narration is the voiceover script for explaining the frame. Generate it from the frame's draft content and visual idea, make it sound natural for spoken narration, and keep the cover narration empty.",
     "narration should be long enough for that duration but concise; do not write internal goals, process rules, or placeholders.",
     "onScreenText should usually be empty or very short because generated images are not editable subtitle tracks.",
     "visual must describe subject, scene, composition, action, or change; do not write only 'comparison chart' or 'flow diagram'.",
@@ -755,7 +758,8 @@ function buildVideoPrompt(
     "For complete source text, preserve semantic continuity across frames. Do not split one fact into broken narration fragments.",
     "If the user provided explicit modules or focus areas, prioritize that order and structure over generic templates.",
     "For data/business videos, show concrete visual scenes such as metric boards, segment comparison, timeline, analyst desk, or risk checklist; no fake numbers and no dense subtitles.",
-    "imagePrompt should only summarize the frame's visual direction for Prompt3; do not write the final image prompt.",
+    "imagePrompt should match the same frame idea as narration, but it must describe only the visual image direction for Prompt3. Do not include or paraphrase narration in imagePrompt.",
+    "Keep narration, visual, and imagePrompt consistent: same frame topic and facts, different jobs. Narration is for audio; visual/imagePrompt are for the image.",
     "Do not leak English prompt logic, schema explanations, internal rules, or placeholders into user-visible draft copy.",
   ].join("\n");
 }

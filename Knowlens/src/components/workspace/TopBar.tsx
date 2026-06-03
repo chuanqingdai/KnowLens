@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Clapperboard, FileDown, LoaderCircle, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, LoaderCircle, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UserMenu } from "@/components/auth/UserMenu";
 
@@ -58,13 +58,13 @@ export function TopBar({
     ? actionsDisabled && disabledPrimaryActionLabel
       ? disabledPrimaryActionLabel
       : isExportingPpt
-      ? "Exporting PPT..."
-      : "Export PPT"
+        ? "Preparing PPT..."
+        : "Download PPT"
     : actionsDisabled && disabledPrimaryActionLabel
       ? disabledPrimaryActionLabel
       : isComposingVideo
-      ? "Composing..."
-      : "Compose Video";
+        ? "Preparing Video..."
+        : "Download Video";
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-14 border-b border-zinc-200 bg-white/95 text-zinc-800 backdrop-blur">
@@ -116,17 +116,13 @@ export function TopBar({
               className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed ${
                 isPrimaryUnavailable
                   ? "bg-zinc-200 text-zinc-600"
-                  : showPptAction
-                    ? "bg-zinc-900 text-white hover:bg-zinc-700"
-                    : "bg-blue-600 text-white hover:bg-blue-500"
+                  : "bg-blue-600 text-white hover:bg-blue-500"
               }`}
             >
               {isPrimaryUnavailable ? (
                 <LoaderCircle size={15} className="animate-spin" />
-              ) : showPptAction ? (
-                <FileDown size={15} />
               ) : (
-                <Clapperboard size={15} />
+                <Download size={15} />
               )}
               {primaryActionLabel}
             </button>

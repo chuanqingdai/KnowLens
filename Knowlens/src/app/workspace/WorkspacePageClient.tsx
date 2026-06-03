@@ -327,7 +327,7 @@ type GenerationTaskUiState = {
 };
 
 type CreditsPaywallContext = {
-  scene: "count_limit" | "billing_insufficient";
+  scene: "count_limit" | "billing_insufficient" | "tts_premium";
   kind?: "poster" | "ppt" | "video";
   count?: number;
 };
@@ -2714,6 +2714,15 @@ export default function WorkspacePage() {
         source: "workspace_billing_insufficient_paywall",
       };
     }
+    if (scene === "tts_premium") {
+      return {
+        title: "Premium voice is available on paid plans",
+        description:
+          "Premium voice options are reserved for members. You can keep using the included voices, or upgrade to unlock richer narration styles.",
+        confirmLabel: "View Plans",
+        source: "workspace_tts_premium_paywall",
+      };
+    }
     return {
       title: isFreeUser ? "Free credits used up" : "Credits required",
       description: isFreeUser
@@ -3135,6 +3144,8 @@ export default function WorkspacePage() {
         title: slide.title?.trim() || `Slide ${idx + 1}`,
         body: slide.body?.trim() || "",
         visual: slide.visual?.trim() || "",
+        imagePrompt: slide.imagePrompt?.trim() || "",
+        imagePromptDraft: slide.imagePromptDraft?.trim() || slide.imagePrompt?.trim() || "",
         isCover: slide.isCover,
       })),
     [displaySlideDrafts],
@@ -7210,8 +7221,8 @@ export default function WorkspacePage() {
                       effectiveIntent === "ppt"
                         ? "Download PPT"
                         : effectiveIntent === "video"
-                          ? "Download video"
-                          : "Download poster",
+                          ? "Download Video"
+                          : "Download Poster",
                     downloadDisabledLabel: generationProgressLabel
                       ? `Generating ${generationProgressLabel}`
                       : "Generating",
@@ -7286,6 +7297,11 @@ export default function WorkspacePage() {
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
+                hasMembership={!isFreeUser}
+                onRequestTtsUpgrade={() => {
+                  openCreditsPaywall({ scene: "tts_premium" });
+                }}
+                imageAspectRatio={normalizedGenerationConfig.normalizedRatio}
                 onModeActionRegister={(actions) => {
                   modeActionsRef.current = {
                     ...modeActionsRef.current,

@@ -640,18 +640,27 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const imagePromptDraft = sanitizeBrandSensitiveVisualText(
       sanitizePromptLine(cleanText(slide?.imagePromptDraft || slide?.imagePrompt)),
     );
+    const videoImageSignal = cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join("\n"));
+    const visibleLabelSource =
+      normalizedDirection === "video"
+        ? cleanText([sanitizePromptLine(rawSlideVisual), imagePromptDraft].join(" | "))
+        : sanitizePromptLine(rawSlideVisual) || sanitizePromptLine(cleanText(contentBody));
+    const conceptSource =
+      normalizedDirection === "video"
+        ? cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join(" | "))
+        : cleanText([contentTitle, contentBody].join(" | "));
     const isIndependentCover = slide?.isCover === true;
     const isDataLikeSlide =
       !isIndependentCover &&
-      (isHighRiskDataContent([contentTitle, contentBody, rawSlideVisual, imagePromptDraft].join(" ")) ||
+      (isHighRiskDataContent([contentTitle, normalizedDirection === "video" ? "" : contentBody, rawSlideVisual, imagePromptDraft].join(" ")) ||
         /metrics|data|指标|数据|财报|营收|利润|同比|环比|EPS|每股收益|guidance|revenue|profit|earnings/i.test(
-          [contentTitle, contentBody, rawSlideVisual].join(" "),
+          [contentTitle, normalizedDirection === "video" ? "" : contentBody, rawSlideVisual].join(" "),
         ));
     const visibleText: VisibleText = {
       title: contentTitle,
       labels: isIndependentCover
         ? []
-        : splitLabels(sanitizePromptLine(rawSlideVisual) || sanitizePromptLine(cleanText(contentBody)), normalizedDirection === "video" ? 2 : 4),
+        : splitLabels(visibleLabelSource, normalizedDirection === "video" ? 2 : 4),
     };
     const pageRole: CompiledGenerationTask["pageRole"] =
       isIndependentCover
@@ -708,7 +717,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const textStrategy: TextStrategy = {
       mode: isIndependentCover ? "minimal" : isDataLikeSlide ? "strict" : "guided",
       titleIdea: isIndependentCover ? "" : contentTitle,
-      keyConcepts: isIndependentCover ? [] : splitLabels([contentTitle, contentBody].join(" | "), normalizedDirection === "video" ? 3 : 5),
+      keyConcepts: isIndependentCover ? [] : splitLabels(conceptSource, normalizedDirection === "video" ? 3 : 5),
       language: dominantVisibleLanguage,
       density: visualDesign.textDensity,
       allowRewrite: !isIndependentCover && !isDataLikeSlide,
@@ -737,7 +746,9 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const composedPrompt = buildTuziImagePrompt({
       draftContent: isIndependentCover
         ? cleanText([contentTitle, "Independent title-only cover image. Use this title as the only on-image text. One simple hero subject."].join("\n"))
-        : cleanText([contentTitle, sanitizePromptLine(contentBody)].join("\n")),
+        : normalizedDirection === "video"
+          ? videoImageSignal
+          : cleanText([contentTitle, sanitizePromptLine(contentBody)].join("\n")),
       selectedStyle: input.style.prompt || input.style.name,
       aspectRatio: normalizedAspectRatio,
       posterIndex: index,
