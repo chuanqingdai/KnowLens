@@ -24,8 +24,17 @@ export type CreditRecord = {
   projectTitle?: string;
 };
 
+export type CheckoutReturnNotice = {
+  status: "success";
+  message: string;
+  returnPath?: string;
+  source?: string;
+  createdAt: string;
+};
+
 const SUBSCRIPTION_KEY = "knowlens_subscription_v1";
 const CREDIT_RECORDS_KEY = "knowlens_credit_records_v1";
+const CHECKOUT_RETURN_NOTICE_KEY = "knowlens-checkout-return-notice-v1";
 
 function normalizeScope(email?: string | null) {
   const value = (email ?? "").trim().toLowerCase();
@@ -248,6 +257,29 @@ export function setCreditRecords(
   }
   const key = email ? scopedKey(CREDIT_RECORDS_KEY, email) : CREDIT_RECORDS_KEY;
   window.localStorage.setItem(key, JSON.stringify(records));
+}
+
+export function saveCheckoutReturnNotice(notice: CheckoutReturnNotice) {
+  if (!isClient()) {
+    return;
+  }
+  window.sessionStorage.setItem(CHECKOUT_RETURN_NOTICE_KEY, JSON.stringify(notice));
+}
+
+export function readCheckoutReturnNotice() {
+  if (!isClient()) {
+    return null as CheckoutReturnNotice | null;
+  }
+  return safeParse<CheckoutReturnNotice>(window.sessionStorage.getItem(CHECKOUT_RETURN_NOTICE_KEY));
+}
+
+export function consumeCheckoutReturnNotice() {
+  if (!isClient()) {
+    return null as CheckoutReturnNotice | null;
+  }
+  const notice = readCheckoutReturnNotice();
+  window.sessionStorage.removeItem(CHECKOUT_RETURN_NOTICE_KEY);
+  return notice;
 }
 
 export async function syncCreditRecordsFromServer(email?: string | null) {

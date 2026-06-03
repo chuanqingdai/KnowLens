@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
+import { sweepAbandonedImageGenerationJobsForUser } from "@/lib/server/image-generation-jobs";
 import {
+  ensureSubscriptionCreditsCurrent,
   applyCreditRecordAtomic,
   getLatestSubscriptionDb,
   listCreditRecords,
@@ -92,6 +94,12 @@ export async function GET() {
     );
   }
 
+  await sweepAbandonedImageGenerationJobsForUser({
+    userEmail: email,
+    limit: 12,
+    source: "billing_credits_sync",
+  }).catch(() => []);
+  await ensureSubscriptionCreditsCurrent(email);
   const rawRecords = (await listCreditRecords(email)) as DbCreditRecord[];
   const records = rawRecords.map(normalizeRecord);
   const subscription = normalizeSubscription(await getLatestSubscriptionDb(email));
@@ -117,6 +125,13 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
+
+  await sweepAbandonedImageGenerationJobsForUser({
+    userEmail: email,
+    limit: 12,
+    source: "billing_credits_sync",
+  }).catch(() => []);
+  await ensureSubscriptionCreditsCurrent(email);
 
   const body = (await request.json().catch(() => ({}))) as {
     type?: "consume" | "topup" | "refund";

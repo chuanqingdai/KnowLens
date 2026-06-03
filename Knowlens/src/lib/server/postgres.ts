@@ -167,14 +167,19 @@ export async function ensureManagedSchema() {
         plan_id TEXT NOT NULL,
         plan_name TEXT NOT NULL,
         cycle TEXT NOT NULL,
+        stripe_subscription_id TEXT,
         status TEXT NOT NULL,
+        monthly_credit_amount INTEGER,
         started_at TEXT NOT NULL,
         renew_at TEXT NOT NULL,
+        credit_period_started_at TEXT,
+        credit_period_ends_at TEXT,
         canceled_at TEXT,
         created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
         updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
       );
       CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
 
       CREATE TABLE IF NOT EXISTS credit_records (
         id TEXT PRIMARY KEY,
@@ -369,6 +374,24 @@ export async function ensureManagedSchema() {
       CREATE INDEX IF NOT EXISTS idx_image_generation_tasks_status
         ON image_generation_tasks(status, updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS image_generation_refunds (
+        id TEXT PRIMARY KEY,
+        refund_key TEXT NOT NULL UNIQUE,
+        job_id TEXT NOT NULL,
+        task_id TEXT,
+        task_index INTEGER,
+        user_email TEXT NOT NULL,
+        project_id TEXT,
+        amount INTEGER NOT NULL,
+        reason TEXT,
+        credit_record_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+      );
+      CREATE INDEX IF NOT EXISTS idx_image_generation_refunds_job_id
+        ON image_generation_refunds(job_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_image_generation_refunds_user_email
+        ON image_generation_refunds(user_email, created_at DESC);
+
       CREATE TABLE IF NOT EXISTS published_cases (
         id TEXT PRIMARY KEY,
         slug TEXT NOT NULL UNIQUE,
@@ -419,6 +442,14 @@ export async function ensureManagedSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_published_case_assets_case
         ON published_case_assets(case_id, sort_order ASC, page_index ASC);
+    `);
+
+    await sql.unsafe(`
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS monthly_credit_amount INTEGER;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS credit_period_started_at TEXT;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS credit_period_ends_at TEXT;
+      CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
     `);
   })();
   return schemaReadyPromise;

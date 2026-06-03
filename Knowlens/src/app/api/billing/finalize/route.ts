@@ -151,6 +151,10 @@ export async function POST(request: NextRequest) {
       planId: plan.id,
       planName: plan.name,
       cycle,
+      stripeSubscriptionId:
+        typeof checkout.subscription === "string"
+          ? checkout.subscription
+          : checkout.subscription?.id,
       startedAt,
       renewAt,
       monthlyCredits: plan.monthlyCredits,

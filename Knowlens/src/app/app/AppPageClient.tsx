@@ -38,7 +38,12 @@ import {
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
-import { getCreditRecords, getSubscriptionByUser, syncCreditRecordsFromServer } from "@/lib/billing";
+import {
+  consumeCheckoutReturnNotice,
+  getCreditRecords,
+  getSubscriptionByUser,
+  syncCreditRecordsFromServer,
+} from "@/lib/billing";
 import {
   getCaseMetrics,
   incrementCaseView,
@@ -931,6 +936,24 @@ export default function Home() {
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
   const hydratedHomeDraftRef = useRef(false);
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    const notice = consumeCheckoutReturnNotice();
+    if (!notice) {
+      return;
+    }
+    setModelPaywallOpen(false);
+    setMediaUploadPaywallOpen(false);
+    setPreviewPaywallOpen(false);
+    void syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        setCreditVersion((prev) => prev + 1);
+      })
+      .catch(() => undefined);
+    setUploadToast(notice.message);
+  }, [currentEmail]);
 
   const resolvedTextModel = textModel ?? defaultFreeModelByLocale(locale);
   const isPremiumModelSelected = hasMembership && isPremiumTextModel(resolvedTextModel);

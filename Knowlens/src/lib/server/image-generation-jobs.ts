@@ -5,6 +5,8 @@ import path from "node:path";
 import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { getDb } from "@/lib/server/db";
 import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
+import { applyImageGenerationRefundAtomic, logOpsEvent } from "@/lib/server/store";
+import { updateWorkspaceProjectPageImage } from "@/lib/server/workspace-project-pages";
 
 export type ImageGenerationJobStatus =
   | "queued"
@@ -74,6 +76,16 @@ export type ImageGenerationJobRow = {
   updatedAt: string;
 };
 
+const ACTIVE_TASK_STATUSES: ImageGenerationTaskStatus[] = ["queued", "generating", "asset_downloading"];
+const TERMINAL_JOB_STATUSES: ImageGenerationJobStatus[] = ["completed", "completed_with_errors", "failed", "timed_out"];
+const ABANDONED_JOB_TIMEOUT_MS = (() => {
+  const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "1800000", 10);
+  if (!Number.isFinite(parsed)) {
+    return 1_800_000;
+  }
+  return Math.max(300_000, Math.min(86_400_000, parsed));
+})();
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -127,6 +139,11 @@ function getImageGenerationProjectIndexPath(userEmail: string, projectId: string
   return `knowlens/image-generation/project-index/${emailKey}/${projectKeyHash}.json`;
 }
 
+function getImageGenerationActiveJobsIndexPath(userEmail: string) {
+  const emailKey = stableSha256(userEmail.trim().toLowerCase()).slice(0, 16);
+  return `knowlens/image-generation/active-jobs/${emailKey}.json`;
+}
+
 function normalizeStorageProjectId(projectId: string | null | undefined) {
   const normalized = (projectId || "").trim().replace(/[^a-zA-Z0-9._-]/g, "_");
   return normalized || "no-project";
@@ -155,6 +172,10 @@ type StoredImageGenerationProjectIndex = {
   jobIds?: string[];
 };
 
+type StoredImageGenerationActiveJobsIndex = {
+  jobIds?: string[];
+};
+
 async function readBlobJson<T>(pathname: string): Promise<T | null> {
   const blob = await getBlob(pathname, {
     access: getBlobStateAccessMode(),
@@ -180,6 +201,34 @@ async function writeBlobJson(pathname: string, data: unknown) {
     contentType: "application/json",
     cacheControlMaxAge: 60,
   });
+}
+
+async function updateBlobActiveJobIndex(input: {
+  userEmail: string;
+  jobId: string;
+  mode: "add" | "remove";
+}) {
+  const indexPath = getImageGenerationActiveJobsIndexPath(input.userEmail);
+  const current = await readBlobJson<StoredImageGenerationActiveJobsIndex>(indexPath);
+  const existingJobIds = Array.isArray(current?.jobIds) ? current.jobIds : [];
+  const nextJobIds =
+    input.mode === "add"
+      ? Array.from(new Set([input.jobId, ...existingJobIds].filter(Boolean))).slice(0, 200)
+      : existingJobIds.filter((jobId) => jobId !== input.jobId);
+  await writeBlobJson(indexPath, { jobIds: nextJobIds });
+}
+
+function parseTimestampMs(value: string | null | undefined) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isActiveTaskStatus(status: string | null | undefined) {
+  return ACTIVE_TASK_STATUSES.includes(String(status || "").trim() as ImageGenerationTaskStatus);
+}
+
+function isTerminalJobStatus(status: string | null | undefined) {
+  return TERMINAL_JOB_STATUSES.includes(String(status || "").trim() as ImageGenerationJobStatus);
 }
 
 async function readStoredManifest(jobId: string) {
@@ -436,6 +485,11 @@ export async function createImageGenerationJob(input: {
       );
       await writeBlobJson(projectIndexPath, { jobId, jobIds });
     }
+    await updateBlobActiveJobIndex({
+      userEmail,
+      jobId,
+      mode: "add",
+    });
     await Promise.all(
       taskRows.map((task) =>
         writeBlobJson(getImageGenerationTaskIndexPath(task.id), {
@@ -954,6 +1008,11 @@ export async function updateImageGenerationJobStatus(input: {
     manifest.job.errorMessage = normalizeOptionalText(input.errorMessage || undefined, 500);
     manifest.job.updatedAt = nowIso();
     await writeBlobJson(getImageGenerationJobManifestPath(input.jobId), manifest);
+    await updateBlobActiveJobIndex({
+      userEmail: manifest.job.userEmail,
+      jobId: input.jobId,
+      mode: isTerminalJobStatus(input.status) ? "remove" : "add",
+    });
     return;
   }
   if (hasManagedDatabase()) {
@@ -1394,6 +1453,214 @@ export async function syncImageGenerationJobFinalStatus(jobId: string) {
     });
   }
   return getImageGenerationJobById(jobId);
+}
+
+function readJobBillingContext(job: ImageGenerationJobRow) {
+  try {
+    const snapshot = job.requestJson ? JSON.parse(job.requestJson) : null;
+    const billing = snapshot?.billing ?? {};
+    return {
+      imageCreditsPerTask: Math.max(0, Math.round(Number(billing.imageCreditsPerTask ?? 0))),
+      projectTitle:
+        typeof billing.projectTitle === "string" && billing.projectTitle.trim()
+          ? billing.projectTitle.trim().slice(0, 240)
+          : null,
+    };
+  } catch {
+    return {
+      imageCreditsPerTask: 0,
+      projectTitle: null,
+    };
+  }
+}
+
+export async function applyRefundsForFailedImageGenerationTasks(input: {
+  job: ImageGenerationJobRow;
+  tasks: ImageGenerationTaskRow[];
+  source?: string;
+}) {
+  const billing = readJobBillingContext(input.job);
+  if (billing.imageCreditsPerTask <= 0) {
+    return { refundedCount: 0, refundedAmount: 0 };
+  }
+  let refundedCount = 0;
+  let refundedAmount = 0;
+  for (const task of input.tasks) {
+    if (task.status !== "failed" && task.status !== "timed_out") {
+      continue;
+    }
+    const refundResult = await applyImageGenerationRefundAtomic({
+      refundKey: `${input.job.id}:${task.id}:image-task-failed:v1`,
+      jobId: input.job.id,
+      taskId: task.id,
+      taskIndex: task.taskIndex,
+      userEmail: input.job.userEmail,
+      projectId: input.job.projectId ?? undefined,
+      projectTitle:
+        billing.projectTitle ||
+        `${input.job.intent === "poster" ? "Poster" : "Storyboard"} Generation`,
+      amount: billing.imageCreditsPerTask,
+      reason: task.errorCode || task.status,
+      description: `${
+        billing.projectTitle || "Generation Project"
+      } · Image task ${task.taskIndex} failed, credits refunded`,
+    });
+    if (!refundResult.applied) {
+      continue;
+    }
+    refundedCount += 1;
+    refundedAmount += billing.imageCreditsPerTask;
+    logOpsEvent({
+      category: "billing",
+      action: "image_generation_refund_applied",
+      status: "ok",
+      source: input.source || "image_generation_jobs",
+      userEmail: input.job.userEmail,
+      projectId: input.job.projectId ?? undefined,
+      message: `Refunded ${billing.imageCreditsPerTask} credits for a failed image task.`,
+      details: {
+        jobId: input.job.id,
+        taskId: task.id,
+        taskIndex: task.taskIndex,
+        amount: billing.imageCreditsPerTask,
+        reason: task.errorCode || task.status,
+      },
+    });
+  }
+  return { refundedCount, refundedAmount };
+}
+
+export async function expireAbandonedImageGenerationJob(input: {
+  jobId: string;
+  timeoutMs?: number;
+  source?: string;
+}) {
+  const result = await getImageGenerationJobById(input.jobId);
+  if (!result) {
+    return null;
+  }
+  const activeTasks = result.tasks.filter((task) => isActiveTaskStatus(task.status));
+  if (!activeTasks.length) {
+    return result;
+  }
+  const timeoutMs = Number.isFinite(input.timeoutMs)
+    ? Math.max(300_000, Math.min(86_400_000, Number(input.timeoutMs)))
+    : ABANDONED_JOB_TIMEOUT_MS;
+  const latestActiveProgressMs = Math.max(
+    parseTimestampMs(result.job.updatedAt || result.job.createdAt),
+    ...activeTasks.map((task) => parseTimestampMs(task.updatedAt || task.createdAt)),
+  );
+  if (!latestActiveProgressMs || Date.now() - latestActiveProgressMs < timeoutMs) {
+    return result;
+  }
+
+  const timeoutCode = "IMAGE_JOB_ABANDONED_TIMEOUT";
+  const timeoutMessage =
+    "Image generation stopped progressing for too long and was marked as failed. Credits have been refunded for unfinished image tasks.";
+  for (const task of activeTasks) {
+    await updateImageGenerationTask({
+      taskId: task.id,
+      status: "timed_out",
+      errorCode: timeoutCode,
+      errorMessage: timeoutMessage,
+    });
+    if (result.job.projectId) {
+      await updateWorkspaceProjectPageImage({
+        userEmail: result.job.userEmail,
+        projectId: result.job.projectId,
+        outputType: task.outputType || result.job.intent || "poster",
+        pageIndex: task.taskIndex,
+        taskId: task.id,
+        status: "timed_out",
+        errorCode: timeoutCode,
+      });
+    }
+  }
+
+  logOpsEvent({
+    category: "image",
+    action: "image_generation_job_abandoned",
+    status: "error",
+    source: input.source || "image_generation_jobs",
+    userEmail: result.job.userEmail,
+    projectId: result.job.projectId ?? undefined,
+    code: timeoutCode,
+    message: timeoutMessage,
+    details: {
+      jobId: result.job.id,
+      taskIds: activeTasks.map((task) => task.id),
+      taskIndexes: activeTasks.map((task) => task.taskIndex),
+      timeoutMs,
+      lastProgressAt: new Date(latestActiveProgressMs).toISOString(),
+    },
+  });
+
+  const finalState = await syncImageGenerationJobFinalStatus(result.job.id);
+  if (!finalState) {
+    return null;
+  }
+  await applyRefundsForFailedImageGenerationTasks({
+    job: finalState.job,
+    tasks: finalState.tasks,
+    source: input.source || "image_generation_jobs",
+  });
+  return finalState;
+}
+
+export async function sweepAbandonedImageGenerationJobsForUser(input: {
+  userEmail: string;
+  limit?: number;
+  timeoutMs?: number;
+  source?: string;
+}) {
+  const userEmail = input.userEmail.trim().toLowerCase();
+  if (!userEmail) {
+    return [] as Array<Awaited<ReturnType<typeof expireAbandonedImageGenerationJob>>>;
+  }
+  const limit = Math.max(1, Math.min(50, Math.round(Number(input.limit || 10))));
+  let candidateJobIds: string[] = [];
+
+  if (shouldUseBlobImageGenerationStore()) {
+    const index = await readBlobJson<StoredImageGenerationActiveJobsIndex>(
+      getImageGenerationActiveJobsIndexPath(userEmail),
+    );
+    candidateJobIds = (Array.isArray(index?.jobIds) ? index.jobIds : []).slice(0, limit);
+  } else if (hasManagedDatabase()) {
+    const rows = (await pgAll(
+      `SELECT id
+         FROM image_generation_jobs
+        WHERE user_email = ? AND status IN ('queued', 'running')
+        ORDER BY updated_at ASC, created_at ASC
+        LIMIT ?`,
+      userEmail,
+      limit,
+    )) as Array<{ id?: string }>;
+    candidateJobIds = rows.map((row) => String(row.id || "")).filter(Boolean);
+  } else {
+    const { db } = getDb();
+    const rows = db
+      .prepare(
+        `SELECT id
+           FROM image_generation_jobs
+          WHERE user_email = ? AND status IN ('queued', 'running')
+          ORDER BY updated_at ASC, created_at ASC
+          LIMIT ?`,
+      )
+      .all(userEmail, limit) as Array<{ id?: string }>;
+    candidateJobIds = rows.map((row) => String(row.id || "")).filter(Boolean);
+  }
+
+  const results = [] as Array<Awaited<ReturnType<typeof expireAbandonedImageGenerationJob>>>;
+  for (const jobId of candidateJobIds) {
+    results.push(
+      await expireAbandonedImageGenerationJob({
+        jobId,
+        timeoutMs: input.timeoutMs,
+        source: input.source || "image_generation_jobs_sweeper",
+      }),
+    );
+  }
+  return results;
 }
 
 function getImageAssetDir() {

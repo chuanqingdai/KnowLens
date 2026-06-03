@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
-import { buildImageRenderUrl, getImageGenerationJobById } from "@/lib/server/image-generation-jobs";
+import {
+  buildImageRenderUrl,
+  expireAbandonedImageGenerationJob,
+  getImageGenerationJobById,
+} from "@/lib/server/image-generation-jobs";
 import { logOpsEvent } from "@/lib/server/store";
 
 export const runtime = "nodejs";
@@ -44,7 +48,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
 
     const { jobId } = await context.params;
     const normalizedJobId = normalizeJobId(jobId);
-    const result = await getImageGenerationJobById(normalizedJobId);
+    const result =
+      (await expireAbandonedImageGenerationJob({
+        jobId: normalizedJobId,
+        source: "image_job_status",
+      })) || (await getImageGenerationJobById(normalizedJobId));
     if (!result) {
       return NextResponse.json({ error: "Job not found." }, { status: 404 });
     }

@@ -46,6 +46,12 @@ type GenerateBatchPayload = {
   ratio?: string;
   imageModel?: string;
   imageModelPolicy?: string;
+  billing?: {
+    languageModelCredits?: number;
+    imageModelCredits?: number;
+    imageCreditsPerTask?: number;
+    projectTitle?: string;
+  };
   tasks?: Array<{
     index?: number;
     outputType?: string;

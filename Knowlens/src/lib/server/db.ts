@@ -81,9 +81,13 @@ function createTables(db: DatabaseSync) {
       plan_id TEXT NOT NULL,
       plan_name TEXT NOT NULL,
       cycle TEXT NOT NULL,
+      stripe_subscription_id TEXT,
       status TEXT NOT NULL,
+      monthly_credit_amount INTEGER,
       started_at TEXT NOT NULL,
       renew_at TEXT NOT NULL,
+      credit_period_started_at TEXT,
+      credit_period_ends_at TEXT,
       canceled_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -256,6 +260,25 @@ function createTables(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_image_generation_tasks_status
       ON image_generation_tasks(status, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS image_generation_refunds (
+      id TEXT PRIMARY KEY,
+      refund_key TEXT NOT NULL UNIQUE,
+      job_id TEXT NOT NULL,
+      task_id TEXT,
+      task_index INTEGER,
+      user_email TEXT NOT NULL,
+      project_id TEXT,
+      amount INTEGER NOT NULL,
+      reason TEXT,
+      credit_record_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_image_generation_refunds_job_id
+      ON image_generation_refunds(job_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_image_generation_refunds_user_email
+      ON image_generation_refunds(user_email, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS workspace_project_pages (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -396,6 +419,36 @@ function createTables(db: DatabaseSync) {
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_image_generation_jobs_run_id
         ON image_generation_jobs(user_email, run_id, created_at DESC);
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such column/i.test(message)) {
+      throw error;
+    }
+  }
+
+  const subscriptionColumns = [
+    "stripe_subscription_id TEXT",
+    "monthly_credit_amount INTEGER",
+    "credit_period_started_at TEXT",
+    "credit_period_ends_at TEXT",
+  ];
+
+  for (const columnDef of subscriptionColumns) {
+    try {
+      db.exec(`ALTER TABLE subscriptions ADD COLUMN ${columnDef}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate column name/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id
+        ON subscriptions(stripe_subscription_id);
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

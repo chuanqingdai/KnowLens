@@ -7,7 +7,9 @@ import {
   type Image2ProviderFailure,
 } from "@/lib/server/image2";
 import {
+  applyRefundsForFailedImageGenerationTasks,
   buildImageRenderUrl,
+  expireAbandonedImageGenerationJob,
   getImageGenerationJobById,
   persistRemoteImageAsset,
   syncImageGenerationJobFinalStatus,
@@ -15,7 +17,10 @@ import {
   updateImageGenerationTask,
   type ImageGenerationTaskRow,
 } from "@/lib/server/image-generation-jobs";
-import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
+import {
+  getLatestSubscriptionDb,
+  logOpsEvent,
+} from "@/lib/server/store";
 import { updateWorkspaceProjectPageImage } from "@/lib/server/workspace-project-pages";
 import {
   parseTuziImageUrl,
@@ -194,6 +199,17 @@ function logImageTaskRunEvent(payload: Record<string, unknown>) {
     timestamp: new Date().toISOString(),
     ...payload,
   });
+}
+
+function readProjectTraceId(job: { requestJson?: string | null }) {
+  try {
+    const snapshot = job.requestJson ? JSON.parse(job.requestJson) : null;
+    return typeof snapshot?.projectTraceId === "string" && snapshot.projectTraceId.trim()
+      ? snapshot.projectTraceId.trim().slice(0, 200)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function requestImageByPolicy(input: {
@@ -427,7 +443,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "jobId is required.", code: "IMAGE_JOB_ID_REQUIRED" }, { status: 400 });
     }
 
-    const current = await getImageGenerationJobById(jobId);
+    const current =
+      (await expireAbandonedImageGenerationJob({
+        jobId,
+        source: "image_task_run_precheck",
+      })) || (await getImageGenerationJobById(jobId));
     if (!current) {
       return NextResponse.json({ error: "Job not found.", code: "IMAGE_JOB_NOT_FOUND" }, { status: 404 });
     }
@@ -439,6 +459,11 @@ export async function POST(request: NextRequest) {
     const queuedTask = current.tasks.find((task) => task.status === "queued");
     if (!queuedTask) {
       const finalState = await syncImageGenerationJobFinalStatus(jobId);
+      await applyRefundsForFailedImageGenerationTasks({
+        job: finalState?.job ?? current.job,
+        tasks: finalState?.tasks ?? current.tasks,
+        source: "image_task_run",
+      });
       return NextResponse.json({
         ok: true,
         job: finalState?.job ?? current.job,
@@ -453,14 +478,7 @@ export async function POST(request: NextRequest) {
     const taskStartedAt = Date.now();
     const taskDeadlineAt = taskStartedAt + normalizeTaskBudgetMs();
     const projectId = current.job.projectId;
-    const projectTraceId = (() => {
-      try {
-        const snapshot = current.job.requestJson ? JSON.parse(current.job.requestJson) : null;
-        return typeof snapshot?.projectTraceId === "string" ? snapshot.projectTraceId : null;
-      } catch {
-        return null;
-      }
-    })();
+    const projectTraceId = readProjectTraceId(current.job);
 
     await updateImageGenerationJobStatus({
       jobId,
@@ -550,6 +568,11 @@ export async function POST(request: NextRequest) {
         },
       });
       const finalState = await syncImageGenerationJobFinalStatus(jobId);
+      await applyRefundsForFailedImageGenerationTasks({
+        job: finalState?.job ?? current.job,
+        tasks: finalState?.tasks ?? current.tasks,
+        source: "image_task_run",
+      });
       return NextResponse.json({
         ok: true,
         job: finalState?.job ?? current.job,
@@ -641,6 +664,11 @@ export async function POST(request: NextRequest) {
         },
       });
       const finalState = await syncImageGenerationJobFinalStatus(jobId);
+      await applyRefundsForFailedImageGenerationTasks({
+        job: finalState?.job ?? current.job,
+        tasks: finalState?.tasks ?? current.tasks,
+        source: "image_task_run",
+      });
       return NextResponse.json({
         ok: true,
         job: finalState?.job ?? current.job,
@@ -717,6 +745,11 @@ export async function POST(request: NextRequest) {
     });
 
     const finalState = await syncImageGenerationJobFinalStatus(jobId);
+    await applyRefundsForFailedImageGenerationTasks({
+      job: finalState?.job ?? current.job,
+      tasks: finalState?.tasks ?? current.tasks,
+      source: "image_task_run",
+    });
     return NextResponse.json({
       ok: true,
       job: finalState?.job ?? current.job,

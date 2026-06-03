@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
+  saveCheckoutReturnNotice,
   getSubscriptionByUser,
+  syncCreditRecordsFromServer,
   type BillingCycle,
   type SubscriptionSnapshot,
 } from "@/lib/billing";
@@ -260,10 +262,6 @@ export default function MembershipPage() {
   });
 
   useEffect(() => {
-    window.history.replaceState(null, "", returnPath);
-  }, [returnPath]);
-
-  useEffect(() => {
     setMembershipSource(readMembershipSource());
   }, []);
 
@@ -312,10 +310,22 @@ export default function MembershipPage() {
         };
 
         if (response.ok && data.ok) {
+          if (currentEmail) {
+            await syncCreditRecordsFromServer(currentEmail).catch(() => undefined);
+          }
           clearPendingCheckout();
           setPendingCheckoutMeta(null);
           setPendingFinalizeSessionId(null);
           setRefreshVersion((prev) => prev + 1);
+          saveCheckoutReturnNotice({
+            status: "success",
+            message: data.duplicate
+              ? "Membership is active and your credits are ready to use."
+              : "Membership activated successfully. Your credits are ready to use.",
+            returnPath,
+            source: membershipSource,
+            createdAt: new Date().toISOString(),
+          });
           setToast(
             data.duplicate
               ? "Payment already verified earlier. Credits were not added twice."
@@ -355,7 +365,7 @@ export default function MembershipPage() {
         setFinalizing(false);
       }
     },
-    [returnPath, router],
+    [currentEmail, membershipSource, returnPath, router],
   );
 
   useEffect(() => {

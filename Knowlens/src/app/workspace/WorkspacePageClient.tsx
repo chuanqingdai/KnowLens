@@ -19,6 +19,7 @@ import { outlineItems as volcanoOutlineItems, slideDrafts as volcanoSlideDrafts 
 import {
   appendCreditRecord,
   appendCreditRecordOnServer,
+  consumeCheckoutReturnNotice,
   getCreditRecords,
   getSubscriptionByUser,
   syncCreditRecordsFromServer,
@@ -2585,6 +2586,23 @@ export default function WorkspacePage() {
       workspaceToastTimerRef.current = null;
     }, 3200);
   }, []);
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    const notice = consumeCheckoutReturnNotice();
+    if (!notice) {
+      return;
+    }
+    setCreditsPaywallOpen(false);
+    setCreditsPaywallContext(null);
+    void syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        setCreditVersion((prev) => prev + 1);
+      })
+      .catch(() => undefined);
+    pushWorkspaceToast(notice.message);
+  }, [currentEmail, pushWorkspaceToast]);
   const clearCurrentGenerationState = useCallback(
     (reason: string) => {
       generationRequestInFlightRef.current = false;
@@ -2741,36 +2759,36 @@ export default function WorkspacePage() {
         return `${count} outputs`;
       })();
       return {
-        title: "This batch size is available on paid plans",
+        title: "Upgrade to unlock larger batches",
         description: `${countLabel ? `${countLabel} ` : "This count "}requires a paid plan. You can start with a smaller batch for now, or view plans to unlock larger poster, slide, and storyboard batches.`,
-        confirmLabel: "View Plans",
+        confirmLabel: "Upgrade Now",
         source: "workspace_count_limit_paywall",
       };
     }
     if (scene === "billing_insufficient") {
       return {
-        title: "Not enough credits to continue",
+        title: "Upgrade to continue",
         description:
           "This generation needs more credits than your current balance. Please view the available plans to add more credits and continue when you are ready.",
-        confirmLabel: "View Plans",
+        confirmLabel: "Upgrade Now",
         source: "workspace_billing_insufficient_paywall",
       };
     }
     if (scene === "tts_premium") {
       return {
-        title: "Premium voice is available on paid plans",
+        title: "Upgrade to unlock premium voices",
         description:
           "Premium voice options are reserved for members. You can keep using the included voices, or upgrade to unlock richer narration styles.",
-        confirmLabel: "View Plans",
+        confirmLabel: "Upgrade Now",
         source: "workspace_tts_premium_paywall",
       };
     }
     return {
-      title: isFreeUser ? "Free credits used up" : "Credits required",
+      title: isFreeUser ? "Upgrade to keep creating" : "Upgrade to continue",
       description: isFreeUser
         ? "Your free monthly credits have been used. Please view the available plans to keep creating with KnowLens."
         : "Your current credit balance is not enough for this generation. Please view the available plans to add more credits.",
-      confirmLabel: "View Plans",
+      confirmLabel: "Upgrade Now",
       source: "workspace_default_paywall",
     };
   }, [creditsPaywallContext, isFreeUser]);
@@ -2941,7 +2959,12 @@ export default function WorkspacePage() {
     [currentEmail, effectiveIntent, getAvailableCredits, openCreditsPaywall, topic, workspaceProjectTitle],
   );
   const refundImageTaskCredits = useCallback(
-    (input: { runId: string | null | undefined; taskIndex: number; reason?: string }) => {
+    (input: {
+      runId: string | null | undefined;
+      taskIndex: number;
+      reason?: string;
+      mode?: "client" | "server";
+    }) => {
       const taskIndex = Math.max(1, Math.round(input.taskIndex));
       const creditKey = buildImageTaskCreditKey(input.runId, taskIndex);
       const amount = chargedImageTaskCreditsRef.current[creditKey] || 0;
@@ -2952,6 +2975,18 @@ export default function WorkspacePage() {
         return false;
       }
       refundedImageTaskCreditsRef.current[creditKey] = true;
+      if (input.mode === "server") {
+        if (currentEmail) {
+          void syncCreditRecordsFromServer(currentEmail)
+            .then(() => {
+              setCreditVersion((prev) => prev + 1);
+            })
+            .catch(() => undefined);
+        } else {
+          setCreditVersion((prev) => prev + 1);
+        }
+        return true;
+      }
       const projectTitle = workspaceProjectTitle || topic || "Image generation";
       appendCreditRecord({
         type: "refund",
@@ -3804,10 +3839,18 @@ export default function WorkspacePage() {
       },
       ratio: normalizedGenerationConfig.normalizedRatio,
       imageModel: "gpt-image-2",
+      billing: {
+        languageModelCredits,
+        imageModelCredits,
+        imageCreditsPerTask: STANDARD_OUTPUT_PROMO_CREDITS,
+        projectTitle: workspaceProjectTitle || topic || "Generation Project",
+      },
       tasks,
     }),
     [
       effectiveIntent,
+      imageModelCredits,
+      languageModelCredits,
       normalizedGenerationConfig.normalizedDirection,
       normalizedGenerationConfig.normalizedRatio,
       selectedStyle.englishName,
@@ -3815,6 +3858,8 @@ export default function WorkspacePage() {
       selectedStyle.name,
       selectedStyle.prompt,
       standardOutputCount,
+      topic,
+      workspaceProjectTitle,
     ],
   );
   const runGenerationBatch = useCallback(
@@ -4259,11 +4304,14 @@ export default function WorkspacePage() {
           const failureCode = payload?.code || `HTTP_${response.status}`;
           autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           tasks.forEach((task) => {
-            const wasRefunded = refundImageTaskCredits({
-              runId: activeRunId,
-              taskIndex: task.index,
-              reason: failureCode,
-            });
+            const wasRefunded = responseJobId
+              ? false
+              : refundImageTaskCredits({
+                  runId: activeRunId,
+                  taskIndex: task.index,
+                  reason: failureCode,
+                  mode: "client",
+                });
             const taskError = appendRefundNotice(failureMessage, wasRefunded);
             setGenerationTaskStateByIndex((prev) => ({
               ...prev,
@@ -4433,11 +4481,16 @@ export default function WorkspacePage() {
             result?.error ||
             tr("Generation failed.", "生成失败。");
           const nextErrorCode = result?.errorCode || "IMAGE_TASK_FAILED";
-          const wasRefunded = refundImageTaskCredits({
-            runId: activeRunId,
-            taskIndex: task.index,
-            reason: nextErrorCode,
-          });
+          const backendStatus = (result?.status || "").trim().toLowerCase();
+          const wasRefunded =
+            backendStatus === "failed" || backendStatus === "timed_out"
+              ? refundImageTaskCredits({
+                  runId: activeRunId,
+                  taskIndex: task.index,
+                  reason: nextErrorCode,
+                  mode: "server",
+                })
+              : false;
           const taskError = appendRefundNotice(nextError, wasRefunded);
           setGenerationTaskStateByIndex((prev) => {
             const nextState: GenerationTaskUiState = {
@@ -4511,11 +4564,14 @@ export default function WorkspacePage() {
             error instanceof DOMException && error.name === "AbortError"
               ? "IMAGE_REQUEST_TIMEOUT"
               : "IMAGE_REQUEST_FAILED";
-          const wasRefunded = refundImageTaskCredits({
-            runId: activeRunId,
-            taskIndex: task.index,
-            reason: errorCode,
-          });
+          const wasRefunded = currentGenerationJobIdRef.current
+            ? false
+            : refundImageTaskCredits({
+                runId: activeRunId,
+                taskIndex: task.index,
+                reason: errorCode,
+                mode: "client",
+              });
           const taskError = appendRefundNotice(lastError, wasRefunded);
           setGenerationTaskStateByIndex((prev) => ({
             ...prev,

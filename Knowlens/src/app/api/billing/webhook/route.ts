@@ -8,7 +8,9 @@ import {
 } from "@/lib/server/stripe";
 import {
   applyBillingFulfillmentAtomic,
+  getSubscriptionDbByStripeSubscriptionId,
   logOpsEvent,
+  syncStripeSubscriptionState,
 } from "@/lib/server/store";
 
 export const runtime = "nodejs";
@@ -112,6 +114,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     planId: plan.id,
     planName: plan.name,
     cycle,
+    stripeSubscriptionId:
+      typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription?.id,
     startedAt: now.toISOString(),
     renewAt: (cycle === "yearly" ? addMonths(now, 12) : addMonths(now, 1)).toISOString(),
     monthlyCredits: plan.monthlyCredits,
@@ -130,6 +136,74 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   return { ok: true, status: 200, applied: result.applied };
 }
 
+function normalizeStripeSubscriptionStatus(
+  status: string | null | undefined,
+  cancelAtPeriodEnd = false,
+): "inactive" | "active" | "canceling" | "canceled" {
+  const normalized = (status || "").trim().toLowerCase();
+  if (normalized === "canceled" || normalized === "unpaid" || normalized === "incomplete_expired") {
+    return "canceled";
+  }
+  if (cancelAtPeriodEnd && (normalized === "active" || normalized === "trialing" || normalized === "past_due")) {
+    return "canceling";
+  }
+  if (normalized === "active" || normalized === "trialing" || normalized === "past_due") {
+    return "active";
+  }
+  return "inactive";
+}
+
+async function handleStripeSubscriptionLifecycle(source: string, stripeSubscriptionId: string) {
+  const normalizedId = stripeSubscriptionId.trim();
+  if (!normalizedId) {
+    return { ok: true, status: 200, ignored: true };
+  }
+  const existing = await getSubscriptionDbByStripeSubscriptionId(normalizedId);
+  if (!existing) {
+    logOpsEvent({
+      category: "billing",
+      action: "stripe_webhook_ignored",
+      status: "info",
+      source,
+      code: "STRIPE_SUBSCRIPTION_NOT_LINKED",
+      message: "Subscription lifecycle event ignored because no local subscription row was found.",
+      details: { stripeSubscriptionId: normalizedId },
+    });
+    return { ok: true, status: 200, ignored: true };
+  }
+  const stripe = getStripeServerClient();
+  const subscription = (await stripe.subscriptions.retrieve(normalizedId)) as Stripe.Subscription & {
+    current_period_end?: number;
+  };
+  const renewAt = new Date(Number(subscription.current_period_end || 0) * 1000 || Date.now()).toISOString();
+  const status = normalizeStripeSubscriptionStatus(
+    subscription.status,
+    Boolean(subscription.cancel_at_period_end),
+  );
+  await syncStripeSubscriptionState({
+    stripeSubscriptionId: normalizedId,
+    renewAt,
+    status,
+    canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+  });
+  logOpsEvent({
+    category: "billing",
+    action: "stripe_subscription_synced",
+    status: "ok",
+    source,
+    userEmail: typeof (existing as { user_email?: unknown }).user_email === "string"
+      ? ((existing as { user_email?: string }).user_email || undefined)
+      : undefined,
+    message: `${status}:${renewAt}`,
+    details: {
+      stripeSubscriptionId: normalizedId,
+      status,
+      renewAt,
+    },
+  });
+  return { ok: true, status: 200, applied: true };
+}
+
 export async function POST(request: Request) {
   try {
     const event = await parseStripeEvent(request);
@@ -138,6 +212,22 @@ export async function POST(request: Request) {
       event.type === "checkout.session.async_payment_succeeded"
     ) {
       const result = await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+      return NextResponse.json(result, { status: result.status });
+    }
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object as Stripe.Invoice & {
+        subscription?: string | { id?: string } | null;
+      };
+      const subscriptionId =
+        typeof invoice.subscription === "string"
+          ? invoice.subscription
+          : invoice.subscription?.id;
+      const result = await handleStripeSubscriptionLifecycle("stripe_invoice_paid", subscriptionId || "");
+      return NextResponse.json(result, { status: result.status });
+    }
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object as Stripe.Subscription;
+      const result = await handleStripeSubscriptionLifecycle("stripe_subscription_event", subscription.id);
       return NextResponse.json(result, { status: result.status });
     }
     return NextResponse.json({ ok: true, ignored: true, type: event.type });

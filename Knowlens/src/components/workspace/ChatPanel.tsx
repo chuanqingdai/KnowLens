@@ -1012,16 +1012,12 @@ export const ChatPanel = memo(function ChatPanel({
   );
   const billingMessageClass = generationConfirmError
     ? "font-medium text-red-600"
-    : canConfirmBilling
-      ? "text-zinc-600"
-      : "font-medium text-red-600";
+    : "text-zinc-600";
   const billingMessageText = generationConfirmError
     ? generationConfirmError
     : billingConfirmed
       ? ""
-      : canConfirmBilling
-        ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
-        : "Insufficient credits. Please upgrade before confirming this charge.";
+      : `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1866,11 +1862,7 @@ export const ChatPanel = memo(function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
-                    !canConfirmBilling
-                      ? "bg-amber-600 hover:bg-amber-500"
-                      : "bg-zinc-900 hover:bg-zinc-700"
-                  } disabled:cursor-not-allowed disabled:bg-zinc-400`}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
                 >
                   {isPlanningBillingStep ? (
                     <>
@@ -1879,8 +1871,6 @@ export const ChatPanel = memo(function ChatPanel({
                     </>
                   ) : billingConfirmed ? (
                     "Confirmed, generating..."
-                  ) : !canConfirmBilling ? (
-                    "Insufficient credits"
                   ) : (
                     "Confirm Charge & Generate"
                   )}
@@ -2786,11 +2776,7 @@ export const ChatPanel = memo(function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white sm:w-auto ${
-                    !canConfirmBilling
-                      ? "bg-amber-600 hover:bg-amber-500"
-                      : "bg-zinc-900 hover:bg-zinc-700"
-                  } disabled:cursor-not-allowed disabled:bg-zinc-400`}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
                 >
                 {isPlanningBillingStep ? (
                   <>
@@ -2799,8 +2785,6 @@ export const ChatPanel = memo(function ChatPanel({
                   </>
                 ) : billingConfirmed ? (
                   "Confirmed, generating..."
-                ) : !canConfirmBilling ? (
-                  "Insufficient credits"
                 ) : (
                   "Confirm Charge & Generate"
                 )}

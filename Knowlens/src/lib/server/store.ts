@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { findBillingPlan } from "@/lib/billing-plans";
 import { getDb } from "./db";
 import { hasManagedDatabase, pgAll, pgGet, pgRun, pgTransaction, pgTxGet, pgTxRun } from "./postgres";
 
@@ -51,6 +52,17 @@ export type OpsEventRow = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function addMonths(baseIso: string, months: number) {
+  const next = new Date(baseIso);
+  next.setMonth(next.getMonth() + months);
+  return next.toISOString();
+}
+
+function toIsoOrFallback(value: string | undefined | null, fallback: string) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : fallback;
 }
 
 function readCreatedAtValue(row: Record<string, unknown>) {
@@ -423,6 +435,193 @@ export async function applyCreditRecordAtomic(input: {
   }
 }
 
+export async function applyImageGenerationRefundAtomic(input: {
+  refundKey: string;
+  jobId: string;
+  taskId?: string;
+  taskIndex?: number;
+  userEmail: string;
+  userId?: string;
+  projectId?: string;
+  projectTitle?: string;
+  amount: number;
+  reason?: string;
+  description: string;
+}) {
+  const scopeEmail = normalizeScope(input.userEmail);
+  const refundKey = input.refundKey.trim().slice(0, 240);
+  const amount = Math.max(0, Math.round(input.amount));
+  if (!scopeEmail || scopeEmail === "guest") {
+    throw new Error("A signed-in user email is required for image generation refunds.");
+  }
+  if (!refundKey || !input.jobId.trim() || amount <= 0) {
+    return {
+      applied: false as const,
+      balance: null,
+      duplicate: false,
+    };
+  }
+
+  if (hasManagedDatabase()) {
+    return pgTransaction(async (tx) => {
+      const existingRefund = (await pgTxGet(
+        tx,
+        "SELECT id FROM image_generation_refunds WHERE refund_key = ? LIMIT 1",
+        [refundKey],
+      )) as { id?: string } | undefined;
+      if (existingRefund?.id) {
+        const latest = (await pgTxGet(
+          tx,
+          "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+          [scopeEmail],
+        )) as { balance?: number } | undefined;
+        return {
+          applied: false as const,
+          balance: Number(latest?.balance ?? 50),
+          duplicate: true,
+        };
+      }
+
+      const existingUser = (await pgTxGet(tx, "SELECT id FROM users WHERE email = ?", [scopeEmail])) as
+        | { id?: string }
+        | undefined;
+      const userId = input.userId || existingUser?.id || `u-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO users (id, email, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, 'user', ?, ?)
+         ON CONFLICT(email) DO UPDATE SET
+           updated_at = excluded.updated_at`,
+        [userId, scopeEmail, scopeEmail.split("@")[0] || "User", nowIso(), nowIso()],
+      );
+
+      const latest = (await pgTxGet(
+        tx,
+        "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        [scopeEmail],
+      )) as { balance?: number } | undefined;
+      const latestBalance = Number(latest?.balance ?? 50);
+      const nextBalance = latestBalance + amount;
+      const creditRecordId = `record-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+         VALUES (?, ?, 'refund', ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          creditRecordId,
+          nowIso(),
+          input.description.trim().slice(0, 500),
+          amount,
+          nextBalance,
+          userId,
+          scopeEmail,
+          input.projectId ?? null,
+          input.projectTitle ?? null,
+        ],
+      );
+      await pgTxRun(
+        tx,
+        `INSERT INTO image_generation_refunds (id, refund_key, job_id, task_id, task_index, user_email, project_id, amount, reason, credit_record_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `imgrefund-${randomUUID()}`,
+          refundKey,
+          input.jobId.trim(),
+          input.taskId?.trim() || null,
+          Number.isFinite(input.taskIndex) ? Math.max(1, Math.round(Number(input.taskIndex))) : null,
+          scopeEmail,
+          input.projectId?.trim() || null,
+          amount,
+          input.reason?.trim().slice(0, 240) || null,
+          creditRecordId,
+          nowIso(),
+        ],
+      );
+      return {
+        applied: true as const,
+        balance: nextBalance,
+        duplicate: false,
+      };
+    });
+  }
+
+  const { db } = getDb();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const existingRefund = db
+      .prepare("SELECT id FROM image_generation_refunds WHERE refund_key = ? LIMIT 1")
+      .get(refundKey) as { id?: string } | undefined;
+    if (existingRefund?.id) {
+      const latest = db
+        .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+        .get(scopeEmail) as { balance?: number } | undefined;
+      db.exec("COMMIT");
+      return {
+        applied: false as const,
+        balance: Number(latest?.balance ?? 50),
+        duplicate: true,
+      };
+    }
+
+    const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get(scopeEmail) as
+      | { id?: string }
+      | undefined;
+    const userId = input.userId || existingUser?.id || `u-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO users (id, email, name, role, created_at, updated_at)
+       VALUES (?, ?, ?, 'user', ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         updated_at = excluded.updated_at`,
+    ).run(userId, scopeEmail, scopeEmail.split("@")[0] || "User", nowIso(), nowIso());
+
+    const latest = db
+      .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .get(scopeEmail) as { balance?: number } | undefined;
+    const latestBalance = Number(latest?.balance ?? 50);
+    const nextBalance = latestBalance + amount;
+    const creditRecordId = `record-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+       VALUES (?, ?, 'refund', ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      creditRecordId,
+      nowIso(),
+      input.description.trim().slice(0, 500),
+      amount,
+      nextBalance,
+      userId,
+      scopeEmail,
+      input.projectId ?? null,
+      input.projectTitle ?? null,
+    );
+    db.prepare(
+      `INSERT INTO image_generation_refunds (id, refund_key, job_id, task_id, task_index, user_email, project_id, amount, reason, credit_record_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      `imgrefund-${randomUUID()}`,
+      refundKey,
+      input.jobId.trim(),
+      input.taskId?.trim() || null,
+      Number.isFinite(input.taskIndex) ? Math.max(1, Math.round(Number(input.taskIndex))) : null,
+      scopeEmail,
+      input.projectId?.trim() || null,
+      amount,
+      input.reason?.trim().slice(0, 240) || null,
+      creditRecordId,
+      nowIso(),
+    );
+    db.exec("COMMIT");
+    return {
+      applied: true as const,
+      balance: nextBalance,
+      duplicate: false,
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export async function listCreditRecords(email?: string | null) {
   const scopeEmail = normalizeScope(email);
   if (hasManagedDatabase()) {
@@ -440,8 +639,12 @@ export async function saveSubscriptionDb(input: {
   planName: string;
   cycle: "monthly" | "yearly";
   status: "inactive" | "active" | "canceling" | "canceled";
+  stripeSubscriptionId?: string;
+  monthlyCreditAmount?: number;
   startedAt: string;
   renewAt: string;
+  creditPeriodStartedAt?: string;
+  creditPeriodEndsAt?: string;
   canceledAt?: string;
 }) {
   const userId = await upsertUser({
@@ -451,17 +654,26 @@ export async function saveSubscriptionDb(input: {
   });
   const id = `sub-${randomUUID()}`;
   const sqlText =
-    `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    `INSERT INTO subscriptions (
+      id, user_id, plan_id, plan_name, cycle, stripe_subscription_id, status, monthly_credit_amount,
+      started_at, renew_at, credit_period_started_at, credit_period_ends_at, canceled_at, created_at, updated_at
+    )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const creditPeriodStartedAt = input.creditPeriodStartedAt || input.startedAt;
+  const creditPeriodEndsAt = input.creditPeriodEndsAt || addMonths(creditPeriodStartedAt, 1);
   const params = [
     id,
     userId,
     input.planId,
     input.planName,
     input.cycle,
+    input.stripeSubscriptionId?.trim() || null,
     input.status,
+    Number.isFinite(input.monthlyCreditAmount) ? Math.max(0, Math.round(Number(input.monthlyCreditAmount))) : null,
     input.startedAt,
     input.renewAt,
+    creditPeriodStartedAt,
+    creditPeriodEndsAt,
     input.canceledAt ?? null,
     nowIso(),
     nowIso(),
@@ -481,7 +693,10 @@ export async function getLatestSubscriptionDb(email: string) {
       `SELECT s.* FROM subscriptions s
        INNER JOIN users u ON u.id = s.user_id
        WHERE u.email = ?
-       ORDER BY s.updated_at DESC, s.created_at DESC
+       ORDER BY
+         CASE WHEN s.status IN ('active', 'canceling') THEN 0 ELSE 1 END ASC,
+         s.updated_at DESC,
+         s.created_at DESC
        LIMIT 1`;
   if (hasManagedDatabase()) {
     return (await pgGet(sqlText, [normalizedEmail])) ?? null;
@@ -489,6 +704,256 @@ export async function getLatestSubscriptionDb(email: string) {
   const { db } = getDb();
   const row = db.prepare(sqlText).get(normalizedEmail);
   return row ?? null;
+}
+
+export async function getSubscriptionDbByStripeSubscriptionId(stripeSubscriptionId: string) {
+  const normalizedId = stripeSubscriptionId.trim();
+  if (!normalizedId) {
+    return null;
+  }
+  const sqlText =
+    `SELECT *
+     FROM subscriptions
+     WHERE stripe_subscription_id = ?
+     ORDER BY
+       CASE WHEN status IN ('active', 'canceling') THEN 0 ELSE 1 END ASC,
+       updated_at DESC,
+       created_at DESC
+     LIMIT 1`;
+  if (hasManagedDatabase()) {
+    return (await pgGet(sqlText, [normalizedId])) ?? null;
+  }
+  const { db } = getDb();
+  return db.prepare(sqlText).get(normalizedId) ?? null;
+}
+
+export async function syncStripeSubscriptionState(input: {
+  stripeSubscriptionId: string;
+  renewAt: string;
+  status: "inactive" | "active" | "canceling" | "canceled";
+  canceledAt?: string | null;
+}) {
+  const stripeSubscriptionId = input.stripeSubscriptionId.trim();
+  if (!stripeSubscriptionId) {
+    return false;
+  }
+  const nextRenewAt = toIsoOrFallback(input.renewAt, nowIso());
+  const canceledAt = input.canceledAt ? toIsoOrFallback(input.canceledAt, nextRenewAt) : null;
+  if (hasManagedDatabase()) {
+    await pgRun(
+      `UPDATE subscriptions
+       SET renew_at = ?, status = ?, canceled_at = ?, updated_at = ?
+       WHERE stripe_subscription_id = ?`,
+      nextRenewAt,
+      input.status,
+      canceledAt,
+      nowIso(),
+      stripeSubscriptionId,
+    );
+    return true;
+  }
+  const { db } = getDb();
+  db.prepare(
+    `UPDATE subscriptions
+     SET renew_at = ?, status = ?, canceled_at = ?, updated_at = ?
+     WHERE stripe_subscription_id = ?`,
+  ).run(nextRenewAt, input.status, canceledAt, nowIso(), stripeSubscriptionId);
+  return true;
+}
+
+export async function ensureSubscriptionCreditsCurrent(email: string) {
+  const normalizedEmail = normalizeScope(email);
+  if (!normalizedEmail || normalizedEmail === "guest") {
+    return null;
+  }
+  let latest = await getLatestSubscriptionDb(normalizedEmail);
+  if (!latest || typeof latest !== "object") {
+    return null;
+  }
+
+  const status = String((latest as { status?: string }).status || "").trim().toLowerCase();
+  if (!(status === "active" || status === "canceling")) {
+    return latest;
+  }
+
+  const planId = String((latest as { plan_id?: string }).plan_id || "").trim();
+  const plan = findBillingPlan(planId);
+  const monthlyCreditAmount = Math.max(
+    0,
+    Math.round(
+      Number(
+        (latest as { monthly_credit_amount?: number | null }).monthly_credit_amount ??
+          plan?.monthlyCredits ??
+          0,
+      ),
+    ),
+  );
+  if (!plan || monthlyCreditAmount <= 0) {
+    return latest;
+  }
+
+  const accessEndsAt = toIsoOrFallback(
+    (latest as { renew_at?: string | null }).renew_at ?? null,
+    nowIso(),
+  );
+  let creditPeriodStartedAt = toIsoOrFallback(
+    (latest as { credit_period_started_at?: string | null; started_at?: string | null }).credit_period_started_at ??
+      (latest as { started_at?: string | null }).started_at ??
+      null,
+    nowIso(),
+  );
+  let creditPeriodEndsAt = toIsoOrFallback(
+    (latest as { credit_period_ends_at?: string | null }).credit_period_ends_at ?? null,
+    addMonths(creditPeriodStartedAt, 1),
+  );
+
+  while (Date.now() >= Date.parse(creditPeriodEndsAt) && Date.parse(creditPeriodEndsAt) < Date.parse(accessEndsAt)) {
+    const expectedPeriodEnd = creditPeriodEndsAt;
+    const nextPeriodStart = expectedPeriodEnd;
+    const nextPeriodEnd = addMonths(nextPeriodStart, 1);
+    const descriptionPrefix = `${plan.name} monthly credit cycle`;
+
+    if (hasManagedDatabase()) {
+      const cycleResult = await pgTransaction(async (tx) => {
+        const current = (await pgTxGet(
+          tx,
+          "SELECT * FROM subscriptions WHERE id = ? LIMIT 1",
+          [(latest as { id?: string }).id],
+        )) as Record<string, unknown> | undefined;
+        if (!current) {
+          return { applied: false as const };
+        }
+        const currentPeriodEnd = toIsoOrFallback(
+          (current.credit_period_ends_at as string | null | undefined) ?? null,
+          expectedPeriodEnd,
+        );
+        if (currentPeriodEnd !== expectedPeriodEnd) {
+          return { applied: false as const };
+        }
+        const latestBalanceRow = (await pgTxGet(
+          tx,
+          "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+          [normalizedEmail],
+        )) as { balance?: number } | undefined;
+        const latestBalance = Math.max(0, Number(latestBalanceRow?.balance ?? 50));
+        if (latestBalance > 0) {
+          await pgTxRun(
+            tx,
+            `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+             VALUES (?, ?, 'consume', ?, ?, ?, ?, ?, null, null)`,
+            [
+              `record-${randomUUID()}`,
+              nowIso(),
+              `${descriptionPrefix} expired unused credits`,
+              -latestBalance,
+              0,
+              current.user_id ?? null,
+              normalizedEmail,
+            ],
+          );
+        }
+        await pgTxRun(
+          tx,
+          `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+           VALUES (?, ?, 'topup', ?, ?, ?, ?, ?, null, null)`,
+          [
+            `record-${randomUUID()}`,
+            nowIso(),
+            `${descriptionPrefix} granted`,
+            monthlyCreditAmount,
+            monthlyCreditAmount,
+            current.user_id ?? null,
+            normalizedEmail,
+          ],
+        );
+        await pgTxRun(
+          tx,
+          `UPDATE subscriptions
+           SET monthly_credit_amount = ?, credit_period_started_at = ?, credit_period_ends_at = ?, updated_at = ?
+           WHERE id = ?`,
+          [monthlyCreditAmount, nextPeriodStart, nextPeriodEnd, nowIso(), current.id],
+        );
+        return { applied: true as const };
+      });
+      if (!cycleResult.applied) {
+        break;
+      }
+    } else {
+      const { db } = getDb();
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const current = db.prepare("SELECT * FROM subscriptions WHERE id = ? LIMIT 1").get((latest as { id?: string }).id) as
+          | Record<string, unknown>
+          | undefined;
+        if (!current) {
+          db.exec("ROLLBACK");
+          break;
+        }
+        const currentPeriodEnd = toIsoOrFallback(
+          (current.credit_period_ends_at as string | null | undefined) ?? null,
+          expectedPeriodEnd,
+        );
+        if (currentPeriodEnd !== expectedPeriodEnd) {
+          db.exec("ROLLBACK");
+          break;
+        }
+        const latestBalanceRow = db
+          .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+          .get(normalizedEmail) as { balance?: number } | undefined;
+        const latestBalance = Math.max(0, Number(latestBalanceRow?.balance ?? 50));
+        if (latestBalance > 0) {
+          db.prepare(
+            `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+             VALUES (?, ?, 'consume', ?, ?, ?, ?, ?, null, null)`,
+          ).run(
+            `record-${randomUUID()}`,
+            nowIso(),
+            `${descriptionPrefix} expired unused credits`,
+            -latestBalance,
+            0,
+            current.user_id ?? null,
+            normalizedEmail,
+          );
+        }
+        db.prepare(
+          `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+           VALUES (?, ?, 'topup', ?, ?, ?, ?, ?, null, null)`,
+        ).run(
+          `record-${randomUUID()}`,
+          nowIso(),
+          `${descriptionPrefix} granted`,
+          monthlyCreditAmount,
+          monthlyCreditAmount,
+          current.user_id ?? null,
+          normalizedEmail,
+        );
+        db.prepare(
+          `UPDATE subscriptions
+           SET monthly_credit_amount = ?, credit_period_started_at = ?, credit_period_ends_at = ?, updated_at = ?
+           WHERE id = ?`,
+        ).run(monthlyCreditAmount, nextPeriodStart, nextPeriodEnd, nowIso(), current.id);
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    }
+
+    latest = await getLatestSubscriptionDb(normalizedEmail);
+    if (!latest || typeof latest !== "object") {
+      return null;
+    }
+    creditPeriodStartedAt = toIsoOrFallback(
+      (latest as { credit_period_started_at?: string | null }).credit_period_started_at ?? null,
+      nextPeriodStart,
+    );
+    creditPeriodEndsAt = toIsoOrFallback(
+      (latest as { credit_period_ends_at?: string | null }).credit_period_ends_at ?? null,
+      nextPeriodEnd,
+    );
+  }
+
+  return latest;
 }
 
 export function replyFeedbackDb(input: {
@@ -732,12 +1197,15 @@ export async function applyBillingFulfillmentAtomic(input: {
   planId: string;
   planName: string;
   cycle: "monthly" | "yearly";
+  stripeSubscriptionId?: string;
   monthlyCredits: number;
   startedAt: string;
   renewAt: string;
   checkoutSource?: string;
 }) {
   const normalizedEmail = normalizeScope(input.userEmail);
+  const creditPeriodStartedAt = input.startedAt;
+  const creditPeriodEndsAt = addMonths(creditPeriodStartedAt, 1);
 
   if (hasManagedDatabase()) {
     return pgTransaction(async (tx) => {
@@ -766,9 +1234,26 @@ export async function applyBillingFulfillmentAtomic(input: {
       const subscriptionId = `sub-${randomUUID()}`;
       await pgTxRun(
         tx,
-        `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, null, ?, ?)`,
-        [subscriptionId, userId, input.planId, input.planName, input.cycle, input.startedAt, input.renewAt, nowIso(), nowIso()],
+        `INSERT INTO subscriptions (
+          id, user_id, plan_id, plan_name, cycle, stripe_subscription_id, status, monthly_credit_amount,
+          started_at, renew_at, credit_period_started_at, credit_period_ends_at, canceled_at, created_at, updated_at
+        )
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, null, ?, ?)`,
+        [
+          subscriptionId,
+          userId,
+          input.planId,
+          input.planName,
+          input.cycle,
+          input.stripeSubscriptionId?.trim() || null,
+          input.monthlyCredits,
+          input.startedAt,
+          input.renewAt,
+          creditPeriodStartedAt,
+          creditPeriodEndsAt,
+          nowIso(),
+          nowIso(),
+        ],
       );
 
       const previous = (await pgTxGet(
@@ -841,16 +1326,23 @@ export async function applyBillingFulfillmentAtomic(input: {
 
     const subscriptionId = `sub-${randomUUID()}`;
     db.prepare(
-      `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, null, ?, ?)`,
+      `INSERT INTO subscriptions (
+        id, user_id, plan_id, plan_name, cycle, stripe_subscription_id, status, monthly_credit_amount,
+        started_at, renew_at, credit_period_started_at, credit_period_ends_at, canceled_at, created_at, updated_at
+      )
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, null, ?, ?)`,
     ).run(
       subscriptionId,
       userId,
       input.planId,
       input.planName,
       input.cycle,
+      input.stripeSubscriptionId?.trim() || null,
+      input.monthlyCredits,
       input.startedAt,
       input.renewAt,
+      creditPeriodStartedAt,
+      creditPeriodEndsAt,
       nowIso(),
       nowIso(),
     );
