@@ -76,6 +76,12 @@ export type ImageGenerationJobRow = {
   updatedAt: string;
 };
 
+export type ImageGenerationProjectActivityRow = {
+  projectId: string;
+  intent: string | null;
+  updatedAt: string;
+};
+
 const ACTIVE_TASK_STATUSES: ImageGenerationTaskStatus[] = ["queued", "generating", "asset_downloading"];
 const TERMINAL_JOB_STATUSES: ImageGenerationJobStatus[] = ["completed", "completed_with_errors", "failed", "timed_out"];
 const ABANDONED_JOB_TIMEOUT_MS = (() => {
@@ -990,6 +996,43 @@ export async function listImageGenerationTaskHistoryByProject(input: {
   return Array.from(historyByIndex.values())
     .flat()
     .sort(compareProjectRestoreTasks);
+}
+
+export async function listImageGenerationProjectActivityByUser(userEmailInput: string) {
+  const userEmail = userEmailInput.trim().toLowerCase();
+  if (!userEmail) {
+    return [] as ImageGenerationProjectActivityRow[];
+  }
+
+  if (shouldUseBlobImageGenerationStore()) {
+    return [] as ImageGenerationProjectActivityRow[];
+  }
+
+  const sqlText = `SELECT project_id, intent, updated_at, created_at
+    FROM image_generation_jobs
+    WHERE user_email = ? AND project_id IS NOT NULL AND project_id != ''
+    ORDER BY updated_at DESC, created_at DESC`;
+
+  const rows = hasManagedDatabase()
+    ? await pgAll(sqlText, userEmail)
+    : ((getDb().db.prepare(sqlText).all(userEmail) as Array<Record<string, unknown>>));
+
+  const seenProjectIds = new Set<string>();
+  const activities: ImageGenerationProjectActivityRow[] = [];
+  for (const row of rows) {
+    const projectId = String(row.project_id || "").trim();
+    if (!projectId || seenProjectIds.has(projectId)) {
+      continue;
+    }
+    seenProjectIds.add(projectId);
+    activities.push({
+      projectId,
+      intent: typeof row.intent === "string" ? row.intent.trim() || null : null,
+      updatedAt: String(row.updated_at || row.created_at || ""),
+    });
+  }
+
+  return activities;
 }
 
 export async function updateImageGenerationJobStatus(input: {

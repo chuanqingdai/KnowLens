@@ -706,6 +706,36 @@ export async function getLatestSubscriptionDb(email: string) {
   return row ?? null;
 }
 
+export async function isFreeUserBySubscriptionSafe(input: {
+  email: string;
+  source: string;
+  projectId?: string | null;
+  details?: Record<string, unknown>;
+}) {
+  try {
+    const row = (await getLatestSubscriptionDb(input.email)) as { status?: string } | null;
+    if (!row) {
+      return true;
+    }
+    const status = (row.status || "").trim().toLowerCase();
+    return !(status === "active" || status === "canceling");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error ?? "Unknown subscription lookup error.");
+    logOpsEvent({
+      category: "billing",
+      action: "subscription_status_degraded",
+      status: "error",
+      source: input.source,
+      userEmail: input.email,
+      projectId: input.projectId ?? undefined,
+      code: "SUBSCRIPTION_STATUS_LOOKUP_FAILED",
+      message,
+      details: input.details,
+    });
+    return true;
+  }
+}
+
 export async function getSubscriptionDbByStripeSubscriptionId(stripeSubscriptionId: string) {
   const normalizedId = stripeSubscriptionId.trim();
   if (!normalizedId) {

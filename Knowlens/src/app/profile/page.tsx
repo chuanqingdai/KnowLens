@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BadgeCheck, FolderOpen, Home as HomeIcon, Menu, ReceiptText, UserCircle2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
@@ -11,15 +12,55 @@ const navItems = [
   { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
-const quickStats = [
-  { label: "Projects this month", value: "18" },
-  { label: "Exports completed", value: "42" },
-  { label: "Account credits", value: "80" },
-];
+type ProjectsResponse = {
+  projects?: Array<{ id?: string }>;
+};
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { data: session, status: sessionStatus } = useSession();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [projectCount, setProjectCount] = useState<number | null>(null);
+  const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjectCount() {
+      if (sessionStatus === "loading") {
+        return;
+      }
+      if (!currentEmail) {
+        setProjectCount(0);
+        return;
+      }
+      try {
+        const response = await fetch("/api/projects", { cache: "no-store" });
+        const payload = (await response.json()) as ProjectsResponse;
+        if (!cancelled) {
+          setProjectCount(Array.isArray(payload.projects) ? payload.projects.length : 0);
+        }
+      } catch {
+        if (!cancelled) {
+          setProjectCount(0);
+        }
+      }
+    }
+
+    void loadProjectCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentEmail, sessionStatus]);
+
+  const quickStats = useMemo(
+    () => [
+      { label: "Projects", value: projectCount === null ? "—" : String(projectCount) },
+      { label: "Exports completed", value: "42" },
+      { label: "Account credits", value: "80" },
+    ],
+    [projectCount],
+  );
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] text-zinc-900">

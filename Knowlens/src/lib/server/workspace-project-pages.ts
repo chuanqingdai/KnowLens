@@ -26,6 +26,13 @@ export type WorkspaceProjectPageRow = {
   updatedAt: string;
 };
 
+export type WorkspaceProjectActivityRow = {
+  projectId: string;
+  outputType: WorkspaceProjectPageOutputType;
+  title: string;
+  updatedAt: string;
+};
+
 type WorkspaceProjectPageInput = {
   index: number;
   outputType?: WorkspaceProjectPageOutputType | string;
@@ -352,4 +359,38 @@ export async function getWorkspaceProjectCover(input: {
         )
         .get(projectId, userEmail)) as { image_url?: string } | undefined;
   return (row?.image_url || "").trim();
+}
+
+export async function listWorkspaceProjectActivityByUser(userEmailInput: string) {
+  const userEmail = normalizeText(userEmailInput, 240).toLowerCase();
+  if (!userEmail) {
+    return [] as WorkspaceProjectActivityRow[];
+  }
+
+  const sqlText = `SELECT project_id, output_type, title, updated_at, created_at
+    FROM workspace_project_pages
+    WHERE user_email = ?
+    ORDER BY updated_at DESC, created_at DESC`;
+
+  const rows = hasManagedDatabase()
+    ? await pgAll(sqlText, [userEmail])
+    : ((getDb().db.prepare(sqlText).all(userEmail) as Array<Record<string, unknown>>));
+
+  const seenProjectIds = new Set<string>();
+  const activities: WorkspaceProjectActivityRow[] = [];
+  for (const row of rows) {
+    const projectId = String(row.project_id || "").trim();
+    if (!projectId || seenProjectIds.has(projectId)) {
+      continue;
+    }
+    seenProjectIds.add(projectId);
+    activities.push({
+      projectId,
+      outputType: normalizeOutputType(String(row.output_type || "")),
+      title: String(row.title || "").trim(),
+      updatedAt: String(row.updated_at || row.created_at || ""),
+    });
+  }
+
+  return activities;
 }

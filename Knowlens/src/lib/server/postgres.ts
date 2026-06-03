@@ -33,6 +33,22 @@ export function getManagedSql() {
   return getSql();
 }
 
+function isPostgresDuplicateColumnError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
+  return message.includes("column") && message.includes("already exists");
+}
+
+async function ensurePostgresColumn(sql: postgres.Sql, tableName: string, columnDefinition: string) {
+  try {
+    await sql.unsafe(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition};`);
+  } catch (error) {
+    if (isPostgresDuplicateColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 function normalizeSql(sqlText: string) {
   return sqlText
     .replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP")
@@ -179,7 +195,6 @@ export async function ensureManagedSchema() {
         updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
       );
       CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
 
       CREATE TABLE IF NOT EXISTS credit_records (
         id TEXT PRIMARY KEY,
@@ -444,13 +459,16 @@ export async function ensureManagedSchema() {
         ON published_case_assets(case_id, sort_order ASC, page_index ASC);
     `);
 
-    await sql.unsafe(`
-      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
-      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS monthly_credit_amount INTEGER;
-      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS credit_period_started_at TEXT;
-      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS credit_period_ends_at TEXT;
-      CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
-    `);
-  })();
+    await ensurePostgresColumn(sql, "subscriptions", "stripe_subscription_id TEXT");
+    await ensurePostgresColumn(sql, "subscriptions", "monthly_credit_amount INTEGER");
+    await ensurePostgresColumn(sql, "subscriptions", "credit_period_started_at TEXT");
+    await ensurePostgresColumn(sql, "subscriptions", "credit_period_ends_at TEXT");
+    await sql.unsafe(
+      "CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);",
+    );
+  })().catch((error) => {
+    schemaReadyPromise = null;
+    throw error;
+  });
   return schemaReadyPromise;
 }

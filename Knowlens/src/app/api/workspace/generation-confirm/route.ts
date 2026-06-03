@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { incrementUsageCounter } from "@/lib/server/guard";
-import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
+import { isFreeUserBySubscriptionSafe, logOpsEvent } from "@/lib/server/store";
 import {
   buildImageRenderUrl,
   createImageGenerationJob,
@@ -169,15 +169,6 @@ function clampPromptForImage(prompt: string) {
     .join("\n")
     .slice(0, MAX_FINAL_IMAGE_PROMPT_CHARS)
     .trim();
-}
-
-async function isFreeUserBySubscription(email: string) {
-  const row = (await getLatestSubscriptionDb(email)) as { status?: string } | null;
-  if (!row) {
-    return true;
-  }
-  const status = (row.status || "").trim().toLowerCase();
-  return !(status === "active" || status === "canceling");
 }
 
 function appendFreeWatermarkInstruction(prompt: string) {
@@ -351,7 +342,15 @@ export async function POST(request: NextRequest) {
         },
       });
     }
-    const isFreeUser = await isFreeUserBySubscription(email);
+    const isFreeUser = await isFreeUserBySubscriptionSafe({
+      email,
+      source: "workspace_generation_confirm",
+      projectId,
+      details: {
+        stage: "subscription_gate",
+        projectTraceId,
+      },
+    });
     const image2ProviderConfig = buildImage2ProviderConfig();
 
     const shouldCallImageProvider = taskCount > 0 && wantsImageProvider;

@@ -18,7 +18,7 @@ import {
   type ImageGenerationTaskRow,
 } from "@/lib/server/image-generation-jobs";
 import {
-  getLatestSubscriptionDb,
+  isFreeUserBySubscriptionSafe,
   logOpsEvent,
 } from "@/lib/server/store";
 import { updateWorkspaceProjectPageImage } from "@/lib/server/workspace-project-pages";
@@ -183,15 +183,6 @@ function appendFreeWatermarkInstruction(prompt: string) {
     "Keep the watermark size, alignment, and color treatment stable across the whole series; do not let the selected visual style redesign it.",
   ].join(" ");
   return `${prompt.trim()}\n\n[Internal rendering constraint]\n${watermarkLine}`.trim();
-}
-
-async function isFreeUserBySubscription(email: string) {
-  const row = (await getLatestSubscriptionDb(email)) as { status?: string } | null;
-  if (!row) {
-    return true;
-  }
-  const status = (row.status || "").trim().toLowerCase();
-  return !(status === "active" || status === "canceling");
 }
 
 function logImageTaskRunEvent(payload: Record<string, unknown>) {
@@ -508,7 +499,18 @@ export async function POST(request: NextRequest) {
     });
 
     const basePrompt = queuedTask.promptText.trim();
-    const prompt = (await isFreeUserBySubscription(email)) ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
+    const isFreeUser = await isFreeUserBySubscriptionSafe({
+      email,
+      source: "workspace_image_task_run",
+      projectId,
+      details: {
+        stage: "subscription_gate",
+        jobId,
+        taskId: queuedTask.id,
+        taskIndex: queuedTask.taskIndex,
+      },
+    });
+    const prompt = isFreeUser ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
     const aspectRatio = queuedTask.aspectRatio || current.job.ratio || "9:16";
     const size = resolveTuziImageSize(aspectRatio) || "864x1536";
     const generatedByPolicy = await requestImageByPolicy({

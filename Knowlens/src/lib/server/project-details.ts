@@ -1,12 +1,14 @@
 import {
   buildImageRenderUrl,
   getLatestImageGenerationJobByProject,
+  listImageGenerationProjectActivityByUser,
   listImageGenerationTaskHistoryByProject,
   type ImageGenerationTaskRow,
 } from "@/lib/server/image-generation-jobs";
 import { getProjectByIdForUser, listProjectsByUser } from "@/lib/server/store";
 import {
   getWorkspaceProjectCover,
+  listWorkspaceProjectActivityByUser,
   listWorkspaceProjectPages,
   type WorkspaceProjectPageOutputType,
   type WorkspaceProjectPageRow,
@@ -46,6 +48,26 @@ type ProjectPageWithImageHistory = WorkspaceProjectPageRow & {
 
 function normalizeText(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function latestIso(values: Array<string | null | undefined>) {
+  let winner = "";
+  let winnerTs = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+      continue;
+    }
+    const ts = Date.parse(normalized);
+    if (Number.isNaN(ts)) {
+      continue;
+    }
+    if (ts > winnerTs) {
+      winner = normalized;
+      winnerTs = ts;
+    }
+  }
+  return winner || new Date().toISOString();
 }
 
 export function normalizeProjectOutputType(value: unknown): WorkspaceProjectPageOutputType | "" {
@@ -138,30 +160,34 @@ export async function resolveProjectDetail(input: {
   projectId: string;
 }) {
   const project = (await getProjectByIdForUser(input.userEmail, input.projectId)) as ProjectRow | null;
-  if (!project?.id) {
+  const projectId = normalizeText(project?.id || input.projectId);
+  if (!projectId) {
     return null;
   }
 
-  const storedFormat = normalizeProjectOutputType(project.format);
+  const storedFormat = normalizeProjectOutputType(project?.format);
   const initialPages = storedFormat
     ? await listWorkspaceProjectPages({
         userEmail: input.userEmail,
-        projectId: input.projectId,
+        projectId,
         outputType: storedFormat,
       })
     : await listWorkspaceProjectPages({
         userEmail: input.userEmail,
-        projectId: input.projectId,
+        projectId,
       });
   const initialJob = storedFormat
     ? await getLatestImageGenerationJobByProject({
         userEmail: input.userEmail,
-        projectId: input.projectId,
+        projectId,
         intent: storedFormat,
       })
     : null;
+  if (!project?.id && initialPages.length === 0 && !initialJob?.job) {
+    return null;
+  }
   const outputType = inferOutputType({
-    project,
+    project: project || {},
     pages: initialPages,
     jobIntent: initialJob?.job.intent,
   });
@@ -170,7 +196,7 @@ export async function resolveProjectDetail(input: {
       ? initialPages
       : await listWorkspaceProjectPages({
           userEmail: input.userEmail,
-          projectId: input.projectId,
+          projectId,
           outputType,
         });
   const latestJob =
@@ -178,13 +204,13 @@ export async function resolveProjectDetail(input: {
       ? initialJob
       : await getLatestImageGenerationJobByProject({
           userEmail: input.userEmail,
-          projectId: input.projectId,
+          projectId,
           intent: outputType,
         });
   const tasks = (latestJob?.tasks || []).map(buildTaskResponse);
   const imageHistoryTasks = await listImageGenerationTaskHistoryByProject({
     userEmail: input.userEmail,
-    projectId: input.projectId,
+    projectId,
     intent: outputType,
     maxPerPage: 12,
   });
@@ -204,27 +230,38 @@ export async function resolveProjectDetail(input: {
   const cover =
     (await getWorkspaceProjectCover({
       userEmail: input.userEmail,
-      projectId: input.projectId,
+      projectId,
       outputType,
     })) ||
     tasks.find((task) => task.status === "asset_ready" && task.renderUrl)?.renderUrl ||
     "";
   const status = aggregateStatus({
-    projectStatus: normalizeText(project.status, "in_progress"),
+    projectStatus: normalizeText(project?.status, "in_progress"),
     pages: pagesWithImageHistory,
     tasks,
   });
+  const updatedAt = latestIso([
+    project?.updated_at,
+    project?.updatedAt,
+    latestJob?.job.updatedAt,
+    ...pagesWithImageHistory.map((page) => page.updatedAt),
+    ...tasks.map((task) => task.updatedAt),
+  ]);
+  const title =
+    normalizeText(project?.title) ||
+    normalizeText(pagesWithImageHistory.find((page) => page.title)?.title) ||
+    "Untitled project";
 
   return {
     project: {
-      id: String(project.id),
-      title: normalizeText(project.title, "Untitled project"),
+      id: projectId,
+      title,
       status,
-      storedStatus: normalizeText(project.status, ""),
+      storedStatus: normalizeText(project?.status, ""),
       format: outputType,
-      duration: project.duration ? String(project.duration) : undefined,
+      duration: project?.duration ? String(project.duration) : undefined,
       createdAt: null,
-      updatedAt: normalizeText(project.updated_at || project.updatedAt, new Date().toISOString()),
+      updatedAt,
       cover,
       coverImageUrl: cover,
     },
@@ -237,26 +274,54 @@ export async function resolveProjectDetail(input: {
 
 export async function listProjectSummaries(userEmail: string) {
   const rows = (await listProjectsByUser(userEmail)) as ProjectRow[];
+  const rowById = new Map<string, ProjectRow>();
+  const orderedProjectIds: string[] = [];
+  const seenProjectIds = new Set<string>();
+
+  const pushProjectId = (projectIdInput: unknown) => {
+    const projectId = normalizeText(projectIdInput);
+    if (!projectId || seenProjectIds.has(projectId)) {
+      return;
+    }
+    seenProjectIds.add(projectId);
+    orderedProjectIds.push(projectId);
+  };
+
+  rows.forEach((row) => {
+    const projectId = normalizeText(row.id);
+    if (!projectId) {
+      return;
+    }
+    rowById.set(projectId, row);
+    pushProjectId(projectId);
+  });
+
+  const [workspaceActivities, imageActivities] = await Promise.all([
+    listWorkspaceProjectActivityByUser(userEmail),
+    listImageGenerationProjectActivityByUser(userEmail),
+  ]);
+
+  [...workspaceActivities, ...imageActivities]
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .forEach((activity) => pushProjectId(activity.projectId));
+
   return Promise.all(
-    rows.map(async (row) => {
-      const projectId = normalizeText(row.id);
-      if (!projectId) {
-        return null;
-      }
+    orderedProjectIds.map(async (projectId) => {
+      const row = rowById.get(projectId) || null;
       const detail = await resolveProjectDetail({ userEmail, projectId });
       if (detail) {
         return detail.project;
       }
-      const outputType = normalizeProjectOutputType(row.format);
+      const outputType = normalizeProjectOutputType(row?.format);
       return {
         id: projectId,
-        title: normalizeText(row.title, "Untitled project"),
-        status: normalizeText(row.status, "in_progress"),
-        storedStatus: normalizeText(row.status, ""),
+        title: normalizeText(row?.title, "Untitled project"),
+        status: normalizeText(row?.status, "in_progress"),
+        storedStatus: normalizeText(row?.status, ""),
         format: outputType || "poster",
-        duration: row.duration ? String(row.duration) : undefined,
+        duration: row?.duration ? String(row.duration) : undefined,
         createdAt: null,
-        updatedAt: normalizeText(row.updated_at || row.updatedAt, new Date().toISOString()),
+        updatedAt: normalizeText(row?.updated_at || row?.updatedAt, new Date().toISOString()),
         cover: "",
         coverImageUrl: "",
       };
