@@ -53,6 +53,11 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function readCreatedAtValue(row: Record<string, unknown>) {
+  const value = row.createdAt ?? row.createdat ?? row.created_at;
+  return value ? String(value) : "";
+}
+
 function normalizeScope(email?: string | null) {
   const value = (email ?? "").trim().toLowerCase();
   return value || "guest";
@@ -1223,7 +1228,7 @@ export function getAdminOpsSummary(input?: { errorLimit?: number; checkoutDays?:
         userEmail: row.userEmail ? String(row.userEmail) : null,
         projectId: row.projectId ? String(row.projectId) : null,
         detailsJson: row.detailsJson ? String(row.detailsJson) : null,
-        createdAt: String(row.createdAt ?? ""),
+        createdAt: readCreatedAtValue(row),
       })),
     },
     checkout: checkoutStats,
@@ -1296,6 +1301,6 @@ export async function listOpsEvents(input?: {
     userEmail: row.userEmail ? String(row.userEmail) : null,
     projectId: row.projectId ? String(row.projectId) : null,
     detailsJson: row.detailsJson ? String(row.detailsJson) : null,
-    createdAt: String(row.createdAt ?? ""),
+    createdAt: readCreatedAtValue(row),
   })) satisfies OpsEventRow[];
 }

@@ -419,7 +419,7 @@ export function normalizeGenerationConfig(input: {
   if (normalizedDirection === "ppt") {
     return {
       normalizedDirection,
-      normalizedCount: clamp(Math.round(input.pptPageCount || 10), 6, 24),
+      normalizedCount: clamp(Math.round(input.pptPageCount || 6), 6, 24),
       normalizedRatio: cleanText(input.pptRatio) || "16:9",
     };
   }

@@ -38,13 +38,12 @@ type Plan = {
 };
 
 const SHARED_TEXT_MODELS = [
-  "GPT-5.4",
+  "GPT-image2",
   "GPT-5.5",
-  "Gemini 3.1 Pro",
-  "Claude Sonnet 4.6",
+  "Gemini 3.5",
+  "Claude 4.7",
 ];
-
-const SHARED_IMAGE_MODELS = ["GPT-image2"];
+const SHARED_IMAGE_MODELS: string[] = [];
 
 const plans: Plan[] = [
   {

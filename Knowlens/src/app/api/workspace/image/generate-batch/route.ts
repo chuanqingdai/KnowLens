@@ -256,6 +256,10 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
       .map((item) => compactPromptText(item, 110)),
     textMode === "strict" ? 7 : 4,
   ).join(" | ");
+  const shortViewVideoRule =
+    outputType === "video"
+      ? "Video storyboard readability rule: frames are viewed briefly, so avoid small text, dense labels, subtitle-style overlays, tiny chart annotations, fine print, and multi-line notes. If any text appears, keep it very short, large, bold, and glance-readable."
+      : "";
 
   return [
     `Create one ${aspectRatio} ${outputType} visual.`,
@@ -275,6 +279,7 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
     textMode === "strict" && visibleLabels ? `Optional short label ideas: ${visibleLabels}` : "",
     !composition && layout ? `Layout direction: ${layout}` : "",
     textDensity ? `Text density: ${textDensity}` : "",
+    shortViewVideoRule,
     `Text: ${textMode === "strict" ? "fact-strict, expression-guided" : textMode}.`,
     textMode === "guided"
       ? `Use concise ${textLanguage} labels. ${dominantLanguageRule} Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity. No fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`

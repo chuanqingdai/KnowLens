@@ -102,6 +102,11 @@ function shouldUseBlobImageGenerationStore() {
   );
 }
 
+function getBlobStateAccessMode(): "public" | "private" {
+  const raw = (process.env.IMAGE_GENERATION_BLOB_STATE_ACCESS || "").trim().toLowerCase();
+  return raw === "private" ? "private" : "public";
+}
+
 function stableSha256(input: string) {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -152,7 +157,7 @@ type StoredImageGenerationProjectIndex = {
 
 async function readBlobJson<T>(pathname: string): Promise<T | null> {
   const blob = await getBlob(pathname, {
-    access: "private",
+    access: getBlobStateAccessMode(),
   });
   if (!blob) {
     return null;
@@ -169,7 +174,7 @@ async function readBlobJson<T>(pathname: string): Promise<T | null> {
 
 async function writeBlobJson(pathname: string, data: unknown) {
   await putBlob(pathname, JSON.stringify(data), {
-    access: "private",
+    access: getBlobStateAccessMode(),
     allowOverwrite: true,
     addRandomSuffix: false,
     contentType: "application/json",

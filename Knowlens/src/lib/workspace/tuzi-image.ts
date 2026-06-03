@@ -326,7 +326,7 @@ export function buildTuziImagePrompt(input: {
   const visibleSubtitle = sanitizePromptSignal(input.visibleText?.subtitle || "", 120);
   const visibleLabels = uniquePromptItems((input.visibleText?.labels || [])
     .map((item) => sanitizePromptSignal(item, 56))
-    .filter(Boolean), pageRole === "cover" || outputType === "video" ? 2 : 4)
+    .filter(Boolean), pageRole === "cover" ? 2 : outputType === "video" ? 1 : 4)
     .join(" | ");
   const visualDesignLayout = sanitizePromptSignal(input.visualDesign?.layout || "", 140);
   const visualDesignMainVisual = sanitizePromptSignal(input.visualDesign?.mainVisual || "", 150);
@@ -389,7 +389,7 @@ export function buildTuziImagePrompt(input: {
     if (outputType === "video") {
       return index === 1
         ? "Video storyboard frame 1: make it work like a premium YouTube thumbnail, high contrast, strong subject, clear question/conflict, minimal on-screen text."
-        : "Video storyboard frame: 6-10 second viewing, minimal text, visual action first, one clear idea, cinematic educational composition.";
+        : "Video storyboard frame: 6-10 second viewing, visual action first, one clear idea, cinematic educational composition, and no small unreadable text.";
     }
     return index === 1 && total > 1
       ? "Poster 1: create a strong mobile-first cover/overview with the main question, visual hook, large title, and clear hierarchy."
@@ -433,6 +433,17 @@ export function buildTuziImagePrompt(input: {
         "Use little to no on-image text; prioritize visual explanation with very short labels only if needed.",
       ].join(" ");
     }
+    if (outputType === "video") {
+      return [
+        "Text: guided for short-view video frames.",
+        `Use concise ${textStrategyLanguage} labels with low density.`,
+        dominantLanguageRule,
+        textStrategyAllowRewrite
+          ? "Lightly rewrite ordinary wording for visual clarity while preserving meaning."
+          : "Keep supplied wording close to the source.",
+        "No dense paragraphs, subtitle-style overlays, fine print, tiny chart labels, footnotes, or small unreadable text.",
+      ].join(" ");
+    }
     return [
       "Text: guided.",
       `Use concise ${textStrategyLanguage} labels with ${textStrategyDensity} density.`,
@@ -456,6 +467,9 @@ export function buildTuziImagePrompt(input: {
     describedLayout,
     describeTextDensity(pageRole, outputType, textStrategyDensity),
     textStrategyGuidance,
+    outputType === "video"
+      ? "Video readability rule: assume the frame is seen briefly. If any text appears, it must be large, bold, sparse, and readable at a glance; never rely on small labels or multi-line notes."
+      : "",
     "Only use this current page/frame. Do not import other pages' facts or labels.",
     "Do not infer or render official brand colors, logos, trademark symbols, product marks, or corporate visual identity unless the selected style prompt or user text explicitly asks for them.",
     "Do not render page numbers, slide numbers, scene numbers, pagination markers, or fraction labels such as 4/7 unless the user explicitly provided them as content.",

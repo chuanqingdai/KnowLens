@@ -1018,9 +1018,7 @@ export const ChatPanel = memo(function ChatPanel({
   const billingMessageText = generationConfirmError
     ? generationConfirmError
     : billingConfirmed
-      ? isPlanningBillingStep
-        ? "Billing confirmed. Generation is in progress."
-        : "Billing confirmed. Check generation results on the canvas."
+      ? ""
       : canConfirmBilling
         ? `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`
         : "Insufficient credits. Please upgrade before confirming this charge.";
@@ -1861,7 +1859,7 @@ export const ChatPanel = memo(function ChatPanel({
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className={`text-sm ${billingMessageClass}`}>{billingMessageText}</p>
+              {billingMessageText ? <p className={`text-sm ${billingMessageClass}`}>{billingMessageText}</p> : <span />}
               {showBillingConfirm ? (
                 <button
                   data-testid="confirm-generate-button"
@@ -2781,7 +2779,7 @@ export const ChatPanel = memo(function ChatPanel({
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className={`text-sm ${billingMessageClass}`}>{billingMessageText}</p>
+            {billingMessageText ? <p className={`text-sm ${billingMessageClass}`}>{billingMessageText}</p> : <span />}
             {showBillingConfirm ? (
                 <button
                   data-testid="confirm-generate-button"

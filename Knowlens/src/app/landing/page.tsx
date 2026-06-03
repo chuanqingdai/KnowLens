@@ -249,7 +249,7 @@ const planCards = [
     usageEn:
       "6 credits/image during promo, up to ~200 images/month.",
     usageZh: "活动期 6 积分/输出，每月约可生成 200 个内容。",
-    modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
+    modelAccess: ["GPT-image2", "GPT-5.5", "Gemini 3.5", "Claude 4.7"],
     featuresEn: [
       "No watermark",
       "Standard infographic generation",
@@ -277,7 +277,7 @@ const planCards = [
     usageEn:
       "6 credits/image during promo, up to ~500 images/month.",
     usageZh: "活动期 6 积分/输出，每月约可生成 500 个内容。",
-    modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
+    modelAccess: ["GPT-image2", "GPT-5.5", "Gemini 3.5", "Claude 4.7"],
     featuresEn: [
       "No watermark",
       "HD infographic export",
@@ -306,7 +306,7 @@ const planCards = [
     usageEn:
       "6 credits/image during promo, up to ~1,250 images/month.",
     usageZh: "活动期 6 积分/输出，每月约可生成 1,250 个内容。",
-    modelAccess: ["GPT-5.4", "GPT-5.5", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "GPT-image2"],
+    modelAccess: ["GPT-image2", "GPT-5.5", "Gemini 3.5", "Claude 4.7"],
     featuresEn: [
       "No watermark",
       "Premium HD export",

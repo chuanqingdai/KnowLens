@@ -103,6 +103,12 @@ type RestoredProjectPage = {
   body?: string | null;
   visual?: string | null;
   imagePromptDraft?: string | null;
+  imageTaskId?: string | null;
+  imageUrl?: string | null;
+  rawImageUrl?: string | null;
+  assetPath?: string | null;
+  status?: string | null;
+  errorCode?: string | null;
   imageHistory?: RestoredProjectImageHistoryItem[];
 };
 
@@ -123,6 +129,40 @@ type RestoredProjectImageHistoryItem = {
   createdAt?: string;
   updatedAt?: string;
 };
+
+function isRestoredImageSuccessStatus(status: string) {
+  return ["asset_ready", "completed", "success", "succeeded"].includes(status);
+}
+
+function isRestoredImageLoadingStatus(status: string) {
+  return ["queued", "running", "generating", "asset_downloading", "retrying", "draft_ready", "processing"].includes(status);
+}
+
+function isRestoredImageFailedStatus(status: string) {
+  return ["failed", "timed_out", "timeout", "error", "cancelled", "canceled", "completed_with_errors", "partial_failed"].includes(status);
+}
+
+function pickRestoredImageUrl(input: {
+  page?: RestoredProjectPage | null;
+  history?: RestoredProjectImageHistoryItem[];
+}) {
+  const directCandidates = [
+    input.page?.imageUrl,
+    input.page?.rawImageUrl,
+  ];
+  for (const candidate of directCandidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  for (const item of input.history || []) {
+    const candidate = item.renderUrl || item.imageUrl || item.rawImageUrl || "";
+    if (candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return "";
+}
 
 function buildRestoredSlideDrafts(
   intent: "ppt" | "video",
@@ -2364,7 +2404,7 @@ export default function WorkspacePage() {
     clamp(sessionPrefs?.posterCount ?? extractPosterCount(initialEntry.prompt) ?? 1, 1, 10),
   );
   const [pptPageCount, setPptPageCount] = useState(() =>
-    clamp(sessionPrefs?.pptPageCount ?? extractPageCount(initialEntry.prompt) ?? 10, 6, 24),
+    clamp(sessionPrefs?.pptPageCount ?? extractPageCount(initialEntry.prompt) ?? 6, 6, 24),
   );
   const [pptRatio, setPptRatio] = useState<"16:9" | "4:3">(() => {
     if (sessionPrefs?.pptRatio === "16:9" || sessionPrefs?.pptRatio === "4:3") {
@@ -3426,7 +3466,7 @@ export default function WorkspacePage() {
           const status = normalizeImageTaskStatus(task.status);
           const imageUrl = (task.renderUrl || task.imageUrl || "").trim();
           const attempts = Math.max(1, Math.round(Number(task.attempts || 1)));
-          if (imageUrl && ["asset_ready", "completed", "success", "succeeded"].includes(status)) {
+          if (imageUrl && isRestoredImageSuccessStatus(status)) {
             restoredState[index] = {
               index,
               status: "success",
@@ -3442,7 +3482,7 @@ export default function WorkspacePage() {
             };
             continue;
           }
-          if (["queued", "generating", "asset_downloading", "retrying"].includes(status)) {
+          if (isRestoredImageLoadingStatus(status)) {
             restoredState[index] = {
               index,
               status: status === "queued" ? "queued" : "generating",
@@ -3457,7 +3497,7 @@ export default function WorkspacePage() {
             };
             continue;
           }
-          if (status === "failed") {
+          if (isRestoredImageFailedStatus(status)) {
             restoredState[index] = {
               index,
               status: "failed",
@@ -3465,6 +3505,78 @@ export default function WorkspacePage() {
               maxAttempts: 1,
               error: task.errorMessage?.trim() || "Generation failed. Please retry this page.",
               errorCode: task.errorCode?.trim() || "IMG-500",
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+          }
+        }
+
+        const normalizedJobStatus = normalizeImageTaskStatus(payload.job?.status);
+        for (const page of restoredPages) {
+          const index = Math.max(1, Math.round(Number(page.pageIndex || 0)));
+          if (!Number.isFinite(index) || index <= 0 || restoredState[index]) {
+            continue;
+          }
+          const historyItems = Array.isArray(page.imageHistory) ? page.imageHistory : [];
+          const latestHistoryItem = historyItems[0];
+          const pageStatus = normalizeImageTaskStatus(page.status);
+          const historyStatus = normalizeImageTaskStatus(latestHistoryItem?.status);
+          const derivedStatus = pageStatus || historyStatus || normalizedJobStatus;
+          const imageUrl = pickRestoredImageUrl({
+            page,
+            history: historyItems,
+          });
+          const attempts = Math.max(1, Math.round(Number(latestHistoryItem?.attempts || 1)));
+
+          if (imageUrl && isRestoredImageSuccessStatus(derivedStatus || "asset_ready")) {
+            restoredState[index] = {
+              index,
+              status: "success",
+              attempts,
+              maxAttempts: 1,
+              imageUrl,
+              rawImageUrl: latestHistoryItem?.rawImageUrl?.trim() || page.rawImageUrl?.trim() || undefined,
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+            continue;
+          }
+
+          if (isRestoredImageFailedStatus(derivedStatus)) {
+            restoredState[index] = {
+              index,
+              status: "failed",
+              attempts,
+              maxAttempts: 1,
+              error:
+                latestHistoryItem?.errorMessage?.trim() ||
+                "Generation failed. Please retry this page.",
+              errorCode:
+                latestHistoryItem?.errorCode?.trim() ||
+                page.errorCode?.trim() ||
+                "IMG-500",
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+            continue;
+          }
+
+          if (isRestoredImageLoadingStatus(derivedStatus) || (!imageUrl && restoredPages.length > 0)) {
+            restoredState[index] = {
+              index,
+              status: derivedStatus === "queued" ? "queued" : "generating",
+              attempts,
+              maxAttempts: 1,
+              rawImageUrl: latestHistoryItem?.rawImageUrl?.trim() || page.rawImageUrl?.trim() || undefined,
               runId: restoredRunId || undefined,
               jobId,
               source: "restored",
