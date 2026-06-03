@@ -73,6 +73,14 @@ export function getStripeServerClient() {
   return stripeClient;
 }
 
+export function getStripeWebhookSecret() {
+  const value =
+    process.env.STRIPE_WEBHOOK_SECRET?.trim() ||
+    process.env.STRIPE_SIGNING_SECRET?.trim() ||
+    "";
+  return value || null;
+}
+
 export function getStripePriceId(planId: string, cycle: "monthly" | "yearly") {
   const map: Record<string, { monthly?: string; yearly?: string }> = {
     starter: {

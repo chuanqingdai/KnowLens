@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   ChevronLeft,
@@ -60,6 +60,33 @@ type AdjustCreditState = {
   reason: string;
   projectId: string;
   notifyUser: boolean;
+};
+
+type PublishedCaseAdminItem = {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string;
+  category?: string;
+  outputType: "poster" | "ppt" | "video";
+  authorLabel?: string;
+  sourceProjectId?: string | null;
+  sourceUserEmail?: string | null;
+  coverUrl?: string;
+  status: string;
+  featured: boolean;
+  sortOrder: number;
+  assets?: Array<{ id: string; fileUrl: string; viewerUrl: string; title?: string }>;
+};
+
+type PublishCaseFormState = {
+  projectId: string;
+  userEmail: string;
+  outputType: "poster" | "ppt" | "video";
+  title: string;
+  category: string;
+  authorLabel: string;
+  featured: boolean;
 };
 
 const MAIN_TABS: Array<{ id: AdminMainTab; label: string; icon: React.ComponentType<{ size?: number }> }> = [
@@ -313,6 +340,18 @@ function AdminDashboardPageContent() {
     projectId: "",
     notifyUser: true,
   });
+  const [publishedCases, setPublishedCases] = useState<PublishedCaseAdminItem[]>([]);
+  const [publishedCasesLoading, setPublishedCasesLoading] = useState(false);
+  const [publishingCase, setPublishingCase] = useState(false);
+  const [publishCaseForm, setPublishCaseForm] = useState<PublishCaseFormState>({
+    projectId: "",
+    userEmail: "local@knowlens.ai",
+    outputType: "poster",
+    title: "",
+    category: "All",
+    authorLabel: "KnowLens",
+    featured: true,
+  });
 
   const router = useRouter();
   const pathname = usePathname();
@@ -329,6 +368,72 @@ function AdminDashboardPageContent() {
   const selectedTicket = selectedTicketId
     ? data.tickets.find((item) => item.id === selectedTicketId) || null
     : null;
+
+  function loadPublishedCases() {
+    setPublishedCasesLoading(true);
+    fetch("/api/admin/published-cases", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
+      .then((payload: { cases?: PublishedCaseAdminItem[] }) => {
+        setPublishedCases(payload.cases || []);
+      })
+      .catch((error) => {
+        pushToast(error instanceof Error ? error.message : "公开案例读取失败");
+      })
+      .finally(() => setPublishedCasesLoading(false));
+  }
+
+  useEffect(() => {
+    if (activeTab === "cases") {
+      loadPublishedCases();
+    }
+  }, [activeTab]);
+
+  function publishPublicCaseFromProject() {
+    if (!publishCaseForm.projectId.trim() || !publishCaseForm.userEmail.trim()) {
+      pushToast("请填写 projectId 和用户邮箱");
+      return;
+    }
+    setPublishingCase(true);
+    fetch("/api/admin/published-cases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(publishCaseForm),
+    })
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : response.json().then((payload) => Promise.reject(new Error(payload.error || "发布失败"))),
+      )
+      .then(() => {
+        pushToast("已发布为公开案例");
+        setPublishCaseForm((prev) => ({ ...prev, projectId: "", title: "" }));
+        loadPublishedCases();
+      })
+      .catch((error) => {
+        pushToast(error instanceof Error ? error.message : "发布失败");
+      })
+      .finally(() => setPublishingCase(false));
+  }
+
+  function updatePublishedCase(item: PublishedCaseAdminItem, updates: Partial<Pick<PublishedCaseAdminItem, "status" | "featured" | "sortOrder">>) {
+    fetch(`/api/admin/published-cases/${encodeURIComponent(item.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    })
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : response.json().then((payload) => Promise.reject(new Error(payload.error || "更新失败"))),
+      )
+      .then(() => {
+        pushToast("公开案例已更新");
+        loadPublishedCases();
+      })
+      .catch((error) => {
+        pushToast(error instanceof Error ? error.message : "公开案例更新失败");
+      });
+  }
 
   function pushToast(message: string) {
     const id = `toast-${idCounterRef.current}`;
@@ -1904,6 +2009,166 @@ function AdminDashboardPageContent() {
         {activeTab === "cases" ? (
           <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-zinc-900">案例配置</p>
+            <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-900">公开 Case 发布</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    从已生成项目复制图片资产到公开存储，生成独立文件地址，避免引用 Workspace 临时 URL。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadPublishedCases}
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm hover:bg-zinc-100"
+                >
+                  {publishedCasesLoading ? "读取中..." : "刷新公开案例"}
+                </button>
+              </div>
+              <div className="mt-4 grid gap-2 lg:grid-cols-6">
+                <input
+                  value={publishCaseForm.projectId}
+                  onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, projectId: event.target.value }))}
+                  placeholder="projectId"
+                  className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:col-span-2"
+                />
+                <input
+                  value={publishCaseForm.userEmail}
+                  onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, userEmail: event.target.value }))}
+                  placeholder="owner email"
+                  className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:col-span-2"
+                />
+                <select
+                  value={publishCaseForm.outputType}
+                  onChange={(event) =>
+                    setPublishCaseForm((prev) => ({
+                      ...prev,
+                      outputType: event.target.value as PublishCaseFormState["outputType"],
+                    }))
+                  }
+                  className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                >
+                  <option value="poster">Poster</option>
+                  <option value="ppt">PPT</option>
+                  <option value="video">Video</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={publishPublicCaseFromProject}
+                  disabled={publishingCase}
+                  className="h-10 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {publishingCase ? "Publishing..." : "Publish"}
+                </button>
+                <input
+                  value={publishCaseForm.title}
+                  onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, title: event.target.value }))}
+                  placeholder="Optional public title"
+                  className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:col-span-2"
+                />
+                <input
+                  value={publishCaseForm.category}
+                  onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, category: event.target.value }))}
+                  placeholder="Category"
+                  className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={publishCaseForm.authorLabel}
+                  onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, authorLabel: event.target.value }))}
+                  placeholder="Author label"
+                  className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={publishCaseForm.featured}
+                    onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, featured: event.target.checked }))}
+                  />
+                  Featured
+                </label>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {publishedCases.length ? (
+                  publishedCases.map((item) => (
+                    <article key={item.id} className="rounded-xl border border-zinc-200 bg-white p-3">
+                      <div className="flex items-start gap-3">
+                        <div className="h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+                          {item.coverUrl ? (
+                            <img src={item.coverUrl} alt={item.title} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[11px] text-zinc-400">
+                              No cover
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="truncate text-sm font-semibold text-zinc-900">{item.title}</p>
+                            <span className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-600">
+                              {item.status}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {item.outputType.toUpperCase()} · {item.assets?.length || 0} public files · {item.slug}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-zinc-500">
+                            Source: {item.sourceProjectId || "-"} · {item.sourceUserEmail || "-"}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <a
+                              href={`/cases/${encodeURIComponent(item.slug)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                            >
+                              Open case
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updatePublishedCase(item, {
+                                  status: item.status === "published" ? "draft" : "published",
+                                })
+                              }
+                              className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                            >
+                              {item.status === "published" ? "Unpublish" : "Publish"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updatePublishedCase(item, { featured: !item.featured })}
+                              className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                            >
+                              {item.featured ? "Unfeature" : "Feature"}
+                            </button>
+                            {item.assets?.[0]?.fileUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void navigator.clipboard?.writeText(item.assets?.[0]?.fileUrl || "");
+                                  pushToast("已复制首个文件地址");
+                                }}
+                                className="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                              >
+                                Copy first file URL
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="col-span-full rounded-xl border border-dashed border-zinc-300 bg-white px-4 py-8 text-center text-sm text-zinc-500">
+                    还没有公开发布的 Case。输入项目 ID 后发布，系统会复制已生成图片为公开文件。
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mt-5 border-t border-zinc-200 pt-4">
+              <p className="text-sm font-semibold text-zinc-900">旧案例配置（本地 mock）</p>
+              <p className="mt-1 text-xs text-zinc-500">保留用于旧后台演示；首页真实公开案例优先读取上方发布数据。</p>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <select value={cStatus} onChange={(event) => setQuery({ c_status: event.target.value || null, c_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-2 text-sm">
                 <option value="">全部状态</option>

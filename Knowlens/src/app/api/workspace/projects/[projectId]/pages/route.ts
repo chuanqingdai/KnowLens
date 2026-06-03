@@ -5,7 +5,7 @@ import {
   listWorkspaceProjectPages,
   upsertWorkspaceProjectPages,
 } from "@/lib/server/workspace-project-pages";
-import { logOpsEvent } from "@/lib/server/store";
+import { getProjectByIdForUser, logOpsEvent, saveProject } from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
@@ -90,10 +90,12 @@ export async function POST(
       }>;
     } | null;
     const pages = Array.isArray(payload?.pages) ? payload.pages : [];
+    const normalizedProjectId = normalizeProjectId(projectId);
+    const normalizedOutputType = normalizeOutputType(payload?.outputType || null);
     const saved = upsertWorkspaceProjectPages({
       userEmail: email,
-      projectId: normalizeProjectId(projectId),
-      outputType: normalizeOutputType(payload?.outputType || null),
+      projectId: normalizedProjectId,
+      outputType: normalizedOutputType,
       pages: pages.map((page, idx) => ({
         index: Number.isFinite(page.index) ? Number(page.index) : idx + 1,
         pageRole: page.pageRole,
@@ -104,6 +106,24 @@ export async function POST(
         imagePromptDraft: page.imagePromptDraft,
       })),
     });
+    if (saved > 0) {
+      const existingProject = getProjectByIdForUser(email, normalizedProjectId) as
+        | { title?: string; status?: string; duration?: string | null }
+        | null;
+      const firstTitle =
+        pages.find((page) => typeof page.title === "string" && page.title.trim())?.title?.trim() ||
+        existingProject?.title ||
+        "Untitled project";
+      saveProject({
+        id: normalizedProjectId,
+        userEmail: email,
+        title: firstTitle,
+        status: existingProject?.status || "draft",
+        format: normalizedOutputType,
+        duration: existingProject?.duration || undefined,
+        updatedAt: new Date().toISOString(),
+      });
+    }
     return NextResponse.json({ ok: true, saved });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to save project pages.";

@@ -36,13 +36,13 @@ import {
   Zap,
 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
-import { getProjectsByUser } from "@/lib/admin";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { getCreditRecords, getSubscriptionByUser, syncCreditRecordsFromServer } from "@/lib/billing";
 import {
   getCaseMetrics,
   incrementCaseView,
+  getFeaturedDetailPath,
   getResolvedFeaturedCases,
   type FeaturedCaseItem,
   featuredCategories as feedCategories,
@@ -51,6 +51,7 @@ import {
   toggleCaseLike,
 } from "@/lib/featured-cases";
 import { PaywallDialog } from "@/components/billing/PaywallDialog";
+import { readAttributionPayload } from "@/lib/attribution";
 
 const navItems = [
   { key: "home", label: "Home", icon: HomeIcon, href: "/app" },
@@ -719,6 +720,94 @@ function normalizeUploadJobStatus(status: string | undefined): SourceItem["statu
   return "extracting";
 }
 
+type PublicCaseApiItem = {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string;
+  category?: string;
+  outputType?: string;
+  authorLabel?: string;
+  coverUrl?: string;
+  sortOrder?: number;
+  assets?: Array<{
+    id: string;
+    slug: string;
+    title?: string;
+    description?: string;
+    pageIndex?: number;
+    fileUrl: string;
+    viewerUrl: string;
+    downloadUrl?: string;
+    thumbnailUrl?: string;
+    mimeType?: string;
+  }>;
+};
+
+type ServerProjectSummary = {
+  id: string;
+  title: string;
+  status?: string;
+  format?: string;
+  duration?: string;
+  updatedAt?: string;
+  cover?: string;
+  coverImageUrl?: string;
+};
+
+function formatPublicCaseOutputType(outputType?: string): FeaturedCaseItem["format"] {
+  if (outputType === "ppt") {
+    return "PPT";
+  }
+  if (outputType === "video") {
+    return "Video";
+  }
+  return "Poster";
+}
+
+function estimatePublicCaseCoverSize(item: PublicCaseApiItem) {
+  if (item.outputType === "ppt" || item.outputType === "video") {
+    return { coverWidth: 1600, coverHeight: 900 };
+  }
+  return { coverWidth: 941, coverHeight: 1672 };
+}
+
+function mapPublicCaseToFeatured(item: PublicCaseApiItem, index: number): FeaturedCaseItem | null {
+  const cover = item.coverUrl || item.assets?.[0]?.thumbnailUrl || item.assets?.[0]?.fileUrl || "";
+  if (!cover) {
+    return null;
+  }
+  const size = estimatePublicCaseCoverSize(item);
+  return {
+    id: `public-${item.id}`,
+    projectId: item.id,
+    title: item.title || "Published KnowLens Case",
+    description: item.description || "",
+    author: item.authorLabel || "KnowLens",
+    views: 2400 + ((index * 113) % 3600),
+    likes: 160 + ((index * 23) % 260),
+    cover,
+    coverWidth: size.coverWidth,
+    coverHeight: size.coverHeight,
+    format: formatPublicCaseOutputType(item.outputType),
+    category: item.category || "All",
+    order: item.sortOrder ?? index + 1,
+    publicCaseSlug: item.slug,
+    assets: (item.assets || []).map((asset) => ({
+      id: asset.id,
+      slug: asset.slug,
+      title: asset.title || item.title,
+      description: asset.description || "",
+      pageIndex: asset.pageIndex,
+      fileUrl: asset.fileUrl,
+      viewerUrl: asset.viewerUrl,
+      downloadUrl: asset.downloadUrl || asset.fileUrl,
+      thumbnailUrl: asset.thumbnailUrl || asset.fileUrl,
+      mimeType: asset.mimeType,
+    })),
+  };
+}
+
 export default function Home() {
   const router = useRouter();
   const pathname = usePathname();
@@ -730,6 +819,7 @@ export default function Home() {
   const [textMenuOpenUp, setTextMenuOpenUp] = useState(true);
   const [textMenuMaxHeight, setTextMenuMaxHeight] = useState(360);
   const [composeInput, setComposeInput] = useState("");
+  const [serverRecentProjects, setServerRecentProjects] = useState<ServerProjectSummary[]>([]);
   const [linkInputOpen, setLinkInputOpen] = useState(false);
   const [linkValue, setLinkValue] = useState("");
   const [linkError, setLinkError] = useState("");
@@ -746,6 +836,7 @@ export default function Home() {
   }, [currentEmail, creditVersion]);
   useEffect(() => {
     if (!currentEmail) {
+      setServerRecentProjects([]);
       return;
     }
     let isCancelled = false;
@@ -762,15 +853,65 @@ export default function Home() {
       isCancelled = true;
     };
   }, [currentEmail]);
+  useEffect(() => {
+    if (!currentEmail) {
+      setServerRecentProjects([]);
+      return;
+    }
+    let isCancelled = false;
+    fetch("/api/projects", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load projects."))))
+      .then((payload: { projects?: ServerProjectSummary[] }) => {
+        if (!isCancelled) {
+          setServerRecentProjects(Array.isArray(payload.projects) ? payload.projects : []);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setServerRecentProjects([]);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentEmail]);
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/public/cases", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
+      .then((payload: { cases?: PublicCaseApiItem[] }) => {
+        if (isCancelled) {
+          return;
+        }
+        const nextItems = (payload.cases || [])
+          .map((item, index) => mapPublicCaseToFeatured(item, index))
+          .filter(Boolean) as FeaturedCaseItem[];
+        setPublishedFeaturedItems(nextItems);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setPublishedFeaturedItems([]);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeCategory, setActiveCategory] = useState(feedCategories[0]);
-  const [featuredItems] = useState<FeaturedCaseItem[]>(() => getResolvedFeaturedCases());
+  const [fallbackFeaturedItems] = useState<FeaturedCaseItem[]>(() => getResolvedFeaturedCases());
+  const [publishedFeaturedItems, setPublishedFeaturedItems] = useState<FeaturedCaseItem[]>([]);
   const [featuredVisibleCount, setFeaturedVisibleCount] = useState(8);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<FeaturedCaseItem | null>(null);
+  const [previewAssetIndex, setPreviewAssetIndex] = useState(0);
   const [previewPaywallOpen, setPreviewPaywallOpen] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewImageLoaded, setPreviewImageLoaded] = useState(false);
@@ -804,6 +945,26 @@ export default function Home() {
     .reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0);
   const selectedTextModel =
     textModelOptions.find((item) => item.value === resolvedTextModel) ?? textModelOptions[0];
+  const featuredItems = publishedFeaturedItems.length ? publishedFeaturedItems : fallbackFeaturedItems;
+  const previewAssets = previewItem?.assets?.length
+    ? previewItem.assets
+    : previewItem
+      ? [
+          {
+            id: previewItem.id,
+            slug: previewItem.id,
+            title: previewItem.title,
+            description: previewItem.description || "",
+            fileUrl: previewItem.cover,
+            viewerUrl: getFeaturedDetailPath(previewItem),
+            downloadUrl: previewItem.cover,
+            thumbnailUrl: previewItem.cover,
+            mimeType: "image/png",
+          },
+        ]
+      : [];
+  const activePreviewAsset =
+    previewAssets[Math.min(previewAssetIndex, Math.max(0, previewAssets.length - 1))] ?? null;
 
   function updateComposeInput(nextRawValue: string) {
     if (nextRawValue.length <= MAX_COMPOSE_TEXT_CHARS) {
@@ -1566,7 +1727,11 @@ export default function Home() {
       setIsStartingWorkspace(false);
       return;
     }
-    const payload = buildWorkspacePayload();
+    const attribution = readAttributionPayload();
+    const payload = {
+      ...buildWorkspacePayload(),
+      attribution,
+    };
     if (!currentEmail) {
       persistHomeDraft(payload);
       rememberGenerateIntent();
@@ -1652,6 +1817,7 @@ export default function Home() {
         from: "home",
         model: resolvedTextModel,
         source_count: payload.sources.length,
+        attribution_source: attribution.lastTouch?.source ?? attribution.firstTouch?.source ?? "unknown",
       });
       const nextProjectId = data.payload?.project?.projectId || payload.project?.projectId;
       const workspaceUrl =
@@ -1722,8 +1888,8 @@ export default function Home() {
       return;
     }
     const link = document.createElement("a");
-    link.href = previewItem.cover;
-    link.download = `${toFileSlug(previewItem.title)}.png`;
+    link.href = activePreviewAsset?.downloadUrl || activePreviewAsset?.fileUrl || previewItem.cover;
+    link.download = `${toFileSlug(activePreviewAsset?.title || previewItem.title)}.png`;
     link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
@@ -1734,12 +1900,14 @@ export default function Home() {
     incrementCaseView(item.id, currentEmail);
     setMetricVersion((prev) => prev + 1);
     setPreviewZoom(1);
+    setPreviewAssetIndex(0);
     setPreviewImageLoaded(false);
     setPreviewItem(item);
   }
 
   function closeFeaturedPreview() {
     setPreviewZoom(1);
+    setPreviewAssetIndex(0);
     setPreviewImageLoaded(false);
     setPreviewItem(null);
   }
@@ -1779,18 +1947,15 @@ export default function Home() {
     if (!currentEmail) {
       return recentProjects;
     }
-    const ownedProjects = getProjectsByUser(currentEmail)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
-    return ownedProjects.slice(0, 8).map((project, index) => ({
+    return serverRecentProjects.slice(0, 8).map((project, index) => ({
       id: project.id,
       title: formatRecentProjectTitle(project.title, locale, index),
-      updatedAt: `Updated ${project.updatedAt}`,
-      cover: project.cover || "",
+      updatedAt: project.updatedAt ? `Updated ${project.updatedAt}` : "Recently updated",
+      cover: project.cover || project.coverImageUrl || "",
       format: normalizeFormatLabel(project.format || "海报"),
       duration: project.duration,
     }));
-  }, [currentEmail, locale]);
+  }, [currentEmail, locale, serverRecentProjects]);
 
   const featuredFilteredItems = useMemo(
     () =>
@@ -2353,6 +2518,15 @@ export default function Home() {
                 >
                   Download
                 </button>
+                {activePreviewAsset?.viewerUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => window.open(activePreviewAsset.viewerUrl, "_blank", "noopener,noreferrer")}
+                    className="inline-flex h-9 items-center rounded-xl border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
+                  >
+                    Open file
+                  </button>
+                ) : null}
               </div>
               <div className="flex justify-end">
                 <button
@@ -2366,6 +2540,36 @@ export default function Home() {
               </div>
             </div>
             <div className="overflow-hidden rounded-xl border border-white/15 bg-black/40 shadow-[0_30px_70px_rgba(0,0,0,0.5)]">
+              {previewAssets.length > 1 ? (
+                <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-xs text-white/80">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewImageLoaded(false);
+                      setPreviewAssetIndex((prev) => Math.max(0, prev - 1));
+                    }}
+                    disabled={previewAssetIndex <= 0}
+                    className="rounded-lg border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span>
+                    {Math.min(previewAssetIndex + 1, previewAssets.length)} / {previewAssets.length}
+                    {activePreviewAsset?.title ? ` · ${activePreviewAsset.title}` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewImageLoaded(false);
+                      setPreviewAssetIndex((prev) => Math.min(previewAssets.length - 1, prev + 1));
+                    }}
+                    disabled={previewAssetIndex >= previewAssets.length - 1}
+                    className="rounded-lg border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              ) : null}
               <div
                 ref={previewScrollRef}
                 className={`max-h-[82dvh] bg-zinc-950/45 sm:max-h-[88vh] ${
@@ -2378,8 +2582,8 @@ export default function Home() {
                   <div className="skeleton-shimmer mx-auto h-[62dvh] w-full max-w-[520px] rounded-lg sm:h-[72vh]" />
                 ) : null}
                 <img
-                  src={previewItem.cover}
-                  alt={previewItem.title}
+                  src={activePreviewAsset?.fileUrl || previewItem.cover}
+                  alt={activePreviewAsset?.title || previewItem.title}
                   className={`mx-auto h-auto rounded-lg object-contain transition-opacity duration-300 ${
                     previewImageLoaded ? "opacity-100" : "opacity-0"
                   }`}

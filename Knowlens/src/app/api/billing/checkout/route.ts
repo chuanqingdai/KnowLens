@@ -12,6 +12,11 @@ import {
 } from "@/lib/server/stripe";
 import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 import { logOpsEvent } from "@/lib/server/store";
+import {
+  attributionSource,
+  attributionToStripeMetadata,
+  normalizeAttributionPayload,
+} from "@/lib/server/attribution";
 
 export const runtime = "nodejs";
 
@@ -100,11 +105,15 @@ export async function POST(request: NextRequest) {
       planId?: string;
       cycle?: BillingCycle;
       source?: string;
+      attribution?: unknown;
     };
 
     const planId = (body.planId ?? "").trim();
     const cycle = body.cycle === "monthly" ? "monthly" : "yearly";
-    const checkoutSource = (body.source ?? "unknown").trim().slice(0, 64) || "unknown";
+    const attribution = normalizeAttributionPayload(body.attribution);
+    const checkoutSource =
+      (attribution ? attributionSource(attribution) : (body.source ?? "unknown").trim().slice(0, 64)) ||
+      "unknown";
     checkoutSourceForLog = checkoutSource;
     const plan = findBillingPlan(planId);
     if (!plan) {
@@ -126,6 +135,12 @@ export async function POST(request: NextRequest) {
       source: checkoutSource,
       userEmail: email,
       message: `${plan.id}:${cycle}`,
+      details: {
+        planId: plan.id,
+        cycle,
+        attribution,
+        uiSource: body.source ?? null,
+      },
     });
 
     const siteUrl = normalizedSiteUrl();
@@ -137,6 +152,7 @@ export async function POST(request: NextRequest) {
       billing_cycle: cycle,
       monthly_credits: String(plan.monthlyCredits),
       checkout_source: checkoutSource,
+      ...attributionToStripeMetadata(attribution),
     };
 
     const successUrl = `${siteUrl}/membership?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -152,6 +168,7 @@ export async function POST(request: NextRequest) {
         source: checkoutSource,
         userEmail: email,
         message: "payment_link_fallback",
+        details: { planId: plan.id, cycle, attribution, uiSource: body.source ?? null },
       });
       return NextResponse.json({
         ok: true,
@@ -200,6 +217,7 @@ export async function POST(request: NextRequest) {
         source: checkoutSource,
         userEmail: email,
         message: `subscription_price_id:${recurringPriceId}`,
+        details: { planId: plan.id, cycle, attribution, uiSource: body.source ?? null },
       });
       return NextResponse.json({
         ok: true,
@@ -240,6 +258,7 @@ export async function POST(request: NextRequest) {
         source: checkoutSource,
         userEmail: email,
         message: `subscription_price_data:${recurringProductId}`,
+        details: { planId: plan.id, cycle, attribution, uiSource: body.source ?? null },
       });
       return NextResponse.json({
         ok: true,
@@ -291,6 +310,7 @@ export async function POST(request: NextRequest) {
       source: checkoutSource,
       userEmail: email,
       message: "one_time_fallback",
+      details: { planId: plan.id, cycle, attribution, uiSource: body.source ?? null },
     });
 
     return NextResponse.json({

@@ -18,6 +18,7 @@ import { PaywallDialog } from "@/components/billing/PaywallDialog";
 import { outlineItems as volcanoOutlineItems, slideDrafts as volcanoSlideDrafts } from "@/components/workspace/mockData";
 import {
   appendCreditRecord,
+  appendCreditRecordOnServer,
   getCreditRecords,
   getSubscriptionByUser,
   syncCreditRecordsFromServer,
@@ -27,10 +28,7 @@ import {
   STANDARD_OUTPUT_REGULAR_CREDITS,
 } from "@/lib/credit-pricing";
 import {
-  ensureUserProjectByEmail,
-  getAdminProjects,
   getAdminUserByEmail,
-  getProjectsByUser,
   updateUserProjectMetadata,
 } from "@/lib/admin";
 import { getVisualizationRecommendation } from "@/lib/prompts/content-draft";
@@ -363,6 +361,16 @@ type ImageGenerateBatchResponse = {
 type ImageGenerationRestoreResponse = {
   ok?: boolean;
   error?: string;
+  project?: {
+    id?: string;
+    title?: string;
+    status?: string;
+    format?: string | null;
+    cover?: string;
+    coverImageUrl?: string;
+    updatedAt?: string;
+  } | null;
+  cover?: string;
   job?: {
     id?: string;
     runId?: string | null;
@@ -1166,7 +1174,7 @@ function inferRecommendedIntent(
   if (containsAny(text, ["视频", "口播", "分镜", "短片"]) || sources.some((item) => item.kind === "youtube")) {
     return "video";
   }
-  return "ppt";
+  return "poster";
 }
 
 function extractTopic(prompt: string, sources: HomeSourceItem[], outputLanguage: OutputLanguage) {
@@ -1996,17 +2004,15 @@ function readHomeDraftPayload() {
     };
     const queryProjectId = new URL(window.location.href).searchParams.get("projectId")?.trim() || "";
     if (queryProjectId) {
-      if (!next.project) {
-        next.project = {
-          projectId: queryProjectId,
-          projectTraceId: "",
-          projectUserId: "",
-          projectTitle: "",
-        };
-      } else if (!next.project.projectId) {
-        next.project = {
-          ...next.project,
-          projectId: queryProjectId,
+      if (!next.project || next.project.projectId !== queryProjectId) {
+        return {
+          ...empty,
+          project: {
+            projectId: queryProjectId,
+            projectTraceId: "",
+            projectUserId: "",
+            projectTitle: "",
+          },
         };
       }
     }
@@ -2564,18 +2570,34 @@ export default function WorkspacePage() {
     if (!currentEmail || !initialEntry.project?.projectId) {
       return;
     }
-    const existingProject = getProjectsByUser(currentEmail).find(
-      (project) => project.id === initialEntry.project?.projectId,
-    );
-    if (!existingProject) {
-      return;
-    }
-    if (!workspaceProjectTitle && existingProject.title) {
-      setWorkspaceProjectTitle(existingProject.title);
-    }
-    if (!topicContextPrompt.trim() && existingProject.title) {
-      setTopicContextPrompt(existingProject.title);
-    }
+    let cancelled = false;
+    fetch(`/api/projects/${encodeURIComponent(initialEntry.project.projectId)}`, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Project detail unavailable."))))
+      .then((payload: ImageGenerationRestoreResponse) => {
+        if (cancelled) {
+          return;
+        }
+        const projectTitle = payload.project?.title?.trim() || "";
+        if (!projectTitle) {
+          return;
+        }
+        if (!workspaceProjectTitle) {
+          setWorkspaceProjectTitle(projectTitle);
+        }
+        if (!topicContextPrompt.trim()) {
+          setTopicContextPrompt(projectTitle);
+        }
+      })
+      .catch(() => {
+        // Project restoration is handled by the persisted generation state effect.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [currentEmail, initialEntry.project?.projectId, topicContextPrompt, workspaceProjectTitle]);
 
   useEffect(() => {
@@ -3300,7 +3322,7 @@ export default function WorkspacePage() {
       }
       try {
         const response = await fetch(
-          `/api/workspace/image/projects/${encodeURIComponent(projectId)}/latest`,
+          `/api/projects/${encodeURIComponent(projectId)}`,
           {
             method: "GET",
             credentials: "same-origin",
@@ -3313,6 +3335,14 @@ export default function WorkspacePage() {
         const payload = (await response.json()) as ImageGenerationRestoreResponse;
         if (cancelled) {
           return;
+        }
+        const restoredProjectFormat = (payload.project?.format || "").trim();
+        const restoredProjectTitle = (payload.project?.title || "").trim();
+        if (restoredProjectTitle) {
+          setWorkspaceProjectTitle(restoredProjectTitle);
+          if (!topicContextPrompt.trim()) {
+            setTopicContextPrompt(restoredProjectTitle);
+          }
         }
         const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
         const restoredPages = Array.isArray(payload.pages) ? payload.pages : [];
@@ -3342,6 +3372,21 @@ export default function WorkspacePage() {
               attempts,
               maxAttempts: 1,
               imageUrl,
+              rawImageUrl: task.rawImageUrl?.trim() || undefined,
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+            continue;
+          }
+          if (["queued", "generating", "asset_downloading", "retrying"].includes(status)) {
+            restoredState[index] = {
+              index,
+              status: status === "queued" ? "queued" : "generating",
+              attempts,
+              maxAttempts: 1,
               rawImageUrl: task.rawImageUrl?.trim() || undefined,
               runId: restoredRunId || undefined,
               jobId,
@@ -3389,6 +3434,7 @@ export default function WorkspacePage() {
         }
 
         const restoredIntent = (
+          restoredProjectFormat ||
           payload.job?.intent ||
           restoredPages.find((page) => page.outputType?.trim())?.outputType ||
           ""
@@ -6075,32 +6121,21 @@ export default function WorkspacePage() {
       await new Promise((resolve) => window.setTimeout(resolve, 560));
 
       const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
-      const ownerProjects = currentEmail ? getProjectsByUser(currentEmail) : [];
-      const selectedProject =
-        (initialEntry.project?.projectId
-          ? ownerProjects.find((item) => item.id === initialEntry.project?.projectId)
-          : null) ??
-        (initialEntry.project?.projectId
-          ? {
-              id: initialEntry.project.projectId,
-              userId: user?.id || initialEntry.project.projectUserId || "u-unknown",
-              title:
-                initialEntry.project.projectTitle ||
-                `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
-              status: "进行中" as const,
-              updatedAt: new Date().toISOString(),
-              format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
-            }
-          : null) ??
-        ownerProjects[0] ??
-        (currentEmail
-          ? ensureUserProjectByEmail({
-              email: currentEmail,
-              name: session?.user?.name ?? undefined,
-              title: `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
-              format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
-            })
-          : getAdminProjects()[0]);
+      const selectedProjectId =
+        initialEntry.project?.projectId ||
+        projectIdRef.current ||
+        `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const selectedProject = {
+        id: selectedProjectId,
+        userId: user?.id || initialEntry.project?.projectUserId || "u-unknown",
+        title:
+          initialEntry.project?.projectTitle ||
+          workspaceProjectTitle ||
+          `${topic || "Knowledge Topic"} · ${tr("Workspace Draft", "工作区草稿")}`,
+        status: "进行中" as const,
+        updatedAt: new Date().toISOString(),
+        format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
+      };
       projectIdRef.current = selectedProject?.id ?? projectIdRef.current;
       projectTraceIdRef.current =
         initialEntry.project?.projectTraceId ||
@@ -6114,21 +6149,33 @@ export default function WorkspacePage() {
         }
       }
 
-      appendCreditRecord({
-        type: "consume",
-        description: isZhOutput
-          ? `${selectedProject?.title ?? "生成项目"} · ${
-              effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-            }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
-          : `${selectedProject?.title ?? "Generation Project"} · ${
-              effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
-            } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
-        delta: -billingCost,
-        userId: user?.id,
-        userEmail: currentEmail || undefined,
-        projectId: selectedProject?.id,
-        projectTitle: selectedProject?.title,
-      }, currentEmail);
+      try {
+        await appendCreditRecordOnServer({
+          type: "consume",
+          description: isZhOutput
+            ? `${selectedProject?.title ?? "生成项目"} · ${
+                effectiveIntent === "poster" ? "海报生成" : "分镜生成"
+              }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+            : `${selectedProject?.title ?? "Generation Project"} · ${
+                effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
+              } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+          delta: -billingCost,
+          userId: user?.id,
+          userEmail: currentEmail || undefined,
+          projectId: selectedProject?.id,
+          projectTitle: selectedProject?.title,
+        }, currentEmail);
+      } catch (creditError) {
+        const message = creditError instanceof Error ? creditError.message : "";
+        if (message.includes("INSUFFICIENT_CREDITS")) {
+          openCreditsPaywall({
+            scene: "billing_insufficient",
+            kind: effectiveIntent === "unknown" ? undefined : effectiveIntent,
+          });
+          throw new Error("Not enough credits to start this generation.");
+        }
+        throw creditError;
+      }
       tasksToGenerate.forEach((task) => {
         const creditKey = buildImageTaskCreditKey(nextRunId, task.index);
         chargedImageTaskCreditsRef.current[creditKey] = SINGLE_IMAGE_REGENERATION_CREDITS;

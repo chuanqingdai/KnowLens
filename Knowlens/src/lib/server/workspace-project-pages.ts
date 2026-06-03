@@ -247,23 +247,37 @@ export function listWorkspaceProjectPages(input: {
 export function getWorkspaceProjectCover(input: {
   projectId: string;
   userEmail: string;
+  outputType?: WorkspaceProjectPageOutputType | string | null;
 }) {
   const projectId = normalizeText(input.projectId, 120);
   const userEmail = normalizeText(input.userEmail, 240).toLowerCase();
+  const outputType = input.outputType ? normalizeOutputType(input.outputType) : null;
   if (!projectId || !userEmail) {
     return "";
   }
   const { db } = getDb();
-  const row = db
-    .prepare(
-      `SELECT image_url FROM workspace_project_pages
-       WHERE project_id = ? AND user_email = ? AND image_url IS NOT NULL AND image_url != ''
-       ORDER BY
-         CASE WHEN page_role = 'cover' THEN 0 ELSE 1 END ASC,
-         page_index ASC,
-         updated_at DESC
-       LIMIT 1`,
-    )
-    .get(projectId, userEmail) as { image_url?: string } | undefined;
+  const row = (outputType
+    ? db
+        .prepare(
+          `SELECT image_url FROM workspace_project_pages
+           WHERE project_id = ? AND user_email = ? AND output_type = ? AND image_url IS NOT NULL AND image_url != ''
+           ORDER BY
+             CASE WHEN page_role = 'cover' THEN 0 ELSE 1 END ASC,
+             page_index ASC,
+             updated_at DESC
+           LIMIT 1`,
+        )
+        .get(projectId, userEmail, outputType)
+    : db
+        .prepare(
+          `SELECT image_url FROM workspace_project_pages
+           WHERE project_id = ? AND user_email = ? AND image_url IS NOT NULL AND image_url != ''
+           ORDER BY
+             CASE WHEN page_role = 'cover' THEN 0 ELSE 1 END ASC,
+             page_index ASC,
+             updated_at DESC
+           LIMIT 1`,
+        )
+        .get(projectId, userEmail)) as { image_url?: string } | undefined;
   return (row?.image_url || "").trim();
 }

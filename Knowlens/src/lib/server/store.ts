@@ -128,6 +128,24 @@ export function listProjectsByUser(email: string) {
     .all(user.id) as Array<Record<string, unknown>>;
 }
 
+export function getProjectByIdForUser(email: string, projectId: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedProjectId = projectId.trim();
+  if (!normalizedEmail || !normalizedProjectId) {
+    return null as Record<string, unknown> | null;
+  }
+  const { db } = getDb();
+  const user = db.prepare("SELECT id FROM users WHERE email = ?").get(normalizedEmail) as
+    | { id?: string }
+    | undefined;
+  if (!user?.id) {
+    return null as Record<string, unknown> | null;
+  }
+  return (db
+    .prepare("SELECT * FROM projects WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(normalizedProjectId, user.id) || null) as Record<string, unknown> | null;
+}
+
 export function saveProject(input: {
   id?: string;
   userEmail: string;
@@ -191,6 +209,77 @@ export function appendCreditRecordDb(input: {
     input.projectTitle ?? null,
   );
   return { id, balance };
+}
+
+export function applyCreditRecordAtomic(input: {
+  userEmail: string;
+  userId?: string;
+  projectId?: string;
+  projectTitle?: string;
+  type: "consume" | "topup" | "refund";
+  description: string;
+  delta: number;
+  rejectNegativeBalance?: boolean;
+}) {
+  const { db } = getDb();
+  const scopeEmail = normalizeScope(input.userEmail);
+  if (!scopeEmail || scopeEmail === "guest") {
+    throw new Error("A signed-in user email is required for credit changes.");
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get(scopeEmail) as
+      | { id?: string }
+      | undefined;
+    const userId = input.userId || existingUser?.id || `u-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO users (id, email, name, role, created_at, updated_at)
+       VALUES (?, ?, ?, 'user', ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         updated_at = excluded.updated_at`,
+    ).run(userId, scopeEmail, scopeEmail.split("@")[0] || "User", nowIso(), nowIso());
+
+    const rows = db
+      .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .all(scopeEmail) as Array<{ balance?: number }>;
+    const latestBalance = rows[0]?.balance ?? 50;
+    const nextBalance = latestBalance + input.delta;
+    if (input.rejectNegativeBalance && nextBalance < 0) {
+      db.exec("ROLLBACK");
+      return {
+        applied: false as const,
+        code: "INSUFFICIENT_CREDITS",
+        balance: latestBalance,
+      };
+    }
+
+    const id = `record-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      nowIso(),
+      input.type,
+      input.description,
+      input.delta,
+      nextBalance,
+      userId,
+      scopeEmail,
+      input.projectId ?? null,
+      input.projectTitle ?? null,
+    );
+    db.exec("COMMIT");
+    return {
+      applied: true as const,
+      id,
+      balance: nextBalance,
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function listCreditRecords(email?: string | null) {

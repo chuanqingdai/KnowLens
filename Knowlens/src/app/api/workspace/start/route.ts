@@ -6,6 +6,7 @@ import { rateLimitOrThrow } from "@/lib/server/rate-limit";
 import { RATE_LIMIT_CONFIG } from "@/lib/server/rate-limit-config";
 import { incrementAndCheckUsageLimit } from "@/lib/server/guard";
 import { logOpsEvent, saveProject, upsertUser } from "@/lib/server/store";
+import { attributionSource, normalizeAttributionPayload } from "@/lib/server/attribution";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,7 @@ type WorkspaceStartPayload = {
     projectUserId?: string;
     projectTitle?: string;
   };
+  attribution?: unknown;
 };
 
 function parseIntEnv(name: string, fallback: number) {
@@ -130,6 +132,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = (await request.json()) as WorkspaceStartPayload;
+    const attribution = normalizeAttributionPayload(payload.attribution);
     const normalizedPrompt = safeTrim(payload.prompt, 6000);
     const normalizedSources =
       Array.isArray(payload.sources) && payload.sources.length
@@ -176,11 +179,12 @@ export async function POST(request: NextRequest) {
       category: "project",
       action: "workspace_project_started",
       status: "ok",
-      source: "app_home",
+      source: attribution ? attributionSource(attribution) : "app_home",
       userEmail: email,
       projectId: projectRawId,
       message: "Workspace project initialized from home generate flow.",
       details: {
+        attribution,
         projectTraceId,
         projectUserId: userId,
         hasPrompt: Boolean(normalizedPrompt),

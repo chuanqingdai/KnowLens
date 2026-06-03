@@ -6,6 +6,7 @@ export type FeaturedCaseItem = {
   id: string;
   projectId: string;
   title: string;
+  description?: string;
   author: string;
   views: number;
   likes: number;
@@ -16,6 +17,19 @@ export type FeaturedCaseItem = {
   duration?: string;
   category: string;
   order: number;
+  publicCaseSlug?: string;
+  assets?: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    description?: string;
+    fileUrl: string;
+    viewerUrl: string;
+    downloadUrl: string;
+    thumbnailUrl?: string;
+    mimeType?: string;
+    pageIndex?: number;
+  }>;
 };
 
 export type FeaturedCaseKind = "poster" | "ppt" | "video";

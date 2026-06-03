@@ -26,9 +26,6 @@ export type CreditRecord = {
 
 const SUBSCRIPTION_KEY = "knowlens_subscription_v1";
 const CREDIT_RECORDS_KEY = "knowlens_credit_records_v1";
-const LOCAL_DEV_EMAIL = "local@knowlens.ai";
-const LOCAL_DEV_CREDIT_TARGET = 500;
-const LOCAL_DEV_CREDIT_INIT_KEY = "knowlens_local_dev_credit_init_v1";
 
 function normalizeScope(email?: string | null) {
   const value = (email ?? "").trim().toLowerCase();
@@ -37,10 +34,6 @@ function normalizeScope(email?: string | null) {
 
 function scopedKey(base: string, email?: string | null) {
   return `${base}:${normalizeScope(email)}`;
-}
-
-function isLocalDevEmail(email?: string | null) {
-  return normalizeScope(email) === LOCAL_DEV_EMAIL;
 }
 
 function safeParse<T>(raw: string | null): T | null {
@@ -145,28 +138,6 @@ export function getCreditRecords(email?: string | null) {
   }
   const key = email ? scopedKey(CREDIT_RECORDS_KEY, email) : CREDIT_RECORDS_KEY;
   const parsed = safeParse<CreditRecord[]>(window.localStorage.getItem(key)) ?? [];
-  const initKey = scopedKey(LOCAL_DEV_CREDIT_INIT_KEY, email);
-  const shouldInitLocalDevCredits =
-    Boolean(email) &&
-    isLocalDevEmail(email) &&
-    window.localStorage.getItem(initKey) !== "1";
-  if (shouldInitLocalDevCredits) {
-    const latestBalance = parsed[0]?.balance ?? 50;
-    const delta = LOCAL_DEV_CREDIT_TARGET - latestBalance;
-    const nextRecord: CreditRecord = {
-      id: `record-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      type: delta >= 0 ? "topup" : "refund",
-      description: "Local development credit alignment",
-      delta,
-      balance: LOCAL_DEV_CREDIT_TARGET,
-      userEmail: normalizeScope(email),
-    };
-    const nextRecords = [nextRecord, ...parsed];
-    window.localStorage.setItem(key, JSON.stringify(nextRecords));
-    window.localStorage.setItem(initKey, "1");
-    return nextRecords;
-  }
   if (parsed.length) {
     return parsed;
   }
@@ -184,10 +155,64 @@ export function getCreditRecords(email?: string | null) {
     (item) => (item.userEmail ?? "").trim().toLowerCase() === normalizedEmail,
   );
   window.localStorage.setItem(key, JSON.stringify(filtered));
-  if (isLocalDevEmail(email)) {
-    window.localStorage.removeItem(scopedKey(LOCAL_DEV_CREDIT_INIT_KEY, email));
-  }
   return filtered;
+}
+
+function syncCreditRecordToServer(
+  input: Omit<CreditRecord, "id" | "createdAt" | "balance">,
+  email?: string | null,
+) {
+  if (!isClient()) {
+    return;
+  }
+  const scopeEmail = input.userEmail ?? email;
+  if (!scopeEmail) {
+    return;
+  }
+  void appendCreditRecordOnServer(input, scopeEmail).catch(() => {
+    // Keep the optimistic local cache; the next server sync will correct it.
+  });
+}
+
+export async function appendCreditRecordOnServer(
+  input: Omit<CreditRecord, "id" | "createdAt" | "balance">,
+  email?: string | null,
+) {
+  if (!isClient()) {
+    return null;
+  }
+  const scopeEmail = input.userEmail ?? email;
+  if (!scopeEmail) {
+    return null;
+  }
+  const response = await fetch("/api/billing/credits", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      type: input.type,
+      description: input.description,
+      delta: input.delta,
+      userId: input.userId,
+      projectId: input.projectId,
+      projectTitle: input.projectTitle,
+    }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    records?: CreditRecord[];
+    code?: string;
+    error?: string;
+  };
+  if (!response.ok) {
+    await syncCreditRecordsFromServer(scopeEmail).catch(() => undefined);
+    throw new Error(payload.code || payload.error || `CREDIT_WRITE_HTTP_${response.status}`);
+  }
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  setCreditRecords(records, scopeEmail);
+  return records[0] ?? null;
 }
 
 export function appendCreditRecord(
@@ -210,6 +235,7 @@ export function appendCreditRecord(
   const nextRecords = [nextRecord, ...existing];
   const key = scopeEmail ? scopedKey(CREDIT_RECORDS_KEY, scopeEmail) : CREDIT_RECORDS_KEY;
   window.localStorage.setItem(key, JSON.stringify(nextRecords));
+  syncCreditRecordToServer(input, email);
   return nextRecord;
 }
 
@@ -246,8 +272,12 @@ export async function syncCreditRecordsFromServer(email?: string | null) {
   const payload = (await response.json()) as {
     ok?: boolean;
     records?: CreditRecord[];
+    subscription?: SubscriptionSnapshot | null;
   };
   const records = Array.isArray(payload.records) ? payload.records : [];
   setCreditRecords(records, scopeEmail);
+  if (payload.subscription) {
+    saveSubscription(payload.subscription, scopeEmail);
+  }
   return records;
 }

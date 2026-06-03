@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
+import { AttributionTracker } from "@/components/analytics/AttributionTracker";
 
 const siteUrl = "https://knowlens.ai";
 
@@ -86,7 +87,10 @@ export default function RootLayout({
         </Script>
       </head>
       <body className="min-h-full flex flex-col">
-        <AuthSessionProvider>{children}</AuthSessionProvider>
+        <AuthSessionProvider>
+          <AttributionTracker />
+          {children}
+        </AuthSessionProvider>
       </body>
     </html>
   );

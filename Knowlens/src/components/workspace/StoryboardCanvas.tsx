@@ -169,23 +169,23 @@ const DEFAULT_EMOTION_TTS_ID = "doubao-teen";
 const COMPOSE_STEPS: { key: ComposeStepKey; title: string; description: string }[] = [
   {
     key: "prepare",
-    title: "准备合成参数",
-    description: "初始化画布、编码器和输出配置",
+    title: "Prepare export",
+    description: "Set up the canvas, encoder, and output settings.",
   },
   {
     key: "tts",
-    title: "生成分镜 TTS",
-    description: "为每个分镜准备对应旁白音轨",
+    title: "Prepare narration",
+    description: "Create or load narration audio for each scene.",
   },
   {
     key: "render",
-    title: "渲染画面与音轨",
-    description: "按分镜顺序渲染帧并叠加语音",
+    title: "Render scenes",
+    description: "Render each storyboard image with its audio track.",
   },
   {
     key: "finalize",
-    title: "封装输出视频",
-    description: "整理文件并生成可下载预览",
+    title: "Finalize file",
+    description: "Package the final downloadable video preview.",
   },
 ];
 
@@ -507,6 +507,7 @@ export function StoryboardCanvas({
   const [showPptExportModal, setShowPptExportModal] = useState(false);
   const [pptExportStatus, setPptExportStatus] = useState<PptExportStatus>("idle");
   const [exportedPptUrl, setExportedPptUrl] = useState<string | null>(null);
+  const [pptDownloadNotice, setPptDownloadNotice] = useState<string | null>(null);
 
   useEffect(() => {
     generatedAudioRef.current = generatedAudioBySlideId;
@@ -537,7 +538,7 @@ export function StoryboardCanvas({
       }
       const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
       const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-      return Boolean(getActiveImageSrc(historyImages, activeIdx));
+      return Boolean(getActiveImageSrc(historyImages, activeIdx, taskState?.imageUrl));
     });
   }, [
     activeImageIndexBySlideId,
@@ -591,20 +592,23 @@ export function StoryboardCanvas({
   }, [selectedSlideId, slides]);
   const composeLoadingHint = useMemo(() => {
     if (composeSteps.prepare === "running") {
-      return "正在准备渲染环境和输出参数";
+      return "Preparing export settings...";
     }
     if (composeSteps.tts === "running") {
-      return "正在逐页生成旁白音轨，请稍候";
+      return "Preparing narration tracks...";
     }
     if (composeSteps.render === "running") {
-      return "正在逐帧渲染画面并同步音轨";
+      return "Rendering scenes and audio...";
     }
     if (composeSteps.finalize === "running") {
-      return "正在封装视频文件，马上完成";
+      return "Finalizing the video file...";
     }
-    return "正在合成，请稍候";
+    return "Exporting video...";
   }, [composeSteps.finalize, composeSteps.prepare, composeSteps.render, composeSteps.tts]);
   const exportPptHint = useMemo(() => {
+    if (pptDownloadNotice) {
+      return pptDownloadNotice;
+    }
     if (pptExportStatus === "error") {
       return pptExportError || "Export failed. Please retry when all slide images are ready.";
     }
@@ -624,7 +628,7 @@ export function StoryboardCanvas({
       return "Ready to download.";
     }
     return "Preparing export...";
-  }, [pptExportError, exportPptPhase, pptExportStatus]);
+  }, [pptDownloadNotice, pptExportError, exportPptPhase, pptExportStatus]);
 
   const commitChange = useCallback(
     (updater: (prev: PersistedCanvasState) => PersistedCanvasState) => {
@@ -1369,11 +1373,10 @@ export function StoryboardCanvas({
         }
 
         const slide = slides[idx];
-        const historyImages = (imageHistoryBySlideId[slide.id] ?? [
-          CASE_IMAGES[idx % CASE_IMAGES.length],
-        ]).filter(isUsableImageSrc);
+        const generationState = generationTaskStateByIndex?.[slide.page];
+        const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-        const src = getActiveImageSrc(historyImages, activeIdx, CASE_IMAGES[idx % CASE_IMAGES.length]);
+        const src = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
         if (!src) {
           continue;
         }
@@ -1400,6 +1403,7 @@ export function StoryboardCanvas({
     },
     [
       activeImageIndexBySlideId,
+      generationTaskStateByIndex,
       imageHistoryBySlideId,
       isPreviewing,
       previewAudioForSlide,
@@ -1438,7 +1442,7 @@ export function StoryboardCanvas({
       canvas.height = size.height;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        throw new Error("无法初始化视频画布");
+        throw new Error("Could not initialize the video canvas.");
       }
 
       const mimeType =
@@ -1469,7 +1473,7 @@ export function StoryboardCanvas({
 
       const completed = new Promise<Blob>((resolve, reject) => {
         recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
-        recorder.onerror = () => reject(new Error("合成录制失败"));
+        recorder.onerror = () => reject(new Error("Video recording failed."));
       });
 
       setComposeSteps((prev) => ({ ...prev, prepare: "done", tts: "running" }));
@@ -1541,20 +1545,19 @@ export function StoryboardCanvas({
       for (let i = 0; i < slides.length; i += 1) {
         const slide = slides[i];
         const sceneAsset = sceneAssets[i];
-        const historyImages = (imageHistoryBySlideId[slide.id] ?? [
-          CASE_IMAGES[i % CASE_IMAGES.length],
-        ]).filter(isUsableImageSrc);
+        const generationState = generationTaskStateByIndex?.[slide.page];
+        const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-        const src = getActiveImageSrc(historyImages, activeIdx, CASE_IMAGES[i % CASE_IMAGES.length]);
+        const src = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
         if (!src) {
-          throw new Error("加载分镜图片失败");
+          throw new Error(`Scene ${slide.page} image is not ready. Please retry the failed scene first.`);
         }
 
         const image = new window.Image();
         image.src = src;
         await new Promise<void>((resolve, reject) => {
           image.onload = () => resolve();
-          image.onerror = () => reject(new Error("加载分镜图片失败"));
+          image.onerror = () => reject(new Error(`Scene ${slide.page} image could not be loaded. Please retry this scene.`));
         });
 
         const sceneDuration = sceneAsset.durationSec;
@@ -1656,12 +1659,13 @@ export function StoryboardCanvas({
         });
         return copy;
       });
-      setComposeError(error instanceof Error ? error.message : "视频合成失败");
+      setComposeError(error instanceof Error ? error.message : "Video export failed. Please try again.");
     }
   }, [
     activeImageIndexBySlideId,
     composeStatus,
     ensureAudioFileForSlide,
+    generationTaskStateByIndex,
     imageHistoryBySlideId,
     sleep,
     slides,
@@ -1691,16 +1695,18 @@ export function StoryboardCanvas({
     setExportPptPhase("prepare");
     setPptExportError(null);
     setExportedPptUrl(null);
+    setPptDownloadNotice(null);
 
     try {
-      const payload = slides.map((slide, idx) => {
+      const payload = slides.map((slide) => {
         const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
+        const taskState = generationTaskStateByIndex?.[slide.page];
         return {
           page: slide.page,
           title: slide.title,
           body: slide.body,
-          imageSrc: getActiveImageSrc(historyImages, activeIdx),
+          imageSrc: getActiveImageSrc(historyImages, activeIdx, taskState?.imageUrl),
         };
       });
 
@@ -1757,7 +1763,7 @@ export function StoryboardCanvas({
         setIsExportingPpt(false);
       }, 420);
     }
-  }, [activeImageIndexBySlideId, imageHistoryBySlideId, isExportingPpt, pptExportReady, slides]);
+  }, [activeImageIndexBySlideId, generationTaskStateByIndex, imageHistoryBySlideId, isExportingPpt, pptExportReady, slides]);
 
   useEffect(() => {
     if (!onModeActionRegister) {
@@ -1946,12 +1952,17 @@ export function StoryboardCanvas({
       });
 
       const imageNodes = slides.map((slide, idx) => {
-        const imageHistory = (imageHistoryBySlideId[slide.id] ?? [
-          CASE_IMAGES[idx % CASE_IMAGES.length],
-        ]).filter(isUsableImageSrc);
+        const generationState = generationTaskStateByIndex?.[slide.page];
+        const imageHistory = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeImageIndex = activeImageIndexBySlideId[slide.id] ?? 0;
-        const storyboardImage = getActiveImageSrc(imageHistory, activeImageIndex, CASE_IMAGES[idx % CASE_IMAGES.length]);
+        const storyboardImage = getActiveImageSrc(imageHistory, activeImageIndex, generationState?.imageUrl);
         const historyOpen = historyOpenBySlideId[slide.id] ?? false;
+        const isGeneratingImage =
+          generationState?.status === "queued" ||
+          generationState?.status === "generating" ||
+          generationState?.status === "retrying" ||
+          (!storyboardImage && !generationState?.status && generationInProgress);
+        const isGenerationFailed = generationState?.status === "failed";
         const selectedTts = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
         const selectedTtsOption =
           TTS_OPTIONS.find((item) => item.id === selectedTts) ?? TTS_OPTIONS[0];
@@ -2007,13 +2018,44 @@ export function StoryboardCanvas({
                       <span>A 轴 · 画面轨</span>
                       <span>{audioDuration}</span>
                     </div>
-                    {storyboardImage ? (
+                    {storyboardImage && !isGeneratingImage ? (
                       <img
                         src={storyboardImage}
                         alt={`分镜${slide.page}参考图`}
                         className="h-[212px] w-full rounded object-cover"
                         loading="lazy"
                       />
+                    ) : isGenerationFailed ? (
+                      <div className="flex h-[212px] w-full items-center justify-center rounded bg-white px-4">
+                        <div className="max-w-[230px] rounded-lg border border-red-100 bg-white px-4 py-3 text-center shadow-sm">
+                          <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600">
+                            <AlertCircle size={14} />
+                          </div>
+                          <p className="text-xs leading-5 text-zinc-700">
+                            {toImageFailureSentence(generationState.error, generationState.errorCode)}
+                          </p>
+                          {!generationInProgress ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onRetryGenerationTask?.(slide.page);
+                              }}
+                              className="nodrag nopan nowheel mt-2 inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                            >
+                              <RotateCcw size={12} />
+                              Retry
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : isGeneratingImage ? (
+                      <div className="flex h-[212px] w-full items-center justify-center rounded bg-white text-xs text-zinc-600">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 shadow-sm">
+                          <LoaderCircle size={12} className="animate-spin text-blue-500" />
+                          Generating image
+                        </span>
+                      </div>
                     ) : (
                       <div className="flex h-[212px] w-full items-center justify-center rounded bg-white text-xs text-zinc-400">
                         Waiting for generation
@@ -2192,12 +2234,15 @@ export function StoryboardCanvas({
       addSlideAfter,
       audioProgressBySlideId,
       editingPromptSlideId,
+      generationInProgress,
+      generationTaskStateByIndex,
       historyOpenBySlideId,
       imageHistoryBySlideId,
+      onRetryGenerationTask,
       playingAudioSlideId,
       previewAudioForSlide,
       promptBySlideId,
-      redrawImageForSlide,
+      regenerateSlideImage,
       selectHistoryImage,
       selectedSlideId,
       slides,
@@ -2511,17 +2556,18 @@ export function StoryboardCanvas({
           <div className="absolute inset-0 z-20 overflow-y-auto bg-white">
             <div className="mx-auto w-full max-w-[1100px] px-3 py-3">
               <div className="space-y-4">
-                {slides.map((slide, idx) => {
+                {slides.map((slide) => {
                   const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
                   const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-                  const currentImage = getActiveImageSrc(historyImages, activeIdx);
+                  const generationState = generationTaskStateByIndex?.[slide.page];
+                  const currentImage = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
                   const isActive = selectedSlideId === slide.id;
                   const showHistory = historyOpenBySlideId[slide.id] ?? false;
-                  const generationState = generationTaskStateByIndex?.[slide.page];
                   const isGenerating =
                     generationState?.status === "queued" ||
                     generationState?.status === "generating" ||
-                    generationState?.status === "retrying";
+                    generationState?.status === "retrying" ||
+                    (!currentImage && !generationState?.status && generationInProgress);
                   const isGenerationFailed = generationState?.status === "failed";
                   const pageContent = [
                     slide.title.trim(),
@@ -2707,9 +2753,9 @@ export function StoryboardCanvas({
           <div className="w-[640px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-900">视频合成</h3>
+                <h3 className="text-sm font-semibold text-zinc-900">Export Video</h3>
                 <p className="mt-1 text-xs text-zinc-500">
-                  按分镜逐段渲染画面并同步叠加对应 TTS 音轨
+                  Preparing a downloadable explainer video from your storyboard.
                 </p>
               </div>
               <button
@@ -2717,44 +2763,44 @@ export function StoryboardCanvas({
                 onClick={() => setShowComposeModal(false)}
                 className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100"
               >
-                关闭
+                Close
               </button>
             </div>
 
             <div className="mb-4 rounded-xl border border-zinc-200 bg-zinc-50/70 px-3 py-3">
               <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs text-zinc-600">
                 <div className="flex items-center justify-between">
-                  <span>分辨率</span>
+                  <span>Resolution</span>
                   <span className="font-medium text-zinc-800">
                     {composeMeta?.resolution ?? "1280×720"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>帧率</span>
+                  <span>Frame rate</span>
                   <span className="font-medium text-zinc-800">
                     {(composeMeta?.fps ?? 24).toString()} fps
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>分镜数</span>
+                  <span>Scenes</span>
                   <span className="font-medium text-zinc-800">
-                    {(composeMeta?.sceneCount ?? slides.length).toString()} 段
+                    {(composeMeta?.sceneCount ?? slides.length).toString()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>TTS 覆盖</span>
+                  <span>Narration</span>
                   <span className="font-medium text-zinc-800">
-                    {(composeMeta?.voicedSceneCount ?? 0).toString()} 段
+                    {(composeMeta?.voicedSceneCount ?? 0).toString()} scene(s)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>视频时长</span>
+                  <span>Duration</span>
                   <span className="font-medium text-zinc-800">
                     {formatDuration(composeMeta?.durationSec ?? 0)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>输出格式</span>
+                  <span>Format</span>
                   <span className="font-medium text-zinc-800">
                     {composeMeta?.format?.replace("video/", "") ?? "webm"}
                   </span>
@@ -2792,12 +2838,12 @@ export function StoryboardCanvas({
                         }`}
                       >
                         {status === "running"
-                          ? "进行中"
+                          ? "Running"
                           : status === "done"
-                            ? "已完成"
+                            ? "Done"
                             : status === "error"
-                              ? "失败"
-                              : "等待中"}
+                              ? "Failed"
+                              : "Waiting"}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-zinc-500">{step.description}</p>
@@ -2823,7 +2869,7 @@ export function StoryboardCanvas({
                 </div>
                 <div className="mt-2 flex items-center gap-1 text-[11px] text-zinc-500">
                   <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
-                  <span>可切换页面继续编辑，合成会在后台持续进行</span>
+                  <span>You can keep editing while the export continues.</span>
                 </div>
               </div>
             ) : null}
@@ -2837,14 +2883,14 @@ export function StoryboardCanvas({
                     onClick={() => setShowComposeModal(false)}
                     className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
                   >
-                    返回编辑
+                    Back to editor
                   </button>
                   <button
                     type="button"
                     onClick={runComposeVideo}
                     className="inline-flex items-center rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-700"
                   >
-                    重试
+                    Retry export
                   </button>
                 </div>
               </div>
@@ -2864,7 +2910,7 @@ export function StoryboardCanvas({
                     className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
                   >
                     <Download size={13} />
-                    下载视频
+                    Download Video
                   </a>
                 </div>
               </div>
@@ -2959,6 +3005,9 @@ export function StoryboardCanvas({
                 <a
                   href={exportedPptUrl}
                   download="KnowLens.ai-visual-deck.pptx"
+                  onClick={() => {
+                    setPptDownloadNotice("Download started. If nothing appears, click Download PPT again.");
+                  }}
                   className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
                 >
                   <Download size={13} />

@@ -15,10 +15,25 @@ function getDefaultLocalSharedDbPath() {
 
 function getDbFilePath() {
   if (process.env.KNOWLENS_DB_PATH?.trim()) {
-    return process.env.KNOWLENS_DB_PATH.trim();
+    const configuredPath = process.env.KNOWLENS_DB_PATH.trim();
+    if (
+      process.env.NODE_ENV === "production" &&
+      configuredPath.startsWith("/tmp") &&
+      process.env.KNOWLENS_ALLOW_EPHEMERAL_SQLITE !== "1"
+    ) {
+      throw new Error(
+        "Persistent database is required in production. KNOWLENS_DB_PATH must not point to /tmp unless KNOWLENS_ALLOW_EPHEMERAL_SQLITE=1 is explicitly set.",
+      );
+    }
+    return configuredPath;
   }
-  if (process.env.VERCEL === "1") {
-    return path.join("/tmp", "knowlens.sqlite");
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+    if (process.env.KNOWLENS_ALLOW_EPHEMERAL_SQLITE === "1") {
+      return path.join("/tmp", "knowlens.sqlite");
+    }
+    throw new Error(
+      "Persistent database is required in production. Set KNOWLENS_DB_PATH to a durable database file path or configure a managed database adapter.",
+    );
   }
   return getDefaultLocalSharedDbPath();
 }
@@ -268,6 +283,60 @@ function createTables(db: DatabaseSync) {
       ON workspace_project_pages(user_email, project_id, output_type, page_index ASC);
     CREATE INDEX IF NOT EXISTS idx_workspace_project_pages_task
       ON workspace_project_pages(image_task_id);
+
+    CREATE TABLE IF NOT EXISTS published_cases (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT,
+      output_type TEXT NOT NULL,
+      author_label TEXT,
+      source_project_id TEXT,
+      source_user_email TEXT,
+      cover_asset_id TEXT,
+      cover_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      featured INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      published_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_published_cases_status
+      ON published_cases(status, featured, sort_order ASC, published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_published_cases_source_project
+      ON published_cases(source_project_id, source_user_email);
+
+    CREATE TABLE IF NOT EXISTS published_case_assets (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      asset_type TEXT NOT NULL,
+      title TEXT,
+      description TEXT,
+      page_index INTEGER NOT NULL DEFAULT 1,
+      file_url TEXT NOT NULL,
+      viewer_url TEXT NOT NULL,
+      thumbnail_url TEXT,
+      download_url TEXT,
+      storage_key TEXT,
+      mime_type TEXT,
+      file_size INTEGER,
+      width INTEGER,
+      height INTEGER,
+      duration_seconds INTEGER,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(case_id) REFERENCES published_cases(id) ON DELETE CASCADE,
+      UNIQUE(case_id, slug)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_published_case_assets_case
+      ON published_case_assets(case_id, sort_order ASC, page_index ASC);
   `);
 
   const uploadJobColumns = [
