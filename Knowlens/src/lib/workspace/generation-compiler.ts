@@ -119,6 +119,35 @@ type BuildGenerationTasksInput = {
   }>;
 };
 
+function resolveDominantVisibleLanguage(outputLanguage: string) {
+  const normalized = outputLanguage.trim().toLowerCase();
+  if (/^(zh|zh-cn|zh-hans|cn|chinese|simplified)/.test(normalized)) {
+    return "Simplified Chinese";
+  }
+  if (/^(zh-tw|zh-hant|traditional)/.test(normalized)) {
+    return "Traditional Chinese";
+  }
+  if (/^(ja|jp|japanese)/.test(normalized)) {
+    return "Japanese";
+  }
+  if (/^(ko|kr|korean)/.test(normalized)) {
+    return "Korean";
+  }
+  if (/^(fr|french)/.test(normalized)) {
+    return "French";
+  }
+  if (/^(de|german)/.test(normalized)) {
+    return "German";
+  }
+  if (/^(es|spanish)/.test(normalized)) {
+    return "Spanish";
+  }
+  if (/^(pt|portuguese)/.test(normalized)) {
+    return "Portuguese";
+  }
+  return outputLanguage.trim() || "English";
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -339,15 +368,13 @@ function buildConcisePosterTitle(rawTitle: string, singlePoster: boolean) {
 }
 
 function buildSeriesStyle(styleName: string, outputLanguage: string): SeriesStyle {
-  const isZh = outputLanguage.toLowerCase().startsWith("zh");
+  const dominantLanguage = resolveDominantVisibleLanguage(outputLanguage);
   return {
     titleArea: "Consistent top title zone with stable spacing and alignment.",
     iconSystem: "Use one icon style family and stroke weight across all pages.",
     colorSystem: `Primary style anchored by ${styleName}, with fixed accent and neutral palette.`,
     pageModuleStyle: "Use consistent section cards and divider rhythm. Do not add visible page numbers or pagination markers.",
-    languageRule: isZh
-      ? "All visible text must stay in Chinese and use concise labels."
-      : "All visible text must stay in English and use concise labels.",
+    languageRule: `Dominant visible language must remain ${dominantLanguage} across the series. Foreign proper nouns, product names, acronyms, and technical terms may remain as terms only; do not switch page titles, body copy, labels, or callouts into another language.`,
   };
 }
 
@@ -363,7 +390,7 @@ function buildSharedRules(outputType: NormalizedDirection) {
     "No long paragraph blocks.",
     "No overcrowded layout.",
     "No unrelated information or decorative fake UI.",
-    "No official brand logo, trademark mark, watermark, or pseudo product screenshot.",
+    "No official brand logo, trademark mark, third-party watermark, or pseudo product screenshot. A system free-plan watermark is allowed only when explicitly requested by the rendering constraint.",
     "If a company identity is needed, use plain text company names or abstract brand-safe symbols instead of official logos.",
   ];
   if (outputType === "video") {
@@ -412,6 +439,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
   }
 
   const seriesStyle = buildSeriesStyle(input.style.name || input.style.prompt, input.outputLanguage);
+  const dominantVisibleLanguage = resolveDominantVisibleLanguage(input.outputLanguage);
   const { factualRules, negativeRules } = buildSharedRules(normalizedDirection);
 
   if (normalizedDirection === "poster" && input.posterDraft) {
@@ -539,7 +567,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         mode: isDataLike ? "strict" : "guided",
         titleIdea: contentTitle,
         keyConcepts: splitLabels([focusForBody, ...pageKeyFacts].join(" | "), 5),
-        language: input.outputLanguage.toLowerCase().startsWith("zh") ? "Simplified Chinese" : "English",
+        language: dominantVisibleLanguage,
         density: visualDesign.textDensity,
         allowRewrite: !isDataLike,
       };
@@ -681,7 +709,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       mode: isIndependentCover ? "minimal" : isDataLikeSlide ? "strict" : "guided",
       titleIdea: isIndependentCover ? "" : contentTitle,
       keyConcepts: isIndependentCover ? [] : splitLabels([contentTitle, contentBody].join(" | "), normalizedDirection === "video" ? 3 : 5),
-      language: input.outputLanguage.toLowerCase().startsWith("zh") ? "Simplified Chinese" : "English",
+      language: dominantVisibleLanguage,
       density: visualDesign.textDensity,
       allowRewrite: !isIndependentCover && !isDataLikeSlide,
     };

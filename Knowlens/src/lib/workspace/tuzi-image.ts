@@ -57,6 +57,16 @@ function sanitizePromptSignal(input: string, maxLength: number) {
   return compact;
 }
 
+function buildDominantLanguageRule(language: string) {
+  const dominantLanguage = compactText(language, 48) || "English";
+  return [
+    `Dominant visible language: ${dominantLanguage}.`,
+    "Page titles, headings, body copy, labels, and callouts must primarily use that language.",
+    "Foreign proper nouns, product names, acronyms, and technical terms may remain unchanged as terms only.",
+    "Do not let style references, technology terms, or mixed-language source snippets switch the whole visual into another language.",
+  ].join(" ");
+}
+
 function splitPromptSentences(input: string, maxItems: number, maxLength: number) {
   const normalized = compactText(input, maxLength * Math.max(1, maxItems));
   if (!normalized) {
@@ -334,6 +344,7 @@ export function buildTuziImagePrompt(input: {
     .slice(0, 5)
     .join(" | ");
   const textStrategyLanguage = compactText(input.textStrategy?.language || "", 40) || "Simplified Chinese";
+  const dominantLanguageRule = buildDominantLanguageRule(textStrategyLanguage);
   const textStrategyDensity = compactText(input.textStrategy?.density || "", 20) || visualDesignTextDensity || "medium";
   const textStrategyAllowRewrite = input.textStrategy?.allowRewrite ?? (textStrategyMode === "guided");
   const factualRules = uniquePromptItems(
@@ -404,6 +415,7 @@ export function buildTuziImagePrompt(input: {
     if (textStrategyMode === "strict") {
       return [
         "Text: fact-strict, expression-guided.",
+        dominantLanguageRule,
         "Keep protected facts exact; do not invent missing numbers, dates, sources, rankings, or conclusions.",
         "Auxiliary titles and labels may be lightly optimized for readability.",
       ].join(" ");
@@ -424,6 +436,7 @@ export function buildTuziImagePrompt(input: {
     return [
       "Text: guided.",
       `Use concise ${textStrategyLanguage} labels with ${textStrategyDensity} density.`,
+      dominantLanguageRule,
       textStrategyAllowRewrite
         ? "Lightly rewrite ordinary wording for visual clarity while preserving meaning."
         : "Keep supplied wording close to the source.",

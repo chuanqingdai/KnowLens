@@ -69,6 +69,9 @@ type PosterCanvasProps = {
   onRetryGenerationTask?: (index: number) => void;
   onRedrawGenerationTask?: (index: number, copy: string) => void;
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
+  onModeActionRegister?: (actions: {
+    downloadAll: () => void;
+  }) => void;
 };
 
 type PosterCard = {
@@ -657,7 +660,7 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
             {card.archives.map((archive) => (
               <div
                 key={archive.id}
-                className="relative overflow-hidden rounded-md border border-zinc-200"
+                className="relative overflow-hidden border border-zinc-200"
                 style={{ aspectRatio: frameAspectRatioCss }}
               >
                 <img
@@ -695,6 +698,7 @@ export function PosterCanvas({
   onRetryGenerationTask,
   onRedrawGenerationTask,
   onSaveStateChange,
+  onModeActionRegister,
 }: PosterCanvasProps) {
   const count = Math.max(1, Math.min(10, posterCount));
   const resolvedAspectRatio = useMemo(
@@ -1098,6 +1102,14 @@ export function PosterCanvas({
     }
     setIsBulkDownloading(false);
   }, [cards, isBulkDownloading]);
+
+  useEffect(() => {
+    onModeActionRegister?.({
+      downloadAll: () => {
+        void handleDownloadAll();
+      },
+    });
+  }, [handleDownloadAll, onModeActionRegister]);
 
   const handleAutoLayout = useCallback(() => {
     setCards((prev) =>

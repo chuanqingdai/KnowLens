@@ -1,5 +1,5 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Check, LoaderCircle, Lock } from "lucide-react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Check, ChevronLeft, ChevronRight, Download, LoaderCircle, Lock } from "lucide-react";
 
 export type ChatTurn = {
   id: string;
@@ -490,6 +490,21 @@ type ChatPanelProps = {
   isDraftGenerationPending?: boolean;
   retryingErrorTurnIds?: Record<string, boolean>;
   onRetryErrorTurn?: (turnId: string) => void;
+  outputSummaryCard?: {
+    visible: boolean;
+    formatLabel: string;
+    title: string;
+    angle: string;
+    statusLabel: string;
+    progressLabel?: string;
+    isCanvasExpanded: boolean;
+    canToggleCanvas: boolean;
+    canDownload: boolean;
+    downloadLabel: string;
+    downloadDisabledLabel?: string;
+    onToggleCanvas: () => void;
+    onDownload: () => void;
+  } | null;
 };
 
 export const ChatPanel = memo(function ChatPanel({
@@ -561,6 +576,7 @@ export const ChatPanel = memo(function ChatPanel({
   isDraftGenerationPending = false,
   retryingErrorTurnIds,
   onRetryErrorTurn,
+  outputSummaryCard,
 }: ChatPanelProps) {
   void outputLanguage;
   const isZh = false;
@@ -678,6 +694,81 @@ export const ChatPanel = memo(function ChatPanel({
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const deferredUpdates = useDeferredValue(updates);
   const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(deferredUpdates), [deferredUpdates]);
+
+  const renderOutputSummaryCard = useCallback(() => {
+    if (!outputSummaryCard?.visible) {
+      return null;
+    }
+    const toggleLabel = outputSummaryCard.canToggleCanvas
+      ? outputSummaryCard.isCanvasExpanded
+        ? "Hide canvas"
+        : "Open canvas"
+      : "Canvas will open after generation starts";
+    const ToggleIcon = outputSummaryCard.isCanvasExpanded ? ChevronLeft : ChevronRight;
+    const handleCardClick = () => {
+      if (outputSummaryCard.canToggleCanvas) {
+        outputSummaryCard.onToggleCanvas();
+      }
+    };
+    const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+      if (!outputSummaryCard.canToggleCanvas) {
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        outputSummaryCard.onToggleCanvas();
+      }
+    };
+    return (
+      <article
+        role={outputSummaryCard.canToggleCanvas ? "button" : undefined}
+        tabIndex={outputSummaryCard.canToggleCanvas ? 0 : undefined}
+        onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
+        className={`max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm transition ${
+          outputSummaryCard.canToggleCanvas ? "cursor-pointer hover:border-zinc-300 hover:shadow-md" : ""
+        }`}
+        aria-expanded={outputSummaryCard.canToggleCanvas ? outputSummaryCard.isCanvasExpanded : undefined}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Output</div>
+            <h3 className="mt-1 truncate text-base font-semibold text-zinc-950">
+              {outputSummaryCard.formatLabel}: {outputSummaryCard.title}
+            </h3>
+          </div>
+          <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600">
+            {outputSummaryCard.canToggleCanvas ? <ToggleIcon size={13} aria-hidden="true" /> : null}
+            {toggleLabel}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-zinc-600">
+            {outputSummaryCard.statusLabel}
+            {outputSummaryCard.progressLabel ? (
+              <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                {outputSummaryCard.progressLabel}
+              </span>
+            ) : null}
+          </p>
+          <button
+            type="button"
+            disabled={!outputSummaryCard.canDownload}
+            onClick={(event) => {
+              event.stopPropagation();
+              outputSummaryCard.onDownload();
+            }}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500 sm:w-auto"
+          >
+            <Download size={14} aria-hidden="true" />
+            {outputSummaryCard.canDownload
+              ? outputSummaryCard.downloadLabel
+              : outputSummaryCard.downloadDisabledLabel || "Waiting for generation"}
+          </button>
+        </div>
+      </article>
+    );
+  }, [outputSummaryCard]);
 
   const scrollToLatestCard = useCallback(() => {
     if (typeof window === "undefined") {
@@ -1765,6 +1856,8 @@ export const ChatPanel = memo(function ChatPanel({
           </article>
         ) : null}
 
+        {renderOutputSummaryCard()}
+
       </section>
     );
   }
@@ -2682,6 +2775,8 @@ export const ChatPanel = memo(function ChatPanel({
           </div>
         </article>
       ) : null}
+
+      {renderOutputSummaryCard()}
 
     </section>
   );

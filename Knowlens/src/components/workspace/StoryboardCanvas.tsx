@@ -142,6 +142,7 @@ type PptExportStatus = "idle" | "running" | "success" | "error";
 const STORAGE_KEY = "knowlens.workspace.storyboard.v1";
 const STORAGE_CLEAR_TOKEN_KEY = "knowlens.workspace.storyboard.clear-token.v1";
 const HISTORY_LIMIT = 60;
+const PPT_DOWNLOAD_FILENAME = "KnowLens.ai-visual-deck.pptx";
 
 const LENS_MODES = ["广角建立镜头", "剖面特写", "流程箭头跟拍", "对比双画面"];
 const TRANSITIONS = ["溶解", "推镜", "平移", "淡入淡出"];
@@ -625,10 +626,39 @@ export function StoryboardCanvas({
       return "Finalizing the file...";
     }
     if (exportPptPhase === "done") {
-      return "Ready to download.";
+      return "PPT file is ready. If the browser does not start downloading, click Download PPT again.";
     }
     return "Preparing export...";
   }, [pptDownloadNotice, pptExportError, exportPptPhase, pptExportStatus]);
+
+  const triggerPptDownload = useCallback(
+    (urlOverride?: string) => {
+      const downloadUrl = urlOverride || exportedPptUrl;
+      if (!downloadUrl) {
+        setPptDownloadNotice("PPT file is not ready yet. Please export again.");
+        return false;
+      }
+
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+        anchor.download = PPT_DOWNLOAD_FILENAME;
+        anchor.rel = "noopener";
+        anchor.style.display = "none";
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        setPptDownloadNotice(
+          "PPT file is ready. If the browser does not start downloading, click Download PPT again.",
+        );
+        return true;
+      } catch {
+        setPptDownloadNotice("Download could not start. Please click Download PPT again.");
+        return false;
+      }
+    },
+    [exportedPptUrl],
+  );
 
   const commitChange = useCallback(
     (updater: (prev: PersistedCanvasState) => PersistedCanvasState) => {
@@ -1755,6 +1785,9 @@ export function StoryboardCanvas({
       setExportPptProgress(100);
       setExportPptPhase("done");
       setPptExportStatus("success");
+      window.setTimeout(() => {
+        triggerPptDownload(url);
+      }, 0);
     } catch (error) {
       setPptExportError(error instanceof Error ? error.message : "PPT export failed. Please try again.");
       setPptExportStatus("error");
@@ -1763,7 +1796,15 @@ export function StoryboardCanvas({
         setIsExportingPpt(false);
       }, 420);
     }
-  }, [activeImageIndexBySlideId, generationTaskStateByIndex, imageHistoryBySlideId, isExportingPpt, pptExportReady, slides]);
+  }, [
+    activeImageIndexBySlideId,
+    generationTaskStateByIndex,
+    imageHistoryBySlideId,
+    isExportingPpt,
+    pptExportReady,
+    slides,
+    triggerPptDownload,
+  ]);
 
   useEffect(() => {
     if (!onModeActionRegister) {
@@ -2117,7 +2158,7 @@ export function StoryboardCanvas({
                             key={`${historyImage}-${historyIdx}`}
                             type="button"
                             onClick={() => selectHistoryImage(slide.id, historyIdx)}
-                            className={`nodrag nopan nowheel overflow-hidden rounded border ${
+                            className={`nodrag nopan nowheel overflow-hidden border ${
                               historyIdx === activeImageIndex
                                 ? "border-zinc-900 ring-1 ring-zinc-900/30"
                                 : "border-zinc-200"
@@ -3002,17 +3043,16 @@ export function StoryboardCanvas({
               ) : null}
 
               {pptExportStatus === "success" && exportedPptUrl ? (
-                <a
-                  href={exportedPptUrl}
-                  download="KnowLens.ai-visual-deck.pptx"
+                <button
+                  type="button"
                   onClick={() => {
-                    setPptDownloadNotice("Download started. If nothing appears, click Download PPT again.");
+                    triggerPptDownload();
                   }}
                   className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700"
                 >
                   <Download size={13} />
                   Download PPT
-                </a>
+                </button>
               ) : null}
             </div>
           </div>

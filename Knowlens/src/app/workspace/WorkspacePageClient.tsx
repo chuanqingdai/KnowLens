@@ -2388,6 +2388,7 @@ export default function WorkspacePage() {
   const [generationSessionSeed, setGenerationSessionSeed] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<"chat" | "canvas">("chat");
+  const [desktopCanvasCollapsed, setDesktopCanvasCollapsed] = useState(false);
   const [confirmedConfigSnapshot, setConfirmedConfigSnapshot] = useState<ConfirmedConfigSnapshot | null>(null);
 
   const [thinkingState, setThinkingState] = useState<{
@@ -2413,9 +2414,11 @@ export default function WorkspacePage() {
   const modeActionsRef = useRef<{
     exportPpt: () => void;
     downloadVideo: () => void;
+    downloadPoster: () => void;
   }>({
     exportPpt: () => {},
     downloadVideo: () => {},
+    downloadPoster: () => {},
   });
   const storyboardPanelRef = useRef<HTMLElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -2930,11 +2933,21 @@ export default function WorkspacePage() {
   const showPosterCanvas = flowStage === "generate" && effectiveIntent === "poster";
   const hasCanvasPanel = showStoryboard || showPosterCanvas;
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
-  const showCanvasPanelInLayout = hasCanvasPanel && (!isMobileViewport || mobileWorkspaceView === "canvas");
+  const showCanvasPanelInLayout = hasCanvasPanel && (isMobileViewport ? mobileWorkspaceView === "canvas" : !desktopCanvasCollapsed);
   const showChatComposer = flowStage === "intent" || flowStage === "config" || flowStage === "content";
   const generationInProgress = Object.values(generationTaskStateByIndex).some(
     (item) => item.status === "queued" || item.status === "generating" || item.status === "retrying",
   );
+  const handleToggleOutputCanvas = useCallback(() => {
+    if (!hasCanvasPanel) {
+      return;
+    }
+    if (isMobileViewport) {
+      setMobileWorkspaceView((prev) => (prev === "canvas" ? "chat" : "canvas"));
+      return;
+    }
+    setDesktopCanvasCollapsed((prev) => !prev);
+  }, [hasCanvasPanel, isMobileViewport]);
 
   useEffect(() => {
     if (!intentAnalysis) {
@@ -3239,6 +3252,22 @@ export default function WorkspacePage() {
     visualizationTypeHint,
   ]);
   const imageGenerationTasks = useMemo(() => buildFreshImageGenerationTasks(), [buildFreshImageGenerationTasks]);
+  const generationTotalCount = imageGenerationTasks.length || standardOutputCount;
+  const generationReadyCount = useMemo(() => {
+    if (!generationTotalCount) {
+      return 0;
+    }
+    const readyIndexes = new Set<number>();
+    Object.values(generationTaskStateByIndex).forEach((item) => {
+      if (item.status === "success" && item.imageUrl) {
+        readyIndexes.add(item.index);
+      }
+    });
+    return Math.min(readyIndexes.size, generationTotalCount);
+  }, [generationTaskStateByIndex, generationTotalCount]);
+  const generationProgressLabel =
+    generationTotalCount > 0 ? `${generationReadyCount}/${generationTotalCount}` : "";
+  const allGenerationReady = generationTotalCount > 0 && generationReadyCount >= generationTotalCount;
   const posterCanvasAspectRatio = useMemo(() => {
     if (effectiveIntent !== "poster") {
       return "9:16";
@@ -4855,6 +4884,62 @@ export default function WorkspacePage() {
     (isZhOutput
       ? `${topicHintText(topic, outputLanguage)} · 用户意图总结`
       : `${topicHintText(topic, outputLanguage)} · Intent Summary`);
+  const outputSummaryTitle =
+    cleanProjectTitleCandidate(workspaceProjectTitle || projectTitle || topic, outputLanguage) ||
+    topicHintText(topic, outputLanguage);
+  const outputSummaryFormatLabel =
+    effectiveIntent === "ppt" ? "PPT" : effectiveIntent === "video" ? "Video" : "Poster";
+  const outputSummaryAngle = useMemo(() => {
+    if (lockedTopicSuggestion?.trim()) {
+      return cleanProjectTitleCandidate(lockedTopicSuggestion, outputLanguage) || lockedTopicSuggestion.trim();
+    }
+    if (effectiveIntent === "poster") {
+      const plan = (editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList)[0];
+      return (
+        cleanProjectTitleCandidate(plan?.focus || plan?.title || visualizationTypeHint || "", outputLanguage) ||
+        visualizationTypeHint ||
+        "Visual learning summary"
+      );
+    }
+    const firstContentSlide =
+      displaySlideDrafts.find((slide) => !slide.isCover) ?? displaySlideDrafts[0];
+    return (
+      cleanProjectTitleCandidate(firstContentSlide?.title || firstContentSlide?.body || visualizationTypeHint || "", outputLanguage) ||
+      visualizationTypeHint ||
+      "Structured visual explanation"
+    );
+  }, [
+    basePosterPlanList,
+    displaySlideDrafts,
+    editablePosterPlanList,
+    effectiveIntent,
+    lockedTopicSuggestion,
+    outputLanguage,
+    visualizationTypeHint,
+  ]);
+  const outputSummaryCanDownload =
+    allGenerationReady &&
+    (effectiveIntent === "ppt"
+      ? isPptExportReady && !isExportingPpt
+      : effectiveIntent === "video"
+        ? !isComposingVideo
+        : true);
+  const outputSummaryStatusLabel = allGenerationReady
+    ? "Generation complete"
+    : generationInProgress
+      ? "Generating visual pages"
+      : "Preparing generation";
+  const handleOutputSummaryDownload = useCallback(() => {
+    if (effectiveIntent === "ppt") {
+      modeActionsRef.current.exportPpt();
+      return;
+    }
+    if (effectiveIntent === "video") {
+      modeActionsRef.current.downloadVideo();
+      return;
+    }
+    modeActionsRef.current.downloadPoster();
+  }, [effectiveIntent]);
 
   const isHydrated = useSyncExternalStore(
     useCallback(() => () => undefined, []),
@@ -6955,14 +7040,14 @@ export default function WorkspacePage() {
       <main className="mx-auto flex h-full min-h-0 max-w-none flex-col overflow-hidden px-2 pb-1 pt-16 sm:px-3">
         <div
           className={`grid min-h-0 flex-1 gap-2 ${
-            hasCanvasPanel
+            showCanvasPanelInLayout
               ? "lg:grid-cols-[480px_minmax(0,1fr)]"
               : "lg:grid-cols-[minmax(0,960px)] lg:justify-center"
           }`}
         >
           <section
             className={`min-h-0 w-full min-w-0 ${
-              hasCanvasPanel ? "max-w-[480px]" : "mx-auto max-w-[960px]"
+              showCanvasPanelInLayout ? "max-w-[480px]" : "mx-auto max-w-[960px]"
             } ${showChatPanelInLayout ? "" : "hidden"} workspace-left-shell`}
           >
             <div className="flex h-full min-h-0 flex-col">
@@ -7053,6 +7138,28 @@ export default function WorkspacePage() {
                   isDraftGenerationPending={isDraftGenerationPending}
                   retryingErrorTurnIds={retryingErrorTurnIds}
                   onRetryErrorTurn={handleRetryErrorTurn}
+                  outputSummaryCard={{
+                    visible: billingConfirmed && flowStage === "generate",
+                    formatLabel: outputSummaryFormatLabel,
+                    title: outputSummaryTitle,
+                    angle: outputSummaryAngle,
+                    statusLabel: outputSummaryStatusLabel,
+                    progressLabel: generationProgressLabel,
+                    isCanvasExpanded: showCanvasPanelInLayout,
+                    canToggleCanvas: hasCanvasPanel,
+                    canDownload: outputSummaryCanDownload,
+                    downloadLabel:
+                      effectiveIntent === "ppt"
+                        ? "Download PPT"
+                        : effectiveIntent === "video"
+                          ? "Download video"
+                          : "Download poster",
+                    downloadDisabledLabel: generationProgressLabel
+                      ? `Generating ${generationProgressLabel}`
+                      : "Waiting for generation",
+                    onToggleCanvas: handleToggleOutputCanvas,
+                    onDownload: handleOutputSummaryDownload,
+                  }}
                 />
               </div>
 
@@ -7122,7 +7229,10 @@ export default function WorkspacePage() {
                 generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
                 onModeActionRegister={(actions) => {
-                  modeActionsRef.current = actions;
+                  modeActionsRef.current = {
+                    ...modeActionsRef.current,
+                    ...actions,
+                  };
                 }}
               />
             </section>
@@ -7158,6 +7268,12 @@ export default function WorkspacePage() {
                 onSaveStateChange={(nextState, unsaved) => {
                   setSaveState(nextState);
                   setHasUnsavedChanges(unsaved);
+                }}
+                onModeActionRegister={(actions) => {
+                  modeActionsRef.current = {
+                    ...modeActionsRef.current,
+                    downloadPoster: actions.downloadAll,
+                  };
                 }}
               />
             </section>
