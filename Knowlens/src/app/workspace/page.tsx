@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 
 const WorkspacePageClient = dynamic(() => import("./WorkspacePageClient"), {
   ssr: false,
@@ -8,5 +9,7 @@ const WorkspacePageClient = dynamic(() => import("./WorkspacePageClient"), {
 });
 
 export default function WorkspacePage() {
-  return <WorkspacePageClient />;
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("projectId")?.trim() || "__workspace__";
+  return <WorkspacePageClient key={projectId} />;
 }

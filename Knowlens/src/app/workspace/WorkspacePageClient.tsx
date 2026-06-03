@@ -110,6 +110,8 @@ type RestoredProjectPage = {
   assetPath?: string | null;
   status?: string | null;
   errorCode?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   imageHistory?: RestoredProjectImageHistoryItem[];
 };
 
@@ -141,6 +143,27 @@ function isRestoredImageLoadingStatus(status: string) {
 
 function isRestoredImageFailedStatus(status: string) {
   return ["failed", "timed_out", "timeout", "error", "cancelled", "canceled", "completed_with_errors", "partial_failed"].includes(status);
+}
+
+function parseRestoredTimestampMs(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+function isRestoredLoadingStateStillFresh(...values: Array<string | null | undefined>) {
+  const lastUpdatedAtMs = parseRestoredTimestampMs(...values);
+  if (!lastUpdatedAtMs) {
+    return false;
+  }
+  return Date.now() - lastUpdatedAtMs < RESTORED_LOADING_TIMEOUT_MS;
 }
 
 function pickRestoredImageUrl(input: {
@@ -447,6 +470,8 @@ type ImageGenerationRestoreResponse = {
     rawImageUrl?: string | null;
     errorCode?: string | null;
     errorMessage?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
   }>;
   pages?: RestoredProjectPage[];
 };
@@ -456,6 +481,8 @@ type StructuredWorkspaceError = {
   code?: string;
   authRequired?: boolean;
 };
+
+const RESTORED_LOADING_TIMEOUT_MS = 30 * 60 * 1000;
 
 function persistWorkspaceProjectPages(input: {
   projectId?: string | null;
@@ -2309,6 +2336,7 @@ export default function WorkspacePage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const routeProjectId = searchParams.get("projectId")?.trim() || "";
   const { data: session } = useSession();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [initialEntry] = useState(() => readHomeDraftPayload());
@@ -2640,20 +2668,23 @@ export default function WorkspacePage() {
   }, []);
 
   useEffect(() => {
-    if (initialEntry.project?.projectId) {
+    if (routeProjectId) {
+      projectIdRef.current = routeProjectId;
+    } else if (initialEntry.project?.projectId) {
       projectIdRef.current = initialEntry.project.projectId;
     }
     if (initialEntry.project?.projectTraceId) {
       projectTraceIdRef.current = initialEntry.project.projectTraceId;
     }
-  }, [initialEntry.project]);
+  }, [initialEntry.project, routeProjectId]);
 
   useEffect(() => {
-    if (!currentEmail || !initialEntry.project?.projectId) {
+    const effectiveProjectId = routeProjectId || initialEntry.project?.projectId || "";
+    if (!currentEmail || !effectiveProjectId) {
       return;
     }
     let cancelled = false;
-    fetch(`/api/projects/${encodeURIComponent(initialEntry.project.projectId)}`, {
+    fetch(`/api/projects/${encodeURIComponent(effectiveProjectId)}`, {
       method: "GET",
       credentials: "same-origin",
       cache: "no-store",
@@ -2680,7 +2711,7 @@ export default function WorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [currentEmail, initialEntry.project?.projectId, topicContextPrompt, workspaceProjectTitle]);
+  }, [currentEmail, initialEntry.project?.projectId, routeProjectId, topicContextPrompt, workspaceProjectTitle]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3449,6 +3480,7 @@ export default function WorkspacePage() {
 
     const restorePersistedGenerationState = async () => {
       const projectId =
+        routeProjectId ||
         projectIdRef.current?.trim() ||
         initialEntry.project?.projectId?.trim() ||
         "";
@@ -3501,6 +3533,7 @@ export default function WorkspacePage() {
           const status = normalizeImageTaskStatus(task.status);
           const imageUrl = (task.renderUrl || task.imageUrl || "").trim();
           const attempts = Math.max(1, Math.round(Number(task.attempts || 1)));
+          const isFreshLoading = isRestoredLoadingStateStillFresh(task.updatedAt, task.createdAt, payload.project?.updatedAt);
           if (imageUrl && isRestoredImageSuccessStatus(status)) {
             restoredState[index] = {
               index,
@@ -3517,7 +3550,7 @@ export default function WorkspacePage() {
             };
             continue;
           }
-          if (isRestoredImageLoadingStatus(status)) {
+          if (isRestoredImageLoadingStatus(status) && isFreshLoading) {
             restoredState[index] = {
               index,
               status: status === "queued" ? "queued" : "generating",
@@ -3532,14 +3565,20 @@ export default function WorkspacePage() {
             };
             continue;
           }
-          if (isRestoredImageFailedStatus(status)) {
+          if (isRestoredImageFailedStatus(status) || isRestoredImageLoadingStatus(status)) {
             restoredState[index] = {
               index,
               status: "failed",
               attempts,
               maxAttempts: 1,
-              error: task.errorMessage?.trim() || "Generation failed. Please retry this page.",
-              errorCode: task.errorCode?.trim() || "IMG-500",
+              error:
+                task.errorMessage?.trim() ||
+                (isRestoredImageLoadingStatus(status)
+                  ? "Generation stopped updating and was marked as failed. Please retry this page."
+                  : "Generation failed. Please retry this page."),
+              errorCode:
+                task.errorCode?.trim() ||
+                (isRestoredImageLoadingStatus(status) ? "IMG-STALE" : "IMG-500"),
               runId: restoredRunId || undefined,
               jobId,
               source: "restored",
@@ -3565,6 +3604,13 @@ export default function WorkspacePage() {
             history: historyItems,
           });
           const attempts = Math.max(1, Math.round(Number(latestHistoryItem?.attempts || 1)));
+          const isFreshLoading = isRestoredLoadingStateStillFresh(
+            latestHistoryItem?.updatedAt,
+            latestHistoryItem?.createdAt,
+            page.updatedAt,
+            page.createdAt,
+            payload.project?.updatedAt,
+          );
 
           if (imageUrl && isRestoredImageSuccessStatus(derivedStatus || "asset_ready")) {
             restoredState[index] = {
@@ -3605,13 +3651,36 @@ export default function WorkspacePage() {
             continue;
           }
 
-          if (isRestoredImageLoadingStatus(derivedStatus) || (!imageUrl && restoredPages.length > 0)) {
+          if (isRestoredImageLoadingStatus(derivedStatus) && isFreshLoading) {
             restoredState[index] = {
               index,
               status: derivedStatus === "queued" ? "queued" : "generating",
               attempts,
               maxAttempts: 1,
               rawImageUrl: latestHistoryItem?.rawImageUrl?.trim() || page.rawImageUrl?.trim() || undefined,
+              runId: restoredRunId || undefined,
+              jobId,
+              source: "restored",
+              startedAt: now,
+              lastUpdatedAt: now,
+            };
+            continue;
+          }
+
+          if (!imageUrl) {
+            restoredState[index] = {
+              index,
+              status: "failed",
+              attempts,
+              maxAttempts: 1,
+              error:
+                isRestoredImageLoadingStatus(derivedStatus)
+                  ? "Generation stopped updating and was marked as failed. Please retry this page."
+                  : "Generation failed. Please retry this page.",
+              errorCode:
+                latestHistoryItem?.errorCode?.trim() ||
+                page.errorCode?.trim() ||
+                (isRestoredImageLoadingStatus(derivedStatus) ? "IMG-STALE" : "IMG-500"),
               runId: restoredRunId || undefined,
               jobId,
               source: "restored",
@@ -3709,7 +3778,7 @@ export default function WorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [clearCurrentGenerationState, initialEntry.project?.projectId, sessionPrefsScopeKey]);
+  }, [clearCurrentGenerationState, initialEntry.project?.projectId, routeProjectId, sessionPrefsScopeKey]);
   useEffect(() => {
     if (!debugGoGenerateStepEnabled) {
       debugGoGenerateStepAppliedRef.current = false;
@@ -6536,8 +6605,9 @@ export default function WorkspacePage() {
 
       const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
       const selectedProjectId =
-        initialEntry.project?.projectId ||
+        routeProjectId ||
         projectIdRef.current ||
+        initialEntry.project?.projectId ||
         `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const selectedProject = {
         id: selectedProjectId,
