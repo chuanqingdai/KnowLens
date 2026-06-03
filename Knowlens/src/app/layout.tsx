@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 import { AttributionTracker } from "@/components/analytics/AttributionTracker";
+import { GoogleAnalyticsBridge } from "@/components/analytics/GoogleAnalyticsBridge";
+import { ClientErrorReporter } from "@/components/telemetry/ClientErrorReporter";
 
 const siteUrl = "https://knowlens.ai";
 
@@ -82,13 +85,17 @@ export default function RootLayout({
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', 'G-HZDH17R044');
+            gtag('config', 'G-HZDH17R044', { send_page_view: false });
           `}
         </Script>
       </head>
       <body className="min-h-full flex flex-col">
         <AuthSessionProvider>
           <AttributionTracker />
+          <Suspense fallback={null}>
+            <GoogleAnalyticsBridge />
+          </Suspense>
+          <ClientErrorReporter />
           {children}
         </AuthSessionProvider>
       </body>

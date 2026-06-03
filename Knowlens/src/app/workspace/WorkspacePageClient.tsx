@@ -459,7 +459,9 @@ const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
-const GENERATION_REQUEST_TIMEOUT_MS = 620000;
+const GENERATION_REQUEST_TIMEOUT_MS = 120000;
+const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
+const GENERATION_JOB_POLL_TIMEOUT_MS = 1800000;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
@@ -3849,9 +3851,9 @@ export default function WorkspacePage() {
           }),
           signal: controller.signal,
         });
-        const payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        let payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
         const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
-        const responseJobId = (payload?.job?.id || "").trim() || null;
+        let responseJobId = (payload?.job?.id || "").trim() || null;
         logWorkspaceVerbose("[workspace-generation] generate-batch response", {
           ok: response.ok,
           status: response.status,
@@ -4008,6 +4010,135 @@ export default function WorkspacePage() {
             });
           }
           setGenerationRunContext(activeRunId, responseJobId);
+        }
+        const pollJobStatus = async (jobId: string, initialPayload: ImageGenerateBatchResponse | null) => {
+          const pollStartedAt = Date.now();
+          let latestPayload = initialPayload;
+          while (Date.now() - pollStartedAt < GENERATION_JOB_POLL_TIMEOUT_MS) {
+            const status = (latestPayload?.job?.status || "").trim().toLowerCase();
+            const taskStatuses = latestPayload?.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
+            const hasPendingTask = taskStatuses.some((item) => item === "queued" || item === "generating" || item === "asset_downloading");
+            const hasQueuedTask = taskStatuses.some((item) => item === "queued");
+            const isRunningJob = status === "queued" || status === "running" || status === "processing";
+            if (!isRunningJob && !hasPendingTask) {
+              return latestPayload;
+            }
+            if (hasQueuedTask) {
+              const runResponse = await fetch("/api/workspace/image/tasks/run", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({ jobId }),
+              });
+              const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+              if (runResponse.ok && runPayload?.job?.id) {
+                latestPayload = {
+                  ...runPayload,
+                  ok: runPayload.ok ?? true,
+                  imageGenerationMode: latestPayload?.imageGenerationMode,
+                  attemptedProviders: latestPayload?.attemptedProviders,
+                  skippedProviders: latestPayload?.skippedProviders,
+                  job: {
+                    ...runPayload.job,
+                    runId: normalizeGenerationRunId(runPayload.job.runId) || activeRunId,
+                  },
+                };
+                responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+                latestPayload.tasks?.forEach((taskResult) => {
+                  const taskIndex = Number(taskResult.index || 0);
+                  const statusValue = (taskResult.status || "").trim().toLowerCase();
+                  const imageUrl = taskResult.renderUrl || taskResult.imageUrl || taskResult.render_url || taskResult.image_url || "";
+                  if (!taskIndex || !imageUrl || statusValue !== "asset_ready") {
+                    return;
+                  }
+                  const renderImageUrl = appendKnowLensRenderAttemptToken(
+                    imageUrl,
+                    `${renderAttemptToken}-${taskIndex}`,
+                  );
+                  setGenerationTaskStateByIndex((prev) => ({
+                    ...prev,
+                    [taskIndex]: {
+                      index: taskIndex,
+                      status: "success",
+                      attempts: prev[taskIndex]?.attempts || 1,
+                      maxAttempts,
+                      imageUrl: renderImageUrl,
+                      rawImageUrl: taskResult.rawImageUrl || taskResult.raw_image_url || undefined,
+                      runId: activeRunId,
+                      jobId,
+                      source: "current-run",
+                      error: undefined,
+                      errorCode: undefined,
+                      startedAt: prev[taskIndex]?.startedAt ?? Date.now(),
+                      lastUpdatedAt: Date.now(),
+                    },
+                  }));
+                });
+                continue;
+              }
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
+            const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+              method: "GET",
+              credentials: "same-origin",
+            });
+            const statusPayload = (await statusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+            if (!statusResponse.ok || !statusPayload?.job?.id) {
+              return latestPayload;
+            }
+            latestPayload = {
+              ...statusPayload,
+              ok: statusPayload.ok ?? true,
+              imageGenerationMode: latestPayload?.imageGenerationMode,
+              attemptedProviders: latestPayload?.attemptedProviders,
+              skippedProviders: latestPayload?.skippedProviders,
+              job: {
+                ...statusPayload.job,
+                runId: normalizeGenerationRunId(statusPayload.job.runId) || activeRunId,
+              },
+            };
+            responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+            latestPayload.tasks?.forEach((taskResult) => {
+              const taskIndex = Number(taskResult.index || 0);
+              const statusValue = (taskResult.status || "").trim().toLowerCase();
+              const imageUrl = taskResult.renderUrl || taskResult.imageUrl || taskResult.render_url || taskResult.image_url || "";
+              if (!taskIndex || !imageUrl || statusValue !== "asset_ready") {
+                return;
+              }
+              const renderImageUrl = appendKnowLensRenderAttemptToken(
+                imageUrl,
+                `${renderAttemptToken}-${taskIndex}`,
+              );
+              setGenerationTaskStateByIndex((prev) => ({
+                ...prev,
+                [taskIndex]: {
+                  index: taskIndex,
+                  status: "success",
+                  attempts: prev[taskIndex]?.attempts || 1,
+                  maxAttempts,
+                  imageUrl: renderImageUrl,
+                  rawImageUrl: taskResult.rawImageUrl || taskResult.raw_image_url || undefined,
+                  runId: activeRunId,
+                  jobId,
+                  source: "current-run",
+                  error: undefined,
+                  errorCode: undefined,
+                  startedAt: prev[taskIndex]?.startedAt ?? Date.now(),
+                  lastUpdatedAt: Date.now(),
+                },
+              }));
+            });
+          }
+          return {
+            ...latestPayload,
+            error: latestPayload?.error || tr("Generation timed out.", "生成超时。"),
+            code: latestPayload?.code || "IMAGE_JOB_POLL_TIMEOUT",
+          };
+        };
+        if (response.ok && responseJobId) {
+          payload = await pollJobStatus(responseJobId, payload);
         }
         if (!response.ok || !payload?.tasks?.length) {
           const failureMessage =

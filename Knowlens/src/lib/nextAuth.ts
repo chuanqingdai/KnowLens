@@ -261,6 +261,9 @@ export const nextAuthOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
+      if (user?.id) {
+        token.id = user.id;
+      }
       if (user?.email) {
         token.role = resolveRoleByEmail(user.email);
       } else if (token.email) {
@@ -269,6 +272,9 @@ export const nextAuthOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      if (session.user && token.id) {
+        session.user.id = token.id;
+      }
       if (session.user && token.role) {
         session.user.role = token.role;
       }

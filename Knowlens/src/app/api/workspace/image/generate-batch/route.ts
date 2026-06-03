@@ -111,10 +111,12 @@ type OrderedImageProvider = "tuzi" | "duomi" | "gptsapi";
 type ImageGenerationMode = "mock" | "real" | "dry-run";
 
 const DEFAULT_PROVIDER_POLICY: OrderedImageProvider[] = ["tuzi", "duomi", "gptsapi"];
-const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "500000", 10);
-const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_FALLBACK_CALL_TIMEOUT_MS || "500000", 10);
-const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "590000", 10);
-const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "500000", 10);
+const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "220000", 10);
+const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_FALLBACK_CALL_TIMEOUT_MS || "60000", 10);
+const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "260000", 10);
+const TASK_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_TASK_EXECUTION_BUDGET_MS || "240000", 10);
+const TASKS_PER_REQUEST = Number.parseInt(process.env.IMAGE2_TASKS_PER_REQUEST || "1", 10);
+const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "45000", 10);
 const PROMPT_MAX_CHARS = Number.parseInt(process.env.IMAGE2_PROMPT_MAX_CHARS || "2000", 10);
 const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
 
@@ -393,30 +395,55 @@ function resolveImageGenerationMode(request: NextRequest): ImageGenerationMode {
 
 function normalizeProviderTimeoutMs() {
   if (!Number.isFinite(PROVIDER_CALL_TIMEOUT_MS)) {
-    return 500_000;
+    return 220_000;
   }
-  return Math.max(30_000, Math.min(500_000, PROVIDER_CALL_TIMEOUT_MS));
+  return Math.max(60_000, Math.min(240_000, PROVIDER_CALL_TIMEOUT_MS));
 }
 
 function normalizeFallbackProviderTimeoutMs() {
   if (!Number.isFinite(FALLBACK_PROVIDER_CALL_TIMEOUT_MS)) {
-    return 500_000;
+    return 60_000;
   }
-  return Math.max(30_000, Math.min(500_000, FALLBACK_PROVIDER_CALL_TIMEOUT_MS));
+  return Math.max(30_000, Math.min(90_000, FALLBACK_PROVIDER_CALL_TIMEOUT_MS));
 }
 
 function normalizeRouteBudgetMs() {
   if (!Number.isFinite(ROUTE_EXECUTION_BUDGET_MS)) {
-    return 590_000;
+    return 260_000;
   }
-  return Math.max(90_000, Math.min(600_000, ROUTE_EXECUTION_BUDGET_MS));
+  return Math.max(120_000, Math.min(260_000, ROUTE_EXECUTION_BUDGET_MS));
+}
+
+function normalizeTaskBudgetMs() {
+  if (!Number.isFinite(TASK_EXECUTION_BUDGET_MS)) {
+    return 240_000;
+  }
+  return Math.max(120_000, Math.min(240_000, TASK_EXECUTION_BUDGET_MS));
+}
+
+function normalizeTasksPerRequest() {
+  if (!Number.isFinite(TASKS_PER_REQUEST)) {
+    return 1;
+  }
+  return Math.max(1, Math.min(2, TASKS_PER_REQUEST));
 }
 
 function normalizeAssetDownloadTimeoutMs() {
   if (!Number.isFinite(ASSET_DOWNLOAD_TIMEOUT_MS)) {
-    return 500_000;
+    return 45_000;
   }
-  return Math.max(20_000, Math.min(500_000, ASSET_DOWNLOAD_TIMEOUT_MS));
+  return Math.max(15_000, Math.min(60_000, ASSET_DOWNLOAD_TIMEOUT_MS));
+}
+
+function isTimeoutCode(code?: string | null) {
+  return /TIMEOUT|BUDGET_EXHAUSTED/i.test(code || "");
+}
+
+function logImageBatchEvent(payload: Record<string, unknown>) {
+  console.info("[image.generate-batch]", {
+    timestamp: new Date().toISOString(),
+    ...payload,
+  });
 }
 
 function buildProviderFailure(
@@ -456,6 +483,7 @@ async function requestImageByPolicy(input: {
   aspectRatio: string;
   size: string;
   routeStartedAt: number;
+  taskDeadlineAt: number;
   allowProviderFallback: boolean;
 }) {
   const skippedProviderSet = new Set<OrderedImageProvider>();
@@ -478,12 +506,15 @@ async function requestImageByPolicy(input: {
   for (const provider of orderedProviders) {
     const elapsed = Date.now() - input.routeStartedAt;
     const remainingBudget = routeBudgetMs - elapsed;
-    if (remainingBudget < 18_000) {
+    const remainingTaskBudget = input.taskDeadlineAt - Date.now();
+    if (remainingBudget < 18_000 || remainingTaskBudget < 10_000) {
       const result = buildProviderFailure(
         provider,
-        "IMAGE_ROUTE_BUDGET_EXHAUSTED",
-        "Image generation exceeded route execution budget.",
-        `remainingBudget=${remainingBudget}`,
+        remainingTaskBudget < 10_000 ? "IMAGE_TASK_TIMEOUT" : "IMAGE_ROUTE_BUDGET_EXHAUSTED",
+        remainingTaskBudget < 10_000
+          ? "Image task exceeded its execution budget."
+          : "Image generation exceeded route execution budget.",
+        `remainingBudget=${remainingBudget};remainingTaskBudget=${remainingTaskBudget}`,
       );
       return {
         providerUsed: provider,
@@ -521,7 +552,11 @@ async function requestImageByPolicy(input: {
     const fallbackAwareTimeoutMs = input.allowProviderFallback
       ? normalizeFallbackProviderTimeoutMs()
       : normalizeProviderTimeoutMs();
-    const timeoutMs = Math.min(fallbackAwareTimeoutMs, Math.max(18_000, remainingBudget));
+    const timeoutMs = Math.min(
+      fallbackAwareTimeoutMs,
+      Math.max(10_000, remainingBudget - 5_000),
+      Math.max(10_000, remainingTaskBudget - 5_000),
+    );
     const providerStartedAt = Date.now();
     try {
       const result = await withTimeout(
@@ -802,7 +837,7 @@ export async function POST(request: NextRequest) {
 
     const imageModelPolicy = process.env.IMAGE2_PROVIDER_POLICY || payload.imageModelPolicy || "tuzi,duomi,gptsapi";
     const providerPolicy = parseProviderPolicy(imageModelPolicy);
-    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", true) && providerPolicy.length > 1;
+    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", false) && providerPolicy.length > 1;
     const fallbackSkippedProviders = [] as OrderedImageProvider[];
     const idempotencyKey = (payload.idempotencyKey || "").trim().slice(0, 220);
     const generationRunId =
@@ -920,8 +955,6 @@ export async function POST(request: NextRequest) {
 
     const projectId = normalizeProjectId(payload.projectId);
     const projectTraceId = normalizeProjectTraceId(payload.projectTraceId);
-    const isFreeUser = await isFreeUserBySubscription(email);
-
     const job = await createImageGenerationJob({
       userEmail: email,
       projectId: projectId ?? undefined,
@@ -1035,6 +1068,20 @@ export async function POST(request: NextRequest) {
       status: "running",
     });
 
+    logImageBatchEvent({
+      requestId: idempotencyKey || generationRunId,
+      jobId: job.jobId,
+      projectId,
+      userEmail: email,
+      taskCount: normalizedTasks.length,
+      currentStep: "job-created",
+      provider: providerPolicy[0] ?? "unknown",
+      model: imageModel,
+      durationMs: Date.now() - routeStartedAt,
+      generatedCount: 0,
+      failedCount: 0,
+    });
+
     logOpsEvent({
       category: "image",
       action: "image_job_started",
@@ -1074,436 +1121,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const attemptedProviderSet = new Set<OrderedImageProvider>();
-    const skippedProviderSet = new Set<OrderedImageProvider>();
-
-    for (const task of job.tasks) {
-      const payloadTask = normalizedTasks.find((item) => item.index === task.taskIndex) ?? normalizedTasks[0];
-      if (!payloadTask) {
-        continue;
-      }
-      const defaultProvider = providerPolicy[0] ?? "tuzi";
-      await updateImageGenerationTask({
-        taskId: task.id,
-        status: "generating",
-        attempts: task.attempts + 1,
-        providerUsed: defaultProvider,
-      });
-      const basePrompt = clampPromptForImage(payloadTask.prompt);
-      const prompt = isFreeUser ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
-      const generatedByPolicy = await requestImageByPolicy({
-        providerPolicy,
-        imageModel: payloadTask.model || imageModel,
-        prompt,
-        aspectRatio: payloadTask.aspectRatio,
-        size: payloadTask.size || resolveTuziImageSize(payloadTask.aspectRatio) || "864x1536",
-        routeStartedAt,
-        allowProviderFallback,
-      });
-      generatedByPolicy.attemptedProviders.forEach((provider) => attemptedProviderSet.add(provider));
-      generatedByPolicy.skippedProviders.forEach((provider) => skippedProviderSet.add(provider));
-      const generated = generatedByPolicy.result;
-      const providerUsed = generatedByPolicy.providerUsed || defaultProvider;
-
-      logWorkspaceFlowAudit({
-        stage: "8.backend-provider-call",
-        status: generated.ok ? "provider-ok" : "provider-failed",
-        decision: "request-tuzi",
-        reason: generated.ok ? "provider-returned-image-url" : "provider-failure",
-        keyFields: {
-          projectId: payload.projectId || null,
-          runId: generationRunId,
-          taskId: task.id,
-          taskIndex: task.taskIndex,
-          providerUsed,
-          errorCode: generated.ok ? null : generated.errorCode || null,
-          rawImageUrl: generated.ok ? generated.imageUrl || null : null,
-        },
-      });
-
-      if (!generated.ok) {
-        await updateImageGenerationTask({
-          taskId: task.id,
-          status: "failed",
-          providerUsed,
-          errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-          errorMessage: generated.errorMessage || "Image generation failed.",
-        });
-        if (projectId) {
-          await updateWorkspaceProjectPageImage({
-            userEmail: email,
-            projectId,
-            outputType: task.outputType || payload.intent || "poster",
-            pageIndex: task.taskIndex,
-            taskId: task.id,
-            status: "failed",
-            errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-          });
-        }
-        logOpsEvent({
-          category: "image",
-          action: "image_generation_failed",
-          status: "error",
-          source: providerUsed,
-          userEmail: email,
-          projectId: projectId ?? undefined,
-          code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-          message: generated.errorMessage || "Image generation failed.",
-          details: {
-            stage: "provider_generation",
-            projectTraceId,
-            jobId: job.jobId,
-            taskId: task.id,
-            taskIndex: task.taskIndex,
-            ratio: payloadTask.aspectRatio,
-            providerDetail: generated.detail || null,
-            providerStatus: generated.status ?? null,
-            providerPolicy,
-            attemptedProviders: generatedByPolicy.attemptedProviders,
-            skippedProviders: generatedByPolicy.skippedProviders,
-            providerFallbackDisabled: generatedByPolicy.providerFallbackDisabled,
-            providerAttempts: generatedByPolicy.attempts,
-            imageGenerationMode: "real",
-          },
-        });
-        continue;
-      }
-
-      const persistGeneratedImage = async (input: {
-        imageUrl: string;
-        providerUsed: OrderedImageProvider;
-        policyResult: typeof generatedByPolicy;
-      }) => {
-        await updateImageGenerationTask({
-          taskId: task.id,
-          status: "asset_downloading",
-          providerUsed: input.providerUsed,
-          rawImageUrl: input.imageUrl,
-        });
-        const elapsedBeforeAssetDownload = Date.now() - routeStartedAt;
-        const remainingRouteBudget = normalizeRouteBudgetMs() - elapsedBeforeAssetDownload;
-        const assetDownloadTimeoutMs = Math.min(
-          normalizeAssetDownloadTimeoutMs(),
-          Math.max(15_000, remainingRouteBudget - 4_000),
-        );
-        try {
-          let persisted: Awaited<ReturnType<typeof persistRemoteImageAsset>> | null = null;
-          let lastPersistError: unknown = null;
-          for (let persistAttempt = 1; persistAttempt <= 2; persistAttempt += 1) {
-            try {
-              persisted = await persistRemoteImageAsset({
-                taskId: task.id,
-                projectId,
-                sourceUrl: input.imageUrl,
-                timeoutMs: assetDownloadTimeoutMs,
-              });
-              break;
-            } catch (error) {
-              lastPersistError = error;
-              if (persistAttempt < 2) {
-                logWorkspaceFlowAudit({
-                  stage: "9.backend-asset-persist",
-                  status: "persist-retry",
-                  decision: "retry-same-provider-image-url",
-                  reason: error instanceof Error ? error.message : "Image asset persistence failed.",
-                  keyFields: {
-                    projectId: payload.projectId || null,
-                    runId: generationRunId,
-                    taskId: task.id,
-                    taskIndex: task.taskIndex,
-                    providerUsed: input.providerUsed,
-                    rawImageUrl: input.imageUrl,
-                    persistAttempt,
-                  },
-                });
-              }
-            }
-          }
-          if (!persisted) {
-            throw lastPersistError instanceof Error
-              ? lastPersistError
-              : new Error("Image asset persistence failed.");
-          }
-          const renderUrl = persisted.renderUrl || buildImageRenderUrl(task.id, Date.now());
-          logWorkspaceFlowAudit({
-            stage: "9.backend-asset-persist",
-            status: "persist-ok",
-            decision: "convert-raw-to-render-url",
-            reason: "asset-persisted",
-            keyFields: {
-              projectId: payload.projectId || null,
-              runId: generationRunId,
-              taskId: task.id,
-              taskIndex: task.taskIndex,
-              rawImageUrl: input.imageUrl,
-              renderUrl,
-              mimeType: persisted.mimeType || null,
-              byteLength: persisted.byteLength || null,
-              storageKey: persisted.storageKey || persisted.assetPath || null,
-            },
-          });
-          await updateImageGenerationTask({
-            taskId: task.id,
-            status: "asset_ready",
-            providerUsed: input.providerUsed,
-            rawImageUrl: input.imageUrl,
-            renderUrl,
-            assetPath: persisted.assetPath,
-            mimeType: persisted.mimeType,
-          });
-          if (projectId) {
-            await updateWorkspaceProjectPageImage({
-              userEmail: email,
-              projectId,
-              outputType: task.outputType || payload.intent || "poster",
-              pageIndex: task.taskIndex,
-              taskId: task.id,
-              status: "asset_ready",
-              imageUrl: renderUrl,
-              rawImageUrl: input.imageUrl,
-              assetPath: persisted.assetPath,
-              errorCode: null,
-            });
-          }
-          logOpsEvent({
-            category: "image",
-            action: "image_generation_success",
-            status: "ok",
-            source: input.providerUsed,
-            userEmail: email,
-            projectId: projectId ?? undefined,
-            message: "Image generated and asset persisted.",
-            details: {
-              stage: "asset_ready",
-              projectTraceId,
-              jobId: job.jobId,
-              taskId: task.id,
-              taskIndex: task.taskIndex,
-              imageUrl: renderUrl,
-              rawImageUrl: input.imageUrl,
-              bytes: persisted.byteLength,
-              storageKey: persisted.storageKey || persisted.assetPath,
-              providerPolicy,
-              attemptedProviders: input.policyResult.attemptedProviders,
-              skippedProviders: input.policyResult.skippedProviders,
-              providerFallbackDisabled: input.policyResult.providerFallbackDisabled,
-              providerAttempts: input.policyResult.attempts,
-              imageGenerationMode: "real",
-            },
-          });
-          return { ok: true as const };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Image asset persistence failed.";
-          const mappedCode = (() => {
-            if (/IMAGE_STORAGE_NOT_CONFIGURED/i.test(message)) return "IMAGE_STORAGE_NOT_CONFIGURED";
-            if (/IMAGE_DOWNLOAD_INVALID_CONTENT_TYPE/i.test(message)) return "IMAGE_DOWNLOAD_INVALID_CONTENT_TYPE";
-            if (/IMAGE_UPLOAD_FAILED/i.test(message)) return "IMAGE_UPLOAD_FAILED";
-            if (/IMAGE_DOWNLOAD_FAILED/i.test(message)) return "IMAGE_DOWNLOAD_FAILED";
-            return "IMAGE_ASSET_PERSIST_FAILED";
-          })();
-          return {
-            ok: false as const,
-            mappedCode,
-            message,
-            imageUrl: input.imageUrl,
-            providerUsed: input.providerUsed,
-            policyResult: input.policyResult,
-          };
-        }
-      };
-
-      let persistResult = await persistGeneratedImage({
-        imageUrl: generated.imageUrl,
-        providerUsed,
-        policyResult: generatedByPolicy,
-      });
-
-      if (!persistResult.ok && allowProviderFallback) {
-        const attemptedProviderNames = new Set(generatedByPolicy.attemptedProviders);
-        const remainingProviderPolicy = providerPolicy.filter((provider) => !attemptedProviderNames.has(provider));
-        if (remainingProviderPolicy.length) {
-          logWorkspaceFlowAudit({
-            stage: "9.backend-asset-persist",
-            status: "persist-failed",
-            decision: "try-fallback-provider",
-            reason: persistResult.mappedCode,
-            keyFields: {
-              projectId: payload.projectId || null,
-              runId: generationRunId,
-              taskId: task.id,
-              taskIndex: task.taskIndex,
-              failedProvider: persistResult.providerUsed,
-              remainingProviderPolicy,
-            },
-          });
-          const fallbackGeneratedByPolicy = await requestImageByPolicy({
-            providerPolicy: remainingProviderPolicy,
-            imageModel: payloadTask.model || imageModel,
-            prompt,
-            aspectRatio: payloadTask.aspectRatio,
-            size: payloadTask.size || resolveTuziImageSize(payloadTask.aspectRatio) || "864x1536",
-            routeStartedAt,
-            allowProviderFallback: true,
-          });
-          fallbackGeneratedByPolicy.attemptedProviders.forEach((provider) => attemptedProviderSet.add(provider));
-          fallbackGeneratedByPolicy.skippedProviders.forEach((provider) => skippedProviderSet.add(provider));
-          const fallbackGenerated = fallbackGeneratedByPolicy.result;
-          const fallbackProviderUsed = fallbackGeneratedByPolicy.providerUsed || remainingProviderPolicy[0] || defaultProvider;
-          if (fallbackGenerated.ok) {
-            persistResult = await persistGeneratedImage({
-              imageUrl: fallbackGenerated.imageUrl,
-              providerUsed: fallbackProviderUsed,
-              policyResult: fallbackGeneratedByPolicy,
-            });
-          }
-        }
-      }
-
-      if (persistResult.ok) {
-        continue;
-      }
-
-      await updateImageGenerationTask({
-        taskId: task.id,
-        status: "failed",
-        providerUsed: persistResult.providerUsed,
-        rawImageUrl: persistResult.imageUrl,
-        errorCode: persistResult.mappedCode,
-        errorMessage: persistResult.message,
-      });
-      if (projectId) {
-        await updateWorkspaceProjectPageImage({
-          userEmail: email,
-          projectId,
-          outputType: task.outputType || payload.intent || "poster",
-          pageIndex: task.taskIndex,
-          taskId: task.id,
-          status: "failed",
-          rawImageUrl: persistResult.imageUrl,
-          errorCode: persistResult.mappedCode,
-        });
-      }
-      logWorkspaceFlowAudit({
-        stage: "9.backend-asset-persist",
-        status: "persist-failed",
-        decision: "task-failed",
-        reason: persistResult.mappedCode,
-        keyFields: {
-          projectId: payload.projectId || null,
-          runId: generationRunId,
-          taskId: task.id,
-          taskIndex: task.taskIndex,
-          rawImageUrl: persistResult.imageUrl,
-          error: persistResult.message,
-        },
-      });
-      logOpsEvent({
-        category: "image",
-        action: "image_generation_failed",
-        status: "error",
-        source: persistResult.providerUsed,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        code: persistResult.mappedCode,
-        message: persistResult.message,
-        details: {
-          stage: "asset_download",
-          projectTraceId,
-          jobId: job.jobId,
-          taskId: task.id,
-          taskIndex: task.taskIndex,
-          rawImageUrl: persistResult.imageUrl,
-          providerPolicy,
-          attemptedProviders: persistResult.policyResult.attemptedProviders,
-          skippedProviders: persistResult.policyResult.skippedProviders,
-          providerFallbackDisabled: persistResult.policyResult.providerFallbackDisabled,
-          providerAttempts: persistResult.policyResult.attempts,
-          imageGenerationMode: "real",
-        },
-      });
-    }
-
-    const finalState = await syncImageGenerationJobFinalStatus(job.jobId);
-    const resultTasks = finalState?.tasks ?? [];
-    const attemptedProviders = Array.from(attemptedProviderSet);
-    const skippedProviders = Array.from(
-      new Set<OrderedImageProvider>([
-        ...skippedProviderSet,
-      ]),
-    );
-    const successCount = resultTasks.filter((item) => item.status === "asset_ready").length;
-    if (!successCount) {
-      const taskErrorCodes = resultTasks
-        .map((task) => (task.errorCode || "").trim())
-        .filter(Boolean);
-      const allStorageNotConfigured =
-        taskErrorCodes.length > 0 &&
-        taskErrorCodes.every((code) => code === "IMAGE_STORAGE_NOT_CONFIGURED");
-      const taskErrorMessage =
-        resultTasks.find((task) => task.errorMessage?.trim())?.errorMessage ||
-        "All image tasks failed.";
-      return NextResponse.json(
-        {
-          ok: false,
-          imageGenerationMode: "real",
-          attemptedProviders,
-          skippedProviders,
-          job: {
-            ...(finalState?.job ?? { id: job.jobId, status: "failed" }),
-            runId: finalState?.job?.runId || generationRunId,
-          },
-          tasks: resultTasks.map((task) => ({
-            taskId: task.id,
-            index: task.taskIndex,
-            status: task.status,
-            ok: false,
-            imageUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-            renderUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-            rawImageUrl: task.rawImageUrl,
-            storageKey: resolveTaskStorageKey(task),
-            provider: task.providerUsed,
-            model: imageModel,
-            error: task.errorMessage,
-            errorCode: task.errorCode,
-          })),
-          error: taskErrorMessage,
-          code: allStorageNotConfigured ? "IMAGE_STORAGE_NOT_CONFIGURED" : "IMAGE_ALL_FAILED",
-        },
-        { status: allStorageNotConfigured ? 503 : 502 },
-      );
-    }
-
-    logWorkspaceFlowAudit({
-      stage: "8.backend-generate-batch-complete",
-      status: "ok",
-      decision: "return-success-response",
-      reason: "at-least-one-success",
-      keyFields: {
-        projectId: payload.projectId || null,
-        runId: generationRunId,
-        successCount,
-        totalCount: resultTasks.length,
-        returnedTaskIndexes: resultTasks.map((task) => task.taskIndex),
-      },
+    logImageBatchEvent({
+      requestId: idempotencyKey || generationRunId,
+      jobId: job.jobId,
+      projectId,
+      userEmail: email,
+      taskCount: job.tasks.length,
+      currentStep: "queued-return",
+      provider: providerPolicy[0] ?? "unknown",
+      model: imageModel,
+      durationMs: Date.now() - routeStartedAt,
+      generatedCount: 0,
+      failedCount: 0,
     });
 
     return NextResponse.json({
       ok: true,
       reused: false,
       imageGenerationMode: "real",
-      attemptedProviders,
-      skippedProviders,
+      attemptedProviders: [],
+      skippedProviders: [],
       job: {
-        ...(finalState?.job ?? { id: job.jobId, status: "completed" }),
-        runId: finalState?.job?.runId || generationRunId,
+        id: job.jobId,
+        runId: generationRunId,
+        status: "running",
       },
-      tasks: resultTasks.map((task) => ({
+      tasks: job.tasks.map((task) => ({
         taskId: task.id,
         index: task.taskIndex,
         status: task.status,
-        ok: task.status === "asset_ready",
-        imageUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-        renderUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
+        ok: false,
+        imageUrl: undefined,
+        renderUrl: undefined,
         rawImageUrl: task.rawImageUrl,
         storageKey: resolveTaskStorageKey(task),
         provider: task.providerUsed,
@@ -1512,6 +1161,7 @@ export async function POST(request: NextRequest) {
         errorCode: task.errorCode,
       })),
     });
+
   } catch (error) {
     const message = error instanceof Error ? error.message : "Image generate-batch failed.";
     logOpsEvent({

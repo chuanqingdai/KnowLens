@@ -1230,7 +1230,7 @@ export function getAdminOpsSummary(input?: { errorLimit?: number; checkoutDays?:
   };
 }
 
-export function listOpsEvents(input?: {
+export async function listOpsEvents(input?: {
   userEmail?: string;
   projectId?: string;
   category?: string;
@@ -1240,7 +1240,6 @@ export function listOpsEvents(input?: {
   code?: string;
   limit?: number;
 }) {
-  const { db } = getDb();
   const filters: string[] = [];
   const params: Array<string | number> = [];
 
@@ -1263,26 +1262,28 @@ export function listOpsEvents(input?: {
 
   const limit = Math.min(500, Math.max(1, Math.round(input?.limit ?? 120)));
   const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const rows = db
-    .prepare(
-      `SELECT
-         id,
-         category,
-         action,
-         status,
-         source,
-         code,
-         message,
-         user_email as userEmail,
-         project_id as projectId,
-         details_json as detailsJson,
-         created_at as createdAt
-       FROM ops_events
-       ${whereClause}
-       ORDER BY created_at DESC
-       LIMIT ?`,
-    )
-    .all(...params, limit) as Array<Record<string, unknown>>;
+  const sqlText = `SELECT
+       id,
+       category,
+       action,
+       status,
+       source,
+       code,
+       message,
+       user_email as userEmail,
+       project_id as projectId,
+       details_json as detailsJson,
+       created_at as createdAt
+     FROM ops_events
+     ${whereClause}
+     ORDER BY created_at DESC
+     LIMIT ?`;
+  const rows = hasManagedDatabase()
+    ? await pgAll(sqlText, ...params, limit) as Array<Record<string, unknown>>
+    : (() => {
+        const { db } = getDb();
+        return db.prepare(sqlText).all(...params, limit) as Array<Record<string, unknown>>;
+      })();
 
   return rows.map((row) => ({
     id: String(row.id ?? ""),

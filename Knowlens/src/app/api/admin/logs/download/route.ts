@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   const baseName = `ops-${userEmail.replace(/[^a-z0-9@._-]+/gi, "_")}-${timestamp}`;
 
   if (format === "json") {
-    const dbLogs = listOpsEvents({
+    const dbLogs = await listOpsEvents({
       userEmail,
       limit,
     });
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const dbLogs = listOpsEvents({
+  const dbLogs = await listOpsEvents({
     userEmail,
     limit,
   });
@@ -68,4 +68,3 @@ export async function GET(request: NextRequest) {
     },
   });
 }
-

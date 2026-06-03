@@ -11,6 +11,7 @@ import {
   Filter,
   FolderKanban,
   MessageSquareWarning,
+  LoaderCircle,
   Search,
   Settings2,
   ShieldAlert,
@@ -77,6 +78,21 @@ type PublishedCaseAdminItem = {
   featured: boolean;
   sortOrder: number;
   assets?: Array<{ id: string; fileUrl: string; viewerUrl: string; title?: string }>;
+};
+
+type OpsEventAdminLog = {
+  id: string;
+  category: string;
+  action: string;
+  status: "ok" | "error" | "info";
+  source: string | null;
+  code: string | null;
+  message: string | null;
+  userEmail: string | null;
+  projectId: string | null;
+  detailsJson: string | null;
+  createdAt: string;
+  stage?: string | null;
 };
 
 type PublishCaseFormState = {
@@ -360,6 +376,16 @@ function AdminDashboardPageContent() {
   const [publishedCases, setPublishedCases] = useState<PublishedCaseAdminItem[]>([]);
   const [publishedCasesLoading, setPublishedCasesLoading] = useState(false);
   const [publishingCase, setPublishingCase] = useState(false);
+  const [opsLogs, setOpsLogs] = useState<OpsEventAdminLog[]>([]);
+  const [opsLogsLoading, setOpsLogsLoading] = useState(false);
+  const [opsLogFilters, setOpsLogFilters] = useState({
+    status: "error",
+    category: "",
+    action: "",
+    userEmail: "",
+    projectId: "",
+    code: "",
+  });
   const [publishCaseForm, setPublishCaseForm] = useState<PublishCaseFormState>({
     projectId: "",
     userEmail: "local@knowlens.ai",
@@ -402,6 +428,36 @@ function AdminDashboardPageContent() {
   useEffect(() => {
     if (activeTab === "cases") {
       loadPublishedCases();
+    }
+  }, [activeTab]);
+
+  function loadOpsLogs() {
+    setOpsLogsLoading(true);
+    const params = new URLSearchParams();
+    params.set("limit", "120");
+    Object.entries(opsLogFilters).forEach(([key, value]) => {
+      if (value.trim()) {
+        params.set(key, value.trim());
+      }
+    });
+    fetch(`/api/admin/logs?${params.toString()}`, { cache: "no-store" })
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : response.json().then((payload) => Promise.reject(new Error(payload.error || "线上日志读取失败"))),
+      )
+      .then((payload: { logs?: OpsEventAdminLog[] }) => {
+        setOpsLogs(payload.logs || []);
+      })
+      .catch((error) => {
+        pushToast(error instanceof Error ? error.message : "线上日志读取失败");
+      })
+      .finally(() => setOpsLogsLoading(false));
+  }
+
+  useEffect(() => {
+    if (activeTab === "logs") {
+      loadOpsLogs();
     }
   }, [activeTab]);
 
@@ -1234,6 +1290,125 @@ function AdminDashboardPageContent() {
                 <input type="date" value={lEnd || ""} onChange={(event) => setQuery({ l_end: event.target.value || null, l_page: "1" })} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm" />
               </div>
             ) : null}
+
+            <div className="mt-5 rounded-xl border border-red-100 bg-red-50/40 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-900">线上实时日志（ops_events）</p>
+                  <p className="mt-1 text-xs text-zinc-600">
+                    自动采集浏览器错误、未处理 Promise、失败 API 请求，以及服务端写入的 ops events。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadOpsLogs}
+                  disabled={opsLogsLoading}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {opsLogsLoading ? <LoaderCircle size={14} className="animate-spin" /> : null}
+                  刷新线上日志
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-6">
+                <select
+                  value={opsLogFilters.status}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, status: event.target.value }))}
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-sm"
+                >
+                  <option value="">状态（全部）</option>
+                  <option value="error">error</option>
+                  <option value="info">info</option>
+                  <option value="ok">ok</option>
+                </select>
+                <input
+                  value={opsLogFilters.category}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, category: event.target.value }))}
+                  placeholder="category: billing/image/client"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={opsLogFilters.action}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, action: event.target.value }))}
+                  placeholder="action"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={opsLogFilters.userEmail}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, userEmail: event.target.value }))}
+                  placeholder="user email"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={opsLogFilters.projectId}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, projectId: event.target.value }))}
+                  placeholder="projectId"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={opsLogFilters.code}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, code: event.target.value }))}
+                  placeholder="error code"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+              </div>
+              <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                <table className="min-w-[1100px] w-full text-left text-xs">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">时间</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">分类/动作</th>
+                      <th className="px-3 py-2 font-medium">用户</th>
+                      <th className="px-3 py-2 font-medium">项目</th>
+                      <th className="px-3 py-2 font-medium">错误码</th>
+                      <th className="px-3 py-2 font-medium">消息</th>
+                      <th className="px-3 py-2 font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opsLogs.length ? (
+                      opsLogs.map((item) => (
+                        <tr key={item.id} className="border-t border-zinc-200 align-top">
+                          <td className="px-3 py-2 text-zinc-600">{formatDateTime(item.createdAt)}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 ${item.status === "error" ? "border-red-200 bg-red-50 text-red-700" : item.status === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
+                              {item.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-zinc-900">{item.category}</p>
+                            <p className="mt-0.5 text-zinc-500">{item.action}</p>
+                            {item.stage ? <p className="mt-0.5 text-zinc-400">{item.stage}</p> : null}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-700">{item.userEmail || "-"}</td>
+                          <td className="px-3 py-2 text-zinc-700">{item.projectId || "-"}</td>
+                          <td className="px-3 py-2 text-zinc-700">{item.code || "-"}</td>
+                          <td className="max-w-[360px] px-3 py-2 text-zinc-700">
+                            <p className="line-clamp-3">{item.message || "-"}</p>
+                            <p className="mt-1 text-zinc-400">{item.source || ""}</p>
+                          </td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => copyText(JSON.stringify(item, null, 2), "线上日志")}
+                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                            >
+                              复制详情
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-8 text-center text-sm text-zinc-500">
+                          {opsLogsLoading ? "正在读取线上日志..." : "当前筛选下没有线上日志。"}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
             <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
               <table className="min-w-[1200px] w-full text-left text-sm">

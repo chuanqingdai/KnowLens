@@ -11,14 +11,16 @@ export type ImageGenerationJobStatus =
   | "running"
   | "completed"
   | "completed_with_errors"
-  | "failed";
+  | "failed"
+  | "timed_out";
 
 export type ImageGenerationTaskStatus =
   | "queued"
   | "generating"
   | "asset_downloading"
   | "asset_ready"
-  | "failed";
+  | "failed"
+  | "timed_out";
 
 export type ImageGenerationTaskPayload = {
   index: number;
@@ -1365,7 +1367,7 @@ export async function syncImageGenerationJobFinalStatus(jobId: string) {
     return getImageGenerationJobById(jobId);
   }
   const successCount = tasks.filter((task) => task.status === "asset_ready").length;
-  const failedCount = tasks.filter((task) => task.status === "failed").length;
+  const failedCount = tasks.filter((task) => task.status === "failed" || task.status === "timed_out").length;
   if (successCount > 0 && failedCount === 0) {
     await updateImageGenerationJobStatus({
       jobId,

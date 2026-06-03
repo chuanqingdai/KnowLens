@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   CreditCard,
+  LoaderCircle,
   ShieldCheck,
   Zap,
 } from "lucide-react";
@@ -164,6 +165,7 @@ function formatUsd(value: number) {
 }
 
 const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
+const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 
 type PendingCheckout = {
@@ -231,7 +233,7 @@ export default function MembershipPage() {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
   const [toast, setToast] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState(0);
-  const [isPaying, setIsPaying] = useState(false);
+  const [payingPlanId, setPayingPlanId] = useState<BillingPlanId | null>(null);
   const [finalizing, setFinalizing] = useState(false);
   const [pendingFinalizeSessionId, setPendingFinalizeSessionId] = useState<string | null>(null);
   const [pendingCheckoutMeta, setPendingCheckoutMeta] = useState<PendingCheckout | null>(null);
@@ -420,18 +422,19 @@ export default function MembershipPage() {
   }, [billingCycle]);
 
   async function handlePay(plan: Plan) {
+    const isPaying = Boolean(payingPlanId);
     if (isPaying || finalizing) {
       return;
     }
-    setIsPaying(true);
+    setPayingPlanId(plan.id);
     if (!currentEmail) {
       setToast("Please sign in first to continue checkout.");
-      setIsPaying(false);
+      setPayingPlanId(null);
       return;
     }
     if (!findBillingPlan(plan.id)) {
       setToast("Plan config is invalid. Please refresh and retry.");
-      setIsPaying(false);
+      setPayingPlanId(null);
       return;
     }
     router.prefetch(returnPath);
@@ -458,6 +461,8 @@ export default function MembershipPage() {
         startedAt: new Date().toISOString(),
         source: membershipSource,
       });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), CHECKOUT_REQUEST_TIMEOUT_MS);
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -466,10 +471,14 @@ export default function MembershipPage() {
           cycle: billingCycle,
           source: membershipSource,
         }),
+        signal: controller.signal,
+      }).finally(() => {
+        window.clearTimeout(timeoutId);
       });
       const data = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         checkoutUrl?: string;
+        directCheckoutUrl?: string;
         fallback?: boolean;
         error?: string;
       };
@@ -490,16 +499,25 @@ export default function MembershipPage() {
           fallback: Boolean(data.fallback),
         },
       });
-      try {
-        window.location.assign(data.checkoutUrl);
-      } catch {
-        window.location.replace(data.checkoutUrl);
-      }
+      const directCheckoutUrl = (data.directCheckoutUrl || "").trim();
+      const redirectCheckoutUrl = data.checkoutUrl.trim();
+      const preferredCheckoutUrl = directCheckoutUrl || redirectCheckoutUrl;
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible") {
+          window.location.replace(redirectCheckoutUrl);
+        }
+      }, 2500);
+      window.location.href = preferredCheckoutUrl;
       return;
     } catch (error) {
       clearPendingCheckout();
       setPendingCheckoutMeta(null);
-      const message = error instanceof Error ? error.message : "Checkout failed.";
+      const message =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Checkout is taking too long. Please try again."
+          : error instanceof Error
+            ? error.message
+            : "Checkout failed.";
       const normalized = message.toLowerCase();
       if (
         normalized.includes("stripe") &&
@@ -520,7 +538,7 @@ export default function MembershipPage() {
           cycle: billingCycle,
         },
       });
-      setIsPaying(false);
+      setPayingPlanId(null);
     } finally {
       // Keep loading state while browser navigates to Stripe.
     }
@@ -613,15 +631,19 @@ export default function MembershipPage() {
               <button
                 type="button"
                 onClick={() => handlePay(plan)}
-                disabled={isPaying || finalizing}
+                disabled={Boolean(payingPlanId) || finalizing}
                 className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition ${
                   plan.recommended
                     ? "bg-zinc-900 text-white hover:bg-zinc-700"
                     : "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
-                } ${isPaying || finalizing ? "cursor-not-allowed opacity-70" : ""}`}
+                } ${payingPlanId || finalizing ? "cursor-not-allowed opacity-70" : ""}`}
               >
-                <Zap size={15} />
-                {isPaying ? "Redirecting to Checkout..." : finalizing ? "Verifying Payment..." : "Subscribe with Stripe"}
+                {payingPlanId === plan.id ? <LoaderCircle size={15} className="animate-spin" /> : <Zap size={15} />}
+                {payingPlanId === plan.id
+                  ? "Opening Checkout..."
+                  : finalizing
+                    ? "Verifying Payment..."
+                    : "Subscribe with Stripe"}
               </button>
 
               <p className="mt-2 text-xs text-zinc-500">{plan.usage}</p>

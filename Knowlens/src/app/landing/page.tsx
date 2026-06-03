@@ -354,9 +354,36 @@ async function startStripeCheckout(planId: string, cycle: BillingCycle) {
   if (typeof window === "undefined") {
     return;
   }
+  const trackLandingCheckout = (input: {
+    action: string;
+    status?: "ok" | "error" | "info";
+    message?: string;
+    details?: Record<string, unknown>;
+  }) => {
+    void fetch("/api/telemetry/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: "billing",
+        action: input.action,
+        status: input.status ?? "info",
+        source: MEMBERSHIP_SOURCE,
+        message: input.message,
+        details: {
+          planId,
+          cycle,
+          ...(input.details ?? {}),
+        },
+      }),
+    }).catch(() => undefined);
+  };
   if (!findBillingPlan(planId)) {
     throw new Error("Plan config is invalid. Please refresh and retry.");
   }
+  trackLandingCheckout({
+    action: "pay_button_clicked",
+    status: "info",
+  });
   const response = await fetch("/api/billing/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -369,16 +396,35 @@ async function startStripeCheckout(planId: string, cycle: BillingCycle) {
   const data = (await response.json().catch(() => ({}))) as {
     ok?: boolean;
     checkoutUrl?: string;
+    directCheckoutUrl?: string;
     error?: string;
   };
   if (!response.ok || !data.ok || !data.checkoutUrl) {
-    throw new Error(data.error || "Unable to create checkout session.");
+    const message = data.error || "Unable to create checkout session.";
+    trackLandingCheckout({
+      action: "checkout_redirect_failed",
+      status: "error",
+      message,
+      details: { statusCode: response.status },
+    });
+    throw new Error(message);
   }
-  try {
-    window.location.assign(data.checkoutUrl);
-  } catch {
-    window.location.replace(data.checkoutUrl);
-  }
+  trackLandingCheckout({
+    action: "checkout_redirect_started",
+    status: "ok",
+    details: {
+      hasDirectCheckoutUrl: Boolean(data.directCheckoutUrl),
+    },
+  });
+  const directCheckoutUrl = (data.directCheckoutUrl || "").trim();
+  const redirectCheckoutUrl = data.checkoutUrl.trim();
+  const preferredCheckoutUrl = directCheckoutUrl || redirectCheckoutUrl;
+  window.setTimeout(() => {
+    if (document.visibilityState === "visible") {
+      window.location.replace(redirectCheckoutUrl);
+    }
+  }, 2500);
+  window.location.href = preferredCheckoutUrl;
 }
 
 function ProgressiveImage({

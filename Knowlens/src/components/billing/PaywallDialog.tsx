@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { Crown, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Crown, LoaderCircle, X } from "lucide-react";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 
 type PaywallDialogProps = {
@@ -31,8 +31,11 @@ export function PaywallDialog({
   onClose,
   onConfirm,
 }: PaywallDialogProps) {
+  const [confirming, setConfirming] = useState(false);
+
   useEffect(() => {
     if (!open) {
+      setConfirming(false);
       return;
     }
     void fetch("/api/telemetry/event", {
@@ -78,7 +81,12 @@ export function PaywallDialog({
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           <button
             type="button"
+            disabled={confirming}
             onClick={() => {
+              if (confirming) {
+                return;
+              }
+              setConfirming(true);
               void fetch("/api/telemetry/event", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -113,8 +121,9 @@ export function PaywallDialog({
                 window.location.href = confirmHref;
               }
             }}
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
+            {confirming ? <LoaderCircle size={14} className="animate-spin" /> : null}
             {confirmLabel}
           </button>
         </div>

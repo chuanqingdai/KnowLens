@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code") ?? "";
   const limit = parseIntInRange(request.nextUrl.searchParams.get("limit"), 120, 1, 500);
 
-  const dbLogs = listOpsEvents({
+  const dbLogs = await listOpsEvents({
     userEmail,
     projectId,
     category,

@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
         ok: true,
         mode: "payment_link",
         checkoutUrl: buildCrossBrowserRedirectUrl(paymentLink),
+        directCheckoutUrl: paymentLink,
         sessionId: null,
       });
     }
@@ -223,6 +224,7 @@ export async function POST(request: NextRequest) {
         ok: true,
         mode: "subscription",
         checkoutUrl: sessionResult.url ? buildCrossBrowserRedirectUrl(sessionResult.url) : null,
+        directCheckoutUrl: sessionResult.url ?? null,
         sessionId: sessionResult.id,
       });
     }
@@ -264,6 +266,7 @@ export async function POST(request: NextRequest) {
         ok: true,
         mode: "subscription",
         checkoutUrl: sessionResult.url ? buildCrossBrowserRedirectUrl(sessionResult.url) : null,
+        directCheckoutUrl: sessionResult.url ?? null,
         sessionId: sessionResult.id,
       });
     }
@@ -317,6 +320,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       mode: "payment",
       checkoutUrl: fallbackSession.url ? buildCrossBrowserRedirectUrl(fallbackSession.url) : null,
+      directCheckoutUrl: fallbackSession.url ?? null,
       sessionId: fallbackSession.id,
       fallback: true,
     });
