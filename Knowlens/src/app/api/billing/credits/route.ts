@@ -92,9 +92,9 @@ export async function GET() {
     );
   }
 
-  const rawRecords = listCreditRecords(email) as DbCreditRecord[];
+  const rawRecords = (await listCreditRecords(email)) as DbCreditRecord[];
   const records = rawRecords.map(normalizeRecord);
-  const subscription = normalizeSubscription(getLatestSubscriptionDb(email));
+  const subscription = normalizeSubscription(await getLatestSubscriptionDb(email));
   return NextResponse.json({
     ok: true,
     email,
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = applyCreditRecordAtomic({
+  const result = await applyCreditRecordAtomic({
     userEmail: email,
     userId: body.userId,
     projectId: body.projectId?.trim() || undefined,
@@ -182,7 +182,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const records = (listCreditRecords(email) as DbCreditRecord[]).map(normalizeRecord);
+  const records = ((await listCreditRecords(email)) as DbCreditRecord[]).map(normalizeRecord);
   return NextResponse.json({
     ok: true,
     email,

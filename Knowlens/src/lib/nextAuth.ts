@@ -276,7 +276,7 @@ export const nextAuthOptions: NextAuthOptions = {
     },
     async signIn({ user }) {
       if (user?.email) {
-        upsertUser({
+        await upsertUser({
           email: user.email,
           name: user.name || user.email.split("@")[0] || "User",
           role: resolveRoleByEmail(user.email),

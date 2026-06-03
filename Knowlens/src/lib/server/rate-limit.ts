@@ -1,12 +1,12 @@
 import { enforceRateLimit } from "./store";
 
-export function rateLimitOrThrow(input: {
+export async function rateLimitOrThrow(input: {
   scopeKey: string;
   endpoint: string;
   limit: number;
   windowMs: number;
 }) {
-  const result = enforceRateLimit(input);
+  const result = await enforceRateLimit(input);
   if (result.allowed) {
     return result;
   }
@@ -14,4 +14,3 @@ export function rateLimitOrThrow(input: {
   (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds = result.retryAfterSeconds;
   throw error;
 }
-

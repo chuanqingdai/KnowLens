@@ -15,7 +15,7 @@ function formatType(value: string) {
 
 export default async function PublishedCasePage({ params, searchParams }: CasePageProps) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
-  const item = getPublishedCaseBySlug(slug);
+  const item = await getPublishedCaseBySlug(slug);
   if (!item) {
     notFound();
   }

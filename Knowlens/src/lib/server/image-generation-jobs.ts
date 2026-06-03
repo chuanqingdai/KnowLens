@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { getDb } from "@/lib/server/db";
+import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
 
 export type ImageGenerationJobStatus =
   | "queued"
@@ -287,6 +288,30 @@ export async function findImageGenerationJobByIdempotency(input: {
     }
     return manifest.job;
   }
+  if (hasManagedDatabase()) {
+    const runId = normalizeOptionalText(input.runId, 120);
+    const row = (runId
+      ? await pgGet(
+          `SELECT *
+           FROM image_generation_jobs
+           WHERE user_email = ? AND idempotency_key = ? AND run_id = ?
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          input.userEmail.trim().toLowerCase(),
+          input.idempotencyKey.trim(),
+          runId,
+        )
+      : await pgGet(
+          `SELECT *
+           FROM image_generation_jobs
+           WHERE user_email = ? AND idempotency_key = ?
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          input.userEmail.trim().toLowerCase(),
+          input.idempotencyKey.trim(),
+        )) as Record<string, unknown> | undefined;
+    return row ? mapJobRow(row) : null;
+  }
   const runId = normalizeOptionalText(input.runId, 120);
   const { db } = getDb();
   const row = (runId
@@ -418,6 +443,50 @@ export async function createImageGenerationJob(input: {
     };
   }
 
+  if (hasManagedDatabase()) {
+    await pgRun(
+      `INSERT INTO image_generation_jobs (
+        id, user_email, project_id, intent, ratio, image_model_policy, idempotency_key, run_id, status,
+        error_code, error_message, request_json, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', null, null, ?, ?, ?)`,
+      jobId,
+      userEmail,
+      normalizeOptionalText(input.projectId, 120),
+      normalizeOptionalText(input.intent, 48),
+      normalizeOptionalText(input.ratio, 64),
+      normalizeOptionalText(input.imageModelPolicy, 120),
+      normalizeOptionalText(input.idempotencyKey, 220),
+      normalizeOptionalText(input.runId, 120),
+      requestJson,
+      createdAt,
+      createdAt,
+    );
+    for (const task of taskRows) {
+      await pgRun(
+        `INSERT INTO image_generation_tasks (
+          id, job_id, task_index, output_type, aspect_ratio, prompt_text, provider_order, provider_used,
+          status, attempts, error_code, error_message, raw_image_url, render_url, asset_path, mime_type,
+          width, height, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, null, 'queued', 0, null, null, null, null, null, null, null, null, ?, ?)`,
+        task.id,
+        jobId,
+        task.taskIndex,
+        task.outputType,
+        task.aspectRatio,
+        task.promptText,
+        normalizeText(input.imageModelPolicy, 120),
+        createdAt,
+        createdAt,
+      );
+    }
+    return {
+      jobId,
+      tasks: taskRows,
+    };
+  }
+
   const { db } = getDb();
   db.prepare(
     `INSERT INTO image_generation_jobs (
@@ -527,6 +596,90 @@ export async function getLatestImageGenerationJobByProject(input: {
     }
     return {
       job: latestManifest.job,
+      tasks: Array.from(latestTaskByIndex.values()).sort((a, b) => a.taskIndex - b.taskIndex),
+    };
+  }
+
+  if (hasManagedDatabase()) {
+    const row = (intent
+      ? await pgGet(
+          `SELECT *
+           FROM image_generation_jobs
+           WHERE user_email = ? AND project_id = ? AND intent = ?
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT 1`,
+          userEmail,
+          projectId,
+          intent,
+        )
+      : await pgGet(
+          `SELECT *
+           FROM image_generation_jobs
+           WHERE user_email = ? AND project_id = ?
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT 1`,
+          userEmail,
+          projectId,
+        )) as Record<string, unknown> | undefined;
+    const jobId = typeof row?.id === "string" ? row.id : "";
+    if (!row || !jobId) {
+      return null;
+    }
+    const latestJob = mapJobRow(row);
+    const taskRows = (intent
+      ? await pgAll(
+          `SELECT t.*
+             FROM image_generation_tasks t
+            JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ? AND j.project_id = ? AND j.intent = ?
+            ORDER BY
+              t.task_index ASC,
+              CASE
+                WHEN t.status = 'asset_ready'
+                 AND t.render_url IS NOT NULL
+                 AND t.render_url != ''
+                 AND t.asset_path IS NOT NULL
+                 AND t.asset_path != ''
+                THEN 0
+                ELSE 1
+              END ASC,
+              t.updated_at DESC,
+              t.created_at DESC`,
+          userEmail,
+          projectId,
+          intent,
+        )
+      : await pgAll(
+          `SELECT t.*
+             FROM image_generation_tasks t
+             JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ? AND j.project_id = ?
+            ORDER BY
+              t.task_index ASC,
+              CASE
+                WHEN t.status = 'asset_ready'
+                 AND t.render_url IS NOT NULL
+                 AND t.render_url != ''
+                 AND t.asset_path IS NOT NULL
+                 AND t.asset_path != ''
+                THEN 0
+                ELSE 1
+              END ASC,
+              t.updated_at DESC,
+              t.created_at DESC`,
+          userEmail,
+          projectId,
+        )) as Array<Record<string, unknown>>;
+    const latestTaskByIndex = new Map<number, ImageGenerationTaskRow>();
+    for (const taskRow of taskRows) {
+      const task = mapTaskRow(taskRow);
+      if (!task.taskIndex || latestTaskByIndex.has(task.taskIndex)) {
+        continue;
+      }
+      latestTaskByIndex.set(task.taskIndex, task);
+    }
+    return {
+      job: latestJob,
       tasks: Array.from(latestTaskByIndex.values()).sort((a, b) => a.taskIndex - b.taskIndex),
     };
   }
@@ -675,6 +828,58 @@ export async function listImageGenerationTaskHistoryByProject(input: {
       .sort(compareProjectRestoreTasks);
   }
 
+  if (hasManagedDatabase()) {
+    const rows = (intent
+      ? await pgAll(
+          `SELECT t.*
+             FROM image_generation_tasks t
+             JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ?
+              AND j.project_id = ?
+              AND j.intent = ?
+              AND t.status = 'asset_ready'
+              AND t.render_url IS NOT NULL
+              AND t.render_url != ''
+              AND t.asset_path IS NOT NULL
+              AND t.asset_path != ''
+            ORDER BY t.task_index ASC, t.updated_at DESC, t.created_at DESC`,
+          userEmail,
+          projectId,
+          intent,
+        )
+      : await pgAll(
+          `SELECT t.*
+             FROM image_generation_tasks t
+             JOIN image_generation_jobs j ON j.id = t.job_id
+            WHERE j.user_email = ?
+              AND j.project_id = ?
+              AND t.status = 'asset_ready'
+              AND t.render_url IS NOT NULL
+              AND t.render_url != ''
+              AND t.asset_path IS NOT NULL
+              AND t.asset_path != ''
+            ORDER BY t.task_index ASC, t.updated_at DESC, t.created_at DESC`,
+          userEmail,
+          projectId,
+        )) as Array<Record<string, unknown>>;
+    const historyByIndex = new Map<number, ImageGenerationTaskRow[]>();
+    for (const row of rows) {
+      const task = mapTaskRow(row);
+      if (!task.taskIndex) {
+        continue;
+      }
+      const history = historyByIndex.get(task.taskIndex) || [];
+      if (history.length >= maxPerPage) {
+        continue;
+      }
+      history.push(task);
+      historyByIndex.set(task.taskIndex, history);
+    }
+    return Array.from(historyByIndex.values())
+      .flat()
+      .sort(compareProjectRestoreTasks);
+  }
+
   const { db } = getDb();
   const rows = (intent
     ? db
@@ -742,6 +947,19 @@ export async function updateImageGenerationJobStatus(input: {
     manifest.job.errorMessage = normalizeOptionalText(input.errorMessage || undefined, 500);
     manifest.job.updatedAt = nowIso();
     await writeBlobJson(getImageGenerationJobManifestPath(input.jobId), manifest);
+    return;
+  }
+  if (hasManagedDatabase()) {
+    await pgRun(
+      `UPDATE image_generation_jobs
+       SET status = ?, error_code = ?, error_message = ?, updated_at = ?
+       WHERE id = ?`,
+      input.status,
+      normalizeOptionalText(input.errorCode || undefined, 120),
+      normalizeOptionalText(input.errorMessage || undefined, 500),
+      nowIso(),
+      input.jobId,
+    );
     return;
   }
   const { db } = getDb();
@@ -827,6 +1045,71 @@ export async function updateImageGenerationTask(input: {
     await writeBlobJson(getImageGenerationJobManifestPath(next.jobId), manifest);
     return next;
   }
+  if (hasManagedDatabase()) {
+    const current = await pgGet("SELECT * FROM image_generation_tasks WHERE id = ? LIMIT 1", input.taskId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!current) {
+      return null;
+    }
+    const next = {
+      status: input.status ?? (String(current.status || "queued") as ImageGenerationTaskStatus),
+      attempts: Number.isFinite(input.attempts) ? Number(input.attempts) : Number(current.attempts || 0),
+      providerUsed:
+        input.providerUsed !== undefined
+          ? normalizeOptionalText(input.providerUsed || undefined, 64)
+          : (typeof current.provider_used === "string" ? current.provider_used : null),
+      errorCode:
+        input.errorCode !== undefined
+          ? normalizeOptionalText(input.errorCode || undefined, 120)
+          : (typeof current.error_code === "string" ? current.error_code : null),
+      errorMessage:
+        input.errorMessage !== undefined
+          ? normalizeOptionalText(input.errorMessage || undefined, 500)
+          : (typeof current.error_message === "string" ? current.error_message : null),
+      rawImageUrl:
+        input.rawImageUrl !== undefined
+          ? normalizeOptionalText(input.rawImageUrl || undefined, 1200)
+          : (typeof current.raw_image_url === "string" ? current.raw_image_url : null),
+      renderUrl:
+        input.renderUrl !== undefined
+          ? normalizeOptionalText(input.renderUrl || undefined, 400)
+          : (typeof current.render_url === "string" ? current.render_url : null),
+      assetPath:
+        input.assetPath !== undefined
+          ? normalizeOptionalText(input.assetPath || undefined, 1200)
+          : (typeof current.asset_path === "string" ? current.asset_path : null),
+      mimeType:
+        input.mimeType !== undefined
+          ? normalizeOptionalText(input.mimeType || undefined, 120)
+          : (typeof current.mime_type === "string" ? current.mime_type : null),
+      width:
+        input.width !== undefined ? (input.width == null ? null : Math.max(1, Math.round(input.width))) : null,
+      height:
+        input.height !== undefined ? (input.height == null ? null : Math.max(1, Math.round(input.height))) : null,
+    };
+
+    await pgRun(
+      `UPDATE image_generation_tasks
+       SET status = ?, attempts = ?, provider_used = ?, error_code = ?, error_message = ?,
+           raw_image_url = ?, render_url = ?, asset_path = ?, mime_type = ?, width = ?, height = ?, updated_at = ?
+       WHERE id = ?`,
+      next.status,
+      next.attempts,
+      next.providerUsed,
+      next.errorCode,
+      next.errorMessage,
+      next.rawImageUrl,
+      next.renderUrl,
+      next.assetPath,
+      next.mimeType,
+      next.width,
+      next.height,
+      nowIso(),
+      input.taskId,
+    );
+    return getImageGenerationTaskById(input.taskId);
+  }
   const { db } = getDb();
   const current = db
     .prepare("SELECT * FROM image_generation_tasks WHERE id = ? LIMIT 1")
@@ -907,6 +1190,12 @@ export async function getImageGenerationTaskById(taskId: string) {
     const task = manifest.tasks.find((item) => item.id === taskId);
     return task ?? null;
   }
+  if (hasManagedDatabase()) {
+    const row = await pgGet("SELECT * FROM image_generation_tasks WHERE id = ? LIMIT 1", taskId) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? mapTaskRow(row) : null;
+  }
   const { db } = getDb();
   const row = db
     .prepare("SELECT * FROM image_generation_tasks WHERE id = ? LIMIT 1")
@@ -938,6 +1227,41 @@ export async function getImageGenerationTaskWithJob(taskId: string): Promise<{
       task,
       job: manifest.job,
     };
+  }
+  if (hasManagedDatabase()) {
+    const row = await pgGet(
+      `SELECT t.*, j.user_email as job_user_email, j.project_id as job_project_id, j.id as job_id_ref,
+              j.intent as job_intent, j.ratio as job_ratio, j.image_model_policy as job_image_model_policy,
+              j.idempotency_key as job_idempotency_key, j.run_id as job_run_id, j.status as job_status, j.error_code as job_error_code,
+              j.error_message as job_error_message, j.request_json as job_request_json,
+              j.created_at as job_created_at, j.updated_at as job_updated_at
+         FROM image_generation_tasks t
+         JOIN image_generation_jobs j ON j.id = t.job_id
+        WHERE t.id = ?
+        LIMIT 1`,
+      taskId,
+    ) as Record<string, unknown> | undefined;
+    if (!row) {
+      return null;
+    }
+    const task = mapTaskRow(row);
+    const job: ImageGenerationJobRow = {
+      id: String(row.job_id_ref || ""),
+      userEmail: String(row.job_user_email || ""),
+      projectId: typeof row.job_project_id === "string" ? row.job_project_id : null,
+      intent: typeof row.job_intent === "string" ? row.job_intent : null,
+      ratio: typeof row.job_ratio === "string" ? row.job_ratio : null,
+      imageModelPolicy: typeof row.job_image_model_policy === "string" ? row.job_image_model_policy : null,
+      idempotencyKey: typeof row.job_idempotency_key === "string" ? row.job_idempotency_key : null,
+      runId: typeof row.job_run_id === "string" ? row.job_run_id : null,
+      status: String(row.job_status || "queued") as ImageGenerationJobStatus,
+      errorCode: typeof row.job_error_code === "string" ? row.job_error_code : null,
+      errorMessage: typeof row.job_error_message === "string" ? row.job_error_message : null,
+      requestJson: typeof row.job_request_json === "string" ? row.job_request_json : null,
+      createdAt: String(row.job_created_at || ""),
+      updatedAt: String(row.job_updated_at || ""),
+    };
+    return { task, job };
   }
   const { db } = getDb();
   const row = db
@@ -983,6 +1307,22 @@ export async function getImageGenerationJobById(jobId: string) {
   if (shouldUseBlobImageGenerationStore()) {
     const manifest = await readStoredManifest(jobId);
     return manifest ?? null;
+  }
+  if (hasManagedDatabase()) {
+    const jobRow = await pgGet("SELECT * FROM image_generation_jobs WHERE id = ? LIMIT 1", jobId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!jobRow) {
+      return null;
+    }
+    const taskRows = await pgAll(
+      "SELECT * FROM image_generation_tasks WHERE job_id = ? ORDER BY task_index ASC, created_at ASC",
+      jobId,
+    ) as Array<Record<string, unknown>>;
+    return {
+      job: mapJobRow(jobRow),
+      tasks: taskRows.map((row) => mapTaskRow(row)),
+    };
   }
   const { db } = getDb();
   const jobRow = db

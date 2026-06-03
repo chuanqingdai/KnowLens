@@ -44,7 +44,7 @@ export async function GET(
     }
     const { projectId } = await context.params;
     const outputType = request.nextUrl.searchParams.get("outputType");
-    const pages = listWorkspaceProjectPages({
+    const pages = await listWorkspaceProjectPages({
       userEmail: email,
       projectId: normalizeProjectId(projectId),
       outputType: outputType ? normalizeOutputType(outputType) : null,
@@ -52,7 +52,7 @@ export async function GET(
     return NextResponse.json({ ok: true, pages });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load project pages.";
-    logOpsEvent({
+      void logOpsEvent({
       category: "workspace",
       action: "project_pages_query_failed",
       status: "error",
@@ -92,7 +92,7 @@ export async function POST(
     const pages = Array.isArray(payload?.pages) ? payload.pages : [];
     const normalizedProjectId = normalizeProjectId(projectId);
     const normalizedOutputType = normalizeOutputType(payload?.outputType || null);
-    const saved = upsertWorkspaceProjectPages({
+    const saved = await upsertWorkspaceProjectPages({
       userEmail: email,
       projectId: normalizedProjectId,
       outputType: normalizedOutputType,
@@ -107,14 +107,14 @@ export async function POST(
       })),
     });
     if (saved > 0) {
-      const existingProject = getProjectByIdForUser(email, normalizedProjectId) as
+      const existingProject = (await getProjectByIdForUser(email, normalizedProjectId)) as
         | { title?: string; status?: string; duration?: string | null }
         | null;
       const firstTitle =
         pages.find((page) => typeof page.title === "string" && page.title.trim())?.title?.trim() ||
         existingProject?.title ||
         "Untitled project";
-      saveProject({
+      await saveProject({
         id: normalizedProjectId,
         userEmail: email,
         title: firstTitle,
@@ -127,7 +127,7 @@ export async function POST(
     return NextResponse.json({ ok: true, saved });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to save project pages.";
-    logOpsEvent({
+    void logOpsEvent({
       category: "workspace",
       action: "project_pages_save_failed",
       status: "error",

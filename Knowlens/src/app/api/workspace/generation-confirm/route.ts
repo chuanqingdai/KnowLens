@@ -171,8 +171,8 @@ function clampPromptForImage(prompt: string) {
     .trim();
 }
 
-function isFreeUserBySubscription(email: string) {
-  const row = getLatestSubscriptionDb(email) as { status?: string } | null;
+async function isFreeUserBySubscription(email: string) {
+  const row = (await getLatestSubscriptionDb(email)) as { status?: string } | null;
   if (!row) {
     return true;
   }
@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const count = incrementUsageCounter({
+    const count = await incrementUsageCounter({
       scopeKey,
       metricKey: "workspace:generation_confirmed",
     });
@@ -351,7 +351,7 @@ export async function POST(request: NextRequest) {
         },
       });
     }
-    const isFreeUser = isFreeUserBySubscription(email);
+    const isFreeUser = await isFreeUserBySubscription(email);
     const image2ProviderConfig = buildImage2ProviderConfig();
 
     const shouldCallImageProvider = taskCount > 0 && wantsImageProvider;

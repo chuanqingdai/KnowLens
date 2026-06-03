@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scopeKey = getScopeFromRequest(request, email);
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: `workspace-chat:${scopeKey}`,
       endpoint: "workspace-chat-input",
       limit: RATE_LIMIT_CONFIG.workspaceChatInput.limit,
@@ -53,12 +53,12 @@ export async function POST(request: NextRequest) {
     });
 
     const dailyChatOnlyLimit = parseIntEnv("ABUSE_GUARD_DAILY_CHAT_ONLY_LIMIT", 120);
-    const chatMetric = incrementAndCheckUsageLimit({
+    const chatMetric = await incrementAndCheckUsageLimit({
       scopeKey,
       metricKey: "workspace:chat_input",
       limit: Math.max(dailyChatOnlyLimit * 3, 10_000),
     });
-    const generated = getUsageCounter({
+    const generated = await getUsageCounter({
       scopeKey,
       metricKey: "workspace:generation_confirmed",
     });
@@ -86,4 +86,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

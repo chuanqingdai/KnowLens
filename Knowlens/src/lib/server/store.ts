@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { getDb } from "./db";
+import { hasManagedDatabase, pgAll, pgGet, pgRun, pgTransaction, pgTxGet, pgTxRun } from "./postgres";
 
 type RateLimitResult = {
   allowed: boolean;
@@ -59,15 +60,40 @@ function normalizeScope(email?: string | null) {
 
 export { normalizeScope };
 
-export function enforceRateLimit(input: {
+export async function enforceRateLimit(input: {
   scopeKey: string;
   endpoint: string;
   limit: number;
   windowMs: number;
-}): RateLimitResult {
-  const { db } = getDb();
+}): Promise<RateLimitResult> {
   const now = Date.now();
   const windowStart = Math.floor(now / input.windowMs) * input.windowMs;
+  if (hasManagedDatabase()) {
+    const row = (await pgGet(
+      "SELECT count FROM api_rate_limits WHERE scope_key = ? AND endpoint = ? AND window_start = ?",
+      [input.scopeKey, input.endpoint, windowStart],
+    )) as { count?: number } | undefined;
+    const count = Number(row?.count ?? 0);
+    if (count >= input.limit) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil((windowStart + input.windowMs - now) / 1000)),
+        remaining: 0,
+      };
+    }
+    await pgRun(
+      `INSERT INTO api_rate_limits (scope_key, endpoint, window_start, count)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT(scope_key, endpoint, window_start)
+       DO UPDATE SET count = api_rate_limits.count + 1`,
+      [input.scopeKey, input.endpoint, windowStart],
+    );
+    return {
+      allowed: true,
+      remaining: input.limit - count - 1,
+    };
+  }
+  const { db } = getDb();
   const row = db
     .prepare(
       "SELECT count FROM api_rate_limits WHERE scope_key = ? AND endpoint = ? AND window_start = ?",
@@ -95,13 +121,27 @@ export function enforceRateLimit(input: {
   };
 }
 
-export function upsertUser(input: {
+export async function upsertUser(input: {
   email: string;
   name: string;
   role: "user" | "admin";
 }) {
-  const { db } = getDb();
   const email = input.email.trim().toLowerCase();
+  if (hasManagedDatabase()) {
+    const existing = (await pgGet("SELECT id FROM users WHERE email = ?", [email])) as { id?: string } | undefined;
+    const id = existing?.id ?? `u-${randomUUID()}`;
+    await pgRun(
+      `INSERT INTO users (id, email, name, role, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         name = excluded.name,
+         role = excluded.role,
+         updated_at = excluded.updated_at`,
+      [id, email, input.name, input.role, nowIso(), nowIso()],
+    );
+    return id;
+  }
+  const { db } = getDb();
   const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email) as { id?: string } | undefined;
   const id = existing?.id ?? `u-${randomUUID()}`;
   db.prepare(
@@ -115,9 +155,19 @@ export function upsertUser(input: {
   return id;
 }
 
-export function listProjectsByUser(email: string) {
+export async function listProjectsByUser(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (hasManagedDatabase()) {
+    const user = (await pgGet("SELECT id FROM users WHERE email = ?", [normalizedEmail])) as
+      | { id?: string }
+      | undefined;
+    if (!user?.id) {
+      return [] as Array<Record<string, unknown>>;
+    }
+    return pgAll("SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC", [user.id]);
+  }
   const { db } = getDb();
-  const user = db.prepare("SELECT id FROM users WHERE email = ?").get(email.trim().toLowerCase()) as
+  const user = db.prepare("SELECT id FROM users WHERE email = ?").get(normalizedEmail) as
     | { id?: string }
     | undefined;
   if (!user?.id) {
@@ -128,11 +178,23 @@ export function listProjectsByUser(email: string) {
     .all(user.id) as Array<Record<string, unknown>>;
 }
 
-export function getProjectByIdForUser(email: string, projectId: string) {
+export async function getProjectByIdForUser(email: string, projectId: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedProjectId = projectId.trim();
   if (!normalizedEmail || !normalizedProjectId) {
     return null as Record<string, unknown> | null;
+  }
+  if (hasManagedDatabase()) {
+    const user = (await pgGet("SELECT id FROM users WHERE email = ?", [normalizedEmail])) as
+      | { id?: string }
+      | undefined;
+    if (!user?.id) {
+      return null as Record<string, unknown> | null;
+    }
+    return ((await pgGet("SELECT * FROM projects WHERE id = ? AND user_id = ? LIMIT 1", [
+      normalizedProjectId,
+      user.id,
+    ])) || null) as Record<string, unknown> | null;
   }
   const { db } = getDb();
   const user = db.prepare("SELECT id FROM users WHERE email = ?").get(normalizedEmail) as
@@ -146,7 +208,7 @@ export function getProjectByIdForUser(email: string, projectId: string) {
     .get(normalizedProjectId, user.id) || null) as Record<string, unknown> | null;
 }
 
-export function saveProject(input: {
+export async function saveProject(input: {
   id?: string;
   userEmail: string;
   title: string;
@@ -155,15 +217,14 @@ export function saveProject(input: {
   duration?: string;
   updatedAt?: string;
 }) {
-  const { db } = getDb();
-  const userId = upsertUser({
+  const userId = await upsertUser({
     email: input.userEmail,
     name: input.userEmail.split("@")[0] || input.userEmail,
     role: "user",
   });
   const id = input.id ?? `p-${randomUUID()}`;
   const updatedAt = input.updatedAt ?? new Date().toISOString();
-  db.prepare(
+  const sqlText =
     `INSERT INTO projects (id, user_id, title, status, format, duration, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
@@ -171,12 +232,18 @@ export function saveProject(input: {
        status = excluded.status,
        format = excluded.format,
        duration = excluded.duration,
-       updated_at = excluded.updated_at`,
-  ).run(id, userId, input.title, input.status, input.format ?? null, input.duration ?? null, updatedAt);
+       updated_at = excluded.updated_at`;
+  const params = [id, userId, input.title, input.status, input.format ?? null, input.duration ?? null, updatedAt];
+  if (hasManagedDatabase()) {
+    await pgRun(sqlText, params);
+    return id;
+  }
+  const { db } = getDb();
+  db.prepare(sqlText).run(...params);
   return id;
 }
 
-export function appendCreditRecordDb(input: {
+export async function appendCreditRecordDb(input: {
   userEmail?: string;
   userId?: string;
   projectId?: string;
@@ -185,18 +252,24 @@ export function appendCreditRecordDb(input: {
   description: string;
   delta: number;
 }) {
-  const { db } = getDb();
   const scopeEmail = normalizeScope(input.userEmail);
-  const rows = db
-    .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
-    .all(scopeEmail) as Array<{ balance?: number }>;
+  const rows = hasManagedDatabase()
+    ? ((await pgAll("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1", [
+        scopeEmail,
+      ])) as Array<{ balance?: number }>)
+    : (() => {
+        const { db } = getDb();
+        return db
+          .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+          .all(scopeEmail) as Array<{ balance?: number }>;
+      })();
   const latestBalance = rows[0]?.balance ?? 50;
   const balance = latestBalance + input.delta;
   const id = `record-${randomUUID()}`;
-  db.prepare(
+  const sqlText =
     `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const params = [
     id,
     nowIso(),
     input.type,
@@ -207,11 +280,17 @@ export function appendCreditRecordDb(input: {
     input.userEmail ?? null,
     input.projectId ?? null,
     input.projectTitle ?? null,
-  );
+  ];
+  if (hasManagedDatabase()) {
+    await pgRun(sqlText, params);
+  } else {
+    const { db } = getDb();
+    db.prepare(sqlText).run(...params);
+  }
   return { id, balance };
 }
 
-export function applyCreditRecordAtomic(input: {
+export async function applyCreditRecordAtomic(input: {
   userEmail: string;
   userId?: string;
   projectId?: string;
@@ -221,11 +300,68 @@ export function applyCreditRecordAtomic(input: {
   delta: number;
   rejectNegativeBalance?: boolean;
 }) {
-  const { db } = getDb();
   const scopeEmail = normalizeScope(input.userEmail);
   if (!scopeEmail || scopeEmail === "guest") {
     throw new Error("A signed-in user email is required for credit changes.");
   }
+
+  if (hasManagedDatabase()) {
+    return pgTransaction(async (tx) => {
+      const existingUser = (await pgTxGet(tx, "SELECT id FROM users WHERE email = ?", [scopeEmail])) as
+        | { id?: string }
+        | undefined;
+      const userId = input.userId || existingUser?.id || `u-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO users (id, email, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, 'user', ?, ?)
+         ON CONFLICT(email) DO UPDATE SET
+           updated_at = excluded.updated_at`,
+        [userId, scopeEmail, scopeEmail.split("@")[0] || "User", nowIso(), nowIso()],
+      );
+
+      const latest = (await pgTxGet(
+        tx,
+        "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        [scopeEmail],
+      )) as { balance?: number } | undefined;
+      const latestBalance = Number(latest?.balance ?? 50);
+      const nextBalance = latestBalance + input.delta;
+      if (input.rejectNegativeBalance && nextBalance < 0) {
+        return {
+          applied: false as const,
+          code: "INSUFFICIENT_CREDITS",
+          balance: latestBalance,
+        };
+      }
+
+      const id = `record-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          nowIso(),
+          input.type,
+          input.description,
+          input.delta,
+          nextBalance,
+          userId,
+          scopeEmail,
+          input.projectId ?? null,
+          input.projectTitle ?? null,
+        ],
+      );
+      return {
+        applied: true as const,
+        id,
+        balance: nextBalance,
+      };
+    });
+  }
+
+  const { db } = getDb();
 
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -282,15 +418,18 @@ export function applyCreditRecordAtomic(input: {
   }
 }
 
-export function listCreditRecords(email?: string | null) {
-  const { db } = getDb();
+export async function listCreditRecords(email?: string | null) {
   const scopeEmail = normalizeScope(email);
+  if (hasManagedDatabase()) {
+    return pgAll("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC", [scopeEmail]);
+  }
+  const { db } = getDb();
   return db
     .prepare("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC")
     .all(scopeEmail);
 }
 
-export function saveSubscriptionDb(input: {
+export async function saveSubscriptionDb(input: {
   userEmail: string;
   planId: string;
   planName: string;
@@ -300,17 +439,16 @@ export function saveSubscriptionDb(input: {
   renewAt: string;
   canceledAt?: string;
 }) {
-  const { db } = getDb();
-  const userId = upsertUser({
+  const userId = await upsertUser({
     email: input.userEmail,
     name: input.userEmail.split("@")[0] || input.userEmail,
     role: "user",
   });
   const id = `sub-${randomUUID()}`;
-  db.prepare(
+  const sqlText =
     `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const params = [
     id,
     userId,
     input.planId,
@@ -322,21 +460,29 @@ export function saveSubscriptionDb(input: {
     input.canceledAt ?? null,
     nowIso(),
     nowIso(),
-  );
+  ];
+  if (hasManagedDatabase()) {
+    await pgRun(sqlText, params);
+    return id;
+  }
+  const { db } = getDb();
+  db.prepare(sqlText).run(...params);
   return id;
 }
 
-export function getLatestSubscriptionDb(email: string) {
-  const { db } = getDb();
-  const row = db
-    .prepare(
+export async function getLatestSubscriptionDb(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const sqlText =
       `SELECT s.* FROM subscriptions s
        INNER JOIN users u ON u.id = s.user_id
        WHERE u.email = ?
        ORDER BY s.updated_at DESC, s.created_at DESC
-       LIMIT 1`,
-    )
-    .get(email.trim().toLowerCase());
+       LIMIT 1`;
+  if (hasManagedDatabase()) {
+    return (await pgGet(sqlText, [normalizedEmail])) ?? null;
+  }
+  const { db } = getDb();
+  const row = db.prepare(sqlText).get(normalizedEmail);
   return row ?? null;
 }
 
@@ -418,7 +564,18 @@ export function listUploadJobs(userScope?: string) {
     .all(normalizeScope(userScope));
 }
 
-export function getCaseMetricDelta(caseId: string, userScope: string) {
+export async function getCaseMetricDelta(caseId: string, userScope: string) {
+  if (hasManagedDatabase()) {
+    return (
+      (await pgGet(
+        "SELECT views_delta as \"viewsDelta\", likes_delta as \"likesDelta\", liked FROM featured_case_metrics WHERE case_id = ? AND user_scope = ?",
+        caseId,
+        normalizeScope(userScope),
+      )) ?? null
+    ) as
+      | { viewsDelta?: number; likesDelta?: number; liked?: number }
+      | null;
+  }
   const { db } = getDb();
   return (
     db
@@ -427,11 +584,27 @@ export function getCaseMetricDelta(caseId: string, userScope: string) {
       )
       .get(caseId, normalizeScope(userScope)) ?? null
   ) as
-    | { viewsDelta?: number; likesDelta?: number; liked?: number }
-    | null;
+      | { viewsDelta?: number; likesDelta?: number; liked?: number }
+      | null;
 }
 
-export function toggleCaseLikeDb(caseId: string, userScope: string) {
+export async function toggleCaseLikeDb(caseId: string, userScope: string) {
+  if (hasManagedDatabase()) {
+    const scope = normalizeScope(userScope);
+    const row = (await pgGet(
+      `INSERT INTO featured_case_metrics (case_id, user_scope, views_delta, likes_delta, liked, updated_at)
+       VALUES (?, ?, 0, 1, 1, CURRENT_TIMESTAMP)
+       ON CONFLICT(case_id, user_scope)
+       DO UPDATE SET
+         likes_delta = featured_case_metrics.likes_delta + CASE WHEN featured_case_metrics.liked = 1 THEN -1 ELSE 1 END,
+         liked = CASE WHEN featured_case_metrics.liked = 1 THEN 0 ELSE 1 END,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING likes_delta as "likesDelta", liked`,
+      caseId,
+      scope,
+    )) as { likesDelta?: number; liked?: number } | undefined;
+    return { liked: Boolean(row?.liked), likesDelta: Number(row?.likesDelta ?? 0) };
+  }
   const { db } = getDb();
   const scope = normalizeScope(userScope);
   const existing = db
@@ -506,15 +679,21 @@ export function updateUploadJob(
   return next;
 }
 
-export function hasBillingFulfillment(sessionId: string) {
-  const { db } = getDb();
-  const row = db
-    .prepare("SELECT session_id as sessionId FROM billing_fulfillments WHERE session_id = ? LIMIT 1")
-    .get(sessionId) as { sessionId?: string } | undefined;
+export async function hasBillingFulfillment(sessionId: string) {
+  const row = hasManagedDatabase()
+    ? ((await pgGet("SELECT session_id as \"sessionId\" FROM billing_fulfillments WHERE session_id = ? LIMIT 1", [
+        sessionId,
+      ])) as { sessionId?: string } | undefined)
+    : (() => {
+        const { db } = getDb();
+        return db
+          .prepare("SELECT session_id as sessionId FROM billing_fulfillments WHERE session_id = ? LIMIT 1")
+          .get(sessionId) as { sessionId?: string } | undefined;
+      })();
   return Boolean(row?.sessionId);
 }
 
-export function recordBillingFulfillment(input: {
+export async function recordBillingFulfillment(input: {
   sessionId: string;
   userEmail: string;
   planId: string;
@@ -522,11 +701,10 @@ export function recordBillingFulfillment(input: {
   checkoutSource?: string;
   checkoutStatus?: string;
 }) {
-  const { db } = getDb();
-  db.prepare(
+  const sqlText =
     `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, checkout_source, checkout_status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
+     VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  const params = [
     input.sessionId,
     normalizeScope(input.userEmail),
     input.planId,
@@ -534,10 +712,16 @@ export function recordBillingFulfillment(input: {
     input.checkoutSource?.trim().slice(0, 64) || null,
     input.checkoutStatus?.trim().slice(0, 32) || "fulfilled",
     nowIso(),
-  );
+  ];
+  if (hasManagedDatabase()) {
+    await pgRun(sqlText, params);
+    return;
+  }
+  const { db } = getDb();
+  db.prepare(sqlText).run(...params);
 }
 
-export function applyBillingFulfillmentAtomic(input: {
+export async function applyBillingFulfillmentAtomic(input: {
   sessionId: string;
   userEmail: string;
   planId: string;
@@ -548,8 +732,80 @@ export function applyBillingFulfillmentAtomic(input: {
   renewAt: string;
   checkoutSource?: string;
 }) {
-  const { db } = getDb();
   const normalizedEmail = normalizeScope(input.userEmail);
+
+  if (hasManagedDatabase()) {
+    return pgTransaction(async (tx) => {
+      const existing = (await pgTxGet(
+        tx,
+        "SELECT session_id as \"sessionId\" FROM billing_fulfillments WHERE session_id = ? LIMIT 1",
+        [input.sessionId],
+      )) as { sessionId?: string } | undefined;
+      if (existing?.sessionId) {
+        return { applied: false as const };
+      }
+
+      const userExisting = (await pgTxGet(tx, "SELECT id FROM users WHERE email = ?", [normalizedEmail])) as
+        | { id?: string }
+        | undefined;
+      const userId = userExisting?.id ?? `u-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO users (id, email, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, 'user', ?, ?)
+         ON CONFLICT(email) DO UPDATE SET
+           updated_at = excluded.updated_at`,
+        [userId, normalizedEmail, normalizedEmail.split("@")[0] || "User", nowIso(), nowIso()],
+      );
+
+      const subscriptionId = `sub-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO subscriptions (id, user_id, plan_id, plan_name, cycle, status, started_at, renew_at, canceled_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, null, ?, ?)`,
+        [subscriptionId, userId, input.planId, input.planName, input.cycle, input.startedAt, input.renewAt, nowIso(), nowIso()],
+      );
+
+      const previous = (await pgTxGet(
+        tx,
+        "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        [normalizedEmail],
+      )) as { balance?: number } | undefined;
+      const previousBalance = Number(previous?.balance ?? 50);
+      const nextBalance = previousBalance + input.monthlyCredits;
+      await pgTxRun(
+        tx,
+        `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+         VALUES (?, ?, 'topup', ?, ?, ?, ?, ?, null, null)`,
+        [
+          `record-${randomUUID()}`,
+          nowIso(),
+          `${input.planName} ${input.cycle} purchase credited${input.checkoutSource ? ` [source:${input.checkoutSource}]` : ""}`,
+          input.monthlyCredits,
+          nextBalance,
+          userId,
+          normalizedEmail,
+        ],
+      );
+      await pgTxRun(
+        tx,
+        `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, checkout_source, checkout_status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          input.sessionId,
+          normalizedEmail,
+          input.planId,
+          input.cycle,
+          input.checkoutSource?.trim().slice(0, 64) || null,
+          "fulfilled",
+          nowIso(),
+        ],
+      );
+      return { applied: true as const };
+    });
+  }
+
+  const { db } = getDb();
 
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -799,9 +1055,8 @@ export function readOpsLogFileByUserEmail(userEmail: string, limit = 2000) {
   };
 }
 
-export function logOpsEvent(input: OpsEventInput) {
+export async function logOpsEvent(input: OpsEventInput) {
   try {
-    const { db } = getDb();
     const id = `evt-${randomUUID()}`;
     const category = clampText(input.category, 48) || "unknown";
     const action = clampText(input.action, 64) || "unknown";
@@ -813,10 +1068,9 @@ export function logOpsEvent(input: OpsEventInput) {
     const projectId = clampText(input.projectId, 120) || null;
     const detailsJson = stringifyDetails(input.details);
     const createdAt = nowIso();
-    db.prepare(
-      `INSERT INTO ops_events (id, category, action, status, source, code, message, user_email, project_id, details_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
+    const sqlText = `INSERT INTO ops_events (id, category, action, status, source, code, message, user_email, project_id, details_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const params = [
       id,
       category,
       action,
@@ -828,7 +1082,13 @@ export function logOpsEvent(input: OpsEventInput) {
       projectId,
       detailsJson,
       createdAt,
-    );
+    ];
+    if (hasManagedDatabase()) {
+      await pgRun(sqlText, params);
+    } else {
+      const { db } = getDb();
+      db.prepare(sqlText).run(...params);
+    }
     appendOpsEventFileRow({
       id,
       category,

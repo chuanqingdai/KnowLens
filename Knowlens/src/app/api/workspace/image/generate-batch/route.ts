@@ -630,8 +630,8 @@ async function requestImageByPolicy(input: {
   };
 }
 
-function isFreeUserBySubscription(email: string) {
-  const row = getLatestSubscriptionDb(email) as { status?: string } | null;
+async function isFreeUserBySubscription(email: string) {
+  const row = (await getLatestSubscriptionDb(email)) as { status?: string } | null;
   if (!row) {
     return true;
   }
@@ -920,7 +920,7 @@ export async function POST(request: NextRequest) {
 
     const projectId = normalizeProjectId(payload.projectId);
     const projectTraceId = normalizeProjectTraceId(payload.projectTraceId);
-    const isFreeUser = isFreeUserBySubscription(email);
+    const isFreeUser = await isFreeUserBySubscription(email);
 
     const job = await createImageGenerationJob({
       userEmail: email,
@@ -936,14 +936,14 @@ export async function POST(request: NextRequest) {
 
     if (projectId) {
       const projectPages = buildProjectPagesFromPayload(payload, normalizedTasks);
-      upsertWorkspaceProjectPages({
+      await upsertWorkspaceProjectPages({
         userEmail: email,
         projectId,
         outputType: payload.intent || payload.normalizedDirection || normalizedTasks[0]?.outputType || "poster",
         pages: projectPages,
       });
       for (const task of job.tasks) {
-        bindWorkspaceProjectPageTask({
+        await bindWorkspaceProjectPageTask({
           userEmail: email,
           projectId,
           outputType: task.outputType || payload.intent || "poster",
@@ -1025,7 +1025,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    incrementUsageCounter({
+    await incrementUsageCounter({
       scopeKey: getScopeFromRequest(request, email),
       metricKey: "workspace:image_generate_batch",
     });
@@ -1130,7 +1130,7 @@ export async function POST(request: NextRequest) {
           errorMessage: generated.errorMessage || "Image generation failed.",
         });
         if (projectId) {
-          updateWorkspaceProjectPageImage({
+          await updateWorkspaceProjectPageImage({
             userEmail: email,
             projectId,
             outputType: task.outputType || payload.intent || "poster",
@@ -1252,7 +1252,7 @@ export async function POST(request: NextRequest) {
             mimeType: persisted.mimeType,
           });
           if (projectId) {
-            updateWorkspaceProjectPageImage({
+            await updateWorkspaceProjectPageImage({
               userEmail: email,
               projectId,
               outputType: task.outputType || payload.intent || "poster",
@@ -1372,7 +1372,7 @@ export async function POST(request: NextRequest) {
         errorMessage: persistResult.message,
       });
       if (projectId) {
-        updateWorkspaceProjectPageImage({
+        await updateWorkspaceProjectPageImage({
           userEmail: email,
           projectId,
           outputType: task.outputType || payload.intent || "poster",

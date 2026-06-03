@@ -2768,7 +2768,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scopeKey = getRequestScope(request, email);
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: `poster-draft:${scopeKey}`,
       endpoint: "content-poster-draft",
       limit: RATE_LIMIT_CONFIG.contentPosterDraft.limit,
@@ -2776,12 +2776,12 @@ export async function POST(request: NextRequest) {
     });
 
     const dailyChatOnlyLimit = parseIntEnv("ABUSE_GUARD_DAILY_CHAT_ONLY_LIMIT", 120);
-    const todayDraftCount = incrementAndCheckUsageLimit({
+    const todayDraftCount = (await incrementAndCheckUsageLimit({
       scopeKey,
       metricKey: "workspace:draft_request",
       limit: Math.max(dailyChatOnlyLimit, 10_000),
-    }).current;
-    const todayGenerationCount = getUsageCounter({
+    })).current;
+    const todayGenerationCount = await getUsageCounter({
       scopeKey,
       metricKey: "workspace:generation_confirmed",
     });

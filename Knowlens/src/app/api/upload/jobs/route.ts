@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     const sourceText = (body.sourceText ?? "").trim();
 
     const scopeKey = getScopeFromRequest(request, userEmail);
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey,
       endpoint: "upload-job-create",
       limit: RATE_LIMIT_CONFIG.uploadJobCreate.limit,

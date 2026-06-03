@@ -137,19 +137,19 @@ export async function resolveProjectDetail(input: {
   userEmail: string;
   projectId: string;
 }) {
-  const project = getProjectByIdForUser(input.userEmail, input.projectId) as ProjectRow | null;
+  const project = (await getProjectByIdForUser(input.userEmail, input.projectId)) as ProjectRow | null;
   if (!project?.id) {
     return null;
   }
 
   const storedFormat = normalizeProjectOutputType(project.format);
   const initialPages = storedFormat
-    ? listWorkspaceProjectPages({
+    ? await listWorkspaceProjectPages({
         userEmail: input.userEmail,
         projectId: input.projectId,
         outputType: storedFormat,
       })
-    : listWorkspaceProjectPages({
+    : await listWorkspaceProjectPages({
         userEmail: input.userEmail,
         projectId: input.projectId,
       });
@@ -168,7 +168,7 @@ export async function resolveProjectDetail(input: {
   const pages =
     storedFormat || !outputType
       ? initialPages
-      : listWorkspaceProjectPages({
+      : await listWorkspaceProjectPages({
           userEmail: input.userEmail,
           projectId: input.projectId,
           outputType,
@@ -202,11 +202,11 @@ export async function resolveProjectDetail(input: {
     imageHistory: imageHistoryByPageIndex.get(page.pageIndex) || [],
   }));
   const cover =
-    getWorkspaceProjectCover({
+    (await getWorkspaceProjectCover({
       userEmail: input.userEmail,
       projectId: input.projectId,
       outputType,
-    }) ||
+    })) ||
     tasks.find((task) => task.status === "asset_ready" && task.renderUrl)?.renderUrl ||
     "";
   const status = aggregateStatus({
@@ -236,7 +236,7 @@ export async function resolveProjectDetail(input: {
 }
 
 export async function listProjectSummaries(userEmail: string) {
-  const rows = listProjectsByUser(userEmail) as ProjectRow[];
+  const rows = (await listProjectsByUser(userEmail)) as ProjectRow[];
   return Promise.all(
     rows.map(async (row) => {
       const projectId = normalizeText(row.id);

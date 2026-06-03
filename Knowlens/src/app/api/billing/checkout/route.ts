@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Please sign in before checkout." }, { status: 401 });
     }
 
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: `user:${email}`,
       endpoint: "billing-checkout",
       limit: RATE_LIMIT_CONFIG.billingCheckout.limit,

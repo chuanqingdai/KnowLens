@@ -17,13 +17,13 @@ export async function POST(
     }
     const body = (await request.json().catch(() => ({}))) as { userEmail?: string };
     const userScope = normalizeScope(body.userEmail);
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: userScope === "guest" ? `ip:${request.headers.get("x-forwarded-for") ?? "unknown"}` : `user:${userScope}`,
       endpoint: "featured-like",
       limit: RATE_LIMIT_CONFIG.featuredLike.limit,
       windowMs: RATE_LIMIT_CONFIG.featuredLike.windowMs,
     });
-    const next = toggleCaseLikeDb(caseId, userScope);
+    const next = await toggleCaseLikeDb(caseId, userScope);
     return NextResponse.json({ ok: true, liked: next.liked, likesDelta: next.likesDelta });
   } catch (error) {
     const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;

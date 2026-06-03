@@ -19,7 +19,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ caseI
   const { caseId } = await context.params;
   const body = (await request.json()) as UpdateCaseBody;
   try {
-    const item = updatePublishedCaseStatus({
+    const item = await updatePublishedCaseStatus({
       id: caseId,
       status: body.status,
       featured: body.featured,

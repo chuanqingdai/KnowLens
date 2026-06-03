@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     const cycle = parseCycle(meta.billing_cycle);
     const checkoutSource = (meta.checkout_source ?? "unknown").trim().slice(0, 64) || "unknown";
     checkoutSourceForLog = checkoutSource;
-    if (hasBillingFulfillment(sessionId)) {
+    if (await hasBillingFulfillment(sessionId)) {
       logOpsEvent({
         category: "billing",
         action: "checkout_finalize_duplicate",
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
     const startedAt = now.toISOString();
     const renewAt = (cycle === "yearly" ? addMonths(now, 12) : addMonths(now, 1)).toISOString();
 
-    const result = applyBillingFulfillmentAtomic({
+    const result = await applyBillingFulfillmentAtomic({
       sessionId,
       userEmail: email,
       planId: plan.id,

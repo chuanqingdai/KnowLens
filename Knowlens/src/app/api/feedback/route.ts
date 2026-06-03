@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       submitterName?: string;
     };
     const email = (body.submitterEmail ?? "").trim().toLowerCase();
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: email ? `user:${email}` : `ip:${request.headers.get("x-forwarded-for") ?? "unknown"}`,
       endpoint: "feedback-create",
       limit: RATE_LIMIT_CONFIG.feedbackCreate.limit,

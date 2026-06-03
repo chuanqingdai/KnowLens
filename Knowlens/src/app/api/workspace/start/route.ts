@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scopeKey = getScopeFromRequest(request, email);
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: `workspace-start:${scopeKey}`,
       endpoint: "workspace-start-generate",
       limit: RATE_LIMIT_CONFIG.appStartGenerate.limit,
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
     const dailyNewProjectLimit = parseIntEnv("ABUSE_GUARD_DAILY_NEW_PROJECT_LIMIT", 40);
-    const dailyUsage = incrementAndCheckUsageLimit({
+    const dailyUsage = await incrementAndCheckUsageLimit({
       scopeKey,
       metricKey: "workspace:new_project",
       limit: dailyNewProjectLimit,
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userId = upsertUser({
+    const userId = await upsertUser({
       email,
       name: session?.user?.name?.trim() || email.split("@")[0] || "User",
       role: "user",
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       prompt: normalizedPrompt,
       sources: normalizedSources.map((item) => ({ name: item.name })),
     });
-    saveProject({
+    await saveProject({
       id: projectRawId,
       userEmail: email,
       title: projectTitle,

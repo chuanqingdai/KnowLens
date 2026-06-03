@@ -115,7 +115,7 @@ export async function GET(
       projectId: normalizedProjectId,
       intent,
     });
-    const persistedPages = listWorkspaceProjectPages({
+    const persistedPages = await listWorkspaceProjectPages({
       userEmail: email,
       projectId: normalizedProjectId,
       outputType: intent,

@@ -5,6 +5,7 @@ import path from "node:path";
 import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { getDb } from "@/lib/server/db";
 import { readImageAsset } from "@/lib/server/image-generation-jobs";
+import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
 import {
   listWorkspaceProjectPages,
   type WorkspaceProjectPageOutputType,
@@ -296,7 +297,21 @@ async function copyPublicCaseAsset(input: {
   };
 }
 
-function getUniqueCaseSlug(baseSlug: string, existingCaseId?: string) {
+async function getUniqueCaseSlug(baseSlug: string, existingCaseId?: string) {
+  if (hasManagedDatabase()) {
+    let slug = baseSlug;
+    let suffix = 2;
+    while (true) {
+      const row = (await pgGet("SELECT id FROM published_cases WHERE slug = ? LIMIT 1", slug)) as
+        | { id?: string }
+        | undefined;
+      if (!row?.id || row.id === existingCaseId) {
+        return slug;
+      }
+      slug = `${baseSlug}-${suffix}`;
+      suffix += 1;
+    }
+  }
   const { db } = getDb();
   let slug = baseSlug;
   let suffix = 2;
@@ -312,7 +327,30 @@ function getUniqueCaseSlug(baseSlug: string, existingCaseId?: string) {
   }
 }
 
-export function listPublishedCases(input?: { includeDrafts?: boolean; limit?: number }) {
+export async function listPublishedCases(input?: { includeDrafts?: boolean; limit?: number }) {
+  if (hasManagedDatabase()) {
+    const includeDrafts = Boolean(input?.includeDrafts);
+    const limit = Math.max(1, Math.min(200, Math.round(Number(input?.limit || 80))));
+    const rows = (includeDrafts
+      ? await pgAll(
+          `SELECT * FROM published_cases
+           ORDER BY featured DESC, sort_order ASC, COALESCE(published_at, updated_at) DESC
+           LIMIT ?`,
+          limit,
+        )
+      : await pgAll(
+          `SELECT * FROM published_cases
+           WHERE status = 'published'
+           ORDER BY featured DESC, sort_order ASC, COALESCE(published_at, updated_at) DESC
+           LIMIT ?`,
+          limit,
+        )) as Array<Record<string, unknown>>;
+    const items = rows.map(mapCaseRow);
+    for (const item of items) {
+      item.assets = await listPublishedCaseAssets(item.id);
+    }
+    return items;
+  }
   const { db } = getDb();
   const includeDrafts = Boolean(input?.includeDrafts);
   const limit = Math.max(1, Math.min(200, Math.round(Number(input?.limit || 80))));
@@ -334,17 +372,30 @@ export function listPublishedCases(input?: { includeDrafts?: boolean; limit?: nu
         .all(limit)) as Array<Record<string, unknown>>;
   return rows.map((row) => {
     const item = mapCaseRow(row);
-    item.assets = listPublishedCaseAssets(item.id);
+    item.assets = listPublishedCaseAssetsSync(item.id);
     return item;
   });
 }
 
-export function getPublishedCaseBySlug(slug: string, includeDrafts = false) {
-  const { db } = getDb();
+export async function getPublishedCaseBySlug(slug: string, includeDrafts = false) {
   const normalizedSlug = normalizeText(decodeURIComponent(slug), 180);
   if (!normalizedSlug) {
     return null;
   }
+  if (hasManagedDatabase()) {
+    const row = (includeDrafts
+      ? await pgGet("SELECT * FROM published_cases WHERE slug = ? LIMIT 1", normalizedSlug)
+      : await pgGet("SELECT * FROM published_cases WHERE slug = ? AND status = 'published' LIMIT 1", normalizedSlug)) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) {
+      return null;
+    }
+    const item = mapCaseRow(row);
+    item.assets = await listPublishedCaseAssets(item.id);
+    return item;
+  }
+  const { db } = getDb();
   const row = (includeDrafts
     ? db.prepare("SELECT * FROM published_cases WHERE slug = ? LIMIT 1").get(normalizedSlug)
     : db.prepare("SELECT * FROM published_cases WHERE slug = ? AND status = 'published' LIMIT 1").get(normalizedSlug)) as
@@ -354,16 +405,27 @@ export function getPublishedCaseBySlug(slug: string, includeDrafts = false) {
     return null;
   }
   const item = mapCaseRow(row);
-  item.assets = listPublishedCaseAssets(item.id);
+  item.assets = listPublishedCaseAssetsSync(item.id);
   return item;
 }
 
-export function getPublishedCaseAssetById(assetId: string) {
-  const { db } = getDb();
+export async function getPublishedCaseAssetById(assetId: string) {
   const id = normalizeText(assetId, 160);
   if (!id) {
     return null;
   }
+  if (hasManagedDatabase()) {
+    const row = (await pgGet(
+      `SELECT a.*
+       FROM published_case_assets a
+       JOIN published_cases c ON c.id = a.case_id
+       WHERE a.id = ? AND c.status = 'published'
+       LIMIT 1`,
+      id,
+    )) as Record<string, unknown> | undefined;
+    return row ? mapAssetRow(row) : null;
+  }
+  const { db } = getDb();
   const row = db
     .prepare(
       `SELECT a.*
@@ -376,7 +438,7 @@ export function getPublishedCaseAssetById(assetId: string) {
   return row ? mapAssetRow(row) : null;
 }
 
-export function listPublishedCaseAssets(caseId: string) {
+function listPublishedCaseAssetsSync(caseId: string) {
   const { db } = getDb();
   const rows = db
     .prepare(
@@ -388,8 +450,21 @@ export function listPublishedCaseAssets(caseId: string) {
   return rows.map(mapAssetRow);
 }
 
+export async function listPublishedCaseAssets(caseId: string) {
+  if (hasManagedDatabase()) {
+    const rows = (await pgAll(
+      `SELECT * FROM published_case_assets
+       WHERE case_id = ?
+       ORDER BY sort_order ASC, page_index ASC`,
+      caseId,
+    )) as Array<Record<string, unknown>>;
+    return rows.map(mapAssetRow);
+  }
+  return listPublishedCaseAssetsSync(caseId);
+}
+
 export async function readPublishedCaseAsset(assetId: string) {
-  const asset = getPublishedCaseAssetById(assetId);
+  const asset = await getPublishedCaseAssetById(assetId);
   if (!asset?.storageKey) {
     return null;
   }
@@ -422,11 +497,11 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
     throw new Error("Project ID and user email are required.");
   }
 
-  const pages = listWorkspaceProjectPages({
+  const pages = (await listWorkspaceProjectPages({
     projectId,
     userEmail,
     outputType: outputType as WorkspaceProjectPageOutputType,
-  }).filter((page) => page.imageUrl || page.rawImageUrl || page.imageTaskId);
+  })).filter((page) => page.imageUrl || page.rawImageUrl || page.imageTaskId);
 
   if (!pages.length) {
     throw new Error("No generated project images are available to publish.");
@@ -442,31 +517,56 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
   const baseSlug = slugifyPublishedCase(input.slug || title);
   const now = nowIso();
   const caseId = `pc-${randomUUID()}`;
-  const slug = getUniqueCaseSlug(baseSlug);
-  const { db } = getDb();
+  const slug = await getUniqueCaseSlug(baseSlug);
 
-  db.prepare(
-    `INSERT INTO published_cases (
-      id, slug, title, description, category, output_type, author_label, source_project_id,
-      source_user_email, status, featured, sort_order, published_at, created_at, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?)`,
-  ).run(
-    caseId,
-    slug,
-    title,
-    description,
-    normalizeText(input.category, 80) || "All",
-    outputType,
-    normalizeText(input.authorLabel, 120) || "KnowLens",
-    projectId,
-    userEmail,
-    input.featured === false ? 0 : 1,
-    Math.round(Number(input.sortOrder || 0)),
-    now,
-    now,
-    now,
-  );
+  if (hasManagedDatabase()) {
+    await pgRun(
+      `INSERT INTO published_cases (
+        id, slug, title, description, category, output_type, author_label, source_project_id,
+        source_user_email, status, featured, sort_order, published_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?)`,
+      caseId,
+      slug,
+      title,
+      description,
+      normalizeText(input.category, 80) || "All",
+      outputType,
+      normalizeText(input.authorLabel, 120) || "KnowLens",
+      projectId,
+      userEmail,
+      input.featured === false ? 0 : 1,
+      Math.round(Number(input.sortOrder || 0)),
+      now,
+      now,
+      now,
+    );
+  } else {
+    const { db } = getDb();
+
+    db.prepare(
+      `INSERT INTO published_cases (
+        id, slug, title, description, category, output_type, author_label, source_project_id,
+        source_user_email, status, featured, sort_order, published_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?)`,
+    ).run(
+      caseId,
+      slug,
+      title,
+      description,
+      normalizeText(input.category, 80) || "All",
+      outputType,
+      normalizeText(input.authorLabel, 120) || "KnowLens",
+      projectId,
+      userEmail,
+      input.featured === false ? 0 : 1,
+      Math.round(Number(input.sortOrder || 0)),
+      now,
+      now,
+      now,
+    );
+  }
 
   const copiedAssets: PublishedCaseAssetRow[] = [];
   for (let index = 0; index < pages.length; index += 1) {
@@ -485,14 +585,7 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
     });
     const fileUrl = toPublicAssetUrl(assetId);
     const viewerUrl = toCaseViewerUrl(slug, assetSlug);
-    db.prepare(
-      `INSERT INTO published_case_assets (
-        id, case_id, slug, asset_type, title, description, page_index, file_url, viewer_url,
-        thumbnail_url, download_url, storage_key, mime_type, file_size, width, height,
-        duration_seconds, is_primary, sort_order, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
+    const assetValues = [
       assetId,
       caseId,
       assetSlug,
@@ -514,61 +607,95 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
       index,
       now,
       now,
-    );
-    const [asset] = listPublishedCaseAssets(caseId).filter((item) => item.id === assetId);
+    ];
+    const insertAssetSql = `INSERT INTO published_case_assets (
+      id, case_id, slug, asset_type, title, description, page_index, file_url, viewer_url,
+      thumbnail_url, download_url, storage_key, mime_type, file_size, width, height,
+      duration_seconds, is_primary, sort_order, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    if (hasManagedDatabase()) {
+      await pgRun(insertAssetSql, assetValues);
+    } else {
+      const { db } = getDb();
+      db.prepare(insertAssetSql).run(...assetValues);
+    }
+    const [asset] = (await listPublishedCaseAssets(caseId)).filter((item) => item.id === assetId);
     if (asset) {
       copiedAssets.push(asset);
     }
   }
 
   if (!copiedAssets.length) {
-    db.prepare("DELETE FROM published_cases WHERE id = ?").run(caseId);
+    if (hasManagedDatabase()) {
+      await pgRun("DELETE FROM published_cases WHERE id = ?", caseId);
+    } else {
+      const { db } = getDb();
+      db.prepare("DELETE FROM published_cases WHERE id = ?").run(caseId);
+    }
     throw new Error("No publishable asset could be copied.");
   }
 
   const coverAsset = copiedAssets.find((item) => item.isPrimary) ?? copiedAssets[0];
-  db.prepare(
-    `UPDATE published_cases
-     SET cover_asset_id = ?, cover_url = ?, updated_at = ?
-     WHERE id = ?`,
-  ).run(coverAsset.id, coverAsset.fileUrl, nowIso(), caseId);
+  if (hasManagedDatabase()) {
+    await pgRun(
+      `UPDATE published_cases
+       SET cover_asset_id = ?, cover_url = ?, updated_at = ?
+       WHERE id = ?`,
+      coverAsset.id,
+      coverAsset.fileUrl,
+      nowIso(),
+      caseId,
+    );
+  } else {
+    const { db } = getDb();
+    db.prepare(
+      `UPDATE published_cases
+       SET cover_asset_id = ?, cover_url = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(coverAsset.id, coverAsset.fileUrl, nowIso(), caseId);
+  }
 
-  const item = getPublishedCaseBySlug(slug, true);
+  const item = await getPublishedCaseBySlug(slug, true);
   if (!item) {
     throw new Error("Published case was created but could not be read.");
   }
   return item;
 }
 
-export function updatePublishedCaseStatus(input: {
+export async function updatePublishedCaseStatus(input: {
   id: string;
   status?: string;
   featured?: boolean;
   sortOrder?: number;
 }) {
-  const { db } = getDb();
   const id = normalizeText(input.id, 160);
   if (!id) {
     throw new Error("Case id is required.");
   }
-  const row = db.prepare("SELECT * FROM published_cases WHERE id = ? LIMIT 1").get(id) as
-    | Record<string, unknown>
-    | undefined;
+  const row = (hasManagedDatabase()
+    ? await pgGet("SELECT * FROM published_cases WHERE id = ? LIMIT 1", id)
+    : getDb().db.prepare("SELECT * FROM published_cases WHERE id = ? LIMIT 1").get(id)) as Record<string, unknown> | undefined;
   if (!row) {
     throw new Error("Published case not found.");
   }
   const current = mapCaseRow(row);
   const status = normalizeText(input.status, 40) || current.status;
-  db.prepare(
-    `UPDATE published_cases
-     SET status = ?, featured = ?, sort_order = ?, updated_at = ?
-     WHERE id = ?`,
-  ).run(
+  const updateValues = [
     status,
     typeof input.featured === "boolean" ? (input.featured ? 1 : 0) : current.featured ? 1 : 0,
     typeof input.sortOrder === "number" ? Math.round(input.sortOrder) : current.sortOrder,
     nowIso(),
     id,
-  );
+  ];
+  const updateSql = `UPDATE published_cases
+     SET status = ?, featured = ?, sort_order = ?, updated_at = ?
+     WHERE id = ?`;
+  if (hasManagedDatabase()) {
+    await pgRun(updateSql, updateValues);
+  } else {
+    const { db } = getDb();
+    db.prepare(updateSql).run(...updateValues);
+  }
   return getPublishedCaseBySlug(current.slug, true);
 }

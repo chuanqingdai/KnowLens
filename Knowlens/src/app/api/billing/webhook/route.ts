@@ -106,7 +106,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const cycle = parseCycle(session.metadata?.billing_cycle);
   const now = new Date();
-  const result = applyBillingFulfillmentAtomic({
+  const result = await applyBillingFulfillmentAtomic({
     sessionId,
     userEmail: email,
     planId: plan.id,

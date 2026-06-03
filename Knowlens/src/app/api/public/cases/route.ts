@@ -4,7 +4,7 @@ import { listPublishedCases } from "@/lib/server/published-cases";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const cases = listPublishedCases({ limit: 120 }).map((item) => ({
+  const cases = (await listPublishedCases({ limit: 120 })).map((item) => ({
     id: item.id,
     slug: item.slug,
     title: item.title,

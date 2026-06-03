@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/server/db";
+import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
 
 export type WorkspaceProjectPageOutputType = "poster" | "ppt" | "video";
 
@@ -81,7 +82,7 @@ function mapPageRow(row: Record<string, unknown>): WorkspaceProjectPageRow {
   };
 }
 
-export function upsertWorkspaceProjectPages(input: {
+export async function upsertWorkspaceProjectPages(input: {
   projectId: string;
   userEmail: string;
   outputType: WorkspaceProjectPageOutputType | string;
@@ -101,10 +102,8 @@ export function upsertWorkspaceProjectPages(input: {
     return 0;
   }
 
-  const { db } = getDb();
   const updatedAt = nowIso();
-  const statement = db.prepare(
-    `INSERT INTO workspace_project_pages (
+  const sqlText = `INSERT INTO workspace_project_pages (
       id, project_id, user_email, page_index, output_type, page_role, title, subtitle, body, visual,
       image_prompt_draft, status, created_at, updated_at
     )
@@ -122,7 +121,32 @@ export function upsertWorkspaceProjectPages(input: {
         THEN excluded.status
         ELSE workspace_project_pages.status
       END,
-      updated_at = excluded.updated_at`,
+      updated_at = excluded.updated_at`;
+  if (hasManagedDatabase()) {
+    for (const page of pages) {
+      await pgRun(sqlText, [
+        `wpp-${randomUUID()}`,
+        projectId,
+        userEmail,
+        page.index,
+        page.outputType,
+        normalizeOptionalText(page.pageRole, 80),
+        normalizeText(page.title, 400),
+        normalizeText(page.subtitle, 800),
+        normalizeText(page.body, 12000),
+        normalizeText(page.visual, 2000),
+        normalizeText(page.imagePromptDraft, 2000),
+        "draft_ready",
+        updatedAt,
+        updatedAt,
+      ]);
+    }
+    return pages.length;
+  }
+
+  const { db } = getDb();
+  const statement = db.prepare(
+    sqlText,
   );
   for (const page of pages) {
     statement.run(
@@ -145,7 +169,7 @@ export function upsertWorkspaceProjectPages(input: {
   return pages.length;
 }
 
-export function bindWorkspaceProjectPageTask(input: {
+export async function bindWorkspaceProjectPageTask(input: {
   projectId: string;
   userEmail: string;
   outputType: WorkspaceProjectPageOutputType | string;
@@ -161,15 +185,19 @@ export function bindWorkspaceProjectPageTask(input: {
   if (!projectId || !userEmail || !pageIndex || !taskId) {
     return;
   }
-  const { db } = getDb();
-  db.prepare(
-    `UPDATE workspace_project_pages
+  const sqlText = `UPDATE workspace_project_pages
      SET image_task_id = ?, status = ?, error_code = null, updated_at = ?
-     WHERE project_id = ? AND user_email = ? AND output_type = ? AND page_index = ?`,
-  ).run(taskId, normalizeText(input.status, 80) || "queued", nowIso(), projectId, userEmail, outputType, pageIndex);
+     WHERE project_id = ? AND user_email = ? AND output_type = ? AND page_index = ?`;
+  const params = [taskId, normalizeText(input.status, 80) || "queued", nowIso(), projectId, userEmail, outputType, pageIndex];
+  if (hasManagedDatabase()) {
+    await pgRun(sqlText, params);
+    return;
+  }
+  const { db } = getDb();
+  db.prepare(sqlText).run(...params);
 }
 
-export function updateWorkspaceProjectPageImage(input: {
+export async function updateWorkspaceProjectPageImage(input: {
   projectId: string;
   userEmail: string;
   outputType: WorkspaceProjectPageOutputType | string;
@@ -188,9 +216,7 @@ export function updateWorkspaceProjectPageImage(input: {
   if (!projectId || !userEmail || !pageIndex) {
     return;
   }
-  const { db } = getDb();
-  db.prepare(
-    `UPDATE workspace_project_pages
+  const sqlText = `UPDATE workspace_project_pages
      SET image_task_id = COALESCE(?, image_task_id),
          image_url = COALESCE(?, image_url),
          raw_image_url = COALESCE(?, raw_image_url),
@@ -198,8 +224,8 @@ export function updateWorkspaceProjectPageImage(input: {
          status = ?,
          error_code = ?,
          updated_at = ?
-     WHERE project_id = ? AND user_email = ? AND output_type = ? AND page_index = ?`,
-  ).run(
+     WHERE project_id = ? AND user_email = ? AND output_type = ? AND page_index = ?`;
+  const params = [
     normalizeOptionalText(input.taskId, 120),
     normalizeOptionalText(input.imageUrl, 1200),
     normalizeOptionalText(input.rawImageUrl, 1200),
@@ -211,10 +237,16 @@ export function updateWorkspaceProjectPageImage(input: {
     userEmail,
     outputType,
     pageIndex,
-  );
+  ];
+  if (hasManagedDatabase()) {
+    await pgRun(sqlText, params);
+    return;
+  }
+  const { db } = getDb();
+  db.prepare(sqlText).run(...params);
 }
 
-export function listWorkspaceProjectPages(input: {
+export async function listWorkspaceProjectPages(input: {
   projectId: string;
   userEmail: string;
   outputType?: WorkspaceProjectPageOutputType | string | null;
@@ -224,6 +256,22 @@ export function listWorkspaceProjectPages(input: {
   const outputType = input.outputType ? normalizeOutputType(input.outputType) : null;
   if (!projectId || !userEmail) {
     return [] as WorkspaceProjectPageRow[];
+  }
+  if (hasManagedDatabase()) {
+    const rows = outputType
+      ? await pgAll(
+          `SELECT * FROM workspace_project_pages
+           WHERE project_id = ? AND user_email = ? AND output_type = ?
+           ORDER BY page_index ASC`,
+          [projectId, userEmail, outputType],
+        )
+      : await pgAll(
+          `SELECT * FROM workspace_project_pages
+           WHERE project_id = ? AND user_email = ?
+           ORDER BY output_type ASC, page_index ASC`,
+          [projectId, userEmail],
+        );
+    return rows.map(mapPageRow);
   }
   const { db } = getDb();
   const rows = (outputType
@@ -244,7 +292,7 @@ export function listWorkspaceProjectPages(input: {
   return rows.map(mapPageRow);
 }
 
-export function getWorkspaceProjectCover(input: {
+export async function getWorkspaceProjectCover(input: {
   projectId: string;
   userEmail: string;
   outputType?: WorkspaceProjectPageOutputType | string | null;
@@ -254,6 +302,30 @@ export function getWorkspaceProjectCover(input: {
   const outputType = input.outputType ? normalizeOutputType(input.outputType) : null;
   if (!projectId || !userEmail) {
     return "";
+  }
+  if (hasManagedDatabase()) {
+    const row = outputType
+      ? await pgGet(
+          `SELECT image_url FROM workspace_project_pages
+           WHERE project_id = ? AND user_email = ? AND output_type = ? AND image_url IS NOT NULL AND image_url != ''
+           ORDER BY
+             CASE WHEN page_role = 'cover' THEN 0 ELSE 1 END ASC,
+             page_index ASC,
+             updated_at DESC
+           LIMIT 1`,
+          [projectId, userEmail, outputType],
+        )
+      : await pgGet(
+          `SELECT image_url FROM workspace_project_pages
+           WHERE project_id = ? AND user_email = ? AND image_url IS NOT NULL AND image_url != ''
+           ORDER BY
+             CASE WHEN page_role = 'cover' THEN 0 ELSE 1 END ASC,
+             page_index ASC,
+             updated_at DESC
+           LIMIT 1`,
+          [projectId, userEmail],
+        );
+    return String(row?.image_url || "").trim();
   }
   const { db } = getDb();
   const row = (outputType

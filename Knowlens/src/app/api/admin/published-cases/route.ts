@@ -31,7 +31,7 @@ export async function GET() {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
   }
   return NextResponse.json({
-    cases: listPublishedCases({ includeDrafts: true, limit: 200 }),
+    cases: await listPublishedCases({ includeDrafts: true, limit: 200 }),
   });
 }
 
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       origin: requestOrigin(request),
     });
 
-    logOpsEvent({
+    void logOpsEvent({
       category: "admin",
       action: "published_case_created",
       status: "ok",
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ case: item }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to publish case.";
-    logOpsEvent({
+    void logOpsEvent({
       category: "admin",
       action: "published_case_failed",
       status: "error",

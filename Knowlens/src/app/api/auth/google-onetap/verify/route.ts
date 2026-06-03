@@ -18,7 +18,7 @@ function getClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: `onetap:${request.headers.get("x-forwarded-for") ?? "unknown"}`,
       endpoint: "auth-google-onetap-verify",
       limit: RATE_LIMIT_CONFIG.authGoogleOneTapVerify.limit,

@@ -16,7 +16,7 @@ export async function POST(
     if (!recordId) {
       return NextResponse.json({ error: "record id is required" }, { status: 400 });
     }
-    rateLimitOrThrow({
+    await rateLimitOrThrow({
       scopeKey: `reply:${request.headers.get("x-forwarded-for") ?? "unknown"}`,
       endpoint: "feedback-reply",
       limit: RATE_LIMIT_CONFIG.feedbackReply.limit,
