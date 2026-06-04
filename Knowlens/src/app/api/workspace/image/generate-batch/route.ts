@@ -870,12 +870,18 @@ export async function POST(request: NextRequest) {
         intent: payload.intent || payload.normalizedDirection,
       });
       if (!recovered) {
+        const expectedExistingJob = Boolean(payload.jobId || (payload.runId && payload.idempotencyKey));
+        const recoverAction = expectedExistingJob ? "generation.recover.failure" : "generation.recover.not_found";
+        const recoverStatus = expectedExistingJob ? "error" : "info";
+        const recoverMessage = expectedExistingJob
+          ? "Expected image generation job was not found during recovery."
+          : "No prior image generation job was found before confirmation.";
         await logGenerationOpsEvent({
-          action: "generation.recover.failure",
-          status: "error",
+          action: recoverAction,
+          status: recoverStatus,
           source: "image_generate_batch",
           code: "IMAGE_JOB_RECOVERY_NOT_FOUND",
-          message: "No recoverable image generation job was found.",
+          message: recoverMessage,
           userEmail: email,
           projectId: payload.projectId,
           runId: payload.runId,
@@ -883,7 +889,7 @@ export async function POST(request: NextRequest) {
           idempotencyKey: payload.idempotencyKey,
           durationMs: Date.now() - recoverStartedAt,
           errorCode: "IMAGE_JOB_RECOVERY_NOT_FOUND",
-          safeErrorMessage: "No recoverable image generation job was found.",
+          safeErrorMessage: recoverMessage,
           extraDetails: payload.clientContext,
         });
         logImageBatchEvent({

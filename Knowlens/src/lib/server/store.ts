@@ -125,6 +125,8 @@ const generationOpsJobCounts = new Map<string, number>();
 const generationOpsRunCounts = new Map<string, number>();
 const generationOpsPollState = new Map<string, { count: number; signature: string }>();
 const generationOpsTerminalSeen = new Set<string>();
+const generationOpsRestoreSeen = new Set<string>();
+const generationOpsTraceSummarySeen = new Set<string>();
 
 function nowIso() {
   return new Date().toISOString();
@@ -1645,6 +1647,13 @@ function isTerminalGenerationStatus(status?: string | null) {
   return TERMINAL_GENERATION_JOB_STATUSES.has(clampText(status ?? "", 64).toLowerCase());
 }
 
+function summaryHasTerminalGenerationStatus(summary?: GenerationTaskStatusSummary | null) {
+  if (!summary) {
+    return false;
+  }
+  return Object.keys(summary).some((status) => isTerminalGenerationStatus(status));
+}
+
 function shouldLogGenerationPoll(input: {
   jobId?: string;
   jobStatus?: string;
@@ -1662,16 +1671,17 @@ function shouldLogGenerationPoll(input: {
   const previous = generationOpsPollState.get(jobId);
   const nextCount = (previous?.count ?? 0) + 1;
   generationOpsPollState.set(jobId, { count: nextCount, signature });
+  const terminal = isTerminalGenerationStatus(input.jobStatus);
   if (!previous) {
     return true;
   }
   if (previous.signature !== signature) {
     return true;
   }
-  if (input.status === "error") {
-    return true;
+  if (terminal) {
+    return false;
   }
-  if (nextCount <= 5) {
+  if (input.status === "error") {
     return true;
   }
   return nextCount % 10 === 0;
@@ -1698,11 +1708,27 @@ function shouldDropGenerationEvent(input: GenerationOpsEventInput) {
     if (!jobId && !projectId) {
       return true;
     }
+    const restoreCode = clampText(input.code || input.errorCode || input.jobStatus || "restore", 64);
+    const restoreKey = [projectId || "-", jobId || "-", restoreCode || "-"].join(":");
+    if (generationOpsRestoreSeen.has(restoreKey)) {
+      return true;
+    }
+    generationOpsRestoreSeen.add(restoreKey);
   }
   if (action === "generation.trace.summary") {
     if (!hasIdentifiers && !hasSummary) {
       return true;
     }
+    const summaryKey = [
+      runId || "-",
+      jobId || "-",
+      clampText(input.taskId, 120) || "-",
+      clampText(input.code || input.errorCode || input.jobStatus || "summary", 64) || "-",
+    ].join(":");
+    if (generationOpsTraceSummarySeen.has(summaryKey)) {
+      return true;
+    }
+    generationOpsTraceSummarySeen.add(summaryKey);
   }
   return false;
 }
@@ -1740,8 +1766,9 @@ export async function logGenerationOpsEvent(input: GenerationOpsEventInput) {
   const jobCount = jobId ? (generationOpsJobCounts.get(jobId) ?? 0) : 0;
   const runCount = runId ? (generationOpsRunCounts.get(runId) ?? 0) : 0;
   const isSummaryEvent = action === "generation.trace.summary";
+  const isTerminalEvent = isTerminalGenerationStatus(jobStatus) || summaryHasTerminalGenerationStatus(input.taskStatusSummary);
   if ((jobId && jobCount >= GENERATION_LOG_JOB_CAP) || (runId && runCount >= GENERATION_LOG_RUN_CAP)) {
-    if (status !== "error" && !isSummaryEvent) {
+    if (status !== "error" && !isSummaryEvent && !isTerminalEvent) {
       return null;
     }
   }

@@ -444,6 +444,18 @@ type ImageGenerateBatchResponse = {
   }>;
 };
 
+type WorkspaceClientLogInput = {
+  category: string;
+  action: string;
+  status?: "ok" | "error" | "info";
+  source?: string;
+  code?: string;
+  message?: string;
+  details?: unknown;
+  projectId?: string | null;
+  projectTraceId?: string | null;
+};
+
 type ImageGenerationRestoreResponse = {
   ok?: boolean;
   error?: string;
@@ -545,12 +557,91 @@ const DEBUG_IMAGE_BRIDGE_MOCK_URL =
 const WORKSPACE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_WORKSPACE_IMAGE_DEBUG === "1";
 const WORKSPACE_FLOW_AUDIT = process.env.NEXT_PUBLIC_WORKSPACE_FLOW_AUDIT === "1";
 const WORKSPACE_VERBOSE_LOG = process.env.NEXT_PUBLIC_WORKSPACE_VERBOSE_LOG === "1";
-const WORKSPACE_CLIENT_TELEMETRY =
-  process.env.NODE_ENV === "production" ||
-  process.env.NEXT_PUBLIC_WORKSPACE_CLIENT_TELEMETRY === "1";
+const WORKSPACE_CLIENT_INFO_TELEMETRY = process.env.NEXT_PUBLIC_WORKSPACE_CLIENT_TELEMETRY === "1";
+const WORKSPACE_CLIENT_ERROR_TELEMETRY =
+  process.env.NODE_ENV === "production" || WORKSPACE_CLIENT_INFO_TELEMETRY;
+const WORKSPACE_CLIENT_LOG_FLUSH_DELAY_MS = 400;
+const WORKSPACE_CLIENT_LOG_MAX_QUEUE = 20;
+const WORKSPACE_CLIENT_LOG_DEDUPE_WINDOW_MS = 60_000;
 const initializedWorkspaceScopeKeys = new Set<string>();
 const workspaceChatHistoryPayloadCache = new Map<string, string>();
 const workspaceSessionPrefsPayloadCache = new Map<string, string>();
+const workspaceClientLogDedupedAt = new Map<string, number>();
+const workspaceClientLogQueue: WorkspaceClientLogInput[] = [];
+let workspaceClientLogFlushTimer: number | null = null;
+let workspaceClientLogInFlight = false;
+
+function scheduleWorkspaceClientLogFlush() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (workspaceClientLogFlushTimer !== null || workspaceClientLogInFlight) {
+    return;
+  }
+  workspaceClientLogFlushTimer = window.setTimeout(() => {
+    workspaceClientLogFlushTimer = null;
+    flushWorkspaceClientLogQueue();
+  }, WORKSPACE_CLIENT_LOG_FLUSH_DELAY_MS);
+}
+
+function flushWorkspaceClientLogQueue() {
+  if (typeof window === "undefined" || workspaceClientLogInFlight) {
+    return;
+  }
+  const next = workspaceClientLogQueue.shift();
+  if (!next) {
+    return;
+  }
+  workspaceClientLogInFlight = true;
+  void fetch("/api/telemetry/client-log", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(next),
+  })
+    .catch(() => undefined)
+    .finally(() => {
+      workspaceClientLogInFlight = false;
+      if (workspaceClientLogQueue.length) {
+        scheduleWorkspaceClientLogFlush();
+      }
+    });
+}
+
+function enqueueWorkspaceClientLog(input: WorkspaceClientLogInput) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const now = Date.now();
+  const dedupeKey = [
+    input.category,
+    input.action,
+    input.status ?? "info",
+    input.code ?? "",
+    input.projectId ?? "",
+    input.message ?? "",
+  ].join(":");
+  const lastSeen = workspaceClientLogDedupedAt.get(dedupeKey) ?? 0;
+  if (lastSeen && now - lastSeen < WORKSPACE_CLIENT_LOG_DEDUPE_WINDOW_MS) {
+    return;
+  }
+  workspaceClientLogDedupedAt.set(dedupeKey, now);
+  if (workspaceClientLogQueue.length >= WORKSPACE_CLIENT_LOG_MAX_QUEUE) {
+    const firstNonErrorIndex = workspaceClientLogQueue.findIndex((item) => item.status !== "error");
+    if (firstNonErrorIndex >= 0) {
+      workspaceClientLogQueue.splice(firstNonErrorIndex, 1);
+    } else {
+      workspaceClientLogQueue.shift();
+    }
+  }
+  workspaceClientLogQueue.push(input);
+  scheduleWorkspaceClientLogFlush();
+}
+
+function isCriticalWorkspaceClientInfoAction(action: string) {
+  return action === "ui.step6.enter" || action.startsWith("ui.step5.");
+}
 const AUTH_REQUIRED_PATTERNS = [
   /please sign in/i,
   /sign[-\s]?in required/i,
@@ -2596,41 +2687,27 @@ export default function WorkspacePage() {
   }, [flowStage]);
 
   const logClientEvent = useCallback(
-    (input: {
-      category: string;
-      action: string;
-      status?: "ok" | "error" | "info";
-      source?: string;
-      code?: string;
-      message?: string;
-      details?: unknown;
-      projectId?: string | null;
-      projectTraceId?: string | null;
-    }) => {
-      if (!WORKSPACE_CLIENT_TELEMETRY) {
+    (input: WorkspaceClientLogInput) => {
+      const status = input.status ?? "info";
+      const shouldSendInfo = WORKSPACE_CLIENT_INFO_TELEMETRY || isCriticalWorkspaceClientInfoAction(input.action);
+      if (status === "error" ? !WORKSPACE_CLIENT_ERROR_TELEMETRY : !shouldSendInfo) {
         return;
       }
-      void fetch("/api/telemetry/client-log", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      enqueueWorkspaceClientLog({
+        category: input.category,
+        action: input.action,
+        status,
+        source: input.source,
+        code: input.code,
+        message: input.message,
+        projectId: input.projectId ?? projectIdRef.current ?? undefined,
+        details: {
+          ...(input.details && typeof input.details === "object"
+            ? (input.details as Record<string, unknown>)
+            : {}),
+          projectTraceId: input.projectTraceId ?? projectTraceIdRef.current ?? undefined,
         },
-        body: JSON.stringify({
-          category: input.category,
-          action: input.action,
-          status: input.status ?? "info",
-          source: input.source,
-          code: input.code,
-          message: input.message,
-          projectId: input.projectId ?? projectIdRef.current ?? undefined,
-          details: {
-            ...(input.details && typeof input.details === "object"
-              ? (input.details as Record<string, unknown>)
-              : {}),
-            projectTraceId: input.projectTraceId ?? projectTraceIdRef.current ?? undefined,
-          },
-        }),
-      }).catch(() => undefined);
+      });
     },
     [],
   );
@@ -3563,15 +3640,40 @@ export default function WorkspacePage() {
     details?: Record<string, unknown>;
   }) => {
     const details = buildWorkspaceTelemetryContext(input.details);
-    const dedupeKey = `${input.action}:${input.code || ""}:${details.runId || ""}:${details.jobId || ""}`;
-    const nextSignature = JSON.stringify({
-      status: input.status ?? "info",
-      code: input.code || "",
-      entrySource: details.entrySource,
-      flowStage: details.flowStage,
-      currentStep: details.currentStep,
-      taskCount: details.taskCount,
-    });
+    const projectId = projectIdRef.current ?? routeProjectId ?? null;
+    const selectionEventValue = (() => {
+      if (input.action === "ui.entry.detected") {
+        return `${String(details.entrySource ?? "")}:${String(details.inputType ?? "")}:${String(details.generationDirection ?? "")}`;
+      }
+      if (input.action === "ui.style.selected") {
+        return `${String(details.styleId ?? "")}:${String(details.styleName ?? "")}`;
+      }
+      if (input.action === "ui.direction.selected") {
+        return String(details.generationDirection ?? "");
+      }
+      if (input.action === "ui.page_count.selected") {
+        return `${String(details.requestedCount ?? "")}:${String(details.slideCount ?? "")}`;
+      }
+      return "";
+    })();
+    const isSelectionEvent = Boolean(selectionEventValue);
+    const dedupeKey = isSelectionEvent
+      ? `${input.action}:${input.code || ""}:${projectId || ""}:${details.runId || ""}:${selectionEventValue}`
+      : `${input.action}:${input.code || ""}:${details.runId || ""}:${details.jobId || ""}`;
+    const nextSignature = isSelectionEvent
+      ? JSON.stringify({
+          status: input.status ?? "info",
+          code: input.code || "",
+          selectionEventValue,
+        })
+      : JSON.stringify({
+          status: input.status ?? "info",
+          code: input.code || "",
+          entrySource: details.entrySource,
+          flowStage: details.flowStage,
+          currentStep: details.currentStep,
+          taskCount: details.taskCount,
+        });
     if (lastUiEventSignatureRef.current[dedupeKey] === nextSignature) {
       return;
     }
@@ -3583,7 +3685,7 @@ export default function WorkspacePage() {
       source: input.source ?? effectiveIntent,
       code: input.code,
       message: input.message,
-      projectId: projectIdRef.current ?? routeProjectId ?? null,
+      projectId,
       details,
     });
   }, [buildWorkspaceTelemetryContext, effectiveIntent, logClientEvent, routeProjectId]);
