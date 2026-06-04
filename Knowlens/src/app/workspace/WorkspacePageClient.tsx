@@ -415,6 +415,7 @@ type GenerationConfirmResponse = {
 type ImageGenerateBatchResponse = {
   ok?: boolean;
   reused?: boolean;
+  recovered?: boolean;
   error?: string;
   code?: string;
   imageGenerationMode?: string;
@@ -730,6 +731,7 @@ function buildStableGenerationIdempotencyKey(input: {
   userEmail: string;
   projectId: string | null;
   projectTraceId: string | null;
+  runId?: string | null;
   tasks: ImageGenerationTask[];
 }) {
   const normalizedTasks = [...input.tasks].sort((a, b) => a.index - b.index);
@@ -750,11 +752,12 @@ function buildStableGenerationIdempotencyKey(input: {
     `user=${normalizeIdempotencySegment(input.userEmail, "guest")}`,
     `project=${normalizeIdempotencySegment(input.projectId, "no-project")}`,
     `trace=${normalizeIdempotencySegment(input.projectTraceId, "no-trace")}`,
+    input.runId ? `run=${normalizeIdempotencySegment(input.runId, "no-run")}` : "",
     `tasks=${normalizeIdempotencySegment(taskIndexes, "none")}`,
     `promptHash=${promptHash}`,
     `style=${normalizeIdempotencySegment(styleId, "no-style")}`,
     `ratio=${normalizeIdempotencySegment(aspectRatio, "no-ratio")}`,
-  ].join("|");
+  ].filter(Boolean).join("|");
   return key.slice(0, 220);
 }
 
@@ -2478,6 +2481,7 @@ export default function WorkspacePage() {
   const [isPlanningNextStep, setIsPlanningNextStep] = useState(false);
   const [isPlanningStyleStep, setIsPlanningStyleStep] = useState(false);
   const [isPlanningBillingStep, setIsPlanningBillingStep] = useState(false);
+  const [, setGenerationConfirmStep] = useState("");
   const [configConfirmed, setConfigConfirmed] = useState(false);
   const [generationSessionSeed, setGenerationSessionSeed] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
@@ -4080,6 +4084,7 @@ export default function WorkspacePage() {
         userEmail: currentEmail || "guest",
         projectId: projectIdRef.current,
         projectTraceId: projectTraceIdRef.current,
+        runId: activeRunId,
         tasks,
       });
       logWorkspaceVerbose("[workspace-generation] generate-batch request started", {
@@ -6785,24 +6790,65 @@ export default function WorkspacePage() {
       },
     });
     const imageModel = initialEntry.models?.imageModel || "gpt-image-2";
-    startThinking(
-      effectiveIntent === "poster" ? tr("Poster Generation", "海报生成") : tr("Storyboard Generation", "分镜生成"),
-      effectiveIntent === "poster"
-        ? tr("Preparing poster generation...", "正在准备海报生成...")
-        : tr("Preparing storyboard generation...", "正在准备分镜生成..."),
-    );
+    setGenerationConfirmStep("prepare job");
+    startThinking(tr("Generation Startup", "生成启动"), tr("Preparing generation...", "正在准备生成..."));
     let preparedJobId: string | null = null;
     let creditsConsumed = false;
     let step6Entered = false;
     let currentConfirmStep = "init";
+    let confirmIdempotencyKey = "";
+    let selectedProjectIdForRecovery = projectIdRef.current || routeProjectId || initialEntry.project?.projectId || "";
+    const activeConfirmTaskStatuses = new Set(["queued", "running", "generating", "asset_downloading"]);
+    const successConfirmTaskStatuses = new Set(["asset_ready", "completed", "success", "succeeded"]);
+    const failedConfirmTaskStatuses = new Set(["billing_failed", "failed", "timed_out", "completed_with_errors"]);
+    const preparedConfirmTaskStatuses = new Set(["billing_pending"]);
+    const summarizeTaskStatuses = (payload: ImageGenerateBatchResponse | null) =>
+      (payload?.tasks ?? []).reduce<Record<string, number>>((acc, task) => {
+        const status = (task.status || "unknown").trim().toLowerCase() || "unknown";
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {});
+    const getPayloadStatusSignals = (payload: ImageGenerateBatchResponse | null) => {
+      const jobStatus = (payload?.job?.status || "").trim().toLowerCase();
+      const taskStatuses = (payload?.tasks ?? []).map((task) => (task.status || "").trim().toLowerCase());
+      const hasActive = activeConfirmTaskStatuses.has(jobStatus) || taskStatuses.some((status) => activeConfirmTaskStatuses.has(status));
+      const hasSuccess = successConfirmTaskStatuses.has(jobStatus) || taskStatuses.some((status) => successConfirmTaskStatuses.has(status));
+      const hasFailed = failedConfirmTaskStatuses.has(jobStatus) || taskStatuses.some((status) => failedConfirmTaskStatuses.has(status));
+      const hasPrepared = preparedConfirmTaskStatuses.has(jobStatus) || taskStatuses.some((status) => preparedConfirmTaskStatuses.has(status));
+      return { jobStatus, taskStatuses, hasActive, hasSuccess, hasFailed, hasPrepared };
+    };
+    const setConfirmStep = (step: string, text: string) => {
+      currentConfirmStep = step;
+      setGenerationConfirmStep(step);
+      startThinking(tr("Generation Startup", "生成启动"), text);
+    };
     const createConfirmTimeoutMessage = (step: string, timeoutMs: number) =>
       `Generation ${step} timed out after ${Math.round(timeoutMs / 1000)}s. Please retry.`;
+    const isConfirmStepTimeout = (message: string) =>
+      /^Generation .+ timed out after \d+s\. Please retry\.$/i.test(message.trim());
     const withConfirmStepTimeout = async <T,>(
       step: string,
       timeoutMs: number,
       run: (signal: AbortSignal) => Promise<T>,
     ) => {
       currentConfirmStep = step;
+      setGenerationConfirmStep(step);
+      const stepStartedAt = Date.now();
+      logClientEvent({
+        category: "image",
+        action: "image_generation_confirm_step_started",
+        status: "info",
+        source: imageModel,
+        message: `${step} started.`,
+        projectId: projectIdRef.current ?? null,
+        details: {
+          step,
+          startedAt: new Date(stepStartedAt).toISOString(),
+          runId: nextRunId,
+          jobId: preparedJobId,
+          projectId: projectIdRef.current ?? null,
+        },
+      });
       const controller = new AbortController();
       let timeoutId: number | null = null;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -6812,8 +6858,46 @@ export default function WorkspacePage() {
         }, timeoutMs);
       });
       try {
-        return await Promise.race([run(controller.signal), timeoutPromise]);
+        const result = await Promise.race([run(controller.signal), timeoutPromise]);
+        logClientEvent({
+          category: "image",
+          action: "image_generation_confirm_step_completed",
+          status: "ok",
+          source: imageModel,
+          message: `${step} completed.`,
+          projectId: projectIdRef.current ?? null,
+          details: {
+            step,
+            startedAt: new Date(stepStartedAt).toISOString(),
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - stepStartedAt,
+            runId: nextRunId,
+            jobId: preparedJobId,
+            projectId: projectIdRef.current ?? null,
+          },
+        });
+        return result;
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "unknown";
+        logClientEvent({
+          category: "image",
+          action: "image_generation_confirm_step_failed",
+          status: "error",
+          source: imageModel,
+          message: errorMessage,
+          projectId: projectIdRef.current ?? null,
+          details: {
+            step,
+            startedAt: new Date(stepStartedAt).toISOString(),
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - stepStartedAt,
+            runId: nextRunId,
+            jobId: preparedJobId,
+            projectId: projectIdRef.current ?? null,
+            errorMessage,
+            errorStack: error instanceof Error ? error.stack : null,
+          },
+        });
         if (error instanceof DOMException && error.name === "AbortError") {
           throw new Error(createConfirmTimeoutMessage(step, timeoutMs));
         }
@@ -6885,6 +6969,79 @@ export default function WorkspacePage() {
         return { ...prev, ...failedState };
       });
     };
+    const recoverConfirmJob = async (reason: string, options?: { restoreFailed?: boolean }) => {
+      const recoveryStartedAt = Date.now();
+      setConfirmStep(
+        "recover previous request",
+        tr("Recovering previous request...", "正在恢复上一次请求..."),
+      );
+      const recoveredPayload = await postGenerationBatchAction({
+        action: "recover",
+        jobId: preparedJobId || currentGenerationJobIdRef.current || undefined,
+        runId: nextRunId,
+        idempotencyKey: confirmIdempotencyKey || undefined,
+        projectId: selectedProjectIdForRecovery || projectIdRef.current || undefined,
+        intent: effectiveIntent === "unknown" ? undefined : effectiveIntent,
+      }, { step: "recover previous request", timeoutMs: GENERATION_CONFIRM_PREPARE_TIMEOUT_MS });
+      const signals = getPayloadStatusSignals(recoveredPayload);
+      const recoveredJobId = (recoveredPayload.job?.id || "").trim();
+      const recoveredRunId = normalizeGenerationRunId(recoveredPayload.job?.runId) || nextRunId;
+      const recoveredTaskIds = (recoveredPayload.tasks ?? []).map((task) => task.taskId).filter(Boolean);
+      logClientEvent({
+        category: "image",
+        action: "image_generation_confirm_recovery_completed",
+        status: recoveredPayload.recovered === false ? "error" : "ok",
+        source: imageModel,
+        message: reason,
+        projectId: projectIdRef.current || selectedProjectIdForRecovery || null,
+        details: {
+          reason,
+          startedAt: new Date(recoveryStartedAt).toISOString(),
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - recoveryStartedAt,
+          runId: nextRunId,
+          recoveredRunId,
+          jobId: recoveredJobId || null,
+          projectId: selectedProjectIdForRecovery || projectIdRef.current || null,
+          taskIds: recoveredTaskIds,
+          jobStatus: signals.jobStatus || null,
+          taskStatusSummary: summarizeTaskStatuses(recoveredPayload),
+          recovered: recoveredPayload.recovered !== false,
+          errorCode: recoveredPayload.code || null,
+          errorMessage: recoveredPayload.error || null,
+        },
+      });
+      if (recoveredPayload.recovered === false || !recoveredJobId || !recoveredPayload.tasks?.length) {
+        return false;
+      }
+      preparedJobId = recoveredJobId;
+      if (signals.hasPrepared && !signals.hasActive && !signals.hasSuccess && !signals.hasFailed) {
+        setGenerationRunContext(recoveredRunId, recoveredJobId);
+        setBillingConfirmed(false);
+        setFlowStage("billing");
+        setGenerationTaskStateByIndex({});
+        setGenerationConfirmError(
+          tr(
+            "Generation confirmation is still being recovered. Please refresh this project in a moment before confirming again.",
+            "生成确认仍在恢复中。请稍后刷新项目后再确认。",
+          ),
+        );
+        return true;
+      }
+      if (signals.hasActive || signals.hasSuccess || (options?.restoreFailed && signals.hasFailed)) {
+        setGenerationRunContext(recoveredRunId, recoveredJobId);
+        setBillingConfirmed(signals.jobStatus !== "billing_failed");
+        setFlowStage("generate");
+        step6Entered = true;
+        setConfirmStep(
+          "checking generation status",
+          tr("Checking generation status...", "正在检查生成状态..."),
+        );
+        await runGenerationBatch(tasksToGenerate, false, recoveredRunId, recoveredPayload);
+        return true;
+      }
+      return false;
+    };
     try {
       const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
       const selectedProjectId =
@@ -6904,6 +7061,7 @@ export default function WorkspacePage() {
         format: effectiveIntent === "poster" ? "海报" : effectiveIntent === "video" ? "视频" : "PPT",
       };
       projectIdRef.current = selectedProject?.id ?? projectIdRef.current;
+      selectedProjectIdForRecovery = selectedProject?.id || selectedProjectIdForRecovery;
       projectTraceIdRef.current =
         initialEntry.project?.projectTraceId ||
         (projectIdRef.current && user?.id ? `${user.id}_${projectIdRef.current}` : projectTraceIdRef.current);
@@ -6920,8 +7078,15 @@ export default function WorkspacePage() {
         userEmail: currentEmail || "guest",
         projectId: projectIdRef.current,
         projectTraceId: projectTraceIdRef.current,
+        runId: nextRunId,
         tasks: tasksToGenerate,
       });
+      confirmIdempotencyKey = idempotencyKey;
+      const recoveredBeforeConfirm = await recoverConfirmJob("pre-confirm recovery check", { restoreFailed: false });
+      if (recoveredBeforeConfirm) {
+        return;
+      }
+      setConfirmStep("prepare job", tr("Preparing generation...", "正在准备生成..."));
       const preparePayload = await postGenerationBatchAction({
         ...buildGenerationRequestPayload(tasksToGenerate),
         action: "prepare",
@@ -6936,6 +7101,7 @@ export default function WorkspacePage() {
       setGenerationRunContext(nextRunId, preparedJobId);
 
       try {
+        setConfirmStep("consume credits", tr("Confirming credits...", "正在确认积分..."));
         await withConfirmStepTimeout("consume credits", GENERATION_CONFIRM_CREDITS_TIMEOUT_MS, async () =>
           appendCreditRecordOnServer({
             type: "consume",
@@ -6970,15 +7136,39 @@ export default function WorkspacePage() {
         chargedImageTaskCreditsRef.current[creditKey] = SINGLE_IMAGE_REGENERATION_CREDITS;
         delete refundedImageTaskCreditsRef.current[creditKey];
       });
+      setConfirmStep("activate job", tr("Starting generation tasks...", "正在启动生成任务..."));
       const activatedPayload = await postGenerationBatchAction({
         action: "activate",
         jobId: preparedJobId,
         runId: nextRunId,
       }, { step: "activate job", timeoutMs: GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS });
-      const activatedTaskStatuses = activatedPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
-      const hasActivatedQueuedTask = activatedTaskStatuses.some((status) => status === "queued");
-      if (!activatedPayload.job?.id || !activatedPayload.tasks?.length || !hasActivatedQueuedTask) {
-        throw new Error("Generation job activation failed. Credits have been refunded.");
+      const activationSignals = getPayloadStatusSignals(activatedPayload);
+      if (!activatedPayload.job?.id || !activatedPayload.tasks?.length) {
+        throw new Error("Generation job activation failed. Please retry.");
+      }
+      if (activationSignals.hasFailed) {
+        setGenerationRunContext(nextRunId, preparedJobId);
+        setFlowStage("generate");
+        setBillingConfirmed(activationSignals.jobStatus !== "billing_failed");
+        step6Entered = true;
+        await runGenerationBatch(tasksToGenerate, false, nextRunId, activatedPayload);
+        return;
+      }
+      if (!activationSignals.hasActive && !activationSignals.hasSuccess) {
+        setGenerationConfirmError(
+          activationSignals.hasPrepared
+            ? tr(
+                "Generation is still waiting for confirmation. Please refresh this project in a moment before confirming again.",
+                "生成仍在等待确认。请稍后刷新项目后再确认。",
+              )
+            : tr(
+                "Generation status is unclear. Please refresh this project in a moment before confirming again.",
+                "生成状态暂时无法确认。请稍后刷新项目后再确认。",
+              ),
+        );
+        setFlowStage("billing");
+        setGenerationTaskStateByIndex({});
+        return;
       }
       logClientEvent({
         category: "billing",
@@ -7037,6 +7227,52 @@ export default function WorkspacePage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : tr("Generation failed.", "生成失败。");
       const errorStack = error instanceof Error ? error.stack : null;
+      const confirmStepTimedOut = isConfirmStepTimeout(message);
+      if (confirmStepTimedOut) {
+        const recovered = await recoverConfirmJob(message, { restoreFailed: true }).catch(() => false);
+        if (!recovered) {
+          const timeoutRecoveryMessage =
+            currentConfirmStep === "prepare job"
+              ? tr(
+                  "Preparing generation timed out. No active generation was found, so you can retry.",
+                  "准备生成超时，未找到进行中的生成任务，可以重试。",
+                )
+              : currentConfirmStep === "consume credits"
+                ? tr(
+                    "Credit confirmation is taking longer than expected. Credit status is unknown, so please refresh this project before confirming again.",
+                    "积分确认耗时较长，当前积分状态未知。请刷新项目后再确认，避免重复扣费。",
+                  )
+                : tr(
+                    "Starting generation tasks is taking longer than expected. Please refresh this project in a moment to recover the latest status.",
+                    "启动生成任务耗时较长。请稍后刷新项目以恢复最新状态。",
+                  );
+          setBillingConfirmed(false);
+          setFlowStage("billing");
+          setGenerationTaskStateByIndex({});
+          setGenerationConfirmError(timeoutRecoveryMessage);
+        }
+        logClientEvent({
+          category: "image",
+          action: "image_generation_batch_timeout_recovered",
+          status: recovered ? "ok" : "error",
+          source: imageModel,
+          message,
+          projectId: projectIdRef.current ?? null,
+          details: {
+            currentConfirmStep,
+            runId: nextRunId,
+            jobId: preparedJobId,
+            creditsConsumed,
+            step6Entered,
+            recovered,
+            billingCost,
+            taskCount: tasksToGenerate.length,
+            taskIndexes: tasksToGenerate.map((task) => task.index),
+            errorStack,
+          },
+        });
+        return;
+      }
       if (preparedJobId && !step6Entered && creditsConsumed) {
         await markPreparedJobFailedAfterCharge(message).catch(() => undefined);
         tasksToGenerate.forEach((task) => {
@@ -7087,6 +7323,7 @@ export default function WorkspacePage() {
       });
       stopThinking();
       setIsPlanningBillingStep(false);
+      setGenerationConfirmStep("");
       generationRequestInFlightRef.current = false;
     }
   }

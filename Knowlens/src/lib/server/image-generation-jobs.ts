@@ -88,6 +88,23 @@ export type ImageGenerationProjectActivityRow = {
 
 const ACTIVE_TASK_STATUSES: ImageGenerationTaskStatus[] = ["queued", "generating", "asset_downloading"];
 const TERMINAL_JOB_STATUSES: ImageGenerationJobStatus[] = ["billing_failed", "completed", "completed_with_errors", "failed", "timed_out"];
+const PREPARED_IMAGE_GENERATION_STATUSES = new Set<ImageGenerationJobStatus | ImageGenerationTaskStatus>(["billing_pending"]);
+const ACTIVE_IMAGE_GENERATION_STATUSES = new Set<ImageGenerationJobStatus | ImageGenerationTaskStatus>([
+  "queued",
+  "running",
+  "generating",
+  "asset_downloading",
+]);
+const SUCCESS_IMAGE_GENERATION_STATUSES = new Set<ImageGenerationJobStatus | ImageGenerationTaskStatus>([
+  "completed",
+  "asset_ready",
+]);
+const FAILED_IMAGE_GENERATION_STATUSES = new Set<ImageGenerationJobStatus | ImageGenerationTaskStatus>([
+  "billing_failed",
+  "completed_with_errors",
+  "failed",
+  "timed_out",
+]);
 const BILLING_PENDING_TIMEOUT_MS = 120_000;
 const ABANDONED_JOB_TIMEOUT_MS = (() => {
   const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "480000", 10);
@@ -99,6 +116,23 @@ const ABANDONED_JOB_TIMEOUT_MS = (() => {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+export function isImageGenerationPreparedStatus(status?: string | null) {
+  return PREPARED_IMAGE_GENERATION_STATUSES.has((status || "").trim() as ImageGenerationJobStatus);
+}
+
+export function isImageGenerationActiveStatus(status?: string | null) {
+  return ACTIVE_IMAGE_GENERATION_STATUSES.has((status || "").trim() as ImageGenerationJobStatus);
+}
+
+export function isImageGenerationSuccessStatus(status?: string | null) {
+  const normalized = (status || "").trim();
+  return SUCCESS_IMAGE_GENERATION_STATUSES.has(normalized as ImageGenerationJobStatus) || normalized === "success";
+}
+
+export function isImageGenerationFailedStatus(status?: string | null) {
+  return FAILED_IMAGE_GENERATION_STATUSES.has((status || "").trim() as ImageGenerationJobStatus);
 }
 
 function normalizeText(input: string | undefined, max = 1000) {
@@ -846,6 +880,50 @@ export async function getLatestImageGenerationJobByProject(input: {
   };
 }
 
+export async function recoverImageGenerationJob(input: {
+  userEmail: string;
+  jobId?: string | null;
+  idempotencyKey?: string | null;
+  runId?: string | null;
+  projectId?: string | null;
+  intent?: string | null;
+}): Promise<StoredImageGenerationManifest | null> {
+  const userEmail = input.userEmail.trim().toLowerCase();
+  if (!userEmail) {
+    return null;
+  }
+  const jobId = normalizeOptionalText(input.jobId || undefined, 120);
+  if (jobId) {
+    const result = await getImageGenerationJobById(jobId);
+    if (result?.job.userEmail.trim().toLowerCase() === userEmail) {
+      return result;
+    }
+  }
+  const idempotencyKey = normalizeOptionalText(input.idempotencyKey || undefined, 220);
+  if (idempotencyKey) {
+    const found = await findImageGenerationJobByIdempotency({
+      userEmail,
+      idempotencyKey,
+      runId: normalizeOptionalText(input.runId || undefined, 120) || undefined,
+    });
+    if (found) {
+      const result = await getImageGenerationJobById(found.id);
+      if (result?.job.userEmail.trim().toLowerCase() === userEmail) {
+        return result;
+      }
+    }
+  }
+  const projectId = normalizeOptionalText(input.projectId || undefined, 120);
+  if (projectId) {
+    return getLatestImageGenerationJobByProject({
+      userEmail,
+      projectId,
+      intent: input.intent,
+    });
+  }
+  return null;
+}
+
 export async function listImageGenerationTaskHistoryByProject(input: {
   userEmail: string;
   projectId: string;
@@ -1303,6 +1381,18 @@ export async function activateImageGenerationJobAfterBilling(jobId: string) {
   const result = await getImageGenerationJobById(jobId);
   if (!result) {
     return result;
+  }
+  if (
+    isImageGenerationActiveStatus(result.job.status) ||
+    result.tasks.some((task) => isImageGenerationActiveStatus(task.status))
+  ) {
+    return syncImageGenerationJobFinalStatus(jobId);
+  }
+  if (
+    isImageGenerationSuccessStatus(result.job.status) ||
+    result.tasks.some((task) => isImageGenerationSuccessStatus(task.status))
+  ) {
+    return syncImageGenerationJobFinalStatus(jobId);
   }
   if (result.job.status === "billing_failed" || result.tasks.some((task) => task.status === "billing_failed")) {
     return result;

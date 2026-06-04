@@ -14,6 +14,7 @@ import {
   createImageGenerationJob,
   findImageGenerationJobByIdempotency,
   getImageGenerationJobById,
+  recoverImageGenerationJob,
   markImageGenerationJobBillingFailed,
   markImageGenerationJobFailedAfterCharge,
   persistRemoteImageAsset,
@@ -38,7 +39,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type GenerateBatchPayload = {
-  action?: "prepare" | "activate" | "mark_billing_failed" | "mark_failed";
+  action?: "prepare" | "activate" | "recover" | "mark_billing_failed" | "mark_failed";
   jobId?: string;
   idempotencyKey?: string;
   runId?: string;
@@ -375,6 +376,7 @@ function serializeJobPayload(input: {
       renderUrl: task.renderUrl || (task.status === "asset_ready" ? buildImageRenderUrl(task.id, task.updatedAt) : undefined),
       rawImageUrl: task.rawImageUrl, storageKey: resolveTaskStorageKey(task), provider: task.providerUsed,
       model: input.imageModel, error: task.errorMessage, errorCode: task.errorCode,
+      errorMessage: task.errorMessage,
     })),
   };
 }
@@ -817,6 +819,73 @@ export async function POST(request: NextRequest) {
 
     const action = payload.action || "start";
     const imageModel = normalizeImageModel(payload.imageModel);
+    if (action === "recover") {
+      const recoverStartedAt = Date.now();
+      const recovered = await recoverImageGenerationJob({
+        userEmail: email,
+        jobId: payload.jobId,
+        idempotencyKey: payload.idempotencyKey,
+        runId: payload.runId,
+        projectId: payload.projectId,
+        intent: payload.intent || payload.normalizedDirection,
+      });
+      if (!recovered) {
+        logImageBatchEvent({
+          requestId: payload.idempotencyKey || payload.runId || payload.jobId || "recover",
+          jobId: payload.jobId || null,
+          projectId: payload.projectId || null,
+          userEmail: email,
+          taskCount: 0,
+          currentStep: "recover-missing",
+          provider: "none",
+          model: imageModel,
+          durationMs: Date.now() - recoverStartedAt,
+          generatedCount: 0,
+          failedCount: 0,
+          errorMessage: "No recoverable image generation job was found.",
+        });
+        return NextResponse.json({
+          ok: true,
+          recovered: false,
+          imageGenerationMode: "real",
+          attemptedProviders: [],
+          skippedProviders: [],
+          error: "No recoverable image generation job was found.",
+          code: "IMAGE_JOB_RECOVERY_NOT_FOUND",
+        });
+      }
+      logImageBatchEvent({
+        requestId: payload.idempotencyKey || recovered.job.runId || recovered.job.id,
+        jobId: recovered.job.id,
+        projectId: recovered.job.projectId,
+        userEmail: email,
+        taskCount: recovered.tasks.length,
+        currentStep: "recover-completed",
+        provider: "none",
+        model: imageModel,
+        durationMs: Date.now() - recoverStartedAt,
+        generatedCount: recovered.tasks.filter((task) => task.status === "asset_ready").length,
+        failedCount: recovered.tasks.filter((task) => task.status === "failed" || task.status === "timed_out" || task.status === "billing_failed").length,
+        jobStatus: recovered.job.status,
+        taskStatusSummary: recovered.tasks.reduce<Record<string, number>>((acc, task) => {
+          acc[task.status] = (acc[task.status] || 0) + 1;
+          return acc;
+        }, {}),
+      });
+      return NextResponse.json({
+        ok: true,
+        recovered: true,
+        reused: true,
+        imageGenerationMode: "real",
+        attemptedProviders: [],
+        skippedProviders: [],
+        ...serializeJobPayload({
+          result: recovered,
+          imageModel,
+          runId: payload.runId || recovered.job.runId,
+        }),
+      });
+    }
     if (action === "activate" || action === "mark_billing_failed" || action === "mark_failed") {
       const jobId = (payload.jobId || "").trim().slice(0, 120);
       if (!jobId) {
