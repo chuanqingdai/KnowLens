@@ -184,7 +184,17 @@ function syncCreditRecordToServer(
 }
 
 export async function appendCreditRecordOnServer(
-  input: Omit<CreditRecord, "id" | "createdAt" | "balance">,
+  input: Omit<CreditRecord, "id" | "createdAt" | "balance"> & {
+    runId?: string;
+    jobId?: string;
+    entrySource?: string;
+    estimatedCreditsCost?: number;
+    creditsBefore?: number;
+    creditsAfter?: number;
+    creditBalanceSource?: string;
+    consumeResult?: "success" | "failure" | "unknown";
+    refundReason?: string;
+  },
   email?: string | null,
 ) {
   if (!isClient()) {
@@ -208,6 +218,15 @@ export async function appendCreditRecordOnServer(
       userId: input.userId,
       projectId: input.projectId,
       projectTitle: input.projectTitle,
+      runId: input.runId,
+      jobId: input.jobId,
+      entrySource: input.entrySource,
+      estimatedCreditsCost: input.estimatedCreditsCost,
+      creditsBefore: input.creditsBefore,
+      creditsAfter: input.creditsAfter,
+      creditBalanceSource: input.creditBalanceSource,
+      consumeResult: input.consumeResult,
+      refundReason: input.refundReason,
     }),
   });
   const payload = (await response.json().catch(() => ({}))) as {

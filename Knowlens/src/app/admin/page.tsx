@@ -93,6 +93,75 @@ type OpsEventAdminLog = {
   detailsJson: string | null;
   createdAt: string;
   stage?: string | null;
+  details?: Record<string, unknown> | null;
+  runId?: string | null;
+  jobId?: string | null;
+  taskId?: string | null;
+  durationMs?: number | null;
+  taskStatusSummary?: Record<string, number> | null;
+};
+
+type OpsEventAdminSummary = {
+  email?: string | null;
+  userId?: string | null;
+  isMember?: boolean;
+  planType?: string | null;
+  planName?: string | null;
+  currentCredits?: number | null;
+  generationCount24h?: number;
+  failureCount24h?: number;
+  refundCount24h?: number;
+  latestError?: {
+    createdAt?: string;
+    action?: string;
+    code?: string | null;
+    message?: string | null;
+  } | null;
+};
+
+type OpsTraceSummary = {
+  traceId: string;
+  createdAt: string;
+  lastEventAt: string;
+  runId: string | null;
+  jobId: string | null;
+  projectId: string | null;
+  entrySource: string | null;
+  generationDirection: string | null;
+  outputType: string | null;
+  styleName: string | null;
+  requestedCount: number | null;
+  taskCount: number | null;
+  finalJobStatus: string | null;
+  successCount: number;
+  failedCount: number;
+  timedOutCount: number;
+  creditsConsumed: boolean;
+  creditsRefunded: boolean;
+  totalDurationMs: number | null;
+  failedStep: string | null;
+  errorCode: string | null;
+};
+
+type OpsLogScopePreset = "all" | "summary" | "provider" | "credits" | "refund" | "restore" | "ui";
+
+const defaultOpsLogFilters = {
+  status: "error",
+  category: "",
+  action: "",
+  userEmail: "",
+  projectId: "",
+  runId: "",
+  jobId: "",
+  taskId: "",
+  code: "",
+  from: "",
+  to: "",
+  onlyErrors: true,
+  onlySlow: false,
+  scope: "all" as OpsLogScopePreset,
+  limit: "120",
+  page: 1,
 };
 
 type PublishCaseFormState = {
@@ -359,6 +428,7 @@ function AdminDashboardPageContent() {
   const [selectedLogId, setSelectedLogId] = useState<string>("");
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [selectedTicketId, setSelectedTicketId] = useState<string>("");
+  const [selectedOpsEventId, setSelectedOpsEventId] = useState<string>("");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
     open: false,
@@ -380,15 +450,10 @@ function AdminDashboardPageContent() {
   const [publishedCasesLoading, setPublishedCasesLoading] = useState(false);
   const [publishingCase, setPublishingCase] = useState(false);
   const [opsLogs, setOpsLogs] = useState<OpsEventAdminLog[]>([]);
+  const [opsLogSummary, setOpsLogSummary] = useState<OpsEventAdminSummary | null>(null);
+  const [opsTraceSummaries, setOpsTraceSummaries] = useState<OpsTraceSummary[]>([]);
   const [opsLogsLoading, setOpsLogsLoading] = useState(false);
-  const [opsLogFilters, setOpsLogFilters] = useState({
-    status: "error",
-    category: "",
-    action: "",
-    userEmail: "",
-    projectId: "",
-    code: "",
-  });
+  const [opsLogFilters, setOpsLogFilters] = useState(defaultOpsLogFilters);
   const [publishCaseForm, setPublishCaseForm] = useState<PublishCaseFormState>({
     projectId: "",
     userEmail: "local@knowlens.ai",
@@ -414,6 +479,41 @@ function AdminDashboardPageContent() {
   const selectedTicket = selectedTicketId
     ? data.tickets.find((item) => item.id === selectedTicketId) || null
     : null;
+  const selectedOpsEvent = useMemo(
+    () => opsLogs.find((item) => item.id === selectedOpsEventId) || null,
+    [opsLogs, selectedOpsEventId],
+  );
+  const displayOpsLogs = useMemo(() => {
+    const hasDrilldownFilter = Boolean(
+      opsLogFilters.action.trim() ||
+        opsLogFilters.runId.trim() ||
+        opsLogFilters.jobId.trim() ||
+        opsLogFilters.taskId.trim(),
+    );
+    if (hasDrilldownFilter) {
+      return [...opsLogs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    }
+    const summaryLogs = opsLogs.filter((item) => item.action === "generation.trace.summary");
+    return summaryLogs.length ? summaryLogs : opsLogs;
+  }, [opsLogFilters.action, opsLogFilters.jobId, opsLogFilters.runId, opsLogFilters.taskId, opsLogs]);
+
+  function applyOpsLogScope(scope: OpsLogScopePreset) {
+    const presets: Record<OpsLogScopePreset, Pick<typeof opsLogFilters, "category" | "action" | "scope" | "page">> = {
+      all: { category: "", action: "", scope: "all", page: 1 },
+      summary: { category: "", action: "generation.trace.summary", scope: "summary", page: 1 },
+      provider: { category: "image", action: "generation.provider.", scope: "provider", page: 1 },
+      credits: { category: "billing", action: "generation.credits.", scope: "credits", page: 1 },
+      refund: { category: "billing", action: "generation.refund.", scope: "refund", page: 1 },
+      restore: { category: "", action: "generation.project.restore", scope: "restore", page: 1 },
+      ui: { category: "ui", action: "ui.", scope: "ui", page: 1 },
+    };
+    setOpsLogFilters((prev) => ({ ...prev, ...presets[scope] }));
+  }
+
+  function resetOpsLogFilters() {
+    setOpsLogFilters(defaultOpsLogFilters);
+    loadOpsLogs(defaultOpsLogFilters);
+  }
 
   function loadPublishedCases() {
     setPublishedCasesLoading(true);
@@ -434,23 +534,36 @@ function AdminDashboardPageContent() {
     }
   }, [activeTab]);
 
-  function loadOpsLogs() {
+  function loadOpsLogs(overrideFilters?: typeof opsLogFilters) {
     setOpsLogsLoading(true);
+    const activeFilters = overrideFilters ?? opsLogFilters;
     const params = new URLSearchParams();
-    params.set("limit", "120");
-    Object.entries(opsLogFilters).forEach(([key, value]) => {
-      if (value.trim()) {
+    params.set("limit", activeFilters.limit);
+    params.set("page", String(activeFilters.page));
+    Object.entries(activeFilters).forEach(([key, value]) => {
+      if (key === "scope" || key === "onlyErrors" || key === "onlySlow") {
+        return;
+      }
+      if (typeof value === "string" && value.trim()) {
         params.set(key, value.trim());
       }
     });
+    if (activeFilters.onlyErrors) {
+      params.set("onlyErrors", "1");
+    }
+    if (activeFilters.onlySlow) {
+      params.set("onlySlow", "1");
+    }
     fetch(`/api/admin/logs?${params.toString()}`, { cache: "no-store" })
       .then((response) =>
         response.ok
           ? response.json()
           : response.json().then((payload) => Promise.reject(new Error(payload.error || "线上日志读取失败"))),
       )
-      .then((payload: { logs?: OpsEventAdminLog[] }) => {
+      .then((payload: { logs?: OpsEventAdminLog[]; summary?: OpsEventAdminSummary | null; traces?: OpsTraceSummary[] }) => {
         setOpsLogs(payload.logs || []);
+        setOpsLogSummary(payload.summary || null);
+        setOpsTraceSummaries(payload.traces || []);
       })
       .catch((error) => {
         pushToast(error instanceof Error ? error.message : "线上日志读取失败");
@@ -463,6 +576,12 @@ function AdminDashboardPageContent() {
       loadOpsLogs();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "logs") {
+      loadOpsLogs();
+    }
+  }, [activeTab, opsLogFilters.page, opsLogFilters.limit]);
 
   function publishPublicCaseFromProject() {
     if (!publishCaseForm.projectId.trim() || !publishCaseForm.userEmail.trim()) {
@@ -1304,7 +1423,7 @@ function AdminDashboardPageContent() {
                 </div>
                 <button
                   type="button"
-                  onClick={loadOpsLogs}
+                  onClick={() => loadOpsLogs()}
                   disabled={opsLogsLoading}
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -1312,10 +1431,10 @@ function AdminDashboardPageContent() {
                   刷新线上日志
                 </button>
               </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-6">
+              <div className="mt-3 grid gap-2 md:grid-cols-5">
                 <select
                   value={opsLogFilters.status}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, status: event.target.value }))}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
                   className="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-sm"
                 >
                   <option value="">状态（全部）</option>
@@ -1325,85 +1444,368 @@ function AdminDashboardPageContent() {
                 </select>
                 <input
                   value={opsLogFilters.category}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, category: event.target.value }))}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, category: event.target.value, page: 1 }))}
                   placeholder="category: billing/image/client"
                   className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   value={opsLogFilters.action}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, action: event.target.value }))}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, action: event.target.value, page: 1 }))}
                   placeholder="action"
                   className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   value={opsLogFilters.userEmail}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, userEmail: event.target.value }))}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, userEmail: event.target.value, page: 1 }))}
                   placeholder="user email"
                   className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   value={opsLogFilters.projectId}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, projectId: event.target.value }))}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, projectId: event.target.value, page: 1 }))}
                   placeholder="projectId"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    { id: "all", label: "全部" },
+                    { id: "summary", label: "Summary" },
+                    { id: "provider", label: "Provider" },
+                    { id: "credits", label: "Credits" },
+                    { id: "refund", label: "Refund" },
+                    { id: "restore", label: "Restore" },
+                    { id: "ui", label: "UI" },
+                  ] as Array<{ id: OpsLogScopePreset; label: string }>
+                ).map((preset) => {
+                  const active = opsLogFilters.scope === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyOpsLogScope(preset.id)}
+                      className={`rounded-full border px-3 py-1 text-xs transition ${
+                        active
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+                <label className="ml-2 inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={opsLogFilters.onlyErrors}
+                    onChange={(event) =>
+                      setOpsLogFilters((prev) => ({ ...prev, onlyErrors: event.target.checked, page: 1 }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-zinc-300 text-zinc-900"
+                  />
+                  only errors
+                </label>
+                <label className="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={opsLogFilters.onlySlow}
+                    onChange={(event) =>
+                      setOpsLogFilters((prev) => ({ ...prev, onlySlow: event.target.checked, page: 1 }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-zinc-300 text-zinc-900"
+                  />
+                  slow only (30s+)
+                </label>
+              </div>
+              <div className="mt-2 grid gap-2 md:grid-cols-6">
+                <input
+                  value={opsLogFilters.runId}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, runId: event.target.value, page: 1 }))}
+                  placeholder="runId"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={opsLogFilters.jobId}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, jobId: event.target.value, page: 1 }))}
+                  placeholder="jobId"
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  value={opsLogFilters.taskId}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, taskId: event.target.value, page: 1 }))}
+                  placeholder="taskId"
                   className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   value={opsLogFilters.code}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, code: event.target.value }))}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, code: event.target.value, page: 1 }))}
                   placeholder="error code"
                   className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
+                <input
+                  type="datetime-local"
+                  value={opsLogFilters.from}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, from: event.target.value, page: 1 }))}
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
+                <input
+                  type="datetime-local"
+                  value={opsLogFilters.to}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, to: event.target.value, page: 1 }))}
+                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                />
               </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="text-xs text-zinc-500">
+                  默认优先展示 `generation.trace.summary`。填 action/runId/jobId/taskId 后会切到明细事件。
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={resetOpsLogFilters}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-800 hover:bg-zinc-100"
+                  >
+                    重置筛选
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadOpsLogs()}
+                    disabled={opsLogsLoading}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    应用筛选
+                  </button>
+                  <select
+                    value={opsLogFilters.limit}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, limit: event.target.value, page: 1 }))}
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-sm"
+                  >
+                    <option value="50">50</option>
+                    <option value="120">120</option>
+                    <option value="200">200</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (opsLogFilters.page > 1) {
+                        setOpsLogFilters((prev) => ({ ...prev, page: prev.page - 1 }));
+                      }
+                    }}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={opsLogsLoading || opsLogFilters.page <= 1}
+                  >
+                    上一页
+                  </button>
+                  <span className="text-xs text-zinc-500">第 {opsLogFilters.page} 页</span>
+                  <button
+                    type="button"
+                    onClick={() => setOpsLogFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={opsLogsLoading || displayOpsLogs.length < Number(opsLogFilters.limit)}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+              {opsLogSummary?.email ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-5">
+                  <div className="rounded-lg border border-zinc-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">User</p>
+                    <p className="mt-2 text-sm font-medium text-zinc-900">{opsLogSummary.email}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{opsLogSummary.userId || "-"}</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">Membership</p>
+                    <p className="mt-2 text-sm font-medium text-zinc-900">{opsLogSummary.isMember ? "member" : "non-member"}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{opsLogSummary.planName || opsLogSummary.planType || "-"}</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">Credits</p>
+                    <p className="mt-2 text-sm font-medium text-zinc-900">
+                      {typeof opsLogSummary.currentCredits === "number" ? opsLogSummary.currentCredits : "-"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">Last 24h</p>
+                    <p className="mt-2 text-sm text-zinc-900">runs: {opsLogSummary.generationCount24h ?? 0}</p>
+                    <p className="mt-1 text-sm text-zinc-900">failed: {opsLogSummary.failureCount24h ?? 0}</p>
+                    <p className="mt-1 text-sm text-zinc-900">refunds: {opsLogSummary.refundCount24h ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">Latest Error</p>
+                    <p className="mt-2 text-sm font-medium text-zinc-900">{opsLogSummary.latestError?.code || "-"}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-zinc-600">{opsLogSummary.latestError?.message || "-"}</p>
+                  </div>
+                </div>
+              ) : null}
+              {opsTraceSummaries.length ? (
+                <div className="mt-3 rounded-lg border border-zinc-200 bg-white">
+                  <div className="border-b border-zinc-200 px-3 py-2">
+                    <p className="text-sm font-medium text-zinc-900">Trace / Run Summary</p>
+                    <p className="mt-1 text-xs text-zinc-500">先看链路摘要，再点击切到该 run/job 的时间线。</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-[1480px] w-full text-left text-xs">
+                      <thead className="bg-zinc-50 text-zinc-600">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">创建时间</th>
+                          <th className="px-3 py-2 font-medium">runId / jobId</th>
+                          <th className="px-3 py-2 font-medium">项目</th>
+                          <th className="px-3 py-2 font-medium">入口 / 方向</th>
+                          <th className="px-3 py-2 font-medium">风格</th>
+                          <th className="px-3 py-2 font-medium">数量</th>
+                          <th className="px-3 py-2 font-medium">最终状态</th>
+                          <th className="px-3 py-2 font-medium">结果</th>
+                          <th className="px-3 py-2 font-medium">积分</th>
+                          <th className="px-3 py-2 font-medium">失败步骤</th>
+                          <th className="px-3 py-2 font-medium">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {opsTraceSummaries.map((trace) => (
+                          <tr key={trace.traceId} className="border-t border-zinc-200 align-top">
+                            <td className="px-3 py-2 text-zinc-600">{formatDateTime(trace.createdAt)}</td>
+                            <td className="px-3 py-2">
+                              <p className="font-mono text-[11px] text-zinc-700">{trace.runId || "-"}</p>
+                              <p className="mt-1 font-mono text-[11px] text-zinc-500">{trace.jobId || "-"}</p>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-700">{trace.projectId || "-"}</td>
+                            <td className="px-3 py-2">
+                              <p className="text-zinc-900">{trace.entrySource || "-"}</p>
+                              <p className="mt-1 text-zinc-500">{trace.generationDirection || trace.outputType || "-"}</p>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-700">{trace.styleName || "-"}</td>
+                            <td className="px-3 py-2 text-zinc-700">
+                              <p>requested: {trace.requestedCount ?? "-"}</p>
+                              <p className="mt-1 text-zinc-500">tasks: {trace.taskCount ?? "-"}</p>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-700">{trace.finalJobStatus || "-"}</td>
+                            <td className="px-3 py-2 text-zinc-700">
+                              <p>ok: {trace.successCount}</p>
+                              <p className="mt-1 text-zinc-500">failed: {trace.failedCount}</p>
+                              <p className="mt-1 text-zinc-500">timeout: {trace.timedOutCount}</p>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-700">
+                              <p>consumed: {trace.creditsConsumed ? "yes" : "no"}</p>
+                              <p className="mt-1 text-zinc-500">refunded: {trace.creditsRefunded ? "yes" : "no"}</p>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-700">
+                              <p>{trace.failedStep || "-"}</p>
+                              <p className="mt-1 text-zinc-500">{trace.errorCode || "-"}</p>
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextFilters = {
+                                    ...opsLogFilters,
+                                    runId: trace.runId || opsLogFilters.runId,
+                                    jobId: trace.jobId || opsLogFilters.jobId,
+                                    projectId: trace.projectId || opsLogFilters.projectId,
+                                    action: "",
+                                    scope: "all" as OpsLogScopePreset,
+                                    page: 1,
+                                  };
+                                  setOpsLogFilters(nextFilters);
+                                  loadOpsLogs(nextFilters);
+                                }}
+                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                              >
+                                查看时间线
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-                <table className="min-w-[1100px] w-full text-left text-xs">
+                <table className="min-w-[1480px] w-full text-left text-xs">
                   <thead className="bg-zinc-50 text-zinc-600">
                     <tr>
                       <th className="px-3 py-2 font-medium">时间</th>
+                      <th className="px-3 py-2 font-medium">动作</th>
                       <th className="px-3 py-2 font-medium">状态</th>
-                      <th className="px-3 py-2 font-medium">分类/动作</th>
-                      <th className="px-3 py-2 font-medium">用户</th>
-                      <th className="px-3 py-2 font-medium">项目</th>
                       <th className="px-3 py-2 font-medium">错误码</th>
                       <th className="px-3 py-2 font-medium">消息</th>
+                      <th className="px-3 py-2 font-medium">runId / jobId / taskId</th>
+                      <th className="px-3 py-2 font-medium">项目</th>
+                      <th className="px-3 py-2 font-medium">耗时</th>
+                      <th className="px-3 py-2 font-medium">任务状态</th>
                       <th className="px-3 py-2 font-medium">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {opsLogs.length ? (
-                      opsLogs.map((item) => (
+                    {displayOpsLogs.length ? (
+                      displayOpsLogs.map((item) => (
                         <tr key={item.id} className="border-t border-zinc-200 align-top">
                           <td className="px-3 py-2 text-zinc-600">{formatDateTime(item.createdAt)}</td>
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-zinc-900">{item.action}</p>
+                            <p className="mt-0.5 text-zinc-500">{item.category}</p>
+                            {item.stage ? <p className="mt-0.5 text-zinc-400">{item.stage}</p> : null}
+                          </td>
                           <td className="px-3 py-2">
                             <span className={`inline-flex rounded-full border px-2 py-0.5 ${item.status === "error" ? "border-red-200 bg-red-50 text-red-700" : item.status === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
                               {item.status}
                             </span>
                           </td>
-                          <td className="px-3 py-2">
-                            <p className="font-medium text-zinc-900">{item.category}</p>
-                            <p className="mt-0.5 text-zinc-500">{item.action}</p>
-                            {item.stage ? <p className="mt-0.5 text-zinc-400">{item.stage}</p> : null}
-                          </td>
-                          <td className="px-3 py-2 text-zinc-700">{item.userEmail || "-"}</td>
-                          <td className="px-3 py-2 text-zinc-700">{item.projectId || "-"}</td>
                           <td className="px-3 py-2 text-zinc-700">{item.code || "-"}</td>
                           <td className="max-w-[360px] px-3 py-2 text-zinc-700">
                             <p className="line-clamp-3">{item.message || "-"}</p>
                             <p className="mt-1 text-zinc-400">{item.source || ""}</p>
                           </td>
                           <td className="px-3 py-2">
-                            <button
-                              type="button"
-                              onClick={() => copyText(JSON.stringify(item, null, 2), "线上日志")}
-                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                            >
-                              复制详情
-                            </button>
+                            <p className="font-mono text-[11px] text-zinc-700">{item.runId || "-"}</p>
+                            <p className="mt-1 font-mono text-[11px] text-zinc-500">{item.jobId || "-"}</p>
+                            <p className="mt-1 font-mono text-[11px] text-zinc-400">{item.taskId || "-"}</p>
+                          </td>
+                          <td className="px-3 py-2 text-zinc-700">
+                            <p>{item.projectId || "-"}</p>
+                            <p className="mt-1 text-zinc-400">{item.userEmail || "-"}</p>
+                          </td>
+                          <td className="px-3 py-2 text-zinc-700">
+                            {typeof item.durationMs === "number" ? `${item.durationMs} ms` : "-"}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-700">
+                            {item.taskStatusSummary ? (
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(item.taskStatusSummary).map(([statusKey, count]) => (
+                                  <span key={`${item.id}-${statusKey}`} className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
+                                    {statusKey}:{count}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOpsEventId(item.id)}
+                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                              >
+                                查看详情
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyText(JSON.stringify(item, null, 2), "线上日志")}
+                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                              >
+                                复制详情
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={8} className="px-3 py-8 text-center text-sm text-zinc-500">
+                        <td colSpan={10} className="px-3 py-8 text-center text-sm text-zinc-500">
                           {opsLogsLoading ? "正在读取线上日志..." : "当前筛选下没有线上日志。"}
                         </td>
                       </tr>
@@ -2502,6 +2904,56 @@ function AdminDashboardPageContent() {
           </section>
         ) : null}
       </div>
+
+      <Drawer
+        open={Boolean(selectedOpsEvent)}
+        title={`ops_event ${selectedOpsEvent?.id ?? ""}`}
+        onClose={() => setSelectedOpsEventId("")}
+      >
+        {selectedOpsEvent ? (
+          <div className="space-y-4 text-sm">
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+              <p className="font-medium text-zinc-900">{selectedOpsEvent.action}</p>
+              <p className="mt-1 text-zinc-600">
+                {selectedOpsEvent.status} / {selectedOpsEvent.code || "-"}
+              </p>
+              <p className="mt-1 text-zinc-600">{formatDateTime(selectedOpsEvent.createdAt)}</p>
+              <p className="mt-1 text-zinc-500">{selectedOpsEvent.message || "-"}</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Identifiers</p>
+                <p className="mt-2 text-zinc-700">runId: {selectedOpsEvent.runId || "-"}</p>
+                <p className="mt-1 text-zinc-700">jobId: {selectedOpsEvent.jobId || "-"}</p>
+                <p className="mt-1 text-zinc-700">taskId: {selectedOpsEvent.taskId || "-"}</p>
+                <p className="mt-1 text-zinc-700">projectId: {selectedOpsEvent.projectId || "-"}</p>
+                <p className="mt-1 text-zinc-700">userEmail: {selectedOpsEvent.userEmail || "-"}</p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Summary</p>
+                <p className="mt-2 text-zinc-700">durationMs: {typeof selectedOpsEvent.durationMs === "number" ? selectedOpsEvent.durationMs : "-"}</p>
+                <p className="mt-1 text-zinc-700">source: {selectedOpsEvent.source || "-"}</p>
+                <p className="mt-1 text-zinc-700">stage: {selectedOpsEvent.stage || "-"}</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-950 p-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-400">details_json</p>
+              <pre className="mt-2 overflow-x-auto text-xs text-zinc-100">
+                {JSON.stringify(selectedOpsEvent.details || {}, null, 2)}
+              </pre>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => copyText(JSON.stringify(selectedOpsEvent, null, 2), "ops_event")}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100"
+              >
+                复制详情
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Drawer>
 
       <Drawer open={Boolean(selectedLog)} title={`日志详情 ${selectedLog?.id ?? ""}`} onClose={() => setSelectedLogId("")}>
         {selectedLog ? (

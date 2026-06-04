@@ -5,7 +5,12 @@ import path from "node:path";
 import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { getDb } from "@/lib/server/db";
 import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
-import { applyImageGenerationRefundAtomic, logOpsEvent } from "@/lib/server/store";
+import {
+  applyImageGenerationRefundAtomic,
+  buildGenerationTaskStatusSummary,
+  logGenerationOpsEvent,
+  logOpsEvent,
+} from "@/lib/server/store";
 import { updateWorkspaceProjectPageImage } from "@/lib/server/workspace-project-pages";
 
 export type ImageGenerationJobStatus =
@@ -1760,14 +1765,16 @@ export async function applyRefundsForFailedImageGenerationTasks(input: {
   if (billing.imageCreditsPerTask <= 0) {
     return { refundedCount: 0, refundedAmount: 0 };
   }
+  const taskStatusSummary = buildGenerationTaskStatusSummary(input.tasks);
   let refundedCount = 0;
   let refundedAmount = 0;
   for (const task of input.tasks) {
     if (task.status !== "failed" && task.status !== "timed_out") {
       continue;
     }
+    const refundKey = `${input.job.id}:${task.id}:image-task-failed:v1`;
     const refundResult = await applyImageGenerationRefundAtomic({
-      refundKey: `${input.job.id}:${task.id}:image-task-failed:v1`,
+      refundKey,
       jobId: input.job.id,
       taskId: task.id,
       taskIndex: task.taskIndex,
@@ -1787,6 +1794,36 @@ export async function applyRefundsForFailedImageGenerationTasks(input: {
     }
     refundedCount += 1;
     refundedAmount += billing.imageCreditsPerTask;
+    await logGenerationOpsEvent({
+      action: "generation.refund.success",
+      status: "ok",
+      source: input.source || "image_generation_jobs",
+      message: `Refunded ${billing.imageCreditsPerTask} credits for a failed image task.`,
+      userEmail: input.job.userEmail,
+      projectId: input.job.projectId ?? undefined,
+      runId: input.job.runId ?? undefined,
+      jobId: input.job.id,
+      taskId: task.id,
+      taskIndex: task.taskIndex,
+      refundKey,
+      jobStatus: input.job.status,
+      taskStatus: task.status,
+      taskStatusSummary,
+      outputType: task.outputType,
+      aspectRatio: task.aspectRatio,
+      ratio: input.job.ratio ?? undefined,
+      taskCount: input.tasks.length,
+      providerOrder: task.providerOrder,
+      providerUsed: task.providerUsed ?? undefined,
+      attempts: task.attempts,
+      promptText: task.promptText,
+      creditsAmount: billing.imageCreditsPerTask,
+      creditRecordId: refundResult.creditRecordId,
+      renderUrl: task.renderUrl,
+      assetPath: task.assetPath,
+      errorCode: task.errorCode ?? undefined,
+      safeErrorMessage: task.errorMessage ?? undefined,
+    });
     logOpsEvent({
       category: "billing",
       action: "image_generation_refund_applied",

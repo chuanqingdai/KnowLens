@@ -7,6 +7,7 @@ import {
   applyCreditRecordAtomic,
   getLatestSubscriptionDb,
   listCreditRecords,
+  logOpsEvent,
 } from "@/lib/server/store";
 
 export const runtime = "nodejs";
@@ -81,6 +82,7 @@ function normalizeSubscription(input: unknown) {
 }
 
 export async function GET() {
+  const requestStartedAt = Date.now();
   const session = await getServerSession(nextAuthOptions);
   const email = session?.user?.email?.trim().toLowerCase();
   if (!email) {
@@ -103,6 +105,23 @@ export async function GET() {
   const rawRecords = (await listCreditRecords(email)) as DbCreditRecord[];
   const records = rawRecords.map(normalizeRecord);
   const subscription = normalizeSubscription(await getLatestSubscriptionDb(email));
+  void logOpsEvent({
+    category: "billing",
+    action: "generation.credits.read",
+    status: "ok",
+    source: "billing_credits",
+    userEmail: email,
+    message: "Read current billing credits state.",
+    details: {
+      creditsAmount: 0,
+      balance: records[0]?.balance ?? 50,
+      durationMs: Date.now() - requestStartedAt,
+      membershipStatus: subscription?.status,
+      planType: subscription?.cycle,
+      planName: subscription?.planName,
+      consumeResult: "read",
+    },
+  });
   return NextResponse.json({
     ok: true,
     email,
@@ -113,6 +132,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const requestStartedAt = Date.now();
   const session = await getServerSession(nextAuthOptions);
   const email = session?.user?.email?.trim().toLowerCase();
   if (!email) {
@@ -140,11 +160,40 @@ export async function POST(request: Request) {
     projectId?: string;
     projectTitle?: string;
     userId?: string;
+    runId?: string;
+    jobId?: string;
+    entrySource?: string;
+    estimatedCreditsCost?: number;
+    creditsBefore?: number;
+    creditsAfter?: number;
+    creditBalanceSource?: string;
+    consumeResult?: "success" | "failure" | "unknown";
+    refundReason?: string;
   };
   const type = body.type === "topup" || body.type === "refund" ? body.type : "consume";
   const delta = Number(body.delta ?? 0);
   const description = String(body.description ?? "").trim().slice(0, 500);
   if (!Number.isFinite(delta) || delta === 0 || !description) {
+    void logOpsEvent({
+      category: "billing",
+      action: type === "refund" ? "generation.refund.failure" : "generation.credits.consume.failure",
+      status: "error",
+      source: "billing_credits",
+      code: "BILLING_CREDITS_INVALID_INPUT",
+      userEmail: email,
+      projectId: body.projectId?.trim() || undefined,
+      message: "Invalid credit record input.",
+      details: {
+        runId: body.runId,
+        jobId: body.jobId,
+        projectId: body.projectId?.trim() || undefined,
+        creditsAmount: Math.abs(Math.round(delta || 0)),
+        durationMs: Date.now() - requestStartedAt,
+        consumeResult: "failure",
+        entrySource: body.entrySource,
+        creditBalanceSource: body.creditBalanceSource,
+      },
+    });
     return NextResponse.json(
       {
         ok: false,
@@ -186,6 +235,27 @@ export async function POST(request: Request) {
     rejectNegativeBalance: type === "consume",
   });
   if (!result.applied) {
+    void logOpsEvent({
+      category: "billing",
+      action: type === "refund" ? "generation.refund.failure" : "generation.credits.consume.failure",
+      status: "error",
+      source: "billing_credits",
+      code: result.code,
+      userEmail: email,
+      projectId: body.projectId?.trim() || undefined,
+      message: "Not enough credits.",
+      details: {
+        runId: body.runId,
+        jobId: body.jobId,
+        projectId: body.projectId?.trim() || undefined,
+        creditsAmount: Math.abs(Math.round(delta)),
+        balance: result.balance,
+        durationMs: Date.now() - requestStartedAt,
+        consumeResult: type === "consume" ? "failure" : body.consumeResult || "failure",
+        entrySource: body.entrySource,
+        creditBalanceSource: body.creditBalanceSource,
+      },
+    });
     return NextResponse.json(
       {
         ok: false,
@@ -198,6 +268,35 @@ export async function POST(request: Request) {
   }
 
   const records = ((await listCreditRecords(email)) as DbCreditRecord[]).map(normalizeRecord);
+  void logOpsEvent({
+    category: "billing",
+    action:
+      type === "refund"
+        ? "generation.refund.success"
+        : type === "consume"
+          ? "generation.credits.consume.success"
+          : "generation.credits.topup.success",
+    status: "ok",
+    source: "billing_credits",
+    userEmail: email,
+    projectId: body.projectId?.trim() || undefined,
+    message: type === "consume" ? "Credits consumed successfully." : type === "refund" ? "Credits refunded successfully." : "Credits topped up successfully.",
+    details: {
+      runId: body.runId,
+      jobId: body.jobId,
+      projectId: body.projectId?.trim() || undefined,
+      entrySource: body.entrySource,
+      creditsAmount: Math.abs(Math.round(delta)),
+      balance: records[0]?.balance ?? result.balance,
+      durationMs: Date.now() - requestStartedAt,
+      consumeResult: type === "consume" ? "success" : body.consumeResult,
+      creditBalanceSource: body.creditBalanceSource,
+      creditsBefore: body.creditsBefore,
+      creditsAfter: body.creditsAfter ?? (records[0]?.balance ?? result.balance),
+      estimatedCreditsCost: body.estimatedCreditsCost,
+      refundReason: body.refundReason,
+    },
+  });
   return NextResponse.json({
     ok: true,
     email,

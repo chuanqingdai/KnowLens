@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findBillingPlan } from "@/lib/billing-plans";
@@ -49,6 +49,82 @@ export type OpsEventRow = {
   detailsJson: string | null;
   createdAt: string;
 };
+
+export type GenerationTaskStatusSummary = Record<string, number>;
+
+export type GenerationOpsDetails = {
+  runId?: string;
+  jobId?: string;
+  taskId?: string;
+  taskIndex?: number;
+  projectId?: string;
+  idempotencyKeyHash?: string;
+  refundKeyHash?: string;
+  jobStatus?: string;
+  taskStatus?: string;
+  taskStatusSummary?: GenerationTaskStatusSummary;
+  outputType?: string;
+  aspectRatio?: string;
+  ratio?: string;
+  taskCount?: number;
+  providerOrder?: string;
+  providerUsed?: string;
+  attempts?: number;
+  promptHash?: string;
+  promptLength?: number;
+  creditsAmount?: number;
+  creditRecordId?: string;
+  renderUrlExists?: boolean;
+  assetPathExists?: boolean;
+  durationMs?: number;
+  errorCode?: string;
+  safeErrorMessage?: string;
+};
+
+type GenerationOpsEventInput = {
+  action: string;
+  status: OpsEventStatus;
+  source?: string;
+  code?: string;
+  message?: string;
+  userEmail?: string;
+  projectId?: string;
+  runId?: string;
+  jobId?: string;
+  taskId?: string;
+  taskIndex?: number;
+  idempotencyKey?: string;
+  refundKey?: string;
+  jobStatus?: string;
+  taskStatus?: string;
+  taskStatusSummary?: GenerationTaskStatusSummary;
+  outputType?: string;
+  aspectRatio?: string;
+  ratio?: string;
+  taskCount?: number;
+  providerOrder?: string;
+  providerUsed?: string;
+  attempts?: number;
+  promptText?: string;
+  creditsAmount?: number;
+  creditRecordId?: string;
+  renderUrl?: string | null;
+  assetPath?: string | null;
+  durationMs?: number;
+  errorCode?: string;
+  safeErrorMessage?: string;
+  extraDetails?: Record<string, unknown>;
+};
+
+const GENERATION_LOG_REPEAT_WINDOW_MS = 60_000;
+const GENERATION_LOG_JOB_CAP = 300;
+const GENERATION_LOG_RUN_CAP = 200;
+const TERMINAL_GENERATION_JOB_STATUSES = new Set(["asset_ready", "completed", "success", "failed", "timed_out", "billing_failed", "completed_with_errors"]);
+const generationOpsDedupCache = new Map<string, number>();
+const generationOpsJobCounts = new Map<string, number>();
+const generationOpsRunCounts = new Map<string, number>();
+const generationOpsPollState = new Map<string, { count: number; signature: string }>();
+const generationOpsTerminalSeen = new Set<string>();
 
 function nowIso() {
   return new Date().toISOString();
@@ -541,6 +617,7 @@ export async function applyImageGenerationRefundAtomic(input: {
         applied: true as const,
         balance: nextBalance,
         duplicate: false,
+        creditRecordId,
       };
     });
   }
@@ -615,6 +692,7 @@ export async function applyImageGenerationRefundAtomic(input: {
       applied: true as const,
       balance: nextBalance,
       duplicate: false,
+      creditRecordId,
     };
   } catch (error) {
     db.exec("ROLLBACK");
@@ -1435,6 +1513,227 @@ function stringifyDetails(details: unknown) {
   }
 }
 
+function hashTelemetryValue(input?: string | null) {
+  const value = clampText(input ?? "", 2000);
+  if (!value) {
+    return "";
+  }
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function sanitizeSafeErrorMessage(input?: string | null) {
+  const value = clampText(input ?? "", 280);
+  if (!value) {
+    return "";
+  }
+  return value.replace(/https?:\/\/\S+/gi, "[url]");
+}
+
+function normalizeGenerationStatusSummary(input?: GenerationTaskStatusSummary) {
+  if (!input) {
+    return undefined;
+  }
+  const entries = Object.entries(input)
+    .map(([status, count]) => [clampText(status, 64), Number(count ?? 0)] as const)
+    .filter(([status, count]) => status && Number.isFinite(count) && count > 0);
+  if (!entries.length) {
+    return undefined;
+  }
+  return Object.fromEntries(entries);
+}
+
+function shouldDropTelemetryDetailKey(key: string) {
+  return /(?:^|_)(?:token|secret|cookie|authorization|apikey|api_key|database_url)(?:$|_)/i.test(key) ||
+    /^(?:prompt|rawImageUrl|imageUrl|renderUrl|assetPath|storageKey|providerPayload)$/i.test(key);
+}
+
+function sanitizeTelemetryDetailValue(value: unknown, depth = 0): unknown {
+  if (value == null || depth > 3) {
+    return value ?? null;
+  }
+  if (typeof value === "string") {
+    return clampText(sanitizeSafeErrorMessage(value), 200);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 24).map((item) => sanitizeTelemetryDetailValue(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    const entries = Object.entries(objectValue)
+      .filter(([key]) => !shouldDropTelemetryDetailKey(key))
+      .slice(0, 40)
+      .map(([key, item]) => [clampText(key, 64), sanitizeTelemetryDetailValue(item, depth + 1)] as const)
+      .filter(([key, item]) => key && item !== undefined);
+    return Object.fromEntries(entries);
+  }
+  return undefined;
+}
+
+function sanitizeTelemetryExtraDetails(details?: Record<string, unknown>) {
+  if (!details) {
+    return undefined;
+  }
+  const sanitized = sanitizeTelemetryDetailValue(details, 0);
+  if (!sanitized || typeof sanitized !== "object" || Array.isArray(sanitized)) {
+    return undefined;
+  }
+  const entries = Object.entries(sanitized).filter(([, value]) => value !== undefined);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+export function parseOpsEventDetailsJson(detailsJson?: string | null) {
+  if (!detailsJson) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(detailsJson) as Record<string, unknown>;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildGenerationTaskStatusSummary(input?: Array<{ status?: string | null }> | null) {
+  if (!input?.length) {
+    return {} as GenerationTaskStatusSummary;
+  }
+  const summary: GenerationTaskStatusSummary = {};
+  input.forEach((task) => {
+    const status = clampText(task?.status ?? "", 64).toLowerCase() || "unknown";
+    summary[status] = (summary[status] ?? 0) + 1;
+  });
+  return summary;
+}
+
+function buildGenerationOpsDetails(input: GenerationOpsEventInput): GenerationOpsDetails {
+  const baseDetails = {
+    runId: clampText(input.runId, 120) || undefined,
+    jobId: clampText(input.jobId, 120) || undefined,
+    taskId: clampText(input.taskId, 120) || undefined,
+    taskIndex: Number.isFinite(input.taskIndex) ? Number(input.taskIndex) : undefined,
+    projectId: clampText(input.projectId, 120) || undefined,
+    idempotencyKeyHash: hashTelemetryValue(input.idempotencyKey) || undefined,
+    refundKeyHash: hashTelemetryValue(input.refundKey) || undefined,
+    jobStatus: clampText(input.jobStatus, 64) || undefined,
+    taskStatus: clampText(input.taskStatus, 64) || undefined,
+    taskStatusSummary: normalizeGenerationStatusSummary(input.taskStatusSummary),
+    outputType: clampText(input.outputType, 32) || undefined,
+    aspectRatio: clampText(input.aspectRatio, 32) || undefined,
+    ratio: clampText(input.ratio, 32) || undefined,
+    taskCount: Number.isFinite(input.taskCount) ? Number(input.taskCount) : undefined,
+    providerOrder: clampText(input.providerOrder, 240) || undefined,
+    providerUsed: clampText(input.providerUsed, 64) || undefined,
+    attempts: Number.isFinite(input.attempts) ? Number(input.attempts) : undefined,
+    promptHash: hashTelemetryValue(input.promptText) || undefined,
+    promptLength: typeof input.promptText === "string" ? input.promptText.length : undefined,
+    creditsAmount: Number.isFinite(input.creditsAmount) ? Number(input.creditsAmount) : undefined,
+    creditRecordId: clampText(input.creditRecordId, 120) || undefined,
+    renderUrlExists: Boolean(clampText(input.renderUrl ?? "", 500)),
+    assetPathExists: Boolean(clampText(input.assetPath ?? "", 500)),
+    durationMs: Number.isFinite(input.durationMs) ? Math.max(0, Math.round(Number(input.durationMs))) : undefined,
+    errorCode: clampText(input.errorCode, 64) || undefined,
+    safeErrorMessage: sanitizeSafeErrorMessage(input.safeErrorMessage) || undefined,
+  };
+  const extraDetails = sanitizeTelemetryExtraDetails(input.extraDetails);
+  return extraDetails ? { ...baseDetails, ...extraDetails } : baseDetails;
+}
+
+function isTerminalGenerationStatus(status?: string | null) {
+  return TERMINAL_GENERATION_JOB_STATUSES.has(clampText(status ?? "", 64).toLowerCase());
+}
+
+function shouldLogGenerationPoll(input: {
+  jobId?: string;
+  jobStatus?: string;
+  taskStatusSummary?: GenerationTaskStatusSummary;
+  status: OpsEventStatus;
+}) {
+  const jobId = clampText(input.jobId, 120);
+  if (!jobId) {
+    return true;
+  }
+  const signature = JSON.stringify({
+    jobStatus: clampText(input.jobStatus, 64).toLowerCase(),
+    taskStatusSummary: normalizeGenerationStatusSummary(input.taskStatusSummary) ?? {},
+  });
+  const previous = generationOpsPollState.get(jobId);
+  const nextCount = (previous?.count ?? 0) + 1;
+  generationOpsPollState.set(jobId, { count: nextCount, signature });
+  if (!previous) {
+    return true;
+  }
+  if (previous.signature !== signature) {
+    return true;
+  }
+  if (input.status === "error") {
+    return true;
+  }
+  if (nextCount <= 5) {
+    return true;
+  }
+  return nextCount % 10 === 0;
+}
+
+export async function logGenerationOpsEvent(input: GenerationOpsEventInput) {
+  const runId = clampText(input.runId, 120);
+  const jobId = clampText(input.jobId, 120);
+  const taskId = clampText(input.taskId, 120);
+  const action = clampText(input.action, 64) || "generation.unknown";
+  const code = clampText(input.code, 64);
+  const dedupeKey = [runId || "-", jobId || "-", taskId || "-", action, code || "-"].join(":");
+  const now = Date.now();
+  const status = input.status;
+  if (status === "error") {
+    const lastSeen = generationOpsDedupCache.get(dedupeKey) ?? 0;
+    if (lastSeen && now - lastSeen < GENERATION_LOG_REPEAT_WINDOW_MS) {
+      return null;
+    }
+    generationOpsDedupCache.set(dedupeKey, now);
+  }
+  if (action === "generation.job.poll" && !shouldLogGenerationPoll(input)) {
+    return null;
+  }
+  const jobStatus = clampText(input.jobStatus, 64).toLowerCase();
+  if (jobId && isTerminalGenerationStatus(jobStatus) && (action === "generation.job.poll" || action === "generation.project.restore")) {
+    const terminalKey = `${jobId}:${action}:${jobStatus || "terminal"}`;
+    if (generationOpsTerminalSeen.has(terminalKey)) {
+      return null;
+    }
+    generationOpsTerminalSeen.add(terminalKey);
+  }
+  const jobCount = jobId ? (generationOpsJobCounts.get(jobId) ?? 0) : 0;
+  const runCount = runId ? (generationOpsRunCounts.get(runId) ?? 0) : 0;
+  const isSummaryEvent = action === "generation.trace.summary";
+  if ((jobId && jobCount >= GENERATION_LOG_JOB_CAP) || (runId && runCount >= GENERATION_LOG_RUN_CAP)) {
+    if (status !== "error" && !isSummaryEvent) {
+      return null;
+    }
+  }
+  const eventId = await logOpsEvent({
+    category: "image",
+    action,
+    status,
+    source: input.source,
+    code: code || undefined,
+    message: clampText(input.message, 500) || undefined,
+    userEmail: input.userEmail,
+    projectId: input.projectId,
+    details: buildGenerationOpsDetails(input),
+  });
+  if (eventId) {
+    if (jobId) {
+      generationOpsJobCounts.set(jobId, jobCount + 1);
+    }
+    if (runId) {
+      generationOpsRunCounts.set(runId, runCount + 1);
+    }
+  }
+  return eventId;
+}
+
 function getOpsLogDir() {
   const configured = (process.env.OPS_LOG_DIR || "").trim();
   if (configured) {
@@ -1766,6 +2065,12 @@ export async function listOpsEvents(input?: {
   source?: string;
   code?: string;
   limit?: number;
+  offset?: number;
+  runId?: string;
+  jobId?: string;
+  taskId?: string;
+  from?: string;
+  to?: string;
 }) {
   const filters: string[] = [];
   const params: Array<string | number> = [];
@@ -1787,7 +2092,32 @@ export async function listOpsEvents(input?: {
   pushFilter("LOWER(COALESCE(source, ''))", input?.source);
   pushFilter("LOWER(COALESCE(code, ''))", input?.code);
 
+  const pushDetailsFilter = (field: "runId" | "jobId" | "taskId", value?: string) => {
+    const normalized = clampText(value, 160);
+    if (!normalized) {
+      return;
+    }
+    filters.push("LOWER(COALESCE(details_json, '')) LIKE ?");
+    params.push(`%\"${field.toLowerCase()}\":\"${normalized.toLowerCase()}\"%`);
+  };
+
+  pushDetailsFilter("runId", input?.runId);
+  pushDetailsFilter("jobId", input?.jobId);
+  pushDetailsFilter("taskId", input?.taskId);
+
+  const normalizedFrom = clampText(input?.from, 64);
+  if (normalizedFrom) {
+    filters.push("created_at >= ?");
+    params.push(normalizedFrom);
+  }
+  const normalizedTo = clampText(input?.to, 64);
+  if (normalizedTo) {
+    filters.push("created_at <= ?");
+    params.push(normalizedTo);
+  }
+
   const limit = Math.min(500, Math.max(1, Math.round(input?.limit ?? 120)));
+  const offset = Math.max(0, Math.round(input?.offset ?? 0));
   const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const sqlText = `SELECT
        id,
@@ -1804,12 +2134,13 @@ export async function listOpsEvents(input?: {
      FROM ops_events
      ${whereClause}
      ORDER BY created_at DESC
-     LIMIT ?`;
+     LIMIT ?
+     OFFSET ?`;
   const rows = hasManagedDatabase()
-    ? await pgAll(sqlText, ...params, limit) as Array<Record<string, unknown>>
+    ? await pgAll(sqlText, ...params, limit, offset) as Array<Record<string, unknown>>
     : (() => {
         const { db } = getDb();
-        return db.prepare(sqlText).all(...params, limit) as Array<Record<string, unknown>>;
+        return db.prepare(sqlText).all(...params, limit, offset) as Array<Record<string, unknown>>;
       })();
 
   return rows.map((row) => ({

@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminEmail } from "@/lib/server/admin-auth";
-import { listOpsEvents, readOpsLogFileByUserEmail } from "@/lib/server/store";
+import {
+  getLatestSubscriptionDb,
+  listOpsEvents,
+  listCreditRecords,
+  parseOpsEventDetailsJson,
+  readOpsLogFileByUserEmail,
+  type GenerationTaskStatusSummary,
+} from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
@@ -37,6 +44,36 @@ type UsageLogRow = {
   projectId: string | null;
   detailsJson: string | null;
   createdAt: string;
+  details?: Record<string, unknown> | null;
+  runId?: string | null;
+  jobId?: string | null;
+  taskId?: string | null;
+  durationMs?: number | null;
+  taskStatusSummary?: GenerationTaskStatusSummary | null;
+};
+
+type TraceSummaryRow = {
+  traceId: string;
+  createdAt: string;
+  lastEventAt: string;
+  runId: string | null;
+  jobId: string | null;
+  projectId: string | null;
+  entrySource: string | null;
+  generationDirection: string | null;
+  outputType: string | null;
+  styleName: string | null;
+  requestedCount: number | null;
+  taskCount: number | null;
+  finalJobStatus: string | null;
+  successCount: number;
+  failedCount: number;
+  timedOutCount: number;
+  creditsConsumed: boolean;
+  creditsRefunded: boolean;
+  totalDurationMs: number | null;
+  failedStep: string | null;
+  errorCode: string | null;
 };
 
 function safeLower(input: string | null | undefined) {
@@ -57,8 +94,9 @@ function parseFileLogLine(line: string): UsageLogRow | null {
     const userEmail = typeof parsed.userEmail === "string" ? parsed.userEmail.trim().toLowerCase() : null;
     const projectId = typeof parsed.projectId === "string" ? parsed.projectId.trim() : null;
     const createdAt = typeof parsed.ts === "string" ? parsed.ts.trim() : "";
-    const detailsJson =
-      parsed.details && typeof parsed.details === "object" ? JSON.stringify(parsed.details).slice(0, 4000) : null;
+    const details =
+      parsed.details && typeof parsed.details === "object" ? (parsed.details as Record<string, unknown>) : null;
+    const detailsJson = details ? JSON.stringify(details).slice(0, 4000) : null;
     if (!id || !category || !action || !createdAt) {
       return null;
     }
@@ -74,6 +112,15 @@ function parseFileLogLine(line: string): UsageLogRow | null {
       projectId,
       detailsJson,
       createdAt,
+      details,
+      runId: typeof details?.runId === "string" ? details.runId : null,
+      jobId: typeof details?.jobId === "string" ? details.jobId : null,
+      taskId: typeof details?.taskId === "string" ? details.taskId : null,
+      durationMs: typeof details?.durationMs === "number" ? details.durationMs : null,
+      taskStatusSummary:
+        details?.taskStatusSummary && typeof details.taskStatusSummary === "object"
+          ? (details.taskStatusSummary as GenerationTaskStatusSummary)
+          : null,
     };
   } catch {
     return null;
@@ -92,6 +139,9 @@ function filterUsageRow(
   input: {
     userEmail: string;
     projectId: string;
+    runId: string;
+    jobId: string;
+    taskId: string;
     category: string;
     action: string;
     status: string;
@@ -103,12 +153,144 @@ function filterUsageRow(
   return (
     matchLike(item.userEmail, input.userEmail) &&
     matchLike(item.projectId, input.projectId) &&
+    matchLike(item.runId, input.runId) &&
+    matchLike(item.jobId, input.jobId) &&
+    matchLike(item.taskId, input.taskId) &&
     matchLike(item.category, input.category) &&
     matchLike(item.action, input.action) &&
     matchLike(item.source, input.source) &&
     matchLike(item.code, input.code) &&
     (normalizedStatus ? safeLower(item.status) === normalizedStatus : true)
   );
+}
+
+function numericOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function buildTraceSummaries(logs: Array<UsageLogRow & { details?: Record<string, unknown> | null }>) {
+  const groups = new Map<string, {
+    createdAt: string;
+    lastEventAt: string;
+    runId: string | null;
+    jobId: string | null;
+    projectId: string | null;
+    entrySource: string | null;
+    generationDirection: string | null;
+    outputType: string | null;
+    styleName: string | null;
+    requestedCount: number | null;
+    taskCount: number | null;
+    finalJobStatus: string | null;
+    successCount: number;
+    failedCount: number;
+    timedOutCount: number;
+    creditsConsumed: boolean;
+    creditsRefunded: boolean;
+    totalDurationMs: number | null;
+    failedStep: string | null;
+    errorCode: string | null;
+  }>();
+
+  const resolveGroupKey = (item: UsageLogRow & { details?: Record<string, unknown> | null }) => {
+    return item.runId || item.jobId || item.projectId || item.id;
+  };
+
+  const taskSummaryCount = (summary: GenerationTaskStatusSummary | null | undefined, keys: string[]) =>
+    keys.reduce((sum, key) => sum + Number(summary?.[key] ?? 0), 0);
+
+  for (const item of logs) {
+    const details = item.details || null;
+    const groupKey = resolveGroupKey(item);
+    const current = groups.get(groupKey) ?? {
+      createdAt: item.createdAt,
+      lastEventAt: item.createdAt,
+      runId: item.runId ?? null,
+      jobId: item.jobId ?? null,
+      projectId: item.projectId ?? null,
+      entrySource: typeof details?.entrySource === "string" ? details.entrySource : null,
+      generationDirection: typeof details?.generationDirection === "string" ? details.generationDirection : null,
+      outputType: typeof details?.outputType === "string" ? details.outputType : null,
+      styleName: typeof details?.styleName === "string" ? details.styleName : null,
+      requestedCount: numericOrNull(details?.requestedCount),
+      taskCount: numericOrNull(details?.taskCount),
+      finalJobStatus: typeof details?.finalJobStatus === "string" ? details.finalJobStatus : null,
+      successCount: 0,
+      failedCount: 0,
+      timedOutCount: 0,
+      creditsConsumed: false,
+      creditsRefunded: false,
+      totalDurationMs: null,
+      failedStep: null,
+      errorCode: item.code || null,
+    };
+
+    if (item.createdAt < current.createdAt) {
+      current.createdAt = item.createdAt;
+    }
+    if (item.createdAt > current.lastEventAt) {
+      current.lastEventAt = item.createdAt;
+    }
+    current.runId ||= item.runId ?? null;
+    current.jobId ||= item.jobId ?? null;
+    current.projectId ||= item.projectId ?? null;
+    current.entrySource ||= typeof details?.entrySource === "string" ? details.entrySource : null;
+    current.generationDirection ||= typeof details?.generationDirection === "string" ? details.generationDirection : null;
+    current.outputType ||= typeof details?.outputType === "string" ? details.outputType : null;
+    current.styleName ||= typeof details?.styleName === "string" ? details.styleName : null;
+    current.requestedCount ??= numericOrNull(details?.requestedCount);
+    current.taskCount ??= numericOrNull(details?.taskCount);
+
+    const summary = item.taskStatusSummary;
+    if (summary) {
+      current.successCount = Math.max(
+        current.successCount,
+        taskSummaryCount(summary, ["asset_ready", "completed", "success", "succeeded"]),
+      );
+      current.failedCount = Math.max(
+        current.failedCount,
+        taskSummaryCount(summary, ["failed", "billing_failed", "completed_with_errors"]) +
+          taskSummaryCount(summary, ["timed_out"]),
+      );
+      current.timedOutCount = Math.max(current.timedOutCount, taskSummaryCount(summary, ["timed_out"]));
+    }
+
+    if (item.action === "generation.trace.summary" || item.action === "generation.project.restore") {
+      current.finalJobStatus =
+        (typeof details?.finalJobStatus === "string" ? details.finalJobStatus : null) ||
+        (typeof details?.jobStatus === "string" ? details.jobStatus : null) ||
+        current.finalJobStatus;
+      current.totalDurationMs = Math.max(current.totalDurationMs ?? 0, item.durationMs ?? 0) || current.totalDurationMs;
+      current.errorCode = item.code || current.errorCode;
+    }
+
+    if (item.action === "generation.credits.consume.success" || item.action === "ui.step5.consume.success") {
+      current.creditsConsumed = true;
+    }
+    if (item.action === "generation.refund.success") {
+      current.creditsRefunded = true;
+    }
+    if (!current.failedStep && item.status === "error") {
+      if (item.action.includes("provider")) current.failedStep = "provider";
+      else if (item.action.includes("asset.persist")) current.failedStep = "storage";
+      else if (item.action.includes("credits.consume")) current.failedStep = "credits";
+      else if (item.action.includes("activate")) current.failedStep = "activate";
+      else if (item.action.includes("restore")) current.failedStep = "restore";
+      else current.failedStep = "unknown";
+    }
+    if (item.status === "error" && item.code) {
+      current.errorCode = item.code;
+    }
+
+    groups.set(groupKey, current);
+  }
+
+  return Array.from(groups.entries())
+    .map(([traceId, value]) => ({
+      traceId,
+      ...value,
+    }))
+    .sort((a, b) => b.lastEventAt.localeCompare(a.lastEventAt)) satisfies TraceSummaryRow[];
 }
 
 export async function GET(request: NextRequest) {
@@ -119,22 +301,42 @@ export async function GET(request: NextRequest) {
 
   const userEmail = request.nextUrl.searchParams.get("userEmail") ?? "";
   const projectId = request.nextUrl.searchParams.get("projectId") ?? "";
+  const runId = request.nextUrl.searchParams.get("runId") ?? "";
+  const jobId = request.nextUrl.searchParams.get("jobId") ?? "";
+  const taskId = request.nextUrl.searchParams.get("taskId") ?? "";
   const category = request.nextUrl.searchParams.get("category") ?? "";
   const action = request.nextUrl.searchParams.get("action") ?? "";
   const status = request.nextUrl.searchParams.get("status") ?? "";
   const source = request.nextUrl.searchParams.get("source") ?? "";
   const code = request.nextUrl.searchParams.get("code") ?? "";
+  const from = request.nextUrl.searchParams.get("from") ?? "";
+  const to = request.nextUrl.searchParams.get("to") ?? "";
+  const onlyErrors = request.nextUrl.searchParams.get("onlyErrors") === "1";
+  const onlySlow = request.nextUrl.searchParams.get("onlySlow") === "1";
   const limit = parseIntInRange(request.nextUrl.searchParams.get("limit"), 120, 1, 500);
+  const page = parseIntInRange(request.nextUrl.searchParams.get("page"), 1, 1, 9999);
+  const offset = (page - 1) * limit;
+  const requiresPostFilterPagination = onlyErrors || onlySlow;
+  const dbLimit = requiresPostFilterPagination
+    ? Math.min(2000, Math.max(limit * Math.max(page, 1) * 4, limit * 4))
+    : limit;
+  const dbOffset = requiresPostFilterPagination ? 0 : offset;
 
   const dbLogs = await listOpsEvents({
     userEmail,
     projectId,
+    runId,
+    jobId,
+    taskId,
     category,
     action,
     status,
     source,
     code,
-    limit,
+    limit: dbLimit,
+    offset: dbOffset,
+    from,
+    to,
   }) as UsageLogRow[];
 
   const mergedById = new Map<string, UsageLogRow>();
@@ -154,6 +356,9 @@ export async function GET(request: NextRequest) {
         !filterUsageRow(parsed, {
           userEmail: safeLower(userEmail),
           projectId: safeLower(projectId),
+          runId: safeLower(runId),
+          jobId: safeLower(jobId),
+          taskId: safeLower(taskId),
           category: safeLower(category),
           action: safeLower(action),
           status: safeLower(status),
@@ -169,17 +374,79 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const logs = Array.from(mergedById.values())
+  const normalizedLogs = Array.from(mergedById.values())
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, limit)
-    .map((item) => ({
-      ...item,
-      stage: resolveFailureStage(item),
-    }));
+    .map((item) => {
+      const details = item.details ?? parseOpsEventDetailsJson(item.detailsJson);
+      return {
+        ...item,
+        details,
+        runId: item.runId ?? ((details?.runId as string | undefined) ?? null),
+        jobId: item.jobId ?? ((details?.jobId as string | undefined) ?? null),
+        taskId: item.taskId ?? ((details?.taskId as string | undefined) ?? null),
+        durationMs: item.durationMs ?? ((details?.durationMs as number | undefined) ?? null),
+        taskStatusSummary:
+          item.taskStatusSummary ?? ((details?.taskStatusSummary as GenerationTaskStatusSummary | undefined) ?? null),
+        stage: resolveFailureStage(item),
+      };
+    })
+    .filter((item) => (onlyErrors ? item.status === "error" : true))
+    .filter((item) => {
+      if (!onlySlow) {
+        return true;
+      }
+      return typeof item.durationMs === "number" && item.durationMs >= 30_000;
+    });
+  const logs = requiresPostFilterPagination
+    ? normalizedLogs.slice(offset, offset + limit)
+    : normalizedLogs.slice(0, limit);
+
+  let summary: Record<string, unknown> | null = null;
+  if (normalizedUserEmail) {
+    const subscription = await getLatestSubscriptionDb(normalizedUserEmail).catch(() => null);
+    const creditRecords = await listCreditRecords(normalizedUserEmail).catch(() => []);
+    const last24hCutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recentLogs = normalizedLogs.filter((item) => {
+      const ts = Date.parse(item.createdAt);
+      return Number.isFinite(ts) && ts >= last24hCutoff;
+    });
+    const latestError = normalizedLogs.find((item) => item.status === "error") || null;
+    const latestCreditRecord = Array.isArray(creditRecords) && creditRecords.length ? (creditRecords[0] as Record<string, unknown>) : null;
+    summary = {
+      email: normalizedUserEmail,
+      userId:
+        (typeof latestCreditRecord?.user_id === "string" ? latestCreditRecord.user_id : null) ||
+        (typeof latestCreditRecord?.userId === "string" ? latestCreditRecord.userId : null),
+      isMember: subscription ? ["active", "canceling"].includes(String((subscription as Record<string, unknown>).status ?? "")) : false,
+      planType: (subscription as Record<string, unknown> | null)?.cycle ?? null,
+      planName: (subscription as Record<string, unknown> | null)?.plan_name ?? (subscription as Record<string, unknown> | null)?.planName ?? null,
+      currentCredits:
+        (typeof latestCreditRecord?.balance === "number" ? latestCreditRecord.balance : null) ??
+        (typeof latestCreditRecord?.balance === "string" ? Number(latestCreditRecord.balance) : null),
+      generationCount24h: recentLogs.filter((item) => item.action === "generation.trace.summary").length,
+      failureCount24h: recentLogs.filter((item) => item.status === "error").length,
+      refundCount24h: recentLogs.filter((item) => item.action === "generation.refund.success").length,
+      latestError: latestError
+        ? {
+            createdAt: latestError.createdAt,
+            action: latestError.action,
+            code: latestError.code,
+            message: latestError.message,
+          }
+        : null,
+    };
+  }
+
+  const traces = buildTraceSummaries(normalizedLogs);
 
   return NextResponse.json({
     ok: true,
     logs,
+    traces,
+    summary,
+    page,
+    limit,
+    hasMore: requiresPostFilterPagination ? normalizedLogs.length > offset + limit : normalizedLogs.length === limit,
     generatedAt: new Date().toISOString(),
   });
 }

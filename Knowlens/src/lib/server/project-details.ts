@@ -6,7 +6,12 @@ import {
   listImageGenerationTaskHistoryByProject,
   type ImageGenerationTaskRow,
 } from "@/lib/server/image-generation-jobs";
-import { getProjectByIdForUser, listProjectsByUser } from "@/lib/server/store";
+import {
+  buildGenerationTaskStatusSummary,
+  getProjectByIdForUser,
+  listProjectsByUser,
+  logGenerationOpsEvent,
+} from "@/lib/server/store";
 import {
   getWorkspaceProjectCover,
   listWorkspaceProjectActivityByUser,
@@ -216,6 +221,32 @@ export async function resolveProjectDetail(input: {
         })
       : latestJob;
   const tasks = (stableLatestJob?.tasks || []).map(buildTaskResponse);
+  if (stableLatestJob?.job) {
+    await logGenerationOpsEvent({
+      action: "generation.project.restore",
+      status:
+        stableLatestJob.job.status === "failed" ||
+        stableLatestJob.job.status === "timed_out" ||
+        stableLatestJob.job.status === "billing_failed"
+          ? "error"
+          : "info",
+      source: "project_detail_restore",
+      code: stableLatestJob.job.errorCode ?? undefined,
+      message: stableLatestJob.job.errorMessage || "Project restore loaded the latest image generation state.",
+      userEmail: input.userEmail,
+      projectId,
+      runId: stableLatestJob.job.runId ?? undefined,
+      jobId: stableLatestJob.job.id,
+      idempotencyKey: stableLatestJob.job.idempotencyKey ?? undefined,
+      jobStatus: stableLatestJob.job.status,
+      taskStatusSummary: buildGenerationTaskStatusSummary(stableLatestJob.tasks),
+      outputType,
+      ratio: stableLatestJob.job.ratio ?? undefined,
+      taskCount: stableLatestJob.tasks.length,
+      errorCode: stableLatestJob.job.errorCode ?? undefined,
+      safeErrorMessage: stableLatestJob.job.errorMessage ?? undefined,
+    });
+  }
   const imageHistoryTasks = await listImageGenerationTaskHistoryByProject({
     userEmail: input.userEmail,
     projectId,

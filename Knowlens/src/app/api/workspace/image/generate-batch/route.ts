@@ -23,7 +23,12 @@ import {
   updateImageGenerationTask,
   type ImageGenerationTaskPayload,
 } from "@/lib/server/image-generation-jobs";
-import { getLatestSubscriptionDb, logOpsEvent } from "@/lib/server/store";
+import {
+  buildGenerationTaskStatusSummary,
+  getLatestSubscriptionDb,
+  logGenerationOpsEvent,
+  logOpsEvent,
+} from "@/lib/server/store";
 import {
   bindWorkspaceProjectPageTask,
   updateWorkspaceProjectPageImage,
@@ -52,6 +57,29 @@ type GenerateBatchPayload = {
   ratio?: string;
   imageModel?: string;
   imageModelPolicy?: string;
+  style?: {
+    id?: string;
+    name?: string;
+    prompt?: string;
+  };
+  clientContext?: {
+    entrySource?: string;
+    sourceConfidence?: string;
+    currentRoute?: string;
+    flowStage?: string;
+    isRestoredProject?: boolean;
+    isNewProject?: boolean;
+    generationDirection?: string;
+    styleId?: string;
+    styleName?: string;
+    requestedCount?: number;
+    taskCount?: number;
+    inputType?: string;
+    promptHash?: string;
+    promptLength?: number;
+    stylePromptHash?: string;
+    stylePromptLength?: number;
+  };
   billing?: {
     languageModelCredits?: number;
     imageModelCredits?: number;
@@ -821,6 +849,18 @@ export async function POST(request: NextRequest) {
     const imageModel = normalizeImageModel(payload.imageModel);
     if (action === "recover") {
       const recoverStartedAt = Date.now();
+      await logGenerationOpsEvent({
+        action: "generation.recover.start",
+        status: "info",
+        source: "image_generate_batch",
+        message: "Recovering image generation job state.",
+        userEmail: email,
+        projectId: payload.projectId,
+        runId: payload.runId,
+        jobId: payload.jobId,
+        idempotencyKey: payload.idempotencyKey,
+        extraDetails: payload.clientContext,
+      });
       const recovered = await recoverImageGenerationJob({
         userEmail: email,
         jobId: payload.jobId,
@@ -830,6 +870,22 @@ export async function POST(request: NextRequest) {
         intent: payload.intent || payload.normalizedDirection,
       });
       if (!recovered) {
+        await logGenerationOpsEvent({
+          action: "generation.recover.failure",
+          status: "error",
+          source: "image_generate_batch",
+          code: "IMAGE_JOB_RECOVERY_NOT_FOUND",
+          message: "No recoverable image generation job was found.",
+          userEmail: email,
+          projectId: payload.projectId,
+          runId: payload.runId,
+          jobId: payload.jobId,
+          idempotencyKey: payload.idempotencyKey,
+          durationMs: Date.now() - recoverStartedAt,
+          errorCode: "IMAGE_JOB_RECOVERY_NOT_FOUND",
+          safeErrorMessage: "No recoverable image generation job was found.",
+          extraDetails: payload.clientContext,
+        });
         logImageBatchEvent({
           requestId: payload.idempotencyKey || payload.runId || payload.jobId || "recover",
           jobId: payload.jobId || null,
@@ -854,6 +910,28 @@ export async function POST(request: NextRequest) {
           code: "IMAGE_JOB_RECOVERY_NOT_FOUND",
         });
       }
+      await logGenerationOpsEvent({
+        action: "generation.recover.success",
+        status: "ok",
+        source: "image_generate_batch",
+        message: "Recovered existing image generation job.",
+        userEmail: email,
+        projectId: recovered.job.projectId ?? undefined,
+        runId: payload.runId || recovered.job.runId || undefined,
+        jobId: recovered.job.id,
+        idempotencyKey: recovered.job.idempotencyKey ?? undefined,
+        jobStatus: recovered.job.status,
+        taskStatusSummary: buildGenerationTaskStatusSummary(recovered.tasks),
+        ratio: recovered.job.ratio ?? undefined,
+        taskCount: recovered.tasks.length,
+        durationMs: Date.now() - recoverStartedAt,
+        errorCode: recovered.job.errorCode ?? undefined,
+        safeErrorMessage: recovered.job.errorMessage ?? undefined,
+        extraDetails: {
+          ...payload.clientContext,
+          finalJobStatus: recovered.job.status,
+        },
+      });
       logImageBatchEvent({
         requestId: payload.idempotencyKey || recovered.job.runId || recovered.job.id,
         jobId: recovered.job.id,
@@ -891,6 +969,7 @@ export async function POST(request: NextRequest) {
       if (!jobId) {
         return NextResponse.json({ error: "jobId is required.", code: "IMAGE_JOB_ID_REQUIRED" }, { status: 400 });
       }
+      const updateStartedAt = Date.now();
       const current = await getImageGenerationJobById(jobId);
       if (!current) {
         return NextResponse.json({ error: "Job not found.", code: "IMAGE_JOB_NOT_FOUND" }, { status: 404 });
@@ -898,6 +977,32 @@ export async function POST(request: NextRequest) {
       if (current.job.userEmail.trim().toLowerCase() !== email) {
         return NextResponse.json({ error: "Forbidden." }, { status: 403 });
       }
+      await logGenerationOpsEvent({
+        action:
+          action === "activate"
+            ? "generation.activate.start"
+            : action === "mark_billing_failed"
+              ? "generation.credits.consume.failure"
+              : "generation.activate.failure",
+        status: action === "mark_failed" ? "error" : "info",
+        source: "image_generate_batch",
+        message:
+          action === "activate"
+            ? "Activating image generation tasks after billing."
+            : action === "mark_billing_failed"
+              ? "Marking image generation billing as failed."
+              : "Marking image generation activation as failed after charge.",
+        userEmail: email,
+        projectId: current.job.projectId ?? undefined,
+        runId: payload.runId || current.job.runId || undefined,
+        jobId,
+        idempotencyKey: current.job.idempotencyKey ?? undefined,
+        jobStatus: current.job.status,
+        taskStatusSummary: buildGenerationTaskStatusSummary(current.tasks),
+        ratio: current.job.ratio ?? undefined,
+        taskCount: current.tasks.length,
+        extraDetails: payload.clientContext,
+      });
       const next =
         action === "activate"
           ? await activateImageGenerationJobAfterBilling(jobId)
@@ -915,6 +1020,42 @@ export async function POST(request: NextRequest) {
       if (!next) {
         return NextResponse.json({ error: "Job update failed.", code: "IMAGE_JOB_UPDATE_FAILED" }, { status: 500 });
       }
+      await logGenerationOpsEvent({
+        action:
+          action === "activate"
+            ? "generation.activate.success"
+            : action === "mark_billing_failed"
+              ? "generation.credits.consume.failure"
+              : "generation.activate.failure",
+        status:
+          action === "activate"
+            ? "ok"
+            : next.job.status === "billing_failed"
+              ? "error"
+              : "error",
+        source: "image_generate_batch",
+        code: next.job.errorCode ?? undefined,
+        message:
+          action === "activate"
+            ? "Image generation tasks activated."
+            : next.job.errorMessage || "Image generation state updated after billing issue.",
+        userEmail: email,
+        projectId: next.job.projectId ?? undefined,
+        runId: payload.runId || next.job.runId || undefined,
+        jobId,
+        idempotencyKey: next.job.idempotencyKey ?? undefined,
+        jobStatus: next.job.status,
+        taskStatusSummary: buildGenerationTaskStatusSummary(next.tasks),
+        ratio: next.job.ratio ?? undefined,
+        taskCount: next.tasks.length,
+        durationMs: Date.now() - updateStartedAt,
+        errorCode: next.job.errorCode ?? undefined,
+        safeErrorMessage: next.job.errorMessage ?? undefined,
+        extraDetails: {
+          ...payload.clientContext,
+          finalJobStatus: next.job.status,
+        },
+      });
       const serialized = serializeJobPayload({
         result: next,
         imageModel,
@@ -1012,7 +1153,7 @@ export async function POST(request: NextRequest) {
           attemptedProviders: ["mock"],
           skippedProviders: fallbackSkippedProviders.length ? fallbackSkippedProviders : providerPolicy,
           providerFallbackDisabled: !allowProviderFallback,
-          mockImageUrl,
+          renderUrlExists: true,
         },
       });
       return NextResponse.json({
@@ -1085,6 +1226,25 @@ export async function POST(request: NextRequest) {
 
     const projectId = normalizeProjectId(payload.projectId);
     const projectTraceId = normalizeProjectTraceId(payload.projectTraceId);
+    await logGenerationOpsEvent({
+      action: "generation.prepare.start",
+      status: "info",
+      source: "image_generate_batch",
+      message: "Preparing image generation job and tasks.",
+      userEmail: email,
+      projectId: projectId ?? undefined,
+      runId: generationRunId,
+      idempotencyKey: idempotencyKey || undefined,
+      outputType: payload.intent || payload.normalizedDirection || normalizedTasks[0]?.outputType,
+      ratio: payload.ratio || normalizedTasks[0]?.aspectRatio || "9:16",
+      taskCount: normalizedTasks.length,
+      providerOrder: providerPolicy.join(","),
+      promptText: normalizedTasks[0]?.prompt,
+      extraDetails: {
+        ...payload.clientContext,
+        styleName: payload.style?.name || payload.clientContext?.styleName,
+      },
+    });
     const job = await createImageGenerationJob({
       userEmail: email,
       projectId: projectId ?? undefined,
@@ -1122,8 +1282,51 @@ export async function POST(request: NextRequest) {
     if (action === "prepare") {
       const preparedDetails = await getImageGenerationJobById(job.jobId);
       if (!preparedDetails) {
+        await logGenerationOpsEvent({
+          action: "generation.prepare.failure",
+          status: "error",
+          source: "image_generate_batch",
+          code: "IMAGE_JOB_PREPARE_FAILED",
+          message: "Prepared job was not found after creation.",
+          userEmail: email,
+          projectId: projectId ?? undefined,
+          runId: generationRunId,
+          jobId: job.jobId,
+          idempotencyKey: idempotencyKey || undefined,
+          taskCount: normalizedTasks.length,
+          providerOrder: providerPolicy.join(","),
+          errorCode: "IMAGE_JOB_PREPARE_FAILED",
+          safeErrorMessage: "Prepared job was not found after creation.",
+          extraDetails: {
+            ...payload.clientContext,
+            styleName: payload.style?.name || payload.clientContext?.styleName,
+          },
+        });
         return NextResponse.json({ error: "Prepared job not found.", code: "IMAGE_JOB_PREPARE_FAILED" }, { status: 500 });
       }
+      await logGenerationOpsEvent({
+        action: "generation.prepare.success",
+        status: "ok",
+        source: "image_generate_batch",
+        message: "Prepared image generation job successfully.",
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        runId: generationRunId,
+        jobId: preparedDetails.job.id,
+        idempotencyKey: preparedDetails.job.idempotencyKey ?? undefined,
+        jobStatus: preparedDetails.job.status,
+        taskStatusSummary: buildGenerationTaskStatusSummary(preparedDetails.tasks),
+        outputType: payload.intent || payload.normalizedDirection || normalizedTasks[0]?.outputType,
+        ratio: preparedDetails.job.ratio ?? undefined,
+        taskCount: preparedDetails.tasks.length,
+        providerOrder: providerPolicy.join(","),
+        promptText: normalizedTasks[0]?.prompt,
+        extraDetails: {
+          ...payload.clientContext,
+          styleName: payload.style?.name || payload.clientContext?.styleName,
+          finalJobStatus: preparedDetails.job.status,
+        },
+      });
       return NextResponse.json({
         ok: true, reused: false, imageGenerationMode: "real", attemptedProviders: [], skippedProviders: [],
         ...serializeJobPayload({

@@ -595,6 +595,32 @@ function logWorkspaceVerbose(message: string, payload?: Record<string, unknown>)
   console.info(message);
 }
 
+function hashWorkspaceTelemetryText(input?: string | null) {
+  const value = (input || "").trim();
+  if (!value) {
+    return "";
+  }
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0).toString(16).slice(0, 8);
+}
+
+function inferWorkspaceInputType(input: {
+  prompt: string;
+  sources: HomeSourceItem[];
+}) {
+  if (input.sources.some((source) => source.kind === "file")) return "document";
+  if (input.sources.some((source) => source.kind === "youtube")) return "video";
+  if (input.sources.some((source) => source.kind === "podcast")) return "podcast";
+  if (input.sources.some((source) => source.kind === "web")) return "webpage";
+  if (input.prompt.trim().length > 180) return "long_text";
+  if (input.prompt.trim().length > 0) return "topic";
+  return "unknown";
+}
+
 function isAuthRequiredErrorMessage(message: string) {
   const normalized = (message || "").trim();
   if (!normalized) {
@@ -2525,6 +2551,13 @@ export default function WorkspacePage() {
   const generationRequestInFlightRef = useRef(false);
   const currentGenerationRunIdRef = useRef<string | null>(null);
   const currentGenerationJobIdRef = useRef<string | null>(null);
+  const previousFlowStageRef = useRef<FlowStage>("intent");
+  const flowStageHistoryRef = useRef<FlowStage>("intent");
+  const currentConfirmStepRef = useRef<string>("");
+  const restoredProjectRef = useRef(false);
+  const checkoutReturnSourceRef = useRef<string | null>(null);
+  const lastUiEventSignatureRef = useRef<Record<string, string>>({});
+  const lastCanvasTaskStatusRef = useRef<Record<number, string>>({});
   const autoGenerationTriggeredRunIdsRef = useRef<Record<string, boolean>>({});
   const autoGenerationArmedRunIdsRef = useRef<Record<string, boolean>>({});
   const autoGenerationSuccessLockedRunIdsRef = useRef<Record<string, boolean>>({});
@@ -2554,6 +2587,10 @@ export default function WorkspacePage() {
       decision: input.decision,
       reason: input.reason,
     });
+  }, [flowStage]);
+  useEffect(() => {
+    previousFlowStageRef.current = flowStageHistoryRef.current;
+    flowStageHistoryRef.current = flowStage;
   }, [flowStage]);
 
   const logClientEvent = useCallback(
@@ -2595,7 +2632,32 @@ export default function WorkspacePage() {
     },
     [],
   );
-
+  const currentSubscription = useMemo(
+    () => (currentEmail ? getSubscriptionByUser(currentEmail) : null),
+    [currentEmail, creditVersion],
+  );
+  const resolveEntrySource = useCallback((override?: string | null) => {
+    const manual = (override || "").trim();
+    if (manual) {
+      return { entrySource: manual, sourceConfidence: "high" };
+    }
+    if (checkoutReturnSourceRef.current) {
+      return { entrySource: "payment_return", sourceConfidence: "high" };
+    }
+    if (restoredProjectRef.current) {
+      return { entrySource: "project_restore", sourceConfidence: "high" };
+    }
+    if (routeProjectId && initialEntry.project?.projectId) {
+      return { entrySource: "workspace_existing_project", sourceConfidence: "high" };
+    }
+    if (routeProjectId && !initialEntry.prompt.trim() && !initialEntry.sources.length) {
+      return { entrySource: "direct_workspace_url", sourceConfidence: "medium" };
+    }
+    if (initialEntry.prompt.trim() || initialEntry.sources.length) {
+      return { entrySource: "home_input", sourceConfidence: "medium" };
+    }
+    return { entrySource: "unknown", sourceConfidence: "low" };
+  }, [initialEntry.project?.projectId, initialEntry.prompt, initialEntry.sources, routeProjectId]);
   const setGenerationRunContext = useCallback((runId: string | null, jobId?: string | null) => {
     const normalizedRunId = normalizeGenerationRunId(runId);
     const normalizedJobId = jobId?.trim() || null;
@@ -2645,6 +2707,7 @@ export default function WorkspacePage() {
     if (!notice) {
       return;
     }
+    checkoutReturnSourceRef.current = notice.source || "payment_return";
     setCreditsPaywallOpen(false);
     setCreditsPaywallContext(null);
     const hasExistingGenerationState = Object.values(generationTaskStateByIndex).some((item) =>
@@ -3410,6 +3473,168 @@ export default function WorkspacePage() {
     visualizationTypeHint,
   ]);
   const imageGenerationTasks = useMemo(() => buildFreshImageGenerationTasks(), [buildFreshImageGenerationTasks]);
+  const buildWorkspaceTelemetryContext = useCallback((extra?: Record<string, unknown>) => {
+    const { entrySource, sourceConfidence } = resolveEntrySource(
+      typeof extra?.entrySource === "string" ? extra.entrySource : null,
+    );
+    const generationDirection = normalizedGenerationConfig.normalizedDirection || effectiveIntent || "unknown";
+    const directionSource = normalizedGenerationConfig.normalizedDirection
+      ? "payload.normalizedDirection"
+      : effectiveIntent
+        ? "payload.intent"
+        : "unknown";
+    const availableCredits = getAvailableCredits();
+    const base = {
+      entrySource,
+      sourceConfidence,
+      currentRoute: pathname || "/workspace",
+      flowStage,
+      currentStep: currentConfirmStepRef.current || flowStage,
+      previousStep: previousFlowStageRef.current,
+      isRestoredProject: restoredProjectRef.current,
+      isNewProject: !routeProjectId,
+      isLoggedIn: Boolean(currentEmail),
+      inputType: inferWorkspaceInputType({
+        prompt: contextPrompt,
+        sources: entrySources,
+      }),
+      inputLength: contextPrompt.trim().length,
+      inputLanguage: outputLanguage,
+      topic: topic ? topic.slice(0, 120) : undefined,
+      promptHash: hashWorkspaceTelemetryText(contextPrompt),
+      promptLength: contextPrompt.trim().length,
+      generationDirection,
+      directionSource,
+      styleId: selectedStyle.id,
+      styleName: selectedStyle.englishName ?? selectedStyle.name,
+      stylePromptHash: hashWorkspaceTelemetryText(selectedStyle.prompt),
+      stylePromptLength: selectedStyle.prompt.trim().length,
+      requestedCount: normalizedGenerationConfig.normalizedCount,
+      taskCount: imageGenerationTasks.length,
+      slideCount: effectiveIntent === "ppt" ? normalizedGenerationConfig.normalizedCount : undefined,
+      imageCount: imageGenerationTasks.length,
+      aspectRatio: normalizedGenerationConfig.normalizedRatio,
+      projectId: (projectIdRef.current ?? routeProjectId) || undefined,
+      projectTraceId: projectTraceIdRef.current ?? undefined,
+      runId: currentGenerationRunIdRef.current ?? undefined,
+      jobId: currentGenerationJobIdRef.current ?? undefined,
+      isMember: Boolean(currentSubscription && (currentSubscription.status === "active" || currentSubscription.status === "canceling")),
+      membershipStatus: currentSubscription?.status,
+      planType: currentSubscription?.cycle,
+      planName: currentSubscription?.planName,
+      creditsBefore: availableCredits,
+      creditBalanceSource: currentEmail ? "server_synced_local_cache" : "guest_default",
+    } satisfies Record<string, unknown>;
+    return {
+      ...base,
+      ...(extra || {}),
+    };
+  }, [
+    contextPrompt,
+    currentEmail,
+    currentSubscription,
+    effectiveIntent,
+    entrySources,
+    flowStage,
+    getAvailableCredits,
+    imageGenerationTasks.length,
+    normalizedGenerationConfig.normalizedCount,
+    normalizedGenerationConfig.normalizedDirection,
+    normalizedGenerationConfig.normalizedRatio,
+    outputLanguage,
+    pathname,
+    resolveEntrySource,
+    routeProjectId,
+    selectedStyle.englishName,
+    selectedStyle.id,
+    selectedStyle.name,
+    selectedStyle.prompt,
+    topic,
+  ]);
+  const emitUiEvent = useCallback((input: {
+    action: string;
+    status?: "ok" | "error" | "info";
+    code?: string;
+    message?: string;
+    source?: string;
+    details?: Record<string, unknown>;
+  }) => {
+    const details = buildWorkspaceTelemetryContext(input.details);
+    const dedupeKey = `${input.action}:${input.code || ""}:${details.runId || ""}:${details.jobId || ""}`;
+    const nextSignature = JSON.stringify({
+      status: input.status ?? "info",
+      code: input.code || "",
+      entrySource: details.entrySource,
+      flowStage: details.flowStage,
+      currentStep: details.currentStep,
+      taskCount: details.taskCount,
+    });
+    if (lastUiEventSignatureRef.current[dedupeKey] === nextSignature) {
+      return;
+    }
+    lastUiEventSignatureRef.current[dedupeKey] = nextSignature;
+    logClientEvent({
+      category: "image",
+      action: input.action,
+      status: input.status ?? "info",
+      source: input.source ?? effectiveIntent,
+      code: input.code,
+      message: input.message,
+      projectId: projectIdRef.current ?? routeProjectId ?? null,
+      details,
+    });
+  }, [buildWorkspaceTelemetryContext, effectiveIntent, logClientEvent, routeProjectId]);
+  useEffect(() => {
+    emitUiEvent({
+      action: "ui.entry.detected",
+      status: "info",
+      message: "Workspace entry source detected.",
+    });
+  }, [emitUiEvent]);
+  useEffect(() => {
+    if (effectiveIntent === "unknown") {
+      return;
+    }
+    emitUiEvent({
+      action: "ui.direction.selected",
+      status: "info",
+      message: `Generation direction selected: ${effectiveIntent}.`,
+      details: {
+        generationDirection: effectiveIntent,
+      },
+    });
+  }, [effectiveIntent, emitUiEvent]);
+  useEffect(() => {
+    emitUiEvent({
+      action: "ui.style.selected",
+      status: "info",
+      message: `Style selected: ${selectedStyle.englishName ?? selectedStyle.name}.`,
+    });
+  }, [emitUiEvent, selectedStyle.englishName, selectedStyle.id, selectedStyle.name]);
+  useEffect(() => {
+    if (effectiveIntent === "unknown") {
+      return;
+    }
+    emitUiEvent({
+      action: "ui.page_count.selected",
+      status: "info",
+      message: `Requested output count set to ${normalizedGenerationConfig.normalizedCount}.`,
+      details: {
+        requestedCount: normalizedGenerationConfig.normalizedCount,
+        slideCount: effectiveIntent === "ppt" ? normalizedGenerationConfig.normalizedCount : undefined,
+      },
+    });
+  }, [effectiveIntent, emitUiEvent, normalizedGenerationConfig.normalizedCount]);
+  useEffect(() => {
+    if (!generationConfirmError) {
+      return;
+    }
+    emitUiEvent({
+      action: "ui.error.visible",
+      status: "error",
+      message: generationConfirmError,
+    });
+  }, [emitUiEvent, generationConfirmError]);
   const generationTotalCount = imageGenerationTasks.length || standardOutputCount;
   const generationReadyCount = useMemo(() => {
     if (!generationTotalCount) {
@@ -3426,6 +3651,40 @@ export default function WorkspacePage() {
   const generationProgressLabel =
     generationTotalCount > 0 ? `${generationReadyCount}/${generationTotalCount}` : "";
   const allGenerationReady = generationTotalCount > 0 && generationReadyCount >= generationTotalCount;
+  useEffect(() => {
+    Object.values(generationTaskStateByIndex).forEach((item) => {
+      const signature = `${item.status}:${item.errorCode || ""}:${item.imageUrl ? "1" : "0"}`;
+      if (lastCanvasTaskStatusRef.current[item.index] === signature) {
+        return;
+      }
+      lastCanvasTaskStatusRef.current[item.index] = signature;
+      if (item.status === "success" && item.imageUrl) {
+        emitUiEvent({
+          action: "ui.canvas.task.success",
+          status: "ok",
+          message: `Canvas task ${item.index} rendered successfully.`,
+          details: {
+            runId: item.runId,
+            jobId: item.jobId,
+            taskIndex: item.index,
+            imageCount: generationReadyCount,
+          },
+        });
+      } else if (item.status === "failed") {
+        emitUiEvent({
+          action: "ui.canvas.task.failed",
+          status: "error",
+          code: item.errorCode,
+          message: item.error || `Canvas task ${item.index} failed.`,
+          details: {
+            runId: item.runId,
+            jobId: item.jobId,
+            taskIndex: item.index,
+          },
+        });
+      }
+    });
+  }, [emitUiEvent, generationReadyCount, generationTaskStateByIndex]);
   const posterCanvasAspectRatio = useMemo(() => {
     if (effectiveIntent !== "poster") {
       return "9:16";
@@ -3508,6 +3767,15 @@ export default function WorkspacePage() {
         clearStateForFreshScope();
         return;
       }
+      emitUiEvent({
+        action: "ui.project.restore.start",
+        status: "info",
+        message: "Started restoring project generation state.",
+        details: {
+          entrySource: "project_restore",
+          projectId,
+        },
+      });
       try {
         const response = await fetch(
           `/api/projects/${encodeURIComponent(projectId)}`,
@@ -3773,6 +4041,7 @@ export default function WorkspacePage() {
           }
         }
         if (!hasRealImageGenerationJob && restoredPages.length > 0) {
+          restoredProjectRef.current = true;
           clearCurrentGenerationState("restore-billing-draft-only");
           setGenerationTaskStateByIndex({});
           setGenerationConfirmError(null);
@@ -3786,9 +4055,25 @@ export default function WorkspacePage() {
             runId: restoredRunId,
             count: restoredPages.length,
           });
+          emitUiEvent({
+            action: "ui.project.restore.success",
+            status: "ok",
+            message: "Restored billing-stage project draft.",
+            details: {
+              entrySource: "project_restore",
+              projectId,
+              runId: restoredRunId,
+              jobId,
+              restoreSuccessCount: restoredPages.filter((page) => (page.imageUrl || "").trim()).length,
+              restoreFailedCount: 0,
+              restoreLoadingCount: 0,
+              jobStatus: payload.job?.status || "billing_pending",
+            },
+          });
           return;
         }
 
+        restoredProjectRef.current = true;
         setGenerationTaskStateByIndex(restoredState);
         setGenerationConfirmError(null);
         setConfigConfirmed(true);
@@ -3800,6 +4085,21 @@ export default function WorkspacePage() {
           jobId,
           runId: restoredRunId,
           count: restoredEntries.length,
+        });
+        emitUiEvent({
+          action: "ui.project.restore.success",
+          status: "ok",
+          message: "Restored project generation state.",
+          details: {
+            entrySource: "project_restore",
+            projectId,
+            runId: restoredRunId,
+            jobId,
+            restoreSuccessCount: restoredEntries.filter((item) => item.status === "success").length,
+            restoreFailedCount: restoredEntries.filter((item) => item.status === "failed").length,
+            restoreLoadingCount: restoredEntries.filter((item) => item.status === "queued" || item.status === "generating").length,
+            jobStatus: payload.job?.status || "unknown",
+          },
         });
       } catch (error) {
         if (!cancelled) {
@@ -3931,35 +4231,66 @@ export default function WorkspacePage() {
   }, [clearCurrentGenerationState, debugImageBridgeEnabled, flowStage, imageGenerationTasks]);
   const imageModel = initialEntry.models?.imageModel || "gpt-image2";
   const buildGenerationRequestPayload = useCallback(
-    (tasks: ImageGenerationTask[]) => ({
-      intent: effectiveIntent,
-      normalizedDirection: normalizedGenerationConfig.normalizedDirection,
-      normalizedCount: standardOutputCount,
-      normalizedRatio: normalizedGenerationConfig.normalizedRatio,
-      projectId: projectIdRef.current ?? undefined,
-      projectTraceId: projectTraceIdRef.current ?? undefined,
-      outputs: standardOutputCount,
-      style: {
-        id: selectedStyle.id,
-        name: selectedStyle.englishName ?? selectedStyle.name,
-        prompt: selectedStyle.prompt,
-      },
-      ratio: normalizedGenerationConfig.normalizedRatio,
-      imageModel: "gpt-image-2",
-      billing: {
-        languageModelCredits,
-        imageModelCredits,
-        imageCreditsPerTask: STANDARD_OUTPUT_PROMO_CREDITS,
-        projectTitle: workspaceProjectTitle || topic || "Generation Project",
-      },
-      tasks,
-    }),
+    (tasks: ImageGenerationTask[]) => {
+      const entryContext = resolveEntrySource();
+      return ({
+        intent: effectiveIntent,
+        normalizedDirection: normalizedGenerationConfig.normalizedDirection,
+        normalizedCount: standardOutputCount,
+        normalizedRatio: normalizedGenerationConfig.normalizedRatio,
+        projectId: projectIdRef.current ?? undefined,
+        projectTraceId: projectTraceIdRef.current ?? undefined,
+        outputs: standardOutputCount,
+        style: {
+          id: selectedStyle.id,
+          name: selectedStyle.englishName ?? selectedStyle.name,
+          prompt: selectedStyle.prompt,
+        },
+        clientContext: {
+          entrySource: entryContext.entrySource,
+          sourceConfidence: entryContext.sourceConfidence,
+          currentRoute: pathname || "/workspace",
+          flowStage,
+          isRestoredProject: restoredProjectRef.current,
+          isNewProject: !routeProjectId,
+          generationDirection: normalizedGenerationConfig.normalizedDirection,
+          styleId: selectedStyle.id,
+          styleName: selectedStyle.englishName ?? selectedStyle.name,
+          requestedCount: normalizedGenerationConfig.normalizedCount,
+          taskCount: tasks.length,
+          inputType: inferWorkspaceInputType({
+            prompt: contextPrompt,
+            sources: entrySources,
+          }),
+          promptHash: hashWorkspaceTelemetryText(contextPrompt),
+          promptLength: contextPrompt.trim().length,
+          stylePromptHash: hashWorkspaceTelemetryText(selectedStyle.prompt),
+          stylePromptLength: selectedStyle.prompt.trim().length,
+        },
+        ratio: normalizedGenerationConfig.normalizedRatio,
+        imageModel: "gpt-image-2",
+        billing: {
+          languageModelCredits,
+          imageModelCredits,
+          imageCreditsPerTask: STANDARD_OUTPUT_PROMO_CREDITS,
+          projectTitle: workspaceProjectTitle || topic || "Generation Project",
+        },
+        tasks,
+      });
+    },
     [
+      contextPrompt,
       effectiveIntent,
+      entrySources,
+      flowStage,
       imageModelCredits,
       languageModelCredits,
       normalizedGenerationConfig.normalizedDirection,
       normalizedGenerationConfig.normalizedRatio,
+      normalizedGenerationConfig.normalizedCount,
+      pathname,
+      resolveEntrySource,
+      routeProjectId,
       selectedStyle.englishName,
       selectedStyle.id,
       selectedStyle.name,
@@ -4469,6 +4800,15 @@ export default function WorkspacePage() {
         };
         const pollJobStatus = async (jobId: string, initialPayload: ImageGenerateBatchResponse | null) => {
           const pollStartedAt = Date.now();
+          emitUiEvent({
+            action: "ui.job.poll.start",
+            status: "info",
+            message: "Started polling image generation job status.",
+            details: {
+              jobId,
+              runId: activeRunId,
+            },
+          });
           let latestPayload = initialPayload;
           while (Date.now() - pollStartedAt < GENERATION_JOB_POLL_TIMEOUT_MS) {
             const status = (latestPayload?.job?.status || "").trim().toLowerCase();
@@ -4477,9 +4817,31 @@ export default function WorkspacePage() {
             const hasQueuedTask = taskStatuses.some((item) => item === "queued");
             const isRunningJob = status === "queued" || status === "running" || status === "processing";
             if (pollTerminalJobStatuses.has(status)) {
+              emitUiEvent({
+                action: "ui.job.poll.stop",
+                status: "ok",
+                message: "Stopped polling after terminal job status.",
+                details: {
+                  jobId,
+                  runId: activeRunId,
+                  durationMs: Date.now() - pollStartedAt,
+                  finalJobStatus: status,
+                },
+              });
               return latestPayload;
             }
             if (!isRunningJob && !hasPendingTask) {
+              emitUiEvent({
+                action: "ui.job.poll.stop",
+                status: "ok",
+                message: "Stopped polling because no active job state remained.",
+                details: {
+                  jobId,
+                  runId: activeRunId,
+                  durationMs: Date.now() - pollStartedAt,
+                  finalJobStatus: status,
+                },
+              });
               return latestPayload;
             }
             if (isRunningJob && !hasPendingTask) {
@@ -4487,6 +4849,17 @@ export default function WorkspacePage() {
                 taskStatuses.length > 0 &&
                 taskStatuses.every((item) => pollTerminalTaskStatuses.has(item));
               if (allTasksTerminal) {
+                emitUiEvent({
+                  action: "ui.job.poll.stop",
+                  status: "ok",
+                  message: "Stopped polling because all tasks reached terminal state.",
+                  details: {
+                    jobId,
+                    runId: activeRunId,
+                    durationMs: Date.now() - pollStartedAt,
+                    finalJobStatus: status,
+                  },
+                });
                 return latestPayload;
               }
               return buildPollFailurePayload(
@@ -4555,6 +4928,18 @@ export default function WorkspacePage() {
             responseJobId = (latestPayload?.job?.id || "").trim() || jobId;
             writeReadyTasksFromPayload(latestPayload, jobId);
           }
+          emitUiEvent({
+            action: "ui.job.poll.stop",
+            status: "error",
+            code: latestPayload?.code || "IMAGE_JOB_POLL_TIMEOUT",
+            message: latestPayload?.error || tr("Generation timed out.", "生成超时。"),
+            details: {
+              jobId,
+              runId: activeRunId,
+              durationMs: Date.now() - pollStartedAt,
+              finalJobStatus: latestPayload?.job?.status || "unknown",
+            },
+          });
           return buildPollFailurePayload(
             latestPayload,
             jobId,
@@ -6590,6 +6975,15 @@ export default function WorkspacePage() {
   ]);
 
   async function handleConfirmBilling() {
+    emitUiEvent({
+      action: "ui.step5.confirm.click",
+      status: "info",
+      message: "User clicked confirm generation billing.",
+      details: {
+        requiredCredits: billingCost,
+        estimatedCreditsCost: billingCost,
+      },
+    });
     if (
       (effectiveIntent === "ppt" || effectiveIntent === "video") &&
       standardOutputCount > 1 &&
@@ -6819,8 +7213,20 @@ export default function WorkspacePage() {
     };
     const setConfirmStep = (step: string, text: string) => {
       currentConfirmStep = step;
+      currentConfirmStepRef.current = step;
       setGenerationConfirmStep(step);
       startThinking(tr("Generation Startup", "生成启动"), text);
+      if (step === "prepare job") {
+        emitUiEvent({ action: "ui.step5.prepare.start", status: "info", message: text });
+      } else if (step === "consume credits") {
+        emitUiEvent({ action: "ui.step5.consume.start", status: "info", message: text });
+      } else if (step === "activate job") {
+        emitUiEvent({ action: "ui.step5.activate.start", status: "info", message: text });
+      } else if (step === "recovering previous request") {
+        emitUiEvent({ action: "ui.step5.recovery.start", status: "info", message: text });
+      } else if (step === "checking generation status") {
+        emitUiEvent({ action: "ui.step5.recovery.success", status: "info", message: text });
+      }
     };
     const createConfirmTimeoutMessage = (step: string, timeoutMs: number) =>
       `Generation ${step} timed out after ${Math.round(timeoutMs / 1000)}s. Please retry.`;
@@ -6832,6 +7238,7 @@ export default function WorkspacePage() {
       run: (signal: AbortSignal) => Promise<T>,
     ) => {
       currentConfirmStep = step;
+      currentConfirmStepRef.current = step;
       setGenerationConfirmStep(step);
       const stepStartedAt = Date.now();
       logClientEvent({
@@ -7098,6 +7505,16 @@ export default function WorkspacePage() {
       if (!preparedJobId || !preparePayload.tasks?.length) {
         throw new Error("Generation job preparation failed. Please retry.");
       }
+      emitUiEvent({
+        action: "ui.step5.prepare.success",
+        status: "ok",
+        message: "Generation job prepared successfully.",
+        details: {
+          runId: nextRunId,
+          jobId: preparedJobId,
+          taskCount: preparePayload.tasks.length,
+        },
+      });
       setGenerationRunContext(nextRunId, preparedJobId);
 
       try {
@@ -7117,9 +7534,30 @@ export default function WorkspacePage() {
             userEmail: currentEmail || undefined,
             projectId: selectedProject?.id,
             projectTitle: selectedProject?.title,
+            runId: nextRunId,
+            jobId: preparedJobId ?? undefined,
+            entrySource: resolveEntrySource().entrySource,
+            estimatedCreditsCost: billingCost,
+            creditsBefore: availableCredits,
+            creditsAfter: Math.max(0, availableCredits - billingCost),
+            creditBalanceSource: currentEmail ? "server_synced_local_cache" : "guest_default",
           }, currentEmail),
         );
         creditsConsumed = true;
+        emitUiEvent({
+          action: "ui.step5.consume.success",
+          status: "ok",
+          message: "Credits confirmed successfully.",
+          details: {
+            runId: nextRunId,
+            jobId: preparedJobId,
+            requiredCredits: billingCost,
+            estimatedCreditsCost: billingCost,
+            creditsBefore: availableCredits,
+            creditsAfter: Math.max(0, availableCredits - billingCost),
+            creditsConsumed: true,
+          },
+        });
       } catch (creditError) {
         const message = creditError instanceof Error ? creditError.message : "";
         if (message.includes("INSUFFICIENT_CREDITS")) {
@@ -7146,6 +7584,16 @@ export default function WorkspacePage() {
       if (!activatedPayload.job?.id || !activatedPayload.tasks?.length) {
         throw new Error("Generation job activation failed. Please retry.");
       }
+      emitUiEvent({
+        action: "ui.step5.activate.success",
+        status: "ok",
+        message: "Generation tasks activated successfully.",
+        details: {
+          runId: nextRunId,
+          jobId: preparedJobId,
+          taskCount: activatedPayload.tasks.length,
+        },
+      });
       if (activationSignals.hasFailed) {
         setGenerationRunContext(nextRunId, preparedJobId);
         setFlowStage("generate");
@@ -7205,6 +7653,16 @@ export default function WorkspacePage() {
       setFlowStage("generate");
       setBillingConfirmed(true);
       step6Entered = true;
+      emitUiEvent({
+        action: "ui.step6.enter",
+        status: "info",
+        message: "Entered generation canvas after billing confirmation.",
+        details: {
+          runId: nextRunId,
+          jobId: preparedJobId,
+          creditsConsumed: true,
+        },
+      });
       requestAnimationFrame(() => {
         storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -7229,6 +7687,19 @@ export default function WorkspacePage() {
       const errorStack = error instanceof Error ? error.stack : null;
       const confirmStepTimedOut = isConfirmStepTimeout(message);
       if (confirmStepTimedOut) {
+        if (currentConfirmStep === "consume credits") {
+          emitUiEvent({
+            action: "ui.step5.consume.unknown",
+            status: "error",
+            code: "CREDITS_CONSUME_UNKNOWN",
+            message,
+            details: {
+              runId: nextRunId,
+              jobId: preparedJobId,
+              creditsConsumed,
+            },
+          });
+        }
         const recovered = await recoverConfirmJob(message, { restoreFailed: true }).catch(() => false);
         if (!recovered) {
           const timeoutRecoveryMessage =
@@ -7324,6 +7795,7 @@ export default function WorkspacePage() {
       stopThinking();
       setIsPlanningBillingStep(false);
       setGenerationConfirmStep("");
+      currentConfirmStepRef.current = "";
       generationRequestInFlightRef.current = false;
     }
   }
