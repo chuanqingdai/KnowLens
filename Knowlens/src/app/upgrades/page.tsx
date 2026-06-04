@@ -12,47 +12,14 @@ const navItems = [
 
 const releaseTimeline = [
   {
-    date: "May 24, 2026",
-    title: "Feedback Workflow Upgrade",
-    cadence: "Shipped",
-    desc: "Submission history is now visible in-page, and admin-only replies are supported with clearer status tags.",
+    date: "June 5, 2026",
+    title: "Official Launch",
+    cadence: "Live",
+    desc: "KnowLens.ai is now officially live. It helps users turn ideas, notes, and source materials into visual outputs for learning, teaching, and communication.",
     items: [
-      "Feedback records now persist with submitter alias and timeline order.",
-      "Admin can reply directly from each feedback card.",
-      "Reply status now appears as Open / Replied.",
-    ],
-  },
-  {
-    date: "May 22, 2026",
-    title: "Homepage Model Picker Refresh",
-    cadence: "Shipped",
-    desc: "Language model options are now cleaner, membership-gated models are clearer, and mobile dropdown overflow is fixed.",
-    items: [
-      "Free defaults are locale-aware.",
-      "Premium models show crown + PRO badges.",
-      "Model dropdown now adapts to viewport space and scrolls on small screens.",
-    ],
-  },
-  {
-    date: "May 20, 2026",
-    title: "Workspace and Canvas Interaction Polish",
-    cadence: "Shipped",
-    desc: "Core workspace flow and canvas ergonomics were refined for better readability, faster actions, and cleaner controls.",
-    items: [
-      "Improved poster/ppt preview focus and layout spacing.",
-      "Action controls were simplified and grouped by intent.",
-      "Multiple mobile interaction and overflow issues were resolved.",
-    ],
-  },
-  {
-    date: "Next 3-5 days",
-    title: "Near-term Release Plan",
-    cadence: "Planned",
-    desc: "KnowLens.ai currently ships updates every few days. The next bundle focuses on reliability and export quality.",
-    items: [
-      "Stronger retry and fallback path for export failures.",
-      "More transparent generation progress details during long jobs.",
-      "Improved consistency across membership modal entry points.",
+      "Create infographic posters, slide decks, and storyboard-style video breakdowns from a single topic or prompt.",
+      "Generate structured drafts, visual plans, and image outputs with multi-model support across language and image workflows.",
+      "Work from text, uploaded materials, or links, then manage projects, credits, exports, and history in one workspace.",
     ],
   },
 ];
@@ -83,9 +50,7 @@ export default function UpgradesPage() {
           <header className="mb-5">
             <p className="text-sm text-zinc-500">KnowLens.ai</p>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Product Updates</h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              Timeline of recent releases and what is coming next. Updates are shipped every few days.
-            </p>
+            <p className="mt-1 text-sm text-zinc-600">Launch Notes</p>
           </header>
 
           <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
