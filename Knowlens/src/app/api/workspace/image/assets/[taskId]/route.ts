@@ -11,6 +11,15 @@ import { logOpsEvent } from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
+function jsonNoStore(body: Record<string, unknown>, status: number) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 function ensureSafeOrigin(req: NextRequest) {
   const origin = req.headers.get("origin");
   if (!origin) {
@@ -24,14 +33,15 @@ function normalizeTaskId(value: string) {
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ taskId: string }> }) {
+  const routeStartedAt = Date.now();
   try {
     if (!ensureSafeOrigin(request)) {
-      return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
+      return jsonNoStore({ error: "Forbidden request origin." }, 403);
     }
     const session = await getServerSession(nextAuthOptions);
     const email = session?.user?.email?.trim().toLowerCase() || "";
     if (!email) {
-      return NextResponse.json({ error: "Please sign in first." }, { status: 401 });
+      return jsonNoStore({ error: "Please sign in first." }, 401);
     }
 
     const { taskId } = await context.params;
@@ -49,15 +59,35 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tas
 
     const taskWithJob = await getImageGenerationTaskWithJob(normalizedTaskId);
     if (!taskWithJob) {
-      return NextResponse.json({ error: "Asset not found." }, { status: 404 });
+      return jsonNoStore({ error: "Asset not found.", code: "IMAGE_ASSET_TASK_NOT_FOUND" }, 404);
     }
     if (taskWithJob.job.userEmail.trim().toLowerCase() !== email) {
-      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+      return jsonNoStore({ error: "Forbidden." }, 403);
     }
 
     const asset = await readImageAsset(normalizedTaskId);
     if (!asset) {
-      return NextResponse.json({ error: "Asset not found." }, { status: 404 });
+      const message = "Image asset is not available.";
+      logOpsEvent({
+        category: "image",
+        action: "image_asset_unavailable",
+        status: "error",
+        source: "workspace",
+        code: "IMAGE_ASSET_UNAVAILABLE",
+        message,
+        userEmail: email,
+        projectId: taskWithJob.job.projectId ?? undefined,
+        details: {
+          routeName: "image_asset_read",
+          jobId: taskWithJob.job.id,
+          taskId: normalizedTaskId,
+          status: taskWithJob.task.status,
+          durationMs: Date.now() - routeStartedAt,
+          errorName: "AssetUnavailable",
+          errorMessage: message,
+        },
+      });
+      return jsonNoStore({ error: message, code: "IMAGE_ASSET_UNAVAILABLE" }, 404);
     }
     if (asset.redirectUrl) {
       return NextResponse.redirect(asset.redirectUrl, {
@@ -68,22 +98,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tas
       });
     }
     if (!asset.bytes) {
-      return NextResponse.json({ error: "Asset not available." }, { status: 404 });
+      return jsonNoStore({ error: "Asset not available.", code: "IMAGE_ASSET_BYTES_MISSING" }, 404);
     }
-
-    logOpsEvent({
-      category: "image",
-      action: "image_asset_served",
-      status: "ok",
-      source: "workspace",
-      userEmail: email,
-      message: "Image asset served to frontend.",
-      details: {
-        taskId: normalizedTaskId,
-        bytes: asset.bytes.byteLength,
-        mimeType: asset.mimeType,
-      },
-    });
 
     return new NextResponse(asset.bytes, {
       status: 200,
@@ -101,7 +117,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tas
       source: "workspace",
       code: "IMAGE_ASSET_READ_FAILED",
       message,
+      details: {
+        routeName: "image_asset_read",
+        durationMs: Date.now() - routeStartedAt,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: message,
+      },
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonNoStore({ error: message, code: "IMAGE_ASSET_READ_FAILED" }, 500);
   }
 }

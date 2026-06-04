@@ -3,14 +3,9 @@ import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import {
   buildImageRenderUrl,
-  expireAbandonedImageGenerationJob,
-  getImageGenerationJobById,
+  readImageGenerationJobStatus,
 } from "@/lib/server/image-generation-jobs";
-import {
-  buildGenerationTaskStatusSummary,
-  logGenerationOpsEvent,
-  logOpsEvent,
-} from "@/lib/server/store";
+import { logOpsEvent } from "@/lib/server/store";
 
 export const runtime = "nodejs";
 
@@ -40,6 +35,7 @@ function resolveTaskStorageKey(task: { assetPath?: string | null }) {
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ jobId: string }> }) {
+  const routeStartedAt = Date.now();
   try {
     if (!ensureSafeOrigin(request)) {
       return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
@@ -52,56 +48,52 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
 
     const { jobId } = await context.params;
     const normalizedJobId = normalizeJobId(jobId);
-    const result =
-      (await expireAbandonedImageGenerationJob({
-        jobId: normalizedJobId,
-        source: "image_job_status",
-      })) || (await getImageGenerationJobById(normalizedJobId));
+    const result = await readImageGenerationJobStatus(normalizedJobId);
     if (!result) {
       return NextResponse.json({ error: "Job not found." }, { status: 404 });
     }
     if (result.job.userEmail.trim().toLowerCase() !== email) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
-    await logGenerationOpsEvent({
-      action: "generation.job.poll",
-      status: result.job.status === "failed" || result.job.status === "timed_out" || result.job.status === "billing_failed" ? "error" : "info",
-      source: "image_job_status",
-      code: result.job.errorCode ?? undefined,
-      message: result.job.errorMessage || "Job status polled.",
-      userEmail: email,
-      projectId: result.job.projectId ?? undefined,
-      runId: result.job.runId ?? undefined,
-      jobId: result.job.id,
-      idempotencyKey: result.job.idempotencyKey ?? undefined,
-      jobStatus: result.job.status,
-      taskStatusSummary: buildGenerationTaskStatusSummary(result.tasks),
-      ratio: result.job.ratio ?? undefined,
-      taskCount: result.tasks.length,
-      errorCode: result.job.errorCode ?? undefined,
-      safeErrorMessage: result.job.errorMessage ?? undefined,
-    });
 
-    return NextResponse.json({
-      ok: true,
-      job: result.job,
-      tasks: result.tasks.map((task) => ({
-        taskId: task.id,
-        index: task.taskIndex,
-        status: task.status,
-        attempts: task.attempts,
-        providerUsed: task.providerUsed,
-        rawImageUrl: task.rawImageUrl,
-        imageUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-        renderUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-        storageKey: resolveTaskStorageKey(task),
-        errorCode: task.errorCode,
-        errorMessage: task.errorMessage,
-        width: task.width,
-        height: task.height,
-        mimeType: task.mimeType,
-      })),
-    });
+    const durationMs = Date.now() - routeStartedAt;
+    if (durationMs > 1000) {
+      console.warn("[image.job-status] slow-read", {
+        routeName: "image_job_status",
+        jobId: result.job.id,
+        status: result.job.status,
+        taskCount: result.tasks.length,
+        durationMs,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        job: result.job,
+        tasks: result.tasks.map((task) => ({
+          taskId: task.id,
+          index: task.taskIndex,
+          status: task.status,
+          attempts: task.attempts,
+          providerUsed: task.providerUsed,
+          rawImageUrl: task.rawImageUrl,
+          imageUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
+          renderUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
+          storageKey: resolveTaskStorageKey(task),
+          errorCode: task.errorCode,
+          errorMessage: task.errorMessage,
+          width: task.width,
+          height: task.height,
+          mimeType: task.mimeType,
+        })),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch image generation job.";
     logOpsEvent({
@@ -111,6 +103,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ job
       source: "unknown",
       code: "IMAGE_JOB_QUERY_FAILED",
       message,
+      details: {
+        routeName: "image_job_status",
+        durationMs: Date.now() - routeStartedAt,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: message,
+      },
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }
