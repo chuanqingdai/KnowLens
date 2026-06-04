@@ -409,6 +409,7 @@ function serializeTask(task: ImageGenerationTaskRow, imageModel: string) {
     model: imageModel,
     error: task.errorMessage,
     errorCode: task.errorCode,
+    errorMessage: task.errorMessage,
     width: task.width,
     height: task.height,
     mimeType: task.mimeType,

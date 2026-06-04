@@ -438,6 +438,7 @@ type ImageGenerateBatchResponse = {
     raw_image_url?: string;
     error?: string;
     errorCode?: string;
+    errorMessage?: string;
   }>;
 };
 
@@ -528,6 +529,9 @@ const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const GENERATION_REQUEST_TIMEOUT_MS = 120000;
+const GENERATION_CONFIRM_PREPARE_TIMEOUT_MS = 30000;
+const GENERATION_CONFIRM_CREDITS_TIMEOUT_MS = 30000;
+const GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS = 30000;
 const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 1800000;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
@@ -4736,8 +4740,13 @@ export default function WorkspacePage() {
           }
           hasFailed = true;
           autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
+          const resultErrorMessage =
+            typeof (result as { errorMessage?: unknown } | undefined)?.errorMessage === "string"
+              ? ((result as { errorMessage?: string }).errorMessage || "").trim()
+              : "";
           const nextError =
             result?.error ||
+            resultErrorMessage ||
             tr("Generation failed.", "生成失败。");
           const nextErrorCode = result?.errorCode || "IMAGE_TASK_FAILED";
           const backendStatus = (result?.status || "").trim().toLowerCase();
@@ -4802,10 +4811,22 @@ export default function WorkspacePage() {
             message: taskError,
             projectId: projectIdRef.current ?? null,
             details: {
+              userEmail: currentEmail || null,
+              projectId: projectIdRef.current ?? null,
+              runId: activeRunId,
+              jobId: responseJobId || currentGenerationJobIdRef.current || null,
               taskIndex: task.index,
               taskId: result?.taskId || null,
               outputType: task.outputType,
               taskStatus: result?.status || null,
+              backendTaskIndex: normalizedResult?.backendTaskIndex ?? result?.index ?? null,
+              backendError: result?.error || null,
+              backendErrorMessage: resultErrorMessage || null,
+              backendErrorCode: result?.errorCode || null,
+              responseJobStatus: payload?.job?.status || null,
+              responseJobId: payload?.job?.id || null,
+              responseCode: payload?.code || null,
+              responseError: payload?.error || null,
             },
           });
         });
@@ -6773,18 +6794,56 @@ export default function WorkspacePage() {
     let preparedJobId: string | null = null;
     let creditsConsumed = false;
     let step6Entered = false;
-    const postGenerationBatchAction = async (body: Record<string, unknown>) => {
-      const response = await fetch("/api/workspace/image/generate-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify(body),
+    let currentConfirmStep = "init";
+    const createConfirmTimeoutMessage = (step: string, timeoutMs: number) =>
+      `Generation ${step} timed out after ${Math.round(timeoutMs / 1000)}s. Please retry.`;
+    const withConfirmStepTimeout = async <T,>(
+      step: string,
+      timeoutMs: number,
+      run: (signal: AbortSignal) => Promise<T>,
+    ) => {
+      currentConfirmStep = step;
+      const controller = new AbortController();
+      let timeoutId: number | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          controller.abort();
+          reject(new Error(createConfirmTimeoutMessage(step, timeoutMs)));
+        }, timeoutMs);
       });
-      const payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || payload?.code || `generation batch action failed (${response.status})`);
+      try {
+        return await Promise.race([run(controller.signal), timeoutPromise]);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new Error(createConfirmTimeoutMessage(step, timeoutMs));
+        }
+        throw error;
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
       }
-      return payload;
+    };
+    const postGenerationBatchAction = async (
+      body: Record<string, unknown>,
+      options?: { step?: string; timeoutMs?: number },
+    ) => {
+      const step = options?.step || "image_job_update";
+      const timeoutMs = options?.timeoutMs ?? GENERATION_CONFIRM_PREPARE_TIMEOUT_MS;
+      return withConfirmStepTimeout(step, timeoutMs, async (signal) => {
+        const response = await fetch("/api/workspace/image/generate-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          signal,
+          body: JSON.stringify(body),
+        });
+        const payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || payload?.code || `generation batch action failed (${response.status})`);
+        }
+        return payload;
+      });
     };
     const markPreparedJobBillingFailed = async (reason: string) => {
       if (!preparedJobId) return;
@@ -6793,7 +6852,7 @@ export default function WorkspacePage() {
         jobId: preparedJobId,
         runId: nextRunId,
         error: reason,
-      }).catch(() => undefined);
+      }, { step: "mark_billing_failed", timeoutMs: GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS }).catch(() => undefined);
     };
     const markPreparedJobFailedAfterCharge = async (reason: string) => {
       if (!preparedJobId) return;
@@ -6802,7 +6861,7 @@ export default function WorkspacePage() {
         jobId: preparedJobId,
         runId: nextRunId,
         error: reason,
-      });
+      }, { step: "mark_failed_after_charge", timeoutMs: GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS });
     };
     const markLocalTasksFailed = (message: string, code = "IMAGE_CONFIRM_FAILED") => {
       setGenerationTaskStateByIndex((prev) => {
@@ -6869,7 +6928,7 @@ export default function WorkspacePage() {
         idempotencyKey,
         runId: nextRunId,
         imageModelPolicy: "tuzi",
-      });
+      }, { step: "prepare job", timeoutMs: GENERATION_CONFIRM_PREPARE_TIMEOUT_MS });
       preparedJobId = (preparePayload.job?.id || "").trim() || null;
       if (!preparedJobId || !preparePayload.tasks?.length) {
         throw new Error("Generation job preparation failed. Please retry.");
@@ -6877,21 +6936,23 @@ export default function WorkspacePage() {
       setGenerationRunContext(nextRunId, preparedJobId);
 
       try {
-        await appendCreditRecordOnServer({
-          type: "consume",
-          description: isZhOutput
-            ? `${selectedProject?.title ?? "生成项目"} · ${
-                effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-              }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
-            : `${selectedProject?.title ?? "Generation Project"} · ${
-                effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
-              } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
-          delta: -billingCost,
-          userId: user?.id,
-          userEmail: currentEmail || undefined,
-          projectId: selectedProject?.id,
-          projectTitle: selectedProject?.title,
-        }, currentEmail);
+        await withConfirmStepTimeout("consume credits", GENERATION_CONFIRM_CREDITS_TIMEOUT_MS, async () =>
+          appendCreditRecordOnServer({
+            type: "consume",
+            description: isZhOutput
+              ? `${selectedProject?.title ?? "生成项目"} · ${
+                  effectiveIntent === "poster" ? "海报生成" : "分镜生成"
+                }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+              : `${selectedProject?.title ?? "Generation Project"} · ${
+                  effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
+                } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+            delta: -billingCost,
+            userId: user?.id,
+            userEmail: currentEmail || undefined,
+            projectId: selectedProject?.id,
+            projectTitle: selectedProject?.title,
+          }, currentEmail),
+        );
         creditsConsumed = true;
       } catch (creditError) {
         const message = creditError instanceof Error ? creditError.message : "";
@@ -6913,7 +6974,7 @@ export default function WorkspacePage() {
         action: "activate",
         jobId: preparedJobId,
         runId: nextRunId,
-      });
+      }, { step: "activate job", timeoutMs: GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS });
       const activatedTaskStatuses = activatedPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
       const hasActivatedQueuedTask = activatedTaskStatuses.some((status) => status === "queued");
       if (!activatedPayload.job?.id || !activatedPayload.tasks?.length || !hasActivatedQueuedTask) {
@@ -6975,6 +7036,7 @@ export default function WorkspacePage() {
       await runGenerationBatch(tasksToGenerate, false, nextRunId, activatedPayload);
     } catch (error) {
       const message = error instanceof Error ? error.message : tr("Generation failed.", "生成失败。");
+      const errorStack = error instanceof Error ? error.stack : null;
       if (preparedJobId && !step6Entered && creditsConsumed) {
         await markPreparedJobFailedAfterCharge(message).catch(() => undefined);
         tasksToGenerate.forEach((task) => {
@@ -7003,6 +7065,17 @@ export default function WorkspacePage() {
         source: imageModel,
         message,
         projectId: projectIdRef.current ?? null,
+        details: {
+          currentConfirmStep,
+          runId: nextRunId,
+          jobId: preparedJobId,
+          creditsConsumed,
+          step6Entered,
+          billingCost,
+          taskCount: tasksToGenerate.length,
+          taskIndexes: tasksToGenerate.map((task) => task.index),
+          errorStack,
+        },
       });
     } finally {
       delete autoGenerationArmedRunIdsRef.current[nextRunId];
