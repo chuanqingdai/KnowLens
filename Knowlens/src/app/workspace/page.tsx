@@ -1,15 +1,20 @@
-"use client";
+import WorkspacePageClient from "./WorkspacePageClient";
 
-import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+type WorkspacePageProps = {
+  searchParams?: Promise<{
+    projectId?: string | string[];
+  }>;
+};
 
-const WorkspacePageClient = dynamic(() => import("./WorkspacePageClient"), {
-  ssr: false,
-  loading: () => <div className="fixed inset-0 overflow-hidden bg-[#f7f7f8] text-zinc-800" />,
-});
+function pickProjectId(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0]?.trim() || "";
+  }
+  return value?.trim() || "";
+}
 
-export default function WorkspacePage() {
-  const searchParams = useSearchParams();
-  const projectId = searchParams.get("projectId")?.trim() || "__workspace__";
+export default async function WorkspacePage({ searchParams }: WorkspacePageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const projectId = pickProjectId(resolvedSearchParams?.projectId) || "__workspace__";
   return <WorkspacePageClient key={projectId} />;
 }
