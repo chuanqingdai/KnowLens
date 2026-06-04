@@ -123,6 +123,7 @@ type OpsTraceSummary = {
   traceId: string;
   createdAt: string;
   lastEventAt: string;
+  userEmail: string | null;
   runId: string | null;
   jobId: string | null;
   projectId: string | null;
@@ -143,7 +144,7 @@ type OpsTraceSummary = {
   errorCode: string | null;
 };
 
-type OpsLogScopePreset = "all" | "summary" | "provider" | "credits" | "refund" | "restore" | "ui";
+type OpsLogScopePreset = "critical" | "all" | "summary" | "provider" | "credits" | "refund" | "ui";
 
 const defaultOpsLogFilters = {
   status: "error",
@@ -158,8 +159,9 @@ const defaultOpsLogFilters = {
   from: "",
   to: "",
   onlyErrors: true,
+  criticalOnly: true,
   onlySlow: false,
-  scope: "all" as OpsLogScopePreset,
+  scope: "critical" as OpsLogScopePreset,
   limit: "120",
   page: 1,
 };
@@ -454,6 +456,7 @@ function AdminDashboardPageContent() {
   const [opsTraceSummaries, setOpsTraceSummaries] = useState<OpsTraceSummary[]>([]);
   const [opsLogsLoading, setOpsLogsLoading] = useState(false);
   const [opsLogFilters, setOpsLogFilters] = useState(defaultOpsLogFilters);
+  const [showAdvancedOpsFilters, setShowAdvancedOpsFilters] = useState(false);
   const [publishCaseForm, setPublishCaseForm] = useState<PublishCaseFormState>({
     projectId: "",
     userEmail: "local@knowlens.ai",
@@ -493,19 +496,25 @@ function AdminDashboardPageContent() {
     if (hasDrilldownFilter) {
       return [...opsLogs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     }
-    const summaryLogs = opsLogs.filter((item) => item.action === "generation.trace.summary");
-    return summaryLogs.length ? summaryLogs : opsLogs;
-  }, [opsLogFilters.action, opsLogFilters.jobId, opsLogFilters.runId, opsLogFilters.taskId, opsLogs]);
+    if (opsLogFilters.scope === "summary") {
+      const summaryLogs = opsLogs.filter((item) => item.action === "generation.trace.summary");
+      return summaryLogs.length ? summaryLogs : opsLogs;
+    }
+    return opsLogs;
+  }, [opsLogFilters.action, opsLogFilters.jobId, opsLogFilters.runId, opsLogFilters.scope, opsLogFilters.taskId, opsLogs]);
 
   function applyOpsLogScope(scope: OpsLogScopePreset) {
-    const presets: Record<OpsLogScopePreset, Pick<typeof opsLogFilters, "category" | "action" | "scope" | "page">> = {
-      all: { category: "", action: "", scope: "all", page: 1 },
-      summary: { category: "", action: "generation.trace.summary", scope: "summary", page: 1 },
-      provider: { category: "image", action: "generation.provider.", scope: "provider", page: 1 },
-      credits: { category: "billing", action: "generation.credits.", scope: "credits", page: 1 },
-      refund: { category: "billing", action: "generation.refund.", scope: "refund", page: 1 },
-      restore: { category: "", action: "generation.project.restore", scope: "restore", page: 1 },
-      ui: { category: "ui", action: "ui.", scope: "ui", page: 1 },
+    const presets: Record<
+      OpsLogScopePreset,
+      Pick<typeof opsLogFilters, "status" | "category" | "action" | "scope" | "page" | "criticalOnly" | "onlyErrors">
+    > = {
+      critical: { status: "error", category: "", action: "", scope: "critical", criticalOnly: true, onlyErrors: true, page: 1 },
+      all: { status: "error", category: "", action: "", scope: "all", criticalOnly: false, onlyErrors: true, page: 1 },
+      summary: { status: "", category: "", action: "generation.trace.summary", scope: "summary", criticalOnly: false, onlyErrors: false, page: 1 },
+      provider: { status: "error", category: "image", action: "generation.provider.", scope: "provider", criticalOnly: false, onlyErrors: true, page: 1 },
+      credits: { status: "error", category: "billing", action: "generation.credits.", scope: "credits", criticalOnly: false, onlyErrors: true, page: 1 },
+      refund: { status: "error", category: "billing", action: "generation.refund.", scope: "refund", criticalOnly: false, onlyErrors: true, page: 1 },
+      ui: { status: "error", category: "ui", action: "ui.", scope: "ui", criticalOnly: false, onlyErrors: true, page: 1 },
     };
     setOpsLogFilters((prev) => ({ ...prev, ...presets[scope] }));
   }
@@ -541,7 +550,7 @@ function AdminDashboardPageContent() {
     params.set("limit", activeFilters.limit);
     params.set("page", String(activeFilters.page));
     Object.entries(activeFilters).forEach(([key, value]) => {
-      if (key === "scope" || key === "onlyErrors" || key === "onlySlow") {
+      if (key === "scope" || key === "onlyErrors" || key === "onlySlow" || key === "criticalOnly") {
         return;
       }
       if (typeof value === "string" && value.trim()) {
@@ -550,6 +559,9 @@ function AdminDashboardPageContent() {
     });
     if (activeFilters.onlyErrors) {
       params.set("onlyErrors", "1");
+    }
+    if (activeFilters.criticalOnly) {
+      params.set("criticalOnly", "1");
     }
     if (activeFilters.onlySlow) {
       params.set("onlySlow", "1");
@@ -1431,51 +1443,15 @@ function AdminDashboardPageContent() {
                   刷新线上日志
                 </button>
               </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-5">
-                <select
-                  value={opsLogFilters.status}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-sm"
-                >
-                  <option value="">状态（全部）</option>
-                  <option value="error">error</option>
-                  <option value="info">info</option>
-                  <option value="ok">ok</option>
-                </select>
-                <input
-                  value={opsLogFilters.category}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, category: event.target.value, page: 1 }))}
-                  placeholder="category: billing/image/client"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
-                />
-                <input
-                  value={opsLogFilters.action}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, action: event.target.value, page: 1 }))}
-                  placeholder="action"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
-                />
-                <input
-                  value={opsLogFilters.userEmail}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, userEmail: event.target.value, page: 1 }))}
-                  placeholder="user email"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
-                />
-                <input
-                  value={opsLogFilters.projectId}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, projectId: event.target.value, page: 1 }))}
-                  placeholder="projectId"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {(
                   [
-                    { id: "all", label: "全部" },
+                    { id: "critical", label: "严重错误" },
+                    { id: "all", label: "全部错误" },
                     { id: "summary", label: "Summary" },
                     { id: "provider", label: "Provider" },
                     { id: "credits", label: "Credits" },
                     { id: "refund", label: "Refund" },
-                    { id: "restore", label: "Restore" },
                     { id: "ui", label: "UI" },
                   ] as Array<{ id: OpsLogScopePreset; label: string }>
                 ).map((preset) => {
@@ -1495,17 +1471,6 @@ function AdminDashboardPageContent() {
                     </button>
                   );
                 })}
-                <label className="ml-2 inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700">
-                  <input
-                    type="checkbox"
-                    checked={opsLogFilters.onlyErrors}
-                    onChange={(event) =>
-                      setOpsLogFilters((prev) => ({ ...prev, onlyErrors: event.target.checked, page: 1 }))
-                    }
-                    className="h-3.5 w-3.5 rounded border-zinc-300 text-zinc-900"
-                  />
-                  only errors
-                </label>
                 <label className="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700">
                   <input
                     type="checkbox"
@@ -1517,48 +1482,93 @@ function AdminDashboardPageContent() {
                   />
                   slow only (30s+)
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOpsFilters((prev) => !prev)}
+                  className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-100"
+                >
+                  {showAdvancedOpsFilters ? "收起高级筛选" : "高级筛选"}
+                </button>
               </div>
-              <div className="mt-2 grid gap-2 md:grid-cols-6">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input
-                  value={opsLogFilters.runId}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, runId: event.target.value, page: 1 }))}
-                  placeholder="runId"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  value={opsLogFilters.userEmail}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, userEmail: event.target.value, page: 1 }))}
+                  placeholder="user email"
+                  className="h-9 min-w-[220px] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
-                  value={opsLogFilters.jobId}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, jobId: event.target.value, page: 1 }))}
-                  placeholder="jobId"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
-                />
-                <input
-                  value={opsLogFilters.taskId}
-                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, taskId: event.target.value, page: 1 }))}
-                  placeholder="taskId"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  value={opsLogFilters.projectId}
+                  onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, projectId: event.target.value, page: 1 }))}
+                  placeholder="projectId"
+                  className="h-9 min-w-[180px] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   value={opsLogFilters.code}
                   onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, code: event.target.value, page: 1 }))}
                   placeholder="error code"
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  className="h-9 min-w-[180px] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   type="datetime-local"
                   value={opsLogFilters.from}
                   onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, from: event.target.value, page: 1 }))}
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  className="h-9 min-w-[220px] rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
                 <input
                   type="datetime-local"
                   value={opsLogFilters.to}
                   onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, to: event.target.value, page: 1 }))}
-                  className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  className="h-9 min-w-[220px] rounded-lg border border-zinc-300 bg-white px-3 text-sm"
                 />
               </div>
+              {showAdvancedOpsFilters ? (
+                <div className="mt-2 grid gap-2 md:grid-cols-6">
+                  <select
+                    value={opsLogFilters.status}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-sm"
+                  >
+                    <option value="">状态（全部）</option>
+                    <option value="error">error</option>
+                    <option value="info">info</option>
+                    <option value="ok">ok</option>
+                  </select>
+                  <input
+                    value={opsLogFilters.category}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, category: event.target.value, page: 1 }))}
+                    placeholder="category"
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  />
+                  <input
+                    value={opsLogFilters.action}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, action: event.target.value, page: 1 }))}
+                    placeholder="action"
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  />
+                  <input
+                    value={opsLogFilters.runId}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, runId: event.target.value, page: 1 }))}
+                    placeholder="runId"
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  />
+                  <input
+                    value={opsLogFilters.jobId}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, jobId: event.target.value, page: 1 }))}
+                    placeholder="jobId"
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  />
+                  <input
+                    value={opsLogFilters.taskId}
+                    onChange={(event) => setOpsLogFilters((prev) => ({ ...prev, taskId: event.target.value, page: 1 }))}
+                    placeholder="taskId"
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm"
+                  />
+                </div>
+              ) : null}
               <div className="mt-2 flex items-center justify-between gap-3">
                 <p className="text-xs text-zinc-500">
-                  默认优先展示 `generation.trace.summary`。填 action/runId/jobId/taskId 后会切到明细事件。
+                  默认只展示严重错误上报。充值失败、语言模型失败、图片生成失败会优先进入这个列表。
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -1639,25 +1649,21 @@ function AdminDashboardPageContent() {
                   </div>
                 </div>
               ) : null}
-              {opsTraceSummaries.length ? (
+              {opsLogFilters.scope === "summary" && opsTraceSummaries.length ? (
                 <div className="mt-3 rounded-lg border border-zinc-200 bg-white">
                   <div className="border-b border-zinc-200 px-3 py-2">
                     <p className="text-sm font-medium text-zinc-900">Trace / Run Summary</p>
                     <p className="mt-1 text-xs text-zinc-500">先看链路摘要，再点击切到该 run/job 的时间线。</p>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="min-w-[1480px] w-full text-left text-xs">
+                    <table className="min-w-[1320px] w-full text-left text-xs">
                       <thead className="bg-zinc-50 text-zinc-600">
                         <tr>
                           <th className="px-3 py-2 font-medium">创建时间</th>
+                          <th className="px-3 py-2 font-medium">项目ID</th>
+                          <th className="px-3 py-2 font-medium">用户邮箱</th>
                           <th className="px-3 py-2 font-medium">runId / jobId</th>
-                          <th className="px-3 py-2 font-medium">项目</th>
-                          <th className="px-3 py-2 font-medium">入口 / 方向</th>
-                          <th className="px-3 py-2 font-medium">风格</th>
-                          <th className="px-3 py-2 font-medium">数量</th>
                           <th className="px-3 py-2 font-medium">最终状态</th>
-                          <th className="px-3 py-2 font-medium">结果</th>
-                          <th className="px-3 py-2 font-medium">积分</th>
                           <th className="px-3 py-2 font-medium">失败步骤</th>
                           <th className="px-3 py-2 font-medium">操作</th>
                         </tr>
@@ -1666,30 +1672,13 @@ function AdminDashboardPageContent() {
                         {opsTraceSummaries.map((trace) => (
                           <tr key={trace.traceId} className="border-t border-zinc-200 align-top">
                             <td className="px-3 py-2 text-zinc-600">{formatDateTime(trace.createdAt)}</td>
+                            <td className="px-3 py-2 text-zinc-700">{trace.projectId || "-"}</td>
+                            <td className="px-3 py-2 text-zinc-700">{trace.userEmail || "-"}</td>
                             <td className="px-3 py-2">
                               <p className="font-mono text-[11px] text-zinc-700">{trace.runId || "-"}</p>
                               <p className="mt-1 font-mono text-[11px] text-zinc-500">{trace.jobId || "-"}</p>
                             </td>
-                            <td className="px-3 py-2 text-zinc-700">{trace.projectId || "-"}</td>
-                            <td className="px-3 py-2">
-                              <p className="text-zinc-900">{trace.entrySource || "-"}</p>
-                              <p className="mt-1 text-zinc-500">{trace.generationDirection || trace.outputType || "-"}</p>
-                            </td>
-                            <td className="px-3 py-2 text-zinc-700">{trace.styleName || "-"}</td>
-                            <td className="px-3 py-2 text-zinc-700">
-                              <p>requested: {trace.requestedCount ?? "-"}</p>
-                              <p className="mt-1 text-zinc-500">tasks: {trace.taskCount ?? "-"}</p>
-                            </td>
                             <td className="px-3 py-2 text-zinc-700">{trace.finalJobStatus || "-"}</td>
-                            <td className="px-3 py-2 text-zinc-700">
-                              <p>ok: {trace.successCount}</p>
-                              <p className="mt-1 text-zinc-500">failed: {trace.failedCount}</p>
-                              <p className="mt-1 text-zinc-500">timeout: {trace.timedOutCount}</p>
-                            </td>
-                            <td className="px-3 py-2 text-zinc-700">
-                              <p>consumed: {trace.creditsConsumed ? "yes" : "no"}</p>
-                              <p className="mt-1 text-zinc-500">refunded: {trace.creditsRefunded ? "yes" : "no"}</p>
-                            </td>
                             <td className="px-3 py-2 text-zinc-700">
                               <p>{trace.failedStep || "-"}</p>
                               <p className="mt-1 text-zinc-500">{trace.errorCode || "-"}</p>
@@ -1728,13 +1717,12 @@ function AdminDashboardPageContent() {
                     <tr>
                       <th className="px-3 py-2 font-medium">时间</th>
                       <th className="px-3 py-2 font-medium">动作</th>
-                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">项目ID</th>
+                      <th className="px-3 py-2 font-medium">用户邮箱</th>
                       <th className="px-3 py-2 font-medium">错误码</th>
                       <th className="px-3 py-2 font-medium">消息</th>
                       <th className="px-3 py-2 font-medium">runId / jobId / taskId</th>
-                      <th className="px-3 py-2 font-medium">项目</th>
                       <th className="px-3 py-2 font-medium">耗时</th>
-                      <th className="px-3 py-2 font-medium">任务状态</th>
                       <th className="px-3 py-2 font-medium">操作</th>
                     </tr>
                   </thead>
@@ -1748,11 +1736,8 @@ function AdminDashboardPageContent() {
                             <p className="mt-0.5 text-zinc-500">{item.category}</p>
                             {item.stage ? <p className="mt-0.5 text-zinc-400">{item.stage}</p> : null}
                           </td>
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex rounded-full border px-2 py-0.5 ${item.status === "error" ? "border-red-200 bg-red-50 text-red-700" : item.status === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
-                              {item.status}
-                            </span>
-                          </td>
+                          <td className="px-3 py-2 text-zinc-700">{item.projectId || "-"}</td>
+                          <td className="px-3 py-2 text-zinc-700">{item.userEmail || "-"}</td>
                           <td className="px-3 py-2 text-zinc-700">{item.code || "-"}</td>
                           <td className="max-w-[360px] px-3 py-2 text-zinc-700">
                             <p className="line-clamp-3">{item.message || "-"}</p>
@@ -1764,24 +1749,7 @@ function AdminDashboardPageContent() {
                             <p className="mt-1 font-mono text-[11px] text-zinc-400">{item.taskId || "-"}</p>
                           </td>
                           <td className="px-3 py-2 text-zinc-700">
-                            <p>{item.projectId || "-"}</p>
-                            <p className="mt-1 text-zinc-400">{item.userEmail || "-"}</p>
-                          </td>
-                          <td className="px-3 py-2 text-zinc-700">
                             {typeof item.durationMs === "number" ? `${item.durationMs} ms` : "-"}
-                          </td>
-                          <td className="px-3 py-2 text-zinc-700">
-                            {item.taskStatusSummary ? (
-                              <div className="flex flex-wrap gap-1">
-                                {Object.entries(item.taskStatusSummary).map(([statusKey, count]) => (
-                                  <span key={`${item.id}-${statusKey}`} className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
-                                    {statusKey}:{count}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              "-"
-                            )}
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex flex-col gap-2">
@@ -1805,7 +1773,7 @@ function AdminDashboardPageContent() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={10} className="px-3 py-8 text-center text-sm text-zinc-500">
+                        <td colSpan={9} className="px-3 py-8 text-center text-sm text-zinc-500">
                           {opsLogsLoading ? "正在读取线上日志..." : "当前筛选下没有线上日志。"}
                         </td>
                       </tr>

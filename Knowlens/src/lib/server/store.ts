@@ -1677,7 +1677,40 @@ function shouldLogGenerationPoll(input: {
   return nextCount % 10 === 0;
 }
 
+function hasMeaningfulGenerationSummary(summary?: GenerationTaskStatusSummary | null) {
+  if (!summary) {
+    return false;
+  }
+  return Object.values(summary).some((value) => Number(value) > 0);
+}
+
+function shouldDropGenerationEvent(input: GenerationOpsEventInput) {
+  const action = clampText(input.action, 64);
+  const runId = clampText(input.runId, 120);
+  const jobId = clampText(input.jobId, 120);
+  const projectId = clampText(input.projectId, 120);
+  const hasIdentifiers = Boolean(runId || jobId || projectId);
+  const hasSummary = hasMeaningfulGenerationSummary(input.taskStatusSummary);
+  if (action === "generation.project.restore") {
+    if (input.status !== "error") {
+      return true;
+    }
+    if (!jobId && !projectId) {
+      return true;
+    }
+  }
+  if (action === "generation.trace.summary") {
+    if (!hasIdentifiers && !hasSummary) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function logGenerationOpsEvent(input: GenerationOpsEventInput) {
+  if (shouldDropGenerationEvent(input)) {
+    return null;
+  }
   const runId = clampText(input.runId, 120);
   const jobId = clampText(input.jobId, 120);
   const taskId = clampText(input.taskId, 120);

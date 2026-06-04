@@ -56,6 +56,7 @@ type TraceSummaryRow = {
   traceId: string;
   createdAt: string;
   lastEventAt: string;
+  userEmail: string | null;
   runId: string | null;
   jobId: string | null;
   projectId: string | null;
@@ -168,10 +169,33 @@ function numericOrNull(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function isCriticalOpsEvent(item: UsageLogRow & { details?: Record<string, unknown> | null }) {
+  if (item.status !== "error") {
+    return false;
+  }
+  const category = safeLower(item.category);
+  const action = safeLower(item.action);
+  const source = safeLower(item.source);
+  const code = (item.code || "").trim().toUpperCase();
+  if (action.includes("restore") || action.includes("poll") || action.includes("trace.summary")) {
+    return false;
+  }
+  if (
+    code === "IMAGE_JOB_ABANDONED_TIMEOUT" ||
+    source.includes("project_detail_restore") ||
+    source.includes("image_job_status") ||
+    source.includes("billing_credits_sync")
+  ) {
+    return false;
+  }
+  return category === "billing" || category === "llm" || category === "image";
+}
+
 function buildTraceSummaries(logs: Array<UsageLogRow & { details?: Record<string, unknown> | null }>) {
   const groups = new Map<string, {
     createdAt: string;
     lastEventAt: string;
+    userEmail: string | null;
     runId: string | null;
     jobId: string | null;
     projectId: string | null;
@@ -205,6 +229,7 @@ function buildTraceSummaries(logs: Array<UsageLogRow & { details?: Record<string
     const current = groups.get(groupKey) ?? {
       createdAt: item.createdAt,
       lastEventAt: item.createdAt,
+      userEmail: item.userEmail ?? null,
       runId: item.runId ?? null,
       jobId: item.jobId ?? null,
       projectId: item.projectId ?? null,
@@ -231,6 +256,7 @@ function buildTraceSummaries(logs: Array<UsageLogRow & { details?: Record<string
     if (item.createdAt > current.lastEventAt) {
       current.lastEventAt = item.createdAt;
     }
+    current.userEmail ||= item.userEmail ?? null;
     current.runId ||= item.runId ?? null;
     current.jobId ||= item.jobId ?? null;
     current.projectId ||= item.projectId ?? null;
@@ -290,6 +316,17 @@ function buildTraceSummaries(logs: Array<UsageLogRow & { details?: Record<string
       traceId,
       ...value,
     }))
+    .filter(
+      (item) =>
+        Boolean(
+          item.runId ||
+            item.jobId ||
+            item.projectId ||
+            item.userEmail ||
+            item.errorCode ||
+            item.finalJobStatus,
+        ),
+    )
     .sort((a, b) => b.lastEventAt.localeCompare(a.lastEventAt)) satisfies TraceSummaryRow[];
 }
 
@@ -313,6 +350,7 @@ export async function GET(request: NextRequest) {
   const to = request.nextUrl.searchParams.get("to") ?? "";
   const onlyErrors = request.nextUrl.searchParams.get("onlyErrors") === "1";
   const onlySlow = request.nextUrl.searchParams.get("onlySlow") === "1";
+  const criticalOnly = request.nextUrl.searchParams.get("criticalOnly") === "1";
   const limit = parseIntInRange(request.nextUrl.searchParams.get("limit"), 120, 1, 500);
   const page = parseIntInRange(request.nextUrl.searchParams.get("page"), 1, 1, 9999);
   const offset = (page - 1) * limit;
@@ -391,6 +429,7 @@ export async function GET(request: NextRequest) {
       };
     })
     .filter((item) => (onlyErrors ? item.status === "error" : true))
+    .filter((item) => (criticalOnly ? isCriticalOpsEvent(item) : true))
     .filter((item) => {
       if (!onlySlow) {
         return true;

@@ -20,11 +20,30 @@ function formatDateTime(input: string) {
   });
 }
 
+function formatLogTimestamp(input: string) {
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return input;
+  }
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 export default function AdminUserDetailPage() {
   const params = useParams<{ userId: string }>();
   const userId = params?.userId || "";
   const [data] = useState(() => createAdminConsoleMockData());
   const [hint, setHint] = useState("");
+  const [showUserLogs, setShowUserLogs] = useState(false);
+  const [userLogMode, setUserLogMode] = useState<"all" | "failed">("all");
+  const [userLogOrder, setUserLogOrder] = useState<"desc" | "asc">("desc");
   const user = data.users.find((item) => item.id === userId) || null;
 
   const userProjects = useMemo(() => data.projects.filter((item) => item.userId === userId), [data.projects, userId]);
@@ -33,6 +52,38 @@ export default function AdminUserDetailPage() {
   const userOrders = useMemo(() => data.orders.filter((item) => item.userId === userId), [data.orders, userId]);
   const userTickets = useMemo(() => data.tickets.filter((item) => item.userId === userId), [data.tickets, userId]);
   const userSubscriptions = useMemo(() => data.subscriptions.filter((item) => item.userId === userId), [data.subscriptions, userId]);
+  const visibleUserLogs = useMemo(() => {
+    const filtered = userLogs.filter((item) => (userLogMode === "failed" ? item.status === "failed" : true));
+    return [...filtered].sort((a, b) =>
+      userLogOrder === "asc" ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt),
+    );
+  }, [userLogMode, userLogOrder, userLogs]);
+  const userLogTimelineText = useMemo(() => {
+    if (!visibleUserLogs.length) {
+      return "暂无日志记录。";
+    }
+    return visibleUserLogs
+      .map((item) => {
+        const firstLine = [
+          `[${formatLogTimestamp(item.createdAt)}]`,
+          `${item.status.toUpperCase()}`,
+          `${item.type}/${item.action}`,
+        ].join(" ");
+        const details: string[] = [
+          `requestId: ${item.requestId}`,
+          item.projectId ? `projectId: ${item.projectId}` : null,
+          item.errorCode ? `errorCode: ${item.errorCode}` : null,
+          `duration: ${item.durationMs}ms`,
+          `credits: ${item.creditDelta > 0 ? `+${item.creditDelta}` : item.creditDelta}`,
+        ].filter(Boolean) as string[];
+        const extras: string[] = [
+          item.errorSummary ? `error: ${item.errorSummary}` : null,
+          item.pipelineState ? `pipeline: ${item.pipelineState}` : null,
+        ].filter(Boolean) as string[];
+        return [firstLine, `  ${details.join(" | ")}`, ...extras.map((line) => `  ${line}`)].join("\n");
+      })
+      .join("\n\n");
+  }, [visibleUserLogs]);
 
   function copyText(value: string, label: string) {
     void navigator.clipboard
@@ -144,26 +195,85 @@ export default function AdminUserDetailPage() {
           </article>
 
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <p className="text-sm font-semibold text-zinc-900">使用日志</p>
-            <div className="mt-3 space-y-2">
-              {userLogs.length ? (
-                userLogs.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700">
-                    <p>
-                      {formatDateTime(item.createdAt)} · {item.type}/{item.action}
-                    </p>
-                    <p className="mt-1">requestId: {item.requestId}</p>
-                    {item.projectId ? (
-                      <Link href={`/admin/projects/${item.projectId}`} className="mt-1 inline-flex underline underline-offset-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">使用日志</p>
+                <p className="mt-1 text-xs text-zinc-500">点击查看该用户的纯文本日志时间线，默认按时间排序，带秒级时间点。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUserLogs((prev) => !prev)}
+                className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 text-sm text-zinc-800 hover:bg-zinc-100"
+              >
+                {showUserLogs ? "收起日志" : "查看该用户日志"}
+              </button>
+            </div>
+            <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700">
+              <p>总日志数：{userLogs.length}</p>
+              <p className="mt-1">失败日志：{userLogs.filter((item) => item.status === "failed").length}</p>
+              <p className="mt-1">最近一条：{userLogs.length ? formatLogTimestamp([...userLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0].createdAt) : "-"}</p>
+            </div>
+            {showUserLogs ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUserLogMode("all")}
+                    className={`rounded-full border px-3 py-1 text-xs ${
+                      userLogMode === "all"
+                        ? "border-zinc-900 bg-zinc-900 text-white"
+                        : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                    }`}
+                  >
+                    全部日志
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserLogMode("failed")}
+                    className={`rounded-full border px-3 py-1 text-xs ${
+                      userLogMode === "failed"
+                        ? "border-zinc-900 bg-zinc-900 text-white"
+                        : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                    }`}
+                  >
+                    仅失败
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserLogOrder((prev) => (prev === "desc" ? "asc" : "desc"))}
+                    className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-100"
+                  >
+                    {userLogOrder === "desc" ? "时间：最新在前" : "时间：最早在前"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => copyText(userLogTimelineText, "用户纯文本日志")}
+                    className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-100"
+                  >
+                    复制纯文本
+                  </button>
+                </div>
+                <div className="rounded-xl border border-zinc-200 bg-zinc-950 p-4">
+                  <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 text-zinc-100">
+                    {userLogTimelineText}
+                  </pre>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+                  {visibleUserLogs
+                    .filter((item) => Boolean(item.projectId))
+                    .slice(0, 8)
+                    .map((item) => (
+                      <Link
+                        key={`${item.id}-${item.projectId}`}
+                        href={`/admin/projects/${item.projectId}`}
+                        className="inline-flex rounded-full border border-zinc-300 bg-white px-3 py-1 hover:bg-zinc-100"
+                      >
                         查看项目 {item.projectId}
                       </Link>
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                <p className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-xs text-zinc-500">暂无日志记录</p>
-              )}
-            </div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
           </article>
         </section>
 
@@ -199,4 +309,3 @@ export default function AdminUserDetailPage() {
     </AdminShell>
   );
 }
-
