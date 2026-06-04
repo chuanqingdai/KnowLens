@@ -30,15 +30,15 @@ import {
 } from "@/lib/workspace/tuzi-image";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 type OrderedImageProvider = "tuzi" | "duomi" | "gptsapi";
 
 const DEFAULT_PROVIDER_POLICY: OrderedImageProvider[] = ["tuzi", "duomi", "gptsapi"];
-const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "220000", 10);
-const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_FALLBACK_CALL_TIMEOUT_MS || "60000", 10);
-const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "260000", 10);
-const TASK_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_TASK_EXECUTION_BUDGET_MS || "240000", 10);
+const PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_CALL_TIMEOUT_MS || "360000", 10);
+const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PROVIDER_FALLBACK_CALL_TIMEOUT_MS || "360000", 10);
+const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "590000", 10);
+const TASK_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_TASK_EXECUTION_BUDGET_MS || "570000", 10);
 const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "45000", 10);
 
 function ensureSafeOrigin(req: NextRequest) {
@@ -85,30 +85,30 @@ function parseProviderPolicy(rawPolicy?: string | null) {
 
 function normalizeProviderTimeoutMs() {
   if (!Number.isFinite(PROVIDER_CALL_TIMEOUT_MS)) {
-    return 220_000;
+    return 360_000;
   }
-  return Math.max(60_000, Math.min(240_000, PROVIDER_CALL_TIMEOUT_MS));
+  return Math.max(60_000, Math.min(360_000, PROVIDER_CALL_TIMEOUT_MS));
 }
 
 function normalizeFallbackProviderTimeoutMs() {
   if (!Number.isFinite(FALLBACK_PROVIDER_CALL_TIMEOUT_MS)) {
-    return 60_000;
+    return 360_000;
   }
-  return Math.max(30_000, Math.min(90_000, FALLBACK_PROVIDER_CALL_TIMEOUT_MS));
+  return Math.max(30_000, Math.min(360_000, FALLBACK_PROVIDER_CALL_TIMEOUT_MS));
 }
 
 function normalizeRouteBudgetMs() {
   if (!Number.isFinite(ROUTE_EXECUTION_BUDGET_MS)) {
-    return 260_000;
+    return 590_000;
   }
-  return Math.max(120_000, Math.min(260_000, ROUTE_EXECUTION_BUDGET_MS));
+  return Math.max(120_000, Math.min(590_000, ROUTE_EXECUTION_BUDGET_MS));
 }
 
 function normalizeTaskBudgetMs() {
   if (!Number.isFinite(TASK_EXECUTION_BUDGET_MS)) {
-    return 240_000;
+    return 570_000;
   }
-  return Math.max(120_000, Math.min(240_000, TASK_EXECUTION_BUDGET_MS));
+  return Math.max(120_000, Math.min(570_000, TASK_EXECUTION_BUDGET_MS));
 }
 
 function normalizeAssetDownloadTimeoutMs() {

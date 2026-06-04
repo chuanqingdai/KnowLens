@@ -79,7 +79,11 @@ const FALLBACK_POLL_REQUEST_TIMEOUT_MS = Number.parseInt(
   10,
 );
 const FALLBACK_POLL_TOTAL_TIMEOUT_MS = Number.parseInt(
-  process.env.IMAGE2_FALLBACK_POLL_TOTAL_TIMEOUT_MS || "240000",
+  process.env.IMAGE2_FALLBACK_POLL_TOTAL_TIMEOUT_MS || "360000",
+  10,
+);
+const PROVIDER_FETCH_TIMEOUT_MS = Number.parseInt(
+  process.env.IMAGE2_PROVIDER_FETCH_TIMEOUT_MS || "360000",
   10,
 );
 
@@ -178,6 +182,13 @@ function markPrimaryFailure() {
   if (image2CircuitState.consecutivePrimaryFailures >= Math.max(1, PRIMARY_FAILURE_THRESHOLD)) {
     image2CircuitState.fallbackModeUntil = Date.now() + Math.max(60_000, FALLBACK_MODE_DURATION_MS);
   }
+}
+
+function normalizeProviderFetchTimeoutMs() {
+  if (!Number.isFinite(PROVIDER_FETCH_TIMEOUT_MS)) {
+    return 360_000;
+  }
+  return Math.max(60_000, Math.min(360_000, PROVIDER_FETCH_TIMEOUT_MS));
 }
 
 export function resolveImage2Size(aspectRatio?: string) {
@@ -1104,10 +1115,11 @@ async function requestPrimaryImage2Generation(
   const maxAttempts = retryDelaysMs.length + 1;
   let lastFailure: Image2ProviderFailure | null = null;
   const canTryGenerationsFallback = resolveGenerationsEndpoint(config.endpoint) !== config.endpoint;
+  const providerFetchTimeoutMs = normalizeProviderFetchTimeoutMs();
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), providerFetchTimeoutMs);
     try {
       const response = await callImage2Endpoint({
         endpoint: config.endpoint,
@@ -1198,7 +1210,7 @@ async function requestPrimaryImage2Generation(
     } catch (error) {
       if (canTryGenerationsFallback) {
         const fallbackController = new AbortController();
-        const fallbackTimeout = setTimeout(() => fallbackController.abort(), 120000);
+        const fallbackTimeout = setTimeout(() => fallbackController.abort(), providerFetchTimeoutMs);
         try {
           const fallbackResult = await callGenerationsFallback({
             endpoint: config.endpoint,

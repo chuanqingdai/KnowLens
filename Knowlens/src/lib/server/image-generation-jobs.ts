@@ -114,9 +114,9 @@ const RECENT_ABANDONED_LOG_TTL_MS = 60 * 60 * 1000;
 const recentlyLoggedAbandonedJobs = new Map<string, number>();
 const BILLING_PENDING_TIMEOUT_MS = 120_000;
 const ABANDONED_JOB_TIMEOUT_MS = (() => {
-  const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "480000", 10);
+  const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "660000", 10);
   if (!Number.isFinite(parsed)) {
-    return 480_000;
+    return 660_000;
   }
   return Math.max(60_000, Math.min(86_400_000, parsed));
 })();
