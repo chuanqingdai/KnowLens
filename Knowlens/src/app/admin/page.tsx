@@ -682,7 +682,9 @@ function AdminDashboardPageContent() {
   }
 
   function openUserDetail(userId: string) {
-    router.push(`/admin/users/${userId}`);
+    const lookupKey = userId.trim();
+    const realLookupValue = userMap.get(lookupKey)?.email || lookupKey;
+    router.push(`/admin/users/${encodeURIComponent(realLookupValue)}`);
   }
 
   function openProjectDetail(projectId: string) {

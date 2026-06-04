@@ -295,14 +295,15 @@ export async function GET(
   }
 
   const resolvedParams = await context.params;
-  const userId = (resolvedParams?.userId ?? "").trim();
+  const userLookup = decodeURIComponent(resolvedParams?.userId ?? "").trim();
   const view = (request.nextUrl.searchParams.get("view") ?? "summary").trim().toLowerCase();
   const logLimit = parseIntInRange(request.nextUrl.searchParams.get("logLimit"), 5000, 50, 5000);
 
-  if (!userId) {
+  if (!userLookup) {
     return NextResponse.json({ error: "userId is required." }, { status: 400 });
   }
 
+  const lookupIsEmail = userLookup.includes("@");
   const userRow = await queryOne(
     `SELECT
        id,
@@ -312,9 +313,9 @@ export async function GET(
        created_at as "createdAt",
        updated_at as "updatedAt"
      FROM users
-     WHERE id = ?
+     WHERE ${lookupIsEmail ? "LOWER(email) = ?" : "id = ?"}
      LIMIT 1`,
-    [userId],
+    [lookupIsEmail ? userLookup.toLowerCase() : userLookup],
   );
 
   if (!userRow) {
