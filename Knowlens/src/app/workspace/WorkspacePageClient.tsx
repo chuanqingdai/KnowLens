@@ -2614,23 +2614,6 @@ export default function WorkspacePage() {
       workspaceToastTimerRef.current = null;
     }, 3200);
   }, []);
-  useEffect(() => {
-    if (!currentEmail) {
-      return;
-    }
-    const notice = consumeCheckoutReturnNotice();
-    if (!notice) {
-      return;
-    }
-    setCreditsPaywallOpen(false);
-    setCreditsPaywallContext(null);
-    void syncCreditRecordsFromServer(currentEmail)
-      .then(() => {
-        setCreditVersion((prev) => prev + 1);
-      })
-      .catch(() => undefined);
-    pushWorkspaceToast(notice.message);
-  }, [currentEmail, pushWorkspaceToast]);
   const clearCurrentGenerationState = useCallback(
     (reason: string) => {
       generationRequestInFlightRef.current = false;
@@ -2646,6 +2629,35 @@ export default function WorkspacePage() {
     },
     [setGenerationRunContext],
   );
+  useEffect(() => {
+    if (!currentEmail) {
+      return;
+    }
+    const notice = consumeCheckoutReturnNotice();
+    if (!notice) {
+      return;
+    }
+    setCreditsPaywallOpen(false);
+    setCreditsPaywallContext(null);
+    const hasExistingGenerationState = Object.values(generationTaskStateByIndex).some((item) =>
+      item.status === "queued" ||
+      item.status === "generating" ||
+      item.status === "retrying" ||
+      item.status === "success" ||
+      item.status === "failed",
+    );
+    if (!currentGenerationJobIdRef.current && !hasExistingGenerationState) {
+      clearCurrentGenerationState("checkout-return-stay-on-billing");
+      setBillingConfirmed(false);
+      setFlowStage("billing");
+    }
+    void syncCreditRecordsFromServer(currentEmail)
+      .then(() => {
+        setCreditVersion((prev) => prev + 1);
+      })
+      .catch(() => undefined);
+    pushWorkspaceToast(notice.message);
+  }, [clearCurrentGenerationState, currentEmail, generationTaskStateByIndex, pushWorkspaceToast]);
 
   useEffect(() => {
     if (!generationConfirmError) {
@@ -3520,6 +3532,7 @@ export default function WorkspacePage() {
         }
 
         const jobId = payload.job?.id?.trim() || "";
+        const hasRealImageGenerationJob = Boolean(jobId || tasks.length > 0);
         const restoredRunId =
           normalizeGenerationRunId(payload.job?.runId) ||
           normalizeGenerationRunId(jobId ? `restored-${jobId}` : `restored-pages-${projectId}`);
@@ -3598,7 +3611,7 @@ export default function WorkspacePage() {
           const latestHistoryItem = historyItems[0];
           const pageStatus = normalizeImageTaskStatus(page.status);
           const historyStatus = normalizeImageTaskStatus(latestHistoryItem?.status);
-          const derivedStatus = pageStatus || historyStatus || normalizedJobStatus;
+          const derivedStatus = pageStatus || historyStatus || (hasRealImageGenerationJob ? normalizedJobStatus : "");
           const imageUrl = pickRestoredImageUrl({
             page,
             history: historyItems,
@@ -3651,7 +3664,7 @@ export default function WorkspacePage() {
             continue;
           }
 
-          if (isRestoredImageLoadingStatus(derivedStatus) && isFreshLoading) {
+          if (hasRealImageGenerationJob && isRestoredImageLoadingStatus(derivedStatus) && isFreshLoading) {
             restoredState[index] = {
               index,
               status: derivedStatus === "queued" ? "queued" : "generating",
@@ -3667,7 +3680,7 @@ export default function WorkspacePage() {
             continue;
           }
 
-          if (!imageUrl) {
+          if (hasRealImageGenerationJob && !imageUrl) {
             restoredState[index] = {
               index,
               status: "failed",
@@ -3751,6 +3764,23 @@ export default function WorkspacePage() {
             );
           }
         }
+        if (!hasRealImageGenerationJob && restoredPages.length > 0) {
+          clearCurrentGenerationState("restore-billing-draft-only");
+          setGenerationTaskStateByIndex({});
+          setGenerationConfirmError(null);
+          setConfigConfirmed(true);
+          setBillingConfirmed(false);
+          setFlowStage("billing");
+          logGenerationCacheGuard("restored-persisted-generation-state", {
+            reason: "project-billing-draft-only",
+            projectId,
+            jobId,
+            runId: restoredRunId,
+            count: restoredPages.length,
+          });
+          return;
+        }
+
         setGenerationTaskStateByIndex(restoredState);
         setGenerationConfirmError(null);
         setConfigConfirmed(true);

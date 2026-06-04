@@ -1,5 +1,6 @@
 import {
   buildImageRenderUrl,
+  expireAbandonedImageGenerationJob,
   getLatestImageGenerationJobByProject,
   listImageGenerationProjectActivityByUser,
   listImageGenerationTaskHistoryByProject,
@@ -207,7 +208,14 @@ export async function resolveProjectDetail(input: {
           projectId,
           intent: outputType,
         });
-  const tasks = (latestJob?.tasks || []).map(buildTaskResponse);
+  const stableLatestJob =
+    latestJob?.job?.id
+      ? await expireAbandonedImageGenerationJob({
+          jobId: latestJob.job.id,
+          source: "project_detail_restore",
+        })
+      : latestJob;
+  const tasks = (stableLatestJob?.tasks || []).map(buildTaskResponse);
   const imageHistoryTasks = await listImageGenerationTaskHistoryByProject({
     userEmail: input.userEmail,
     projectId,
@@ -243,7 +251,7 @@ export async function resolveProjectDetail(input: {
   const updatedAt = latestIso([
     project?.updated_at,
     project?.updatedAt,
-    latestJob?.job.updatedAt,
+    stableLatestJob?.job.updatedAt,
     ...pagesWithImageHistory.map((page) => page.updatedAt),
     ...tasks.map((task) => task.updatedAt),
   ]);
@@ -267,7 +275,7 @@ export async function resolveProjectDetail(input: {
     },
     cover,
     pages: pagesWithImageHistory,
-    job: latestJob?.job ?? null,
+    job: stableLatestJob?.job ?? null,
     tasks,
   };
 }
