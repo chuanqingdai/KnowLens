@@ -4285,17 +4285,210 @@ export default function WorkspacePage() {
           }
           setGenerationRunContext(activeRunId, responseJobId);
         }
+        const pollActiveTaskStatuses = new Set(["queued", "generating", "asset_downloading"]);
+        const pollTerminalTaskStatuses = new Set([
+          "asset_ready",
+          "completed",
+          "success",
+          "succeeded",
+          "billing_failed",
+          "failed",
+          "timed_out",
+          "timeout",
+          "error",
+          "cancelled",
+          "canceled",
+        ]);
+        const pollTerminalJobStatuses = new Set([
+          "completed",
+          "completed_with_errors",
+          "billing_failed",
+          "failed",
+          "timed_out",
+        ]);
+        const pollBlockingRunCodes = new Set([
+          "IMAGE_BILLING_PENDING",
+          "IMAGE_BILLING_FAILED",
+          "TASK_NOT_QUEUED",
+        ]);
+        const mergePolledPayload = (
+          nextPayload: ImageGenerateBatchResponse | null,
+          previousPayload: ImageGenerateBatchResponse | null,
+          fallbackJobId: string,
+        ): ImageGenerateBatchResponse | null => {
+          if (!nextPayload?.job?.id) {
+            return null;
+          }
+          return {
+            ...nextPayload,
+            ok: nextPayload.ok ?? true,
+            imageGenerationMode: previousPayload?.imageGenerationMode,
+            attemptedProviders: previousPayload?.attemptedProviders,
+            skippedProviders: previousPayload?.skippedProviders,
+            job: {
+              ...nextPayload.job,
+              id: nextPayload.job.id || fallbackJobId,
+              runId: normalizeGenerationRunId(nextPayload.job.runId) || activeRunId,
+            },
+          };
+        };
+        const writeReadyTasksFromPayload = (nextPayload: ImageGenerateBatchResponse | null, jobId: string) => {
+          nextPayload?.tasks?.forEach((taskResult) => {
+            const taskIndex = Number(taskResult.index || 0);
+            const statusValue = (taskResult.status || "").trim().toLowerCase();
+            const imageUrl = taskResult.renderUrl || taskResult.imageUrl || taskResult.render_url || taskResult.image_url || "";
+            if (!taskIndex || !imageUrl || statusValue !== "asset_ready") {
+              return;
+            }
+            const renderImageUrl = appendKnowLensRenderAttemptToken(
+              imageUrl,
+              `${renderAttemptToken}-${taskIndex}`,
+            );
+            setGenerationTaskStateByIndex((prev) => ({
+              ...prev,
+              [taskIndex]: {
+                index: taskIndex,
+                status: "success",
+                attempts: prev[taskIndex]?.attempts || 1,
+                maxAttempts,
+                imageUrl: renderImageUrl,
+                rawImageUrl: taskResult.rawImageUrl || taskResult.raw_image_url || undefined,
+                runId: activeRunId,
+                jobId,
+                source: "current-run",
+                error: undefined,
+                errorCode: undefined,
+                startedAt: prev[taskIndex]?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
+              },
+            }));
+          });
+        };
+        const buildPollFailurePayload = (
+          basePayload: ImageGenerateBatchResponse | null,
+          jobId: string,
+          code: string,
+          message: string,
+        ): ImageGenerateBatchResponse => {
+          generationRequestInFlightRef.current = false;
+          autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
+          setGenerationConfirmError(message);
+          setGenerationTaskStateByIndex((prev) => {
+            const now = Date.now();
+            const next = { ...prev };
+            const backendTasks = new Map(
+              (basePayload?.tasks ?? []).map((taskResult) => [
+                Math.round(Number(taskResult.index || 0)),
+                taskResult,
+              ]),
+            );
+            tasks.forEach((task) => {
+              const backendTask = backendTasks.get(task.index);
+              const backendStatus = (backendTask?.status || "").trim().toLowerCase();
+              const backendImageUrl = backendTask?.renderUrl || backendTask?.imageUrl || backendTask?.render_url || backendTask?.image_url || "";
+              if ((backendStatus === "asset_ready" || backendStatus === "success") && backendImageUrl) {
+                return;
+              }
+              next[task.index] = {
+                index: task.index,
+                status: "failed",
+                attempts: prev[task.index]?.attempts || 1,
+                maxAttempts,
+                imageUrl: undefined,
+                rawImageUrl: backendTask?.rawImageUrl || backendTask?.raw_image_url || undefined,
+                runId: activeRunId,
+                jobId,
+                source: "current-run",
+                error: backendTask?.error || message,
+                errorCode: backendTask?.errorCode || code,
+                startedAt: prev[task.index]?.startedAt ?? now,
+                lastUpdatedAt: now,
+              };
+            });
+            return next;
+          });
+          tasks.forEach((task) => upsertImageErrorTurn(task, message));
+          const backendTasks = new Map(
+            (basePayload?.tasks ?? []).map((taskResult) => [
+              Math.round(Number(taskResult.index || 0)),
+              taskResult,
+            ]),
+          );
+          return {
+            ...basePayload,
+            ok: false,
+            error: message,
+            code,
+            job: {
+              ...(basePayload?.job ?? {}),
+              id: basePayload?.job?.id || jobId,
+              runId: normalizeGenerationRunId(basePayload?.job?.runId) || activeRunId,
+              status: basePayload?.job?.status || "failed",
+            },
+            tasks: tasks.map((task) => {
+              const backendTask = backendTasks.get(task.index);
+              const backendStatus = (backendTask?.status || "").trim().toLowerCase();
+              const backendImageUrl = backendTask?.renderUrl || backendTask?.imageUrl || backendTask?.render_url || backendTask?.image_url || "";
+              if ((backendStatus === "asset_ready" || backendStatus === "success") && backendImageUrl) {
+                return {
+                  ...backendTask,
+                  index: task.index,
+                };
+              }
+              if (backendStatus === "failed" || backendStatus === "timed_out" || backendStatus === "billing_failed") {
+                return {
+                  ...backendTask,
+                  index: task.index,
+                  ok: false,
+                  error: backendTask?.error || message,
+                  errorCode: backendTask?.errorCode || code,
+                };
+              }
+              return {
+                ...backendTask,
+                index: task.index,
+                status: "failed",
+                ok: false,
+                imageUrl: undefined,
+                renderUrl: undefined,
+                rawImageUrl: backendTask?.rawImageUrl || backendTask?.raw_image_url,
+                error: message,
+                errorCode: code,
+              };
+            }),
+          };
+        };
         const pollJobStatus = async (jobId: string, initialPayload: ImageGenerateBatchResponse | null) => {
           const pollStartedAt = Date.now();
           let latestPayload = initialPayload;
           while (Date.now() - pollStartedAt < GENERATION_JOB_POLL_TIMEOUT_MS) {
             const status = (latestPayload?.job?.status || "").trim().toLowerCase();
             const taskStatuses = latestPayload?.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
-            const hasPendingTask = taskStatuses.some((item) => item === "queued" || item === "generating" || item === "asset_downloading");
+            const hasPendingTask = taskStatuses.some((item) => pollActiveTaskStatuses.has(item));
             const hasQueuedTask = taskStatuses.some((item) => item === "queued");
             const isRunningJob = status === "queued" || status === "running" || status === "processing";
+            if (pollTerminalJobStatuses.has(status)) {
+              return latestPayload;
+            }
             if (!isRunningJob && !hasPendingTask) {
               return latestPayload;
+            }
+            if (isRunningJob && !hasPendingTask) {
+              const allTasksTerminal =
+                taskStatuses.length > 0 &&
+                taskStatuses.every((item) => pollTerminalTaskStatuses.has(item));
+              if (allTasksTerminal) {
+                return latestPayload;
+              }
+              return buildPollFailurePayload(
+                latestPayload,
+                jobId,
+                "IMAGE_JOB_NO_RUNNABLE_TASKS",
+                tr(
+                  "Image generation could not continue because no runnable tasks were found. Please retry manually.",
+                  "图片生成无法继续，因为没有可执行的任务。请手动重试。",
+                ),
+              );
             }
             if (hasQueuedTask) {
               const runResponse = await fetch("/api/workspace/image/tasks/run", {
@@ -4307,50 +4500,37 @@ export default function WorkspacePage() {
                 body: JSON.stringify({ jobId }),
               });
               const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-              if (runResponse.ok && runPayload?.job?.id) {
-                latestPayload = {
-                  ...runPayload,
-                  ok: runPayload.ok ?? true,
-                  imageGenerationMode: latestPayload?.imageGenerationMode,
-                  attemptedProviders: latestPayload?.attemptedProviders,
-                  skippedProviders: latestPayload?.skippedProviders,
-                  job: {
-                    ...runPayload.job,
-                    runId: normalizeGenerationRunId(runPayload.job.runId) || activeRunId,
-                  },
-                };
+              const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
+              if (mergedRunPayload) {
+                latestPayload = mergedRunPayload;
                 responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-                latestPayload.tasks?.forEach((taskResult) => {
-                  const taskIndex = Number(taskResult.index || 0);
-                  const statusValue = (taskResult.status || "").trim().toLowerCase();
-                  const imageUrl = taskResult.renderUrl || taskResult.imageUrl || taskResult.render_url || taskResult.image_url || "";
-                  if (!taskIndex || !imageUrl || statusValue !== "asset_ready") {
-                    return;
-                  }
-                  const renderImageUrl = appendKnowLensRenderAttemptToken(
-                    imageUrl,
-                    `${renderAttemptToken}-${taskIndex}`,
+                writeReadyTasksFromPayload(latestPayload, jobId);
+                const runCode = (runPayload?.code || "").trim().toUpperCase();
+                if (!runResponse.ok || pollBlockingRunCodes.has(runCode)) {
+                  return buildPollFailurePayload(
+                    latestPayload,
+                    jobId,
+                    runCode || `HTTP_${runResponse.status}`,
+                    runPayload?.error ||
+                      tr(
+                        "Image generation could not start. Please retry manually.",
+                        "图片生成无法启动。请手动重试。",
+                      ),
                   );
-                  setGenerationTaskStateByIndex((prev) => ({
-                    ...prev,
-                    [taskIndex]: {
-                      index: taskIndex,
-                      status: "success",
-                      attempts: prev[taskIndex]?.attempts || 1,
-                      maxAttempts,
-                      imageUrl: renderImageUrl,
-                      rawImageUrl: taskResult.rawImageUrl || taskResult.raw_image_url || undefined,
-                      runId: activeRunId,
-                      jobId,
-                      source: "current-run",
-                      error: undefined,
-                      errorCode: undefined,
-                      startedAt: prev[taskIndex]?.startedAt ?? Date.now(),
-                      lastUpdatedAt: Date.now(),
-                    },
-                  }));
-                });
+                }
                 continue;
+              }
+              if (!runResponse.ok) {
+                return buildPollFailurePayload(
+                  latestPayload,
+                  jobId,
+                  runPayload?.code || `HTTP_${runResponse.status}`,
+                  runPayload?.error ||
+                    tr(
+                      "Image generation task runner failed. Please retry manually.",
+                      "图片生成任务执行失败。请手动重试。",
+                    ),
+                );
               }
             }
             await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
@@ -4362,54 +4542,16 @@ export default function WorkspacePage() {
             if (!statusResponse.ok || !statusPayload?.job?.id) {
               return latestPayload;
             }
-            latestPayload = {
-              ...statusPayload,
-              ok: statusPayload.ok ?? true,
-              imageGenerationMode: latestPayload?.imageGenerationMode,
-              attemptedProviders: latestPayload?.attemptedProviders,
-              skippedProviders: latestPayload?.skippedProviders,
-              job: {
-                ...statusPayload.job,
-                runId: normalizeGenerationRunId(statusPayload.job.runId) || activeRunId,
-              },
-            };
-            responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-            latestPayload.tasks?.forEach((taskResult) => {
-              const taskIndex = Number(taskResult.index || 0);
-              const statusValue = (taskResult.status || "").trim().toLowerCase();
-              const imageUrl = taskResult.renderUrl || taskResult.imageUrl || taskResult.render_url || taskResult.image_url || "";
-              if (!taskIndex || !imageUrl || statusValue !== "asset_ready") {
-                return;
-              }
-              const renderImageUrl = appendKnowLensRenderAttemptToken(
-                imageUrl,
-                `${renderAttemptToken}-${taskIndex}`,
-              );
-              setGenerationTaskStateByIndex((prev) => ({
-                ...prev,
-                [taskIndex]: {
-                  index: taskIndex,
-                  status: "success",
-                  attempts: prev[taskIndex]?.attempts || 1,
-                  maxAttempts,
-                  imageUrl: renderImageUrl,
-                  rawImageUrl: taskResult.rawImageUrl || taskResult.raw_image_url || undefined,
-                  runId: activeRunId,
-                  jobId,
-                  source: "current-run",
-                  error: undefined,
-                  errorCode: undefined,
-                  startedAt: prev[taskIndex]?.startedAt ?? Date.now(),
-                  lastUpdatedAt: Date.now(),
-                },
-              }));
-            });
+            latestPayload = mergePolledPayload(statusPayload, latestPayload, jobId) ?? latestPayload;
+            responseJobId = (latestPayload?.job?.id || "").trim() || jobId;
+            writeReadyTasksFromPayload(latestPayload, jobId);
           }
-          return {
-            ...latestPayload,
-            error: latestPayload?.error || tr("Generation timed out.", "生成超时。"),
-            code: latestPayload?.code || "IMAGE_JOB_POLL_TIMEOUT",
-          };
+          return buildPollFailurePayload(
+            latestPayload,
+            jobId,
+            latestPayload?.code || "IMAGE_JOB_POLL_TIMEOUT",
+            latestPayload?.error || tr("Generation timed out.", "生成超时。"),
+          );
         };
         if (responseOk && responseJobId) {
           payload = await pollJobStatus(responseJobId, payload);
@@ -6772,7 +6914,9 @@ export default function WorkspacePage() {
         jobId: preparedJobId,
         runId: nextRunId,
       });
-      if (!activatedPayload.job?.id || !activatedPayload.tasks?.length) {
+      const activatedTaskStatuses = activatedPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
+      const hasActivatedQueuedTask = activatedTaskStatuses.some((status) => status === "queued");
+      if (!activatedPayload.job?.id || !activatedPayload.tasks?.length || !hasActivatedQueuedTask) {
         throw new Error("Generation job activation failed. Credits have been refunded.");
       }
       logClientEvent({

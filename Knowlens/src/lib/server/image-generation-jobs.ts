@@ -1301,12 +1301,44 @@ export async function updateImageGenerationTask(input: {
 
 export async function activateImageGenerationJobAfterBilling(jobId: string) {
   const result = await getImageGenerationJobById(jobId);
-  if (!result || result.job.status === "billing_failed") {
+  if (!result) {
     return result;
+  }
+  if (result.job.status === "billing_failed" || result.tasks.some((task) => task.status === "billing_failed")) {
+    return result;
+  }
+  if (result.tasks.some((task) => task.status === "failed" || task.status === "timed_out")) {
+    return syncImageGenerationJobFinalStatus(jobId);
   }
   const pendingTasks = result.tasks.filter((task) => task.status === "billing_pending");
   for (const task of pendingTasks) {
     await updateImageGenerationTask({ taskId: task.id, status: "queued", errorCode: null, errorMessage: null });
+  }
+  const activated = await getImageGenerationJobById(jobId);
+  if (!activated) {
+    return null;
+  }
+  const queuedTasks = activated.tasks.filter((task) => task.status === "queued");
+  if (!queuedTasks.length) {
+    return markImageGenerationJobFailedAfterCharge({
+      jobId,
+      errorCode: "IMAGE_JOB_NO_RUNNABLE_TASKS",
+      errorMessage: "Image generation activation failed because no runnable tasks were found.",
+    });
+  }
+  for (const task of queuedTasks) {
+    if (!activated.job.projectId) {
+      continue;
+    }
+    await updateWorkspaceProjectPageImage({
+      userEmail: activated.job.userEmail,
+      projectId: activated.job.projectId,
+      outputType: task.outputType || activated.job.intent || "poster",
+      pageIndex: task.taskIndex,
+      taskId: task.id,
+      status: "queued",
+      errorCode: null,
+    });
   }
   await updateImageGenerationJobStatus({ jobId, status: "running", errorCode: null, errorMessage: null });
   return getImageGenerationJobById(jobId);
@@ -1541,6 +1573,15 @@ export async function syncImageGenerationJobFinalStatus(jobId: string) {
   }
   if (result.job.status === "billing_failed") {
     return result;
+  }
+  if (tasks.some((task) => task.status === "billing_failed")) {
+    await updateImageGenerationJobStatus({
+      jobId,
+      status: "billing_failed",
+      errorCode: "IMAGE_BILLING_FAILED",
+      errorMessage: "Image generation billing failed. Provider generation was not started.",
+    });
+    return getImageGenerationJobById(jobId);
   }
   if (result.job.status === "billing_pending" || tasks.some((task) => task.status === "billing_pending")) {
     await updateImageGenerationJobStatus({ jobId, status: "billing_pending" });
