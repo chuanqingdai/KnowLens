@@ -1811,6 +1811,7 @@ export async function expireAbandonedImageGenerationJob(input: {
   jobId: string;
   timeoutMs?: number;
   source?: string;
+  emitAbandonedLog?: boolean;
 }) {
   const result = await getImageGenerationJobById(input.jobId);
   if (!result) {
@@ -1870,7 +1871,7 @@ export async function expireAbandonedImageGenerationJob(input: {
     }
   }
 
-  if (shouldLogAbandonedJob(result.job.id, timeoutCode)) {
+  if (input.emitAbandonedLog === true && shouldLogAbandonedJob(result.job.id, timeoutCode)) {
     logOpsEvent({
       category: "image",
       action: "image_generation_job_abandoned",
