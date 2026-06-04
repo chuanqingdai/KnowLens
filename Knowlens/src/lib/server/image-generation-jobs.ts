@@ -924,11 +924,19 @@ export async function recoverImageGenerationJob(input: {
   }
   const idempotencyKey = normalizeOptionalText(input.idempotencyKey || undefined, 220);
   if (idempotencyKey) {
-    const found = await findImageGenerationJobByIdempotency({
-      userEmail,
-      idempotencyKey,
-      runId: normalizeOptionalText(input.runId || undefined, 120) || undefined,
-    });
+    const recoveryRunId = normalizeOptionalText(input.runId || undefined, 120) || undefined;
+    const found =
+      (await findImageGenerationJobByIdempotency({
+        userEmail,
+        idempotencyKey,
+        runId: recoveryRunId,
+      })) ||
+      (recoveryRunId
+        ? await findImageGenerationJobByIdempotency({
+            userEmail,
+            idempotencyKey,
+          })
+        : null);
     if (found) {
       const result = await getImageGenerationJobById(found.id);
       if (result?.job.userEmail.trim().toLowerCase() === userEmail) {
@@ -938,11 +946,20 @@ export async function recoverImageGenerationJob(input: {
   }
   const projectId = normalizeOptionalText(input.projectId || undefined, 120);
   if (projectId) {
-    return getLatestImageGenerationJobByProject({
+    const latestByIntent = await getLatestImageGenerationJobByProject({
       userEmail,
       projectId,
       intent: input.intent,
     });
+    if (latestByIntent) {
+      return latestByIntent;
+    }
+    if (input.intent) {
+      return getLatestImageGenerationJobByProject({
+        userEmail,
+        projectId,
+      });
+    }
   }
   return null;
 }

@@ -425,6 +425,7 @@ type ImageGenerateBatchResponse = {
     id?: string;
     runId?: string;
     status?: string;
+    idempotencyKey?: string;
   };
   tasks?: Array<{
     taskId?: string;
@@ -2551,6 +2552,7 @@ export default function WorkspacePage() {
   const generationRequestInFlightRef = useRef(false);
   const currentGenerationRunIdRef = useRef<string | null>(null);
   const currentGenerationJobIdRef = useRef<string | null>(null);
+  const currentGenerationIdempotencyKeyRef = useRef<string | null>(null);
   const previousFlowStageRef = useRef<FlowStage>("intent");
   const flowStageHistoryRef = useRef<FlowStage>("intent");
   const currentConfirmStepRef = useRef<string>("");
@@ -2693,6 +2695,7 @@ export default function WorkspacePage() {
       autoGenerationArmedRunIdsRef.current = {};
       autoGenerationSuccessLockedRunIdsRef.current = {};
       autoGenerationFailureLockedRunIdsRef.current = {};
+      currentGenerationIdempotencyKeyRef.current = null;
       setGenerationRunContext(null, null);
       setGenerationSessionSeed((prev) => prev + 1);
       logGenerationCacheGuard("clear-current-generation-state", { reason });
@@ -7160,6 +7163,9 @@ export default function WorkspacePage() {
     setIsPlanningBillingStep(true);
     setGenerationConfirmError(null);
     setGenerationSessionSeed((prev) => prev + 1);
+    const previousRecoverableRunId = normalizeGenerationRunId(currentGenerationRunIdRef.current);
+    const previousRecoverableJobId = (currentGenerationJobIdRef.current || "").trim() || null;
+    const previousRecoverableIdempotencyKey = (currentGenerationIdempotencyKeyRef.current || "").trim() || null;
     const nextRunId = createGenerationRunId();
     autoGenerationArmedRunIdsRef.current[nextRunId] = true;
     delete autoGenerationSuccessLockedRunIdsRef.current[nextRunId];
@@ -7378,15 +7384,19 @@ export default function WorkspacePage() {
     };
     const recoverConfirmJob = async (reason: string, options?: { restoreFailed?: boolean }) => {
       const recoveryStartedAt = Date.now();
+      const recoveryJobId = preparedJobId || previousRecoverableJobId || undefined;
+      const recoveryRunId = recoveryJobId ? (preparedJobId ? nextRunId : previousRecoverableRunId) : previousRecoverableRunId;
+      const recoveryIdempotencyKey =
+        (confirmIdempotencyKey || previousRecoverableIdempotencyKey || "").trim() || undefined;
       setConfirmStep(
         "recover previous request",
         tr("Recovering previous request...", "正在恢复上一次请求..."),
       );
       const recoveredPayload = await postGenerationBatchAction({
         action: "recover",
-        jobId: preparedJobId || currentGenerationJobIdRef.current || undefined,
-        runId: nextRunId,
-        idempotencyKey: confirmIdempotencyKey || undefined,
+        jobId: recoveryJobId,
+        runId: recoveryRunId || undefined,
+        idempotencyKey: recoveryIdempotencyKey,
         projectId: selectedProjectIdForRecovery || projectIdRef.current || undefined,
         intent: effectiveIntent === "unknown" ? undefined : effectiveIntent,
       }, { step: "recover previous request", timeoutMs: GENERATION_CONFIRM_PREPARE_TIMEOUT_MS });
@@ -7422,6 +7432,8 @@ export default function WorkspacePage() {
         return false;
       }
       preparedJobId = recoveredJobId;
+      currentGenerationIdempotencyKeyRef.current =
+        (recoveredPayload.job?.idempotencyKey || recoveryIdempotencyKey || "").trim() || null;
       if (signals.hasPrepared && !signals.hasActive && !signals.hasSuccess && !signals.hasFailed) {
         setGenerationRunContext(recoveredRunId, recoveredJobId);
         setBillingConfirmed(false);
@@ -7489,6 +7501,7 @@ export default function WorkspacePage() {
         tasks: tasksToGenerate,
       });
       confirmIdempotencyKey = idempotencyKey;
+      currentGenerationIdempotencyKeyRef.current = idempotencyKey;
       const recoveredBeforeConfirm = await recoverConfirmJob("pre-confirm recovery check", { restoreFailed: false });
       if (recoveredBeforeConfirm) {
         return;
