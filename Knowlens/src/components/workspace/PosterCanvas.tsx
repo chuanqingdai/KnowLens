@@ -628,16 +628,14 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
               <p className="text-xs leading-5 text-zinc-700">
                 {toImageFailureSentence(card.errorMessage, card.errorCode)}
               </p>
-              {!generationInProgress ? (
-                <button
-                  type="button"
-                  onClick={() => onRetry(card.id)}
-                  className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
-                >
-                  <RefreshCw size={12} />
-                  Retry
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => onRetry(card.id)}
+                className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
+              >
+                <RefreshCw size={12} />
+                Retry
+              </button>
             </div>
           </div>
         ) : null}

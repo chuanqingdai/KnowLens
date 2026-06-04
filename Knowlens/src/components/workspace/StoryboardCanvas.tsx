@@ -2599,7 +2599,7 @@ export function StoryboardCanvas({
                           <p className="text-xs leading-5 text-zinc-700">
                             {toImageFailureSentence(generationState.error, generationState.errorCode)}
                           </p>
-                          {!generationInProgress ? (
+                          {!isGeneratingImage ? (
                             <button
                               type="button"
                               onClick={(event) => {
@@ -3239,7 +3239,7 @@ export function StoryboardCanvas({
                               <p className="text-xs leading-5 text-zinc-700">
                                 {toImageFailureSentence(generationState.error, generationState.errorCode)}
                               </p>
-                              {!generationInProgress ? (
+                              {!isGenerating ? (
                                 <button
                                   type="button"
                                   onClick={(event) => {

@@ -4094,20 +4094,26 @@ export default function WorkspacePage() {
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
       try {
-        const response = await fetch("/api/workspace/image/generate-batch", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ...buildGenerationRequestPayload(tasks),
-            idempotencyKey,
-            runId: activeRunId,
-            imageModelPolicy: "tuzi",
-          }),
-          signal: controller.signal,
-        });
-        let payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        let response: Response;
+        let payload: ImageGenerateBatchResponse | null;
+        try {
+          response = await fetch("/api/workspace/image/generate-batch", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ...buildGenerationRequestPayload(tasks),
+              idempotencyKey,
+              runId: activeRunId,
+              imageModelPolicy: "tuzi",
+            }),
+            signal: controller.signal,
+          });
+          payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
         const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
         let responseJobId = (payload?.job?.id || "").trim() || null;
         logWorkspaceVerbose("[workspace-generation] generate-batch response", {

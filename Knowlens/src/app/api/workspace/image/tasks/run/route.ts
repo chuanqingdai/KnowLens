@@ -417,6 +417,15 @@ function serializeTask(task: ImageGenerationTaskRow, imageModel: string) {
 
 export async function POST(request: NextRequest) {
   const routeStartedAt = Date.now();
+  let cleanupContext: {
+    email?: string;
+    jobId?: string;
+    current?: Awaited<ReturnType<typeof getImageGenerationJobById>>;
+    queuedTask?: ImageGenerationTaskRow;
+    imageModel?: string;
+    providerUsed?: string;
+    projectId?: string | null;
+  } = {};
   try {
     if (!ensureSafeOrigin(request)) {
       return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
@@ -427,12 +436,14 @@ export async function POST(request: NextRequest) {
     if (!email) {
       return NextResponse.json({ error: "Please sign in before generating images." }, { status: 401 });
     }
+    cleanupContext.email = email;
 
     const body = (await request.json().catch(() => null)) as { jobId?: string } | null;
     const jobId = normalizeJobId(body?.jobId);
     if (!jobId) {
       return NextResponse.json({ error: "jobId is required.", code: "IMAGE_JOB_ID_REQUIRED" }, { status: 400 });
     }
+    cleanupContext.jobId = jobId;
 
     const current =
       (await expireAbandonedImageGenerationJob({
@@ -445,8 +456,10 @@ export async function POST(request: NextRequest) {
     if (current.job.userEmail.trim().toLowerCase() !== email) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
+    cleanupContext.current = current;
 
     const imageModel = normalizeImageModel(process.env.IMAGE2_PROVIDER_MODEL || "gpt-image-2");
+    cleanupContext.imageModel = imageModel;
     const queuedTask = current.tasks.find((task) => task.status === "queued");
     if (!queuedTask) {
       const finalState = await syncImageGenerationJobFinalStatus(jobId);
@@ -462,6 +475,7 @@ export async function POST(request: NextRequest) {
         processed: false,
       });
     }
+    cleanupContext.queuedTask = queuedTask;
 
     const providerPolicy = parseProviderPolicy(current.job.imageModelPolicy);
     const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", false) && providerPolicy.length > 1;
@@ -469,6 +483,7 @@ export async function POST(request: NextRequest) {
     const taskStartedAt = Date.now();
     const taskDeadlineAt = taskStartedAt + normalizeTaskBudgetMs();
     const projectId = current.job.projectId;
+    cleanupContext.projectId = projectId;
     const projectTraceId = readProjectTraceId(current.job);
 
     await updateImageGenerationJobStatus({
@@ -525,6 +540,7 @@ export async function POST(request: NextRequest) {
     });
     const generated = generatedByPolicy.result;
     const providerUsed = generatedByPolicy.providerUsed || defaultProvider;
+    cleanupContext.providerUsed = providerUsed;
 
     if (!generated.ok) {
       const failedStatus = isTimeoutCode(generated.errorCode) ? "timed_out" : "failed";
@@ -761,6 +777,59 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Image task run failed.";
     const code = isTimeoutCode(message) ? "IMAGE_TASK_TIMEOUT" : "IMAGE_TASK_RUN_FAILED";
+    const failedStatus = isTimeoutCode(code) ? "timed_out" : "failed";
+    const { email, jobId, queuedTask, current, imageModel, providerUsed, projectId } = cleanupContext;
+    if (email && jobId && queuedTask && current) {
+      await updateImageGenerationTask({
+        taskId: queuedTask.id,
+        status: failedStatus,
+        providerUsed: providerUsed || queuedTask.providerUsed,
+        errorCode: code,
+        errorMessage: message,
+      }).catch(() => undefined);
+      if (projectId) {
+        await updateWorkspaceProjectPageImage({
+          userEmail: email,
+          projectId,
+          outputType: queuedTask.outputType || current.job.intent || "poster",
+          pageIndex: queuedTask.taskIndex,
+          taskId: queuedTask.id,
+          status: failedStatus,
+          errorCode: code,
+        }).catch(() => undefined);
+      }
+      const finalState = await syncImageGenerationJobFinalStatus(jobId).catch(() => null);
+      await applyRefundsForFailedImageGenerationTasks({
+        job: finalState?.job ?? current.job,
+        tasks: finalState?.tasks ?? current.tasks,
+        source: "image_task_run_internal_failure",
+      }).catch(() => undefined);
+      logOpsEvent({
+        category: "image",
+        action: "image_task_internal_failure_marked",
+        status: "error",
+        source: providerUsed || "unknown",
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        code,
+        message,
+        details: {
+          stage: "image_task_run_internal_cleanup",
+          jobId,
+          taskId: queuedTask.id,
+          taskIndex: queuedTask.taskIndex,
+          durationMs: Date.now() - routeStartedAt,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        job: finalState?.job ?? current.job,
+        tasks: (finalState?.tasks ?? current.tasks).map((task) => serializeTask(task, imageModel || normalizeImageModel())),
+        processed: true,
+        error: message,
+        code,
+      });
+    }
     logOpsEvent({
       category: "image",
       action: "image_task_run_failed",
