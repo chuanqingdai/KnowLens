@@ -1786,6 +1786,10 @@ export async function getImageGenerationJobById(jobId: string) {
   };
 }
 
+export async function readImageGenerationJobStatus(jobId: string) {
+  return getImageGenerationJobById(jobId);
+}
+
 export async function syncImageGenerationJobFinalStatus(jobId: string) {
   const result = await getImageGenerationJobById(jobId);
   if (!result) {
