@@ -1417,6 +1417,106 @@ export async function updateImageGenerationTask(input: {
   return getImageGenerationTaskById(input.taskId);
 }
 
+export async function claimQueuedImageGenerationTask(input: {
+  taskId: string;
+  providerUsed?: string | null;
+}): Promise<ImageGenerationTaskRow | null> {
+  const providerUsed = normalizeOptionalText(input.providerUsed || undefined, 64);
+  const updatedAt = nowIso();
+  if (shouldUseBlobImageGenerationStore()) {
+    const taskIndex = await readBlobJson<{ jobId?: string }>(getImageGenerationTaskIndexPath(input.taskId));
+    if (!taskIndex?.jobId) {
+      return null;
+    }
+    const manifest = await readStoredManifest(taskIndex.jobId);
+    if (!manifest) {
+      return null;
+    }
+    const taskIndexInList = manifest.tasks.findIndex((task) => task.id === input.taskId);
+    if (taskIndexInList < 0) {
+      return null;
+    }
+    const current = manifest.tasks[taskIndexInList];
+    if (current.status !== "queued") {
+      return null;
+    }
+    const next: ImageGenerationTaskRow = {
+      ...current,
+      status: "generating",
+      attempts: current.attempts + 1,
+      providerUsed,
+      errorCode: null,
+      errorMessage: null,
+      updatedAt,
+    };
+    manifest.tasks[taskIndexInList] = next;
+    manifest.job.status = "running";
+    manifest.job.errorCode = null;
+    manifest.job.errorMessage = null;
+    manifest.job.updatedAt = updatedAt;
+    await writeBlobJson(getImageGenerationJobManifestPath(next.jobId), manifest);
+    await updateBlobActiveJobIndex({
+      userEmail: manifest.job.userEmail,
+      jobId: manifest.job.id,
+      mode: "add",
+    });
+    return next;
+  }
+  if (hasManagedDatabase()) {
+    const rows = (await pgAll(
+      `UPDATE image_generation_tasks
+       SET status = 'generating',
+           attempts = attempts + 1,
+           provider_used = ?,
+           error_code = NULL,
+           error_message = NULL,
+           updated_at = ?
+       WHERE id = ? AND status = 'queued'
+       RETURNING *`,
+      providerUsed,
+      updatedAt,
+      input.taskId,
+    )) as Array<Record<string, unknown>>;
+    if (!rows[0]) {
+      return null;
+    }
+    const task = mapTaskRow(rows[0]);
+    await updateImageGenerationJobStatus({
+      jobId: task.jobId,
+      status: "running",
+      errorCode: null,
+      errorMessage: null,
+    });
+    return task;
+  }
+  const { db } = getDb();
+  const result = db
+    .prepare(
+      `UPDATE image_generation_tasks
+       SET status = 'generating',
+           attempts = attempts + 1,
+           provider_used = ?,
+           error_code = NULL,
+           error_message = NULL,
+           updated_at = ?
+       WHERE id = ? AND status = 'queued'`,
+    )
+    .run(providerUsed, updatedAt, input.taskId) as { changes?: number };
+  if (!result.changes) {
+    return null;
+  }
+  const task = await getImageGenerationTaskById(input.taskId);
+  if (task) {
+    await updateImageGenerationJobStatus({
+      jobId: task.jobId,
+      status: "running",
+      errorCode: null,
+      errorMessage: null,
+    });
+  }
+  return task;
+}
+
 export async function activateImageGenerationJobAfterBilling(jobId: string) {
   const result = await getImageGenerationJobById(jobId);
   if (!result) {

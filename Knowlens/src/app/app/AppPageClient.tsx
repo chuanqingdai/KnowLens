@@ -394,6 +394,7 @@ const HOME_DRAFT_KEY = "knowlens-home-draft";
 const GENERATE_INTENT_KEY = "knowlens:generate-intent";
 const GENERATE_INTENT_TTL_MS = 15 * 60 * 1000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
+const WORKSPACE_START_TIMEOUT_MS = 10_000;
 const loadedImageCache = new Set<string>();
 
 function normalizeDraftSourceKind(kind: string | undefined): SourceKind {
@@ -864,7 +865,7 @@ export default function Home() {
       return;
     }
     let isCancelled = false;
-    fetch("/api/projects", {
+    fetch("/api/projects?summary=1&limit=4", {
       method: "GET",
       credentials: "same-origin",
       cache: "no-store",
@@ -886,7 +887,7 @@ export default function Home() {
   }, [currentEmail]);
   useEffect(() => {
     let isCancelled = false;
-    fetch("/api/public/cases", { cache: "no-store" })
+    fetch("/api/public/cases")
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
       .then((payload: { cases?: PublicCaseApiItem[] }) => {
         if (isCancelled) {
@@ -936,6 +937,15 @@ export default function Home() {
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
   const hydratedHomeDraftRef = useRef(false);
+  const activeUploadJobIdsKey = useMemo(
+    () =>
+      sourceItems
+        .filter((item) => item.jobId && item.status !== "ready" && item.status !== "failed")
+        .map((item) => item.jobId as string)
+        .sort()
+        .join(","),
+    [sourceItems],
+  );
   useEffect(() => {
     if (!currentEmail) {
       return;
@@ -1153,6 +1163,10 @@ export default function Home() {
   }, [composeInput]);
 
   useEffect(() => {
+    if (!activeUploadJobIdsKey) {
+      setUploadJobs({});
+      return;
+    }
     let isActive = true;
     let timer: number | undefined;
     let retryDelayMs = 2500;
@@ -1246,7 +1260,7 @@ export default function Home() {
         window.clearTimeout(timer);
       }
     };
-  }, [currentEmail]);
+  }, [activeUploadJobIdsKey, currentEmail]);
 
   async function enqueueSelectedFiles(selectedFiles: File[]) {
     const blockedMediaFiles = selectedFiles.filter((file) => isMediaFile(file));
@@ -1675,9 +1689,13 @@ export default function Home() {
   }
 
   async function createWorkspaceStartRequestWithRetry(payload: ReturnType<typeof buildWorkspacePayload>) {
-    const maxAttempts = 2;
+    const maxAttempts = 1;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => {
+        controller.abort();
+      }, WORKSPACE_START_TIMEOUT_MS);
       try {
         const response = await fetch("/api/workspace/start", {
           method: "POST",
@@ -1685,6 +1703,7 @@ export default function Home() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
         return response;
       } catch (error) {
@@ -1696,6 +1715,8 @@ export default function Home() {
         await new Promise((resolve) => {
           window.setTimeout(resolve, 280);
         });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     }
     throw lastError || new Error("Workspace start request failed.");
@@ -1970,7 +1991,7 @@ export default function Home() {
     if (!currentEmail) {
       return recentProjects;
     }
-    return serverRecentProjects.slice(0, 8).map((project, index) => ({
+    return serverRecentProjects.slice(0, 4).map((project, index) => ({
       id: project.id,
       title: formatRecentProjectTitle(project.title, locale, index),
       updatedAt: project.updatedAt ? `Updated ${project.updatedAt}` : "Recently updated",

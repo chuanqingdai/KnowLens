@@ -702,12 +702,23 @@ export async function applyImageGenerationRefundAtomic(input: {
   }
 }
 
-export async function listCreditRecords(email?: string | null) {
+export async function listCreditRecords(email?: string | null, input?: { limit?: number }) {
   const scopeEmail = normalizeScope(email);
+  const limit = Number.isFinite(input?.limit)
+    ? Math.max(1, Math.min(500, Math.round(Number(input?.limit))))
+    : 0;
   if (hasManagedDatabase()) {
+    if (limit > 0) {
+      return pgAll("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT ?", [scopeEmail, limit]);
+    }
     return pgAll("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC", [scopeEmail]);
   }
   const { db } = getDb();
+  if (limit > 0) {
+    return db
+      .prepare("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT ?")
+      .all(scopeEmail, limit);
+  }
   return db
     .prepare("SELECT * FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC")
     .all(scopeEmail);

@@ -96,13 +96,7 @@ export async function GET() {
     );
   }
 
-  await sweepAbandonedImageGenerationJobsForUser({
-    userEmail: email,
-    limit: 12,
-    source: "billing_credits_sync",
-  }).catch(() => []);
-  await ensureSubscriptionCreditsCurrent(email);
-  const rawRecords = (await listCreditRecords(email)) as DbCreditRecord[];
+  const rawRecords = (await listCreditRecords(email, { limit: 30 })) as DbCreditRecord[];
   const records = rawRecords.map(normalizeRecord);
   const subscription = normalizeSubscription(await getLatestSubscriptionDb(email));
   void logOpsEvent({

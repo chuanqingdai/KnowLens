@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import {
@@ -9,11 +9,11 @@ import {
 import {
   applyRefundsForFailedImageGenerationTasks,
   buildImageRenderUrl,
+  claimQueuedImageGenerationTask,
   expireAbandonedImageGenerationJob,
   getImageGenerationJobById,
   persistRemoteImageAsset,
   syncImageGenerationJobFinalStatus,
-  updateImageGenerationJobStatus,
   updateImageGenerationTask,
   type ImageGenerationTaskRow,
 } from "@/lib/server/image-generation-jobs";
@@ -533,17 +533,28 @@ export async function POST(request: NextRequest) {
       promptText: queuedTask.promptText,
     });
 
-    await updateImageGenerationJobStatus({
-      jobId,
-      status: "running",
-    });
-    await updateImageGenerationTask({
+    const claimedTask = await claimQueuedImageGenerationTask({
       taskId: queuedTask.id,
-      status: "generating",
-      attempts: queuedTask.attempts + 1,
       providerUsed: defaultProvider,
     });
+    if (!claimedTask) {
+      const latestState = await getImageGenerationJobById(jobId);
+      return NextResponse.json(
+        {
+          ok: true,
+          accepted: false,
+          processed: false,
+          code: "IMAGE_TASK_ALREADY_CLAIMED",
+          status: "processing",
+          job: latestState?.job ?? current.job,
+          tasks: (latestState?.tasks ?? current.tasks).map((task) => serializeTask(task, imageModel)),
+        },
+        { status: 202 },
+      );
+    }
 
+    after(async () => {
+      try {
     logImageTaskRunEvent({
       requestId: current.job.idempotencyKey || current.job.runId || jobId,
       jobId,
@@ -1136,12 +1147,7 @@ export async function POST(request: NextRequest) {
       errorCode: resolvedJob.errorCode ?? undefined,
       safeErrorMessage: resolvedJob.errorMessage ?? undefined,
     });
-    return NextResponse.json({
-      ok: true,
-      job: resolvedJob,
-      tasks: resolvedTasks.map((task) => serializeTask(task, imageModel)),
-      processed: true,
-    });
+    return;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Image task run failed.";
     const code = isTimeoutCode(message) ? "IMAGE_TASK_TIMEOUT" : "IMAGE_TASK_RUN_FAILED";
@@ -1247,14 +1253,7 @@ export async function POST(request: NextRequest) {
         errorCode: code,
         safeErrorMessage: message,
       });
-      return NextResponse.json({
-        ok: true,
-        job: resolvedJob,
-        tasks: resolvedTasks.map((task) => serializeTask(task, imageModel || normalizeImageModel())),
-        processed: true,
-        error: message,
-        code,
-      });
+      return;
     }
     logOpsEvent({
       category: "image",
@@ -1265,6 +1264,38 @@ export async function POST(request: NextRequest) {
       message,
       details: {
         stage: "image_task_run_internal",
+        errorStack: error instanceof Error ? error.stack : null,
+        durationMs: Date.now() - routeStartedAt,
+      },
+    });
+    return;
+      }
+    });
+    const acceptedState = await getImageGenerationJobById(jobId);
+    return NextResponse.json(
+      {
+        ok: true,
+        accepted: true,
+        processed: false,
+        status: "processing",
+        job: acceptedState?.job ?? current.job,
+        tasks: (acceptedState?.tasks ?? current.tasks).map((task) => serializeTask(task, imageModel)),
+        taskId: claimedTask.id,
+      },
+      { status: 202 },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Image task runner failed.";
+    const code = isTimeoutCode(message) ? "IMAGE_TASK_TIMEOUT" : "IMAGE_TASK_RUN_FAILED";
+    logOpsEvent({
+      category: "image",
+      action: "image_task_run_failed",
+      status: "error",
+      source: "unknown",
+      code,
+      message,
+      details: {
+        stage: "image_task_run_preclaim",
         errorStack: error instanceof Error ? error.stack : null,
         durationMs: Date.now() - routeStartedAt,
       },

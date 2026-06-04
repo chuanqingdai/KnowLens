@@ -4,7 +4,7 @@ import { listPublishedCases } from "@/lib/server/published-cases";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const cases = (await listPublishedCases({ limit: 120 })).map((item) => ({
+  const cases = (await listPublishedCases({ limit: 24, includeAssets: false })).map((item) => ({
     id: item.id,
     slug: item.slug,
     title: item.title,
@@ -16,21 +16,7 @@ export async function GET() {
     featured: item.featured,
     sortOrder: item.sortOrder,
     publishedAt: item.publishedAt,
-    assets: (item.assets || []).map((asset) => ({
-      id: asset.id,
-      slug: asset.slug,
-      assetType: asset.assetType,
-      title: asset.title,
-      description: asset.description,
-      pageIndex: asset.pageIndex,
-      fileUrl: asset.fileUrl,
-      viewerUrl: asset.viewerUrl,
-      thumbnailUrl: asset.thumbnailUrl,
-      downloadUrl: asset.downloadUrl,
-      mimeType: asset.mimeType,
-      isPrimary: asset.isPrimary,
-      sortOrder: asset.sortOrder,
-    })),
+    assets: [],
   }));
 
   return NextResponse.json(

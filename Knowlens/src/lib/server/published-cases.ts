@@ -327,7 +327,8 @@ async function getUniqueCaseSlug(baseSlug: string, existingCaseId?: string) {
   }
 }
 
-export async function listPublishedCases(input?: { includeDrafts?: boolean; limit?: number }) {
+export async function listPublishedCases(input?: { includeDrafts?: boolean; includeAssets?: boolean; limit?: number }) {
+  const includeAssets = input?.includeAssets !== false;
   if (hasManagedDatabase()) {
     const includeDrafts = Boolean(input?.includeDrafts);
     const limit = Math.max(1, Math.min(200, Math.round(Number(input?.limit || 80))));
@@ -346,8 +347,10 @@ export async function listPublishedCases(input?: { includeDrafts?: boolean; limi
           limit,
         )) as Array<Record<string, unknown>>;
     const items = rows.map(mapCaseRow);
-    for (const item of items) {
-      item.assets = await listPublishedCaseAssets(item.id);
+    if (includeAssets) {
+      for (const item of items) {
+        item.assets = await listPublishedCaseAssets(item.id);
+      }
     }
     return items;
   }
@@ -372,7 +375,9 @@ export async function listPublishedCases(input?: { includeDrafts?: boolean; limi
         .all(limit)) as Array<Record<string, unknown>>;
   return rows.map((row) => {
     const item = mapCaseRow(row);
-    item.assets = listPublishedCaseAssetsSync(item.id);
+    if (includeAssets) {
+      item.assets = listPublishedCaseAssetsSync(item.id);
+    }
     return item;
   });
 }

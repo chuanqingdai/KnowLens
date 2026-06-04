@@ -4978,14 +4978,51 @@ export default function WorkspacePage() {
               );
             }
             if (hasQueuedTask) {
-              const runResponse = await fetch("/api/workspace/image/tasks/run", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({ jobId }),
-              });
+              let runResponse: Response;
+              try {
+                runResponse = await fetch("/api/workspace/image/tasks/run", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  credentials: "same-origin",
+                  body: JSON.stringify({ jobId }),
+                });
+              } catch (error) {
+                const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+                  method: "GET",
+                  credentials: "same-origin",
+                }).catch(() => null);
+                const statusPayload = statusResponse
+                  ? ((await statusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null)
+                  : null;
+                const recoveredPayload = mergePolledPayload(statusPayload, latestPayload, jobId);
+                if (recoveredPayload) {
+                  latestPayload = recoveredPayload;
+                  responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+                  writeReadyTasksFromPayload(latestPayload, jobId);
+                  const recoveredJobStatus = (latestPayload.job?.status || "").trim().toLowerCase();
+                  const recoveredTaskStatuses = latestPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
+                  const hasRecoveredActiveTask = recoveredTaskStatuses.some((item) => pollActiveTaskStatuses.has(item));
+                  if (pollTerminalJobStatuses.has(recoveredJobStatus)) {
+                    return latestPayload;
+                  }
+                  if (hasRecoveredActiveTask || recoveredJobStatus === "queued" || recoveredJobStatus === "running") {
+                    continue;
+                  }
+                }
+                return buildPollFailurePayload(
+                  latestPayload,
+                  jobId,
+                  "IMAGE_TASK_RUN_FETCH_FAILED",
+                  error instanceof Error
+                    ? error.message
+                    : tr(
+                        "Image generation task runner could not be reached. Please retry manually.",
+                        "图片生成任务执行器无法连接。请手动重试。",
+                      ),
+                );
+              }
               const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
               const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
               if (mergedRunPayload) {
