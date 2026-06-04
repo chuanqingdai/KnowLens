@@ -287,7 +287,7 @@ function buildRecentActiveAt(input: {
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ userId: string }> | { userId: string } },
+  context: { params: Promise<{ userId: string }> },
 ) {
   const adminEmail = await requireAdminEmail();
   if (!adminEmail) {
