@@ -9,6 +9,8 @@ import { applyImageGenerationRefundAtomic, logOpsEvent } from "@/lib/server/stor
 import { updateWorkspaceProjectPageImage } from "@/lib/server/workspace-project-pages";
 
 export type ImageGenerationJobStatus =
+  | "billing_pending"
+  | "billing_failed"
   | "queued"
   | "running"
   | "completed"
@@ -17,6 +19,8 @@ export type ImageGenerationJobStatus =
   | "timed_out";
 
 export type ImageGenerationTaskStatus =
+  | "billing_pending"
+  | "billing_failed"
   | "queued"
   | "generating"
   | "asset_downloading"
@@ -83,13 +87,14 @@ export type ImageGenerationProjectActivityRow = {
 };
 
 const ACTIVE_TASK_STATUSES: ImageGenerationTaskStatus[] = ["queued", "generating", "asset_downloading"];
-const TERMINAL_JOB_STATUSES: ImageGenerationJobStatus[] = ["completed", "completed_with_errors", "failed", "timed_out"];
+const TERMINAL_JOB_STATUSES: ImageGenerationJobStatus[] = ["billing_failed", "completed", "completed_with_errors", "failed", "timed_out"];
+const BILLING_PENDING_TIMEOUT_MS = 120_000;
 const ABANDONED_JOB_TIMEOUT_MS = (() => {
-  const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "1800000", 10);
+  const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "480000", 10);
   if (!Number.isFinite(parsed)) {
-    return 1_800_000;
+    return 480_000;
   }
-  return Math.max(300_000, Math.min(86_400_000, parsed));
+  return Math.max(60_000, Math.min(86_400_000, parsed));
 })();
 
 function nowIso() {
@@ -412,6 +417,8 @@ export async function createImageGenerationJob(input: {
   idempotencyKey?: string;
   runId?: string;
   requestSnapshot?: unknown;
+  initialJobStatus?: ImageGenerationJobStatus;
+  initialTaskStatus?: ImageGenerationTaskStatus;
   tasks: ImageGenerationTaskPayload[];
 }): Promise<{
   jobId: string;
@@ -420,6 +427,8 @@ export async function createImageGenerationJob(input: {
   const jobId = `imgjob-${randomUUID()}`;
   const createdAt = nowIso();
   const userEmail = input.userEmail.trim().toLowerCase();
+  const initialJobStatus = input.initialJobStatus || "queued";
+  const initialTaskStatus = input.initialTaskStatus || "queued";
   const requestJson = (() => {
     try {
       return JSON.stringify(input.requestSnapshot ?? {}).slice(0, 32000);
@@ -439,7 +448,7 @@ export async function createImageGenerationJob(input: {
       promptText: normalizeText(task.prompt, 8000),
       providerOrder: normalizeText(input.imageModelPolicy, 120),
       providerUsed: null,
-      status: "queued",
+      status: initialTaskStatus,
       attempts: 0,
       errorCode: null,
       errorMessage: null,
@@ -464,8 +473,8 @@ export async function createImageGenerationJob(input: {
       ratio: normalizeOptionalText(input.ratio, 64),
       imageModelPolicy: normalizeOptionalText(input.imageModelPolicy, 120),
       idempotencyKey: normalizeOptionalText(input.idempotencyKey, 220),
-      runId: normalizeOptionalText(input.runId, 120),
-      status: "queued",
+	      runId: normalizeOptionalText(input.runId, 120),
+	      status: initialJobStatus,
       errorCode: null,
       errorMessage: null,
       requestJson,
@@ -516,7 +525,7 @@ export async function createImageGenerationJob(input: {
         id, user_email, project_id, intent, ratio, image_model_policy, idempotency_key, run_id, status,
         error_code, error_message, request_json, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', null, null, ?, ?, ?)`,
+	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, null, null, ?, ?, ?)`,
       jobId,
       userEmail,
       normalizeOptionalText(input.projectId, 120),
@@ -524,8 +533,9 @@ export async function createImageGenerationJob(input: {
       normalizeOptionalText(input.ratio, 64),
       normalizeOptionalText(input.imageModelPolicy, 120),
       normalizeOptionalText(input.idempotencyKey, 220),
-      normalizeOptionalText(input.runId, 120),
-      requestJson,
+	      normalizeOptionalText(input.runId, 120),
+	      initialJobStatus,
+	      requestJson,
       createdAt,
       createdAt,
     );
@@ -536,15 +546,16 @@ export async function createImageGenerationJob(input: {
           status, attempts, error_code, error_message, raw_image_url, render_url, asset_path, mime_type,
           width, height, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, null, 'queued', 0, null, null, null, null, null, null, null, null, ?, ?)`,
+	        VALUES (?, ?, ?, ?, ?, ?, ?, null, ?, 0, null, null, null, null, null, null, null, null, ?, ?)`,
         task.id,
         jobId,
         task.taskIndex,
         task.outputType,
         task.aspectRatio,
         task.promptText,
-        normalizeText(input.imageModelPolicy, 120),
-        createdAt,
+	        normalizeText(input.imageModelPolicy, 120),
+	        initialTaskStatus,
+	        createdAt,
         createdAt,
       );
     }
@@ -560,7 +571,7 @@ export async function createImageGenerationJob(input: {
       id, user_email, project_id, intent, ratio, image_model_policy, idempotency_key, run_id, status,
       error_code, error_message, request_json, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', null, null, ?, ?, ?)`,
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, null, null, ?, ?, ?)`,
   ).run(
     jobId,
     userEmail,
@@ -569,8 +580,9 @@ export async function createImageGenerationJob(input: {
     normalizeOptionalText(input.ratio, 64),
     normalizeOptionalText(input.imageModelPolicy, 120),
     normalizeOptionalText(input.idempotencyKey, 220),
-    normalizeOptionalText(input.runId, 120),
-    requestJson,
+	    normalizeOptionalText(input.runId, 120),
+	    initialJobStatus,
+	    requestJson,
     createdAt,
     createdAt,
   );
@@ -581,7 +593,7 @@ export async function createImageGenerationJob(input: {
       status, attempts, error_code, error_message, raw_image_url, render_url, asset_path, mime_type,
       width, height, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, null, 'queued', 0, null, null, null, null, null, null, null, null, ?, ?)`,
+	    VALUES (?, ?, ?, ?, ?, ?, ?, null, ?, 0, null, null, null, null, null, null, null, null, ?, ?)`,
   );
 
   for (const task of taskRows) {
@@ -593,6 +605,7 @@ export async function createImageGenerationJob(input: {
       task.aspectRatio,
       task.promptText,
       normalizeText(input.imageModelPolicy, 120),
+      initialTaskStatus,
       createdAt,
       createdAt,
     );
@@ -1286,6 +1299,67 @@ export async function updateImageGenerationTask(input: {
   return getImageGenerationTaskById(input.taskId);
 }
 
+export async function activateImageGenerationJobAfterBilling(jobId: string) {
+  const result = await getImageGenerationJobById(jobId);
+  if (!result || result.job.status === "billing_failed") {
+    return result;
+  }
+  const pendingTasks = result.tasks.filter((task) => task.status === "billing_pending");
+  for (const task of pendingTasks) {
+    await updateImageGenerationTask({ taskId: task.id, status: "queued", errorCode: null, errorMessage: null });
+  }
+  await updateImageGenerationJobStatus({ jobId, status: "running", errorCode: null, errorMessage: null });
+  return getImageGenerationJobById(jobId);
+}
+
+export async function markImageGenerationJobBillingFailed(input: {
+  jobId: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  const result = await getImageGenerationJobById(input.jobId);
+  if (!result) return null;
+  const errorCode = normalizeOptionalText(input.errorCode || undefined, 120) || "IMAGE_BILLING_FAILED";
+  const errorMessage =
+    normalizeOptionalText(input.errorMessage || undefined, 500) ||
+    "Image generation billing did not complete. Provider generation was not started.";
+  for (const task of result.tasks) {
+    if (task.status === "asset_ready" || task.status === "failed" || task.status === "timed_out") {
+      continue;
+    }
+    await updateImageGenerationTask({ taskId: task.id, status: "billing_failed", errorCode, errorMessage });
+  }
+  await updateImageGenerationJobStatus({ jobId: input.jobId, status: "billing_failed", errorCode, errorMessage });
+  return getImageGenerationJobById(input.jobId);
+}
+
+export async function markImageGenerationJobFailedAfterCharge(input: {
+  jobId: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  const result = await getImageGenerationJobById(input.jobId);
+  if (!result) return null;
+  const errorCode = normalizeOptionalText(input.errorCode || undefined, 120) || "IMAGE_JOB_ACTIVATION_FAILED";
+  const errorMessage =
+    normalizeOptionalText(input.errorMessage || undefined, 500) ||
+    "Image generation failed after credits were consumed. Credits have been refunded for failed image tasks.";
+  for (const task of result.tasks) {
+    if (task.status === "asset_ready" || task.status === "failed" || task.status === "timed_out") continue;
+    await updateImageGenerationTask({ taskId: task.id, status: "failed", errorCode, errorMessage });
+  }
+  await updateImageGenerationJobStatus({ jobId: input.jobId, status: "failed", errorCode, errorMessage });
+  const finalState = await getImageGenerationJobById(input.jobId);
+  if (finalState) {
+    await applyRefundsForFailedImageGenerationTasks({
+      job: finalState.job,
+      tasks: finalState.tasks,
+      source: "image_generation_activation_failed",
+    });
+  }
+  return getImageGenerationJobById(input.jobId);
+}
+
 export async function getImageGenerationTaskById(taskId: string) {
   if (shouldUseBlobImageGenerationStore()) {
     const taskIndex = await readBlobJson<{ jobId?: string }>(getImageGenerationTaskIndexPath(taskId));
@@ -1465,6 +1539,13 @@ export async function syncImageGenerationJobFinalStatus(jobId: string) {
     });
     return getImageGenerationJobById(jobId);
   }
+  if (result.job.status === "billing_failed") {
+    return result;
+  }
+  if (result.job.status === "billing_pending" || tasks.some((task) => task.status === "billing_pending")) {
+    await updateImageGenerationJobStatus({ jobId, status: "billing_pending" });
+    return getImageGenerationJobById(jobId);
+  }
   const hasRunning = tasks.some((task) => task.status === "queued" || task.status === "generating" || task.status === "asset_downloading");
   if (hasRunning) {
     await updateImageGenerationJobStatus({
@@ -1581,6 +1662,22 @@ export async function expireAbandonedImageGenerationJob(input: {
   const result = await getImageGenerationJobById(input.jobId);
   if (!result) {
     return null;
+  }
+  const billingPendingTasks = result.tasks.filter((task) => task.status === "billing_pending");
+  if (result.job.status === "billing_pending" || billingPendingTasks.length) {
+    const latestBillingProgressMs = Math.max(
+      parseTimestampMs(result.job.updatedAt || result.job.createdAt),
+      ...billingPendingTasks.map((task) => parseTimestampMs(task.updatedAt || task.createdAt)),
+    );
+    if (latestBillingProgressMs && Date.now() - latestBillingProgressMs >= BILLING_PENDING_TIMEOUT_MS) {
+      const failedState = await markImageGenerationJobBillingFailed({
+        jobId: result.job.id,
+        errorCode: "IMAGE_BILLING_PENDING_ABANDONED",
+        errorMessage: "Image generation billing was not completed in time. Provider generation was not started.",
+      });
+      return failedState;
+    }
+    return result;
   }
   const activeTasks = result.tasks.filter((task) => isActiveTaskStatus(task.status));
   if (!activeTasks.length) {

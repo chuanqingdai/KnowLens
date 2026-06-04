@@ -459,6 +459,27 @@ export async function POST(request: NextRequest) {
     cleanupContext.current = current;
 
     const imageModel = normalizeImageModel(process.env.IMAGE2_PROVIDER_MODEL || "gpt-image-2");
+    const billingBlockedStatus = current.job.status === "billing_pending" || current.tasks.some((task) => task.status === "billing_pending")
+      ? "pending"
+      : current.job.status === "billing_failed" || current.tasks.some((task) => task.status === "billing_failed")
+        ? "failed"
+        : "";
+    if (billingBlockedStatus) {
+      return NextResponse.json(
+        {
+          ok: false,
+          processed: false,
+          code: billingBlockedStatus === "pending" ? "IMAGE_BILLING_PENDING" : "IMAGE_BILLING_FAILED",
+          error: billingBlockedStatus === "pending"
+            ? "Image generation billing has not completed. Provider generation was not started."
+            : "Image generation billing failed. Provider generation was not started.",
+          job: current.job,
+          tasks: current.tasks.map((task) => serializeTask(task, imageModel)),
+        },
+        { status: 409 },
+      );
+    }
+
     cleanupContext.imageModel = imageModel;
     const queuedTask = current.tasks.find((task) => task.status === "queued");
     if (!queuedTask) {

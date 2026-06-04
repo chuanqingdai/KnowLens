@@ -8,11 +8,14 @@ import {
 } from "@/lib/server/image2";
 import { incrementUsageCounter } from "@/lib/server/guard";
 import {
+  activateImageGenerationJobAfterBilling,
   buildImageAssetStorageKey,
   buildImageRenderUrl,
   createImageGenerationJob,
   findImageGenerationJobByIdempotency,
   getImageGenerationJobById,
+  markImageGenerationJobBillingFailed,
+  markImageGenerationJobFailedAfterCharge,
   persistRemoteImageAsset,
   syncImageGenerationJobFinalStatus,
   updateImageGenerationJobStatus,
@@ -35,6 +38,8 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type GenerateBatchPayload = {
+  action?: "prepare" | "activate" | "mark_billing_failed" | "mark_failed";
+  jobId?: string;
   idempotencyKey?: string;
   runId?: string;
   projectId?: string;
@@ -355,6 +360,23 @@ function resolveTaskStorageKey(task: {
     return raw.slice(markerIndex);
   }
   return raw;
+}
+
+function serializeJobPayload(input: {
+  result: NonNullable<Awaited<ReturnType<typeof getImageGenerationJobById>>>;
+  imageModel: string;
+  runId?: string | null;
+}) {
+  return {
+    job: { ...input.result.job, runId: input.result.job.runId || input.runId || null },
+    tasks: input.result.tasks.map((task) => ({
+      taskId: task.id, index: task.taskIndex, status: task.status, ok: task.status === "asset_ready",
+      imageUrl: task.renderUrl || (task.status === "asset_ready" ? buildImageRenderUrl(task.id, task.updatedAt) : undefined),
+      renderUrl: task.renderUrl || (task.status === "asset_ready" ? buildImageRenderUrl(task.id, task.updatedAt) : undefined),
+      rawImageUrl: task.rawImageUrl, storageKey: resolveTaskStorageKey(task), provider: task.providerUsed,
+      model: input.imageModel, error: task.errorMessage, errorCode: task.errorCode,
+    })),
+  };
 }
 
 function parseBooleanEnv(name: string, fallback = false) {
@@ -780,9 +802,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid generation payload." }, { status: 400 });
     }
 
-    logWorkspaceFlowAudit({
-      stage: "8.backend-generate-batch-receive",
-      status: "received",
+	    logWorkspaceFlowAudit({
+	      stage: "8.backend-generate-batch-receive",
+	      status: "received",
       decision: "parse-request-payload",
       reason: "request-json-parsed",
       keyFields: {
@@ -790,8 +812,50 @@ export async function POST(request: NextRequest) {
         runId: payload.runId || null,
         idempotencyKey: payload.idempotencyKey || null,
         taskCount: Array.isArray(payload.tasks) ? payload.tasks.length : 0,
-      },
-    });
+	      },
+	    });
+
+    const action = payload.action || "start";
+    const imageModel = normalizeImageModel(payload.imageModel);
+    if (action === "activate" || action === "mark_billing_failed" || action === "mark_failed") {
+      const jobId = (payload.jobId || "").trim().slice(0, 120);
+      if (!jobId) {
+        return NextResponse.json({ error: "jobId is required.", code: "IMAGE_JOB_ID_REQUIRED" }, { status: 400 });
+      }
+      const current = await getImageGenerationJobById(jobId);
+      if (!current) {
+        return NextResponse.json({ error: "Job not found.", code: "IMAGE_JOB_NOT_FOUND" }, { status: 404 });
+      }
+      if (current.job.userEmail.trim().toLowerCase() !== email) {
+        return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+      }
+      const next =
+        action === "activate"
+          ? await activateImageGenerationJobAfterBilling(jobId)
+          : action === "mark_failed"
+            ? await markImageGenerationJobFailedAfterCharge({
+                jobId,
+                errorCode: "IMAGE_JOB_ACTIVATION_FAILED",
+                errorMessage: "Image generation failed after credits were consumed.",
+              })
+            : await markImageGenerationJobBillingFailed({
+                jobId,
+                errorCode: "IMAGE_BILLING_FAILED",
+                errorMessage: "Image generation billing failed. Provider generation was not started.",
+              });
+      if (!next) {
+        return NextResponse.json({ error: "Job update failed.", code: "IMAGE_JOB_UPDATE_FAILED" }, { status: 500 });
+      }
+      const serialized = serializeJobPayload({
+        result: next,
+        imageModel,
+        runId: payload.runId || current.job.runId,
+      });
+      return NextResponse.json({
+        ok: true, reused: false, imageGenerationMode: "real", attemptedProviders: [], skippedProviders: [],
+        ...serialized,
+      });
+    }
 
     const normalizedTasks = normalizeTasksFromPayload(payload);
     if (!normalizedTasks.length) {
@@ -854,8 +918,7 @@ export async function POST(request: NextRequest) {
     const generationRunId =
       normalizeGenerationRunId(payload.runId) ||
       `run-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
-    const imageModel = normalizeImageModel(payload.imageModel);
-    const mockImageUrl = getImageGenerationMockUrl();
+	    const mockImageUrl = getImageGenerationMockUrl();
     if (imageGenerationMode === "mock") {
       const projectId = normalizeProjectId(payload.projectId);
       const projectTraceId = normalizeProjectTraceId(payload.projectTraceId);
@@ -935,31 +998,18 @@ export async function POST(request: NextRequest) {
           const attemptedProviders = Array.from(
             new Set(existingDetails.tasks.map((task) => task.providerUsed).filter(Boolean)),
           );
-          return NextResponse.json({
-            ok: true,
-            reused: true,
-            imageGenerationMode,
-            attemptedProviders,
-            skippedProviders: [],
-            job: {
-              ...existingDetails.job,
-              runId: existingDetails.job.runId || generationRunId,
-            },
-            tasks: existingDetails.tasks.map((task) => ({
-              taskId: task.id,
-              index: task.taskIndex,
-              status: task.status,
-              ok: task.status === "asset_ready",
-              imageUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-              renderUrl: task.renderUrl || buildImageRenderUrl(task.id, task.updatedAt),
-              rawImageUrl: task.rawImageUrl,
-              storageKey: resolveTaskStorageKey(task),
-              provider: task.providerUsed,
-              model: imageModel,
-              error: task.errorMessage,
-              errorCode: task.errorCode,
-            })),
-          });
+	          return NextResponse.json({
+	            ok: true,
+	            reused: true,
+	            imageGenerationMode,
+	            attemptedProviders,
+	            skippedProviders: [],
+	            ...serializeJobPayload({
+	              result: existingDetails,
+	              imageModel,
+	              runId: generationRunId,
+	            }),
+	          });
         }
       }
     }
@@ -972,11 +1022,13 @@ export async function POST(request: NextRequest) {
       intent: payload.intent || "poster",
       ratio: payload.ratio || normalizedTasks[0]?.aspectRatio || "9:16",
       imageModelPolicy,
-      idempotencyKey: idempotencyKey || undefined,
-      runId: generationRunId,
-      requestSnapshot: payload,
-      tasks: normalizedTasks,
-    });
+	      idempotencyKey: idempotencyKey || undefined,
+	      runId: generationRunId,
+	      requestSnapshot: payload,
+	      initialJobStatus: action === "prepare" ? "billing_pending" : "queued",
+	      initialTaskStatus: action === "prepare" ? "billing_pending" : "queued",
+	      tasks: normalizedTasks,
+	    });
 
     if (projectId) {
       const projectPages = buildProjectPagesFromPayload(payload, normalizedTasks);
@@ -993,12 +1045,27 @@ export async function POST(request: NextRequest) {
           outputType: task.outputType || payload.intent || "poster",
           pageIndex: task.taskIndex,
           taskId: task.id,
-          status: "queued",
-        });
+	          status: action === "prepare" ? "billing_pending" : "queued",
+	        });
+	      }
+	    }
+
+    if (action === "prepare") {
+      const preparedDetails = await getImageGenerationJobById(job.jobId);
+      if (!preparedDetails) {
+        return NextResponse.json({ error: "Prepared job not found.", code: "IMAGE_JOB_PREPARE_FAILED" }, { status: 500 });
       }
+      return NextResponse.json({
+        ok: true, reused: false, imageGenerationMode: "real", attemptedProviders: [], skippedProviders: [],
+        ...serializeJobPayload({
+          result: preparedDetails,
+          imageModel,
+          runId: generationRunId,
+        }),
+      });
     }
 
-    if (imageGenerationMode === "dry-run") {
+	    if (imageGenerationMode === "dry-run") {
       logOpsEvent({
         category: "image",
         action: "image_job_dry_run_created",

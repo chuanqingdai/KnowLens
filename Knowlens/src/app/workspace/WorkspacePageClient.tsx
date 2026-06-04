@@ -142,7 +142,7 @@ function isRestoredImageLoadingStatus(status: string) {
 }
 
 function isRestoredImageFailedStatus(status: string) {
-  return ["failed", "timed_out", "timeout", "error", "cancelled", "canceled", "completed_with_errors", "partial_failed"].includes(status);
+  return ["billing_failed", "failed", "timed_out", "timeout", "error", "cancelled", "canceled", "completed_with_errors", "partial_failed"].includes(status);
 }
 
 function parseRestoredTimestampMs(...values: Array<string | null | undefined>) {
@@ -3962,7 +3962,12 @@ export default function WorkspacePage() {
     ],
   );
   const runGenerationBatch = useCallback(
-    async (tasks: ImageGenerationTask[], isRetry = false, runIdOverride?: string | null) => {
+    async (
+      tasks: ImageGenerationTask[],
+      isRetry = false,
+      runIdOverride?: string | null,
+      preparedPayload?: ImageGenerateBatchResponse | null,
+    ) => {
       emitFlowAudit({
         stage: "7.run-generation-batch",
         status: "started",
@@ -4094,31 +4099,38 @@ export default function WorkspacePage() {
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
       try {
-        let response: Response;
-        let payload: ImageGenerateBatchResponse | null;
-        try {
-          response = await fetch("/api/workspace/image/generate-batch", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              ...buildGenerationRequestPayload(tasks),
-              idempotencyKey,
-              runId: activeRunId,
-              imageModelPolicy: "tuzi",
-            }),
-            signal: controller.signal,
-          });
-          payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-        } finally {
+        let responseOk = true;
+        let responseStatus = 200;
+        let payload: ImageGenerateBatchResponse | null = preparedPayload ?? null;
+        if (!payload?.job?.id) {
+          try {
+            const response = await fetch("/api/workspace/image/generate-batch", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                ...buildGenerationRequestPayload(tasks),
+                idempotencyKey,
+                runId: activeRunId,
+                imageModelPolicy: "tuzi",
+              }),
+              signal: controller.signal,
+            });
+            responseOk = response.ok;
+            responseStatus = response.status;
+            payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+          } finally {
+            window.clearTimeout(timeoutId);
+          }
+        } else {
           window.clearTimeout(timeoutId);
         }
         const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
         let responseJobId = (payload?.job?.id || "").trim() || null;
         logWorkspaceVerbose("[workspace-generation] generate-batch response", {
-          ok: response.ok,
-          status: response.status,
+          ok: responseOk,
+          status: responseStatus,
           responseOk: payload?.ok,
           requestRunId: activeRunId,
           responseRunId,
@@ -4135,8 +4147,8 @@ export default function WorkspacePage() {
           decision: "parse-batch-response",
           reason: "generate-batch-returned",
           keyFields: {
-            httpOk: response.ok,
-            httpStatus: response.status,
+            httpOk: responseOk,
+            httpStatus: responseStatus,
             responseOk: payload?.ok ?? null,
             responseRunId,
             responseJobId,
@@ -4399,14 +4411,14 @@ export default function WorkspacePage() {
             code: latestPayload?.code || "IMAGE_JOB_POLL_TIMEOUT",
           };
         };
-        if (response.ok && responseJobId) {
+        if (responseOk && responseJobId) {
           payload = await pollJobStatus(responseJobId, payload);
         }
-        if (!response.ok || !payload?.tasks?.length) {
+        if (!responseOk || !payload?.tasks?.length) {
           const failureMessage =
             payload?.error ||
-            (response.ok ? tr("Generation failed.", "生成失败。") : `generation batch failed (${response.status})`);
-          const failureCode = payload?.code || `HTTP_${response.status}`;
+            (responseOk ? tr("Generation failed.", "生成失败。") : `generation batch failed (${responseStatus})`);
+          const failureCode = payload?.code || `HTTP_${responseStatus}`;
           autoGenerationFailureLockedRunIdsRef.current[activeRunId] = true;
           tasks.forEach((task) => {
             const wasRefunded = responseJobId
@@ -4442,12 +4454,12 @@ export default function WorkspacePage() {
             action: "image_generation_request_failed",
             status: "error",
             source: imageModel,
-            code: payload?.code || String(response.status),
-            message: failureMessage,
-            details: {
-              statusCode: response.status,
-              payload,
-            },
+              code: payload?.code || String(responseStatus),
+              message: failureMessage,
+              details: {
+                statusCode: responseStatus,
+                payload,
+              },
           });
           return;
         }
@@ -6609,36 +6621,70 @@ export default function WorkspacePage() {
         taskIndexes: tasksToGenerate.map((task) => task.index),
       },
     });
-    const generationStartedAt = Date.now();
-    const pendingState: Record<number, GenerationTaskUiState> = {};
-    tasksToGenerate.forEach((task) => {
-      pendingState[task.index] = {
-        index: task.index,
-        status: "queued",
-        attempts: 0,
-        maxAttempts: 1,
-        runId: nextRunId,
-        source: "current-run",
-        startedAt: generationStartedAt,
-        lastUpdatedAt: generationStartedAt,
-      };
-    });
-    setGenerationTaskStateByIndex(pendingState);
-    setFlowStage("generate");
-    setBillingConfirmed(true);
-    requestAnimationFrame(() => {
-      storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
     const imageModel = initialEntry.models?.imageModel || "gpt-image-2";
     startThinking(
       effectiveIntent === "poster" ? tr("Poster Generation", "海报生成") : tr("Storyboard Generation", "分镜生成"),
       effectiveIntent === "poster"
-        ? tr("Generating poster structure and draft text...", "正在生成海报结构与文案...")
-        : tr("Generating storyboard structure and syncing visual/audio fields...", "正在创建分镜结构，并同步画面与音轨字段..."),
+        ? tr("Preparing poster generation...", "正在准备海报生成...")
+        : tr("Preparing storyboard generation...", "正在准备分镜生成..."),
     );
+    let preparedJobId: string | null = null;
+    let creditsConsumed = false;
+    let step6Entered = false;
+    const postGenerationBatchAction = async (body: Record<string, unknown>) => {
+      const response = await fetch("/api/workspace/image/generate-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || payload?.code || `generation batch action failed (${response.status})`);
+      }
+      return payload;
+    };
+    const markPreparedJobBillingFailed = async (reason: string) => {
+      if (!preparedJobId) return;
+      await postGenerationBatchAction({
+        action: "mark_billing_failed",
+        jobId: preparedJobId,
+        runId: nextRunId,
+        error: reason,
+      }).catch(() => undefined);
+    };
+    const markPreparedJobFailedAfterCharge = async (reason: string) => {
+      if (!preparedJobId) return;
+      await postGenerationBatchAction({
+        action: "mark_failed",
+        jobId: preparedJobId,
+        runId: nextRunId,
+        error: reason,
+      });
+    };
+    const markLocalTasksFailed = (message: string, code = "IMAGE_CONFIRM_FAILED") => {
+      setGenerationTaskStateByIndex((prev) => {
+        const now = Date.now();
+        const failedState = Object.fromEntries(tasksToGenerate.map((task) => {
+          const previous = prev[task.index];
+          return [task.index, {
+            index: task.index,
+            status: "failed",
+            attempts: previous?.attempts || 1,
+            maxAttempts: 1,
+            runId: nextRunId,
+            jobId: preparedJobId || previous?.jobId,
+            source: "current-run",
+            error: message,
+            errorCode: code,
+            startedAt: previous?.startedAt ?? now,
+            lastUpdatedAt: now,
+          } satisfies GenerationTaskUiState] as const;
+        })) as Record<number, GenerationTaskUiState>;
+        return { ...prev, ...failedState };
+      });
+    };
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 560));
-
       const user = currentEmail ? getAdminUserByEmail(currentEmail) : null;
       const selectedProjectId =
         routeProjectId ||
@@ -6669,6 +6715,25 @@ export default function WorkspacePage() {
         }
       }
 
+      const idempotencyKey = buildStableGenerationIdempotencyKey({
+        userEmail: currentEmail || "guest",
+        projectId: projectIdRef.current,
+        projectTraceId: projectTraceIdRef.current,
+        tasks: tasksToGenerate,
+      });
+      const preparePayload = await postGenerationBatchAction({
+        ...buildGenerationRequestPayload(tasksToGenerate),
+        action: "prepare",
+        idempotencyKey,
+        runId: nextRunId,
+        imageModelPolicy: "tuzi",
+      });
+      preparedJobId = (preparePayload.job?.id || "").trim() || null;
+      if (!preparedJobId || !preparePayload.tasks?.length) {
+        throw new Error("Generation job preparation failed. Please retry.");
+      }
+      setGenerationRunContext(nextRunId, preparedJobId);
+
       try {
         await appendCreditRecordOnServer({
           type: "consume",
@@ -6685,6 +6750,7 @@ export default function WorkspacePage() {
           projectId: selectedProject?.id,
           projectTitle: selectedProject?.title,
         }, currentEmail);
+        creditsConsumed = true;
       } catch (creditError) {
         const message = creditError instanceof Error ? creditError.message : "";
         if (message.includes("INSUFFICIENT_CREDITS")) {
@@ -6701,6 +6767,14 @@ export default function WorkspacePage() {
         chargedImageTaskCreditsRef.current[creditKey] = SINGLE_IMAGE_REGENERATION_CREDITS;
         delete refundedImageTaskCreditsRef.current[creditKey];
       });
+      const activatedPayload = await postGenerationBatchAction({
+        action: "activate",
+        jobId: preparedJobId,
+        runId: nextRunId,
+      });
+      if (!activatedPayload.job?.id || !activatedPayload.tasks?.length) {
+        throw new Error("Generation job activation failed. Credits have been refunded.");
+      }
       logClientEvent({
         category: "billing",
         action: "billing_confirmed",
@@ -6717,6 +6791,28 @@ export default function WorkspacePage() {
       });
 
       setCreditVersion((prev) => prev + 1);
+      const generationStartedAt = Date.now();
+      const pendingState = Object.fromEntries(tasksToGenerate.map((task) => [
+        task.index,
+        {
+          index: task.index,
+          status: "queued",
+          attempts: 0,
+          maxAttempts: 1,
+          runId: nextRunId,
+          jobId: preparedJobId || undefined,
+          source: "current-run",
+          startedAt: generationStartedAt,
+          lastUpdatedAt: generationStartedAt,
+        } satisfies GenerationTaskUiState,
+      ] as const)) as Record<number, GenerationTaskUiState>;
+      setGenerationTaskStateByIndex(pendingState);
+      setFlowStage("generate");
+      setBillingConfirmed(true);
+      step6Entered = true;
+      requestAnimationFrame(() => {
+        storyboardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
 
       logClientEvent({
         category: "image",
@@ -6732,18 +6828,36 @@ export default function WorkspacePage() {
           taskIndexes: tasksToGenerate.map((task) => task.index),
         },
       });
-      await runGenerationTasksOrdered(tasksToGenerate, nextRunId, false);
+      await runGenerationBatch(tasksToGenerate, false, nextRunId, activatedPayload);
     } catch (error) {
+      const message = error instanceof Error ? error.message : tr("Generation failed.", "生成失败。");
+      if (preparedJobId && !step6Entered && creditsConsumed) {
+        await markPreparedJobFailedAfterCharge(message).catch(() => undefined);
+        tasksToGenerate.forEach((task) => {
+          refundImageTaskCredits({
+            runId: nextRunId,
+            taskIndex: task.index,
+            reason: "IMAGE_ACTIVATION_FAILED",
+            mode: "server",
+          });
+        });
+      } else if (preparedJobId && !step6Entered) {
+        await markPreparedJobBillingFailed(message);
+      }
       setBillingConfirmed(false);
-      setGenerationConfirmError(
-        error instanceof Error ? error.message : tr("Generation failed.", "生成失败。"),
-      );
+      setGenerationConfirmError(message);
+      if (step6Entered) {
+        markLocalTasksFailed(message);
+      } else {
+        setFlowStage("billing");
+        setGenerationTaskStateByIndex({});
+      }
       logClientEvent({
         category: "image",
         action: "image_generation_batch_failed",
         status: "error",
         source: imageModel,
-        message: error instanceof Error ? error.message : "Generation batch failed.",
+        message,
         projectId: projectIdRef.current ?? null,
       });
     } finally {
