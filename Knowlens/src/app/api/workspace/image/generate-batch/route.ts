@@ -981,7 +981,7 @@ export async function POST(request: NextRequest) {
 
     const imageModelPolicy = process.env.IMAGE2_PROVIDER_POLICY || payload.imageModelPolicy || "tuzi,duomi,gptsapi";
     const providerPolicy = parseProviderPolicy(imageModelPolicy);
-    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", false) && providerPolicy.length > 1;
+    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", true) && providerPolicy.length > 1;
     const fallbackSkippedProviders = [] as OrderedImageProvider[];
     const idempotencyKey = (payload.idempotencyKey || "").trim().slice(0, 220);
     const generationRunId =

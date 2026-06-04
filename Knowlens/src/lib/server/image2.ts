@@ -552,22 +552,53 @@ function extractGptsApiPollUrl(body: unknown) {
     return "";
   }
   const obj = body as Record<string, unknown>;
+  const rootUrl = pickFirstString(
+    obj.result_url,
+    obj.resultUrl,
+    obj.poll_url,
+    obj.pollUrl,
+    obj.url,
+    obj.get,
+  );
+  if (rootUrl) {
+    return rootUrl;
+  }
   const rootGet =
     obj.urls && typeof obj.urls === "object"
-      ? (obj.urls as Record<string, unknown>).get
+      ? pickFirstString(
+          (obj.urls as Record<string, unknown>).get,
+          (obj.urls as Record<string, unknown>).result,
+          (obj.urls as Record<string, unknown>).poll,
+        )
       : null;
-  if (typeof rootGet === "string" && rootGet.trim()) {
-    return rootGet.trim();
+  if (rootGet) {
+    return rootGet;
   }
   const data = obj.data;
   if (data && typeof data === "object") {
+    const dataObj = data as Record<string, unknown>;
+    const nestedUrl = pickFirstString(
+      dataObj.result_url,
+      dataObj.resultUrl,
+      dataObj.poll_url,
+      dataObj.pollUrl,
+      dataObj.url,
+      dataObj.get,
+    );
+    if (nestedUrl) {
+      return nestedUrl;
+    }
     const nestedGet =
-      (data as Record<string, unknown>).urls &&
-      typeof (data as Record<string, unknown>).urls === "object"
-        ? ((data as Record<string, unknown>).urls as Record<string, unknown>).get
+      dataObj.urls &&
+      typeof dataObj.urls === "object"
+        ? pickFirstString(
+            (dataObj.urls as Record<string, unknown>).get,
+            (dataObj.urls as Record<string, unknown>).result,
+            (dataObj.urls as Record<string, unknown>).poll,
+          )
         : null;
-    if (typeof nestedGet === "string" && nestedGet.trim()) {
-      return nestedGet.trim();
+    if (nestedGet) {
+      return nestedGet;
     }
   }
   return "";
@@ -578,15 +609,20 @@ function extractGptsApiTaskId(body: unknown) {
     return "";
   }
   const obj = body as Record<string, unknown>;
-  const rootId = typeof obj.id === "string" ? obj.id.trim() : "";
+  const rootId = pickFirstString(obj.id, obj.task_id, obj.taskId, obj.prediction_id, obj.predictionId);
   if (rootId) {
     return rootId;
   }
   const data = obj.data;
   if (data && typeof data === "object") {
-    const nestedId = typeof (data as Record<string, unknown>).id === "string"
-      ? ((data as Record<string, unknown>).id as string).trim()
-      : "";
+    const dataObj = data as Record<string, unknown>;
+    const nestedId = pickFirstString(
+      dataObj.id,
+      dataObj.task_id,
+      dataObj.taskId,
+      dataObj.prediction_id,
+      dataObj.predictionId,
+    );
     if (nestedId) {
       return nestedId;
     }
@@ -594,7 +630,7 @@ function extractGptsApiTaskId(body: unknown) {
   return "";
 }
 
-function buildGptsApiPollCandidates(basePollUrl: string, taskId: string) {
+function buildGptsApiPollCandidates(basePollUrl: string, taskId: string, createEndpoint?: string) {
   const candidates = new Set<string>();
   const trimmed = basePollUrl.trim();
   if (trimmed) {
@@ -602,6 +638,13 @@ function buildGptsApiPollCandidates(basePollUrl: string, taskId: string) {
     candidates.add(appendQueryParam(trimmed, "no_cache", `${Date.now()}`));
   }
   if (taskId) {
+    const cleanCreateEndpoint = (createEndpoint || "").trim().split("?")[0];
+    if (cleanCreateEndpoint) {
+      candidates.add(`${cleanCreateEndpoint}/${encodeURIComponent(taskId)}`);
+      candidates.add(`${cleanCreateEndpoint}/${encodeURIComponent(taskId)}/result`);
+      candidates.add(appendQueryParam(cleanCreateEndpoint, "id", taskId));
+      candidates.add(appendQueryParam(cleanCreateEndpoint, "task_id", taskId));
+    }
     candidates.add(`https://api.gptsapi.net/api/v3/predictions/${encodeURIComponent(taskId)}/result`);
     candidates.add(`https://api.gptsapi.net/api/v3/predictions/${encodeURIComponent(taskId)}`);
   }
@@ -895,11 +938,11 @@ async function requestGptsApiFallbackGeneration(
 
     pollUrl = extractGptsApiPollUrl(createBody);
     taskId = extractGptsApiTaskId(createBody);
-    if (!pollUrl) {
+    if (!pollUrl && !taskId) {
       return {
         ok: false,
         errorCode: "GPTSAPI_MISSING_RESULT_URL",
-        errorMessage: "Fallback provider response has no result URL.",
+        errorMessage: "Fallback provider response has no result URL or task id.",
         detail: createRaw.slice(0, 360),
         rawText: createRaw,
       };
@@ -918,14 +961,18 @@ async function requestGptsApiFallbackGeneration(
     clearTimeout(createTimeout);
   }
 
-  const pollCandidates = buildGptsApiPollCandidates(pollUrl, taskId);
+  const pollCandidates = buildGptsApiPollCandidates(pollUrl, taskId, fallback.endpoint);
   const pollStartedAt = Date.now();
   let doneWithoutUrlCount = 0;
+  let lastPollFailure: Image2ProviderFailure | null = null;
+  let allNotFoundRounds = 0;
 
   for (let attempt = 1; attempt <= Math.max(3, FALLBACK_POLL_MAX_ATTEMPTS); attempt += 1) {
     if (Date.now() - pollStartedAt >= Math.max(10_000, FALLBACK_POLL_TOTAL_TIMEOUT_MS)) {
       break;
     }
+    let notFoundCount = 0;
+    let checkedCount = 0;
     for (const candidate of pollCandidates) {
       const pollController = new AbortController();
       const pollTimeout = setTimeout(
@@ -942,11 +989,9 @@ async function requestGptsApiFallbackGeneration(
         });
         const pollRaw = await pollResponse.text();
         const pollBody = parseJsonBody(pollRaw);
+        checkedCount += 1;
         if (!pollResponse.ok) {
-          if (pollResponse.status >= 500 || pollResponse.status === 429) {
-            continue;
-          }
-          return {
+          lastPollFailure = {
             ok: false,
             errorCode: `GPTSAPI_POLL_HTTP_${pollResponse.status}`,
             errorMessage: "Fallback provider polling failed.",
@@ -954,6 +999,13 @@ async function requestGptsApiFallbackGeneration(
             status: pollResponse.status,
             rawText: pollRaw,
           };
+          if (pollResponse.status === 404) {
+            notFoundCount += 1;
+          }
+          if (pollResponse.status === 404 || pollResponse.status >= 500 || pollResponse.status === 429) {
+            continue;
+          }
+          return lastPollFailure;
         }
 
         const imageUrl = extractImage2Url(pollBody);
@@ -999,30 +1051,45 @@ async function requestGptsApiFallbackGeneration(
           }
         }
       } catch (error) {
+        lastPollFailure = {
+          ok: false,
+          errorCode:
+            error instanceof DOMException && error.name === "AbortError" ? "GPTSAPI_TIMEOUT" : "GPTSAPI_FETCH_ERROR",
+          errorMessage:
+            error instanceof DOMException && error.name === "AbortError"
+              ? "Fallback provider polling timed out."
+              : "Fallback provider polling failed.",
+          detail: error instanceof Error ? error.message : "Unknown error",
+        };
         if (attempt >= Math.max(3, FALLBACK_POLL_MAX_ATTEMPTS)) {
-          return {
-            ok: false,
-            errorCode:
-              error instanceof DOMException && error.name === "AbortError" ? "GPTSAPI_TIMEOUT" : "GPTSAPI_FETCH_ERROR",
-            errorMessage:
-              error instanceof DOMException && error.name === "AbortError"
-                ? "Fallback provider polling timed out."
-                : "Fallback provider polling failed.",
-            detail: error instanceof Error ? error.message : "Unknown error",
-          };
+          return lastPollFailure;
         }
       } finally {
         clearTimeout(pollTimeout);
       }
     }
+    if (checkedCount > 0 && notFoundCount === checkedCount) {
+      allNotFoundRounds += 1;
+      if (allNotFoundRounds >= 3 && lastPollFailure) {
+        return {
+          ...lastPollFailure,
+          detail: [lastPollFailure.detail, `task_id=${taskId || "unknown"}`, `poll_candidates=${pollCandidates.length}`, "all_candidates_404=true"]
+            .filter(Boolean)
+            .join(" | "),
+        };
+      }
+    } else {
+      allNotFoundRounds = 0;
+    }
 
     await new Promise((resolve) => setTimeout(resolve, Math.max(600, FALLBACK_POLL_INTERVAL_MS)));
   }
 
-  return {
+  return lastPollFailure || {
     ok: false,
     errorCode: "GPTSAPI_POLL_TIMEOUT",
     errorMessage: "Fallback provider did not return image URL in time.",
+    detail: taskId ? `task_id=${taskId};poll_candidates=${pollCandidates.length}` : `poll_candidates=${pollCandidates.length}`,
   };
 }
 
@@ -1329,7 +1396,7 @@ export function buildImage2ProviderConfig(choice: Image2ProviderChoice = "auto")
   const fallbackEndpoint =
     process.env.IMAGE2_FALLBACK_PROVIDER_ENDPOINT ||
     "https://api.gptsapi.net/api/v3/openai/gpt-image-2/text-to-image";
-  const fallbackApiKey = process.env.IMAGE2_FALLBACK_PROVIDER_API_KEY || "";
+  const fallbackApiKey = process.env.IMAGE2_FALLBACK_PROVIDER_API_KEY || process.env.IMAGE2_GPTSAPI_PROVIDER_API_KEY || "";
   const fallbackModel = process.env.IMAGE2_FALLBACK_PROVIDER_MODEL || "gpt-image-2";
 
   if (choice === "tuzi") {

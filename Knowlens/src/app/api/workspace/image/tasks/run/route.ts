@@ -500,7 +500,7 @@ export async function POST(request: NextRequest) {
     cleanupContext.queuedTask = queuedTask;
 
     const providerPolicy = parseProviderPolicy(current.job.imageModelPolicy);
-    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", false) && providerPolicy.length > 1;
+    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", true) && providerPolicy.length > 1;
     const defaultProvider = providerPolicy[0] ?? "tuzi";
     const taskStartedAt = Date.now();
     const taskDeadlineAt = taskStartedAt + normalizeTaskBudgetMs();
@@ -620,6 +620,10 @@ export async function POST(request: NextRequest) {
         processed: true,
         error: generated.errorMessage || "Image generation failed.",
         code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
+        attemptedProviders: generatedByPolicy.attemptedProviders,
+        skippedProviders: generatedByPolicy.skippedProviders,
+        providerFallbackDisabled: generatedByPolicy.providerFallbackDisabled,
+        providerAttempts: generatedByPolicy.attempts,
       });
     }
 

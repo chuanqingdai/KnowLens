@@ -105,6 +105,8 @@ const FAILED_IMAGE_GENERATION_STATUSES = new Set<ImageGenerationJobStatus | Imag
   "failed",
   "timed_out",
 ]);
+const RECENT_ABANDONED_LOG_TTL_MS = 60 * 60 * 1000;
+const recentlyLoggedAbandonedJobs = new Map<string, number>();
 const BILLING_PENDING_TIMEOUT_MS = 120_000;
 const ABANDONED_JOB_TIMEOUT_MS = (() => {
   const parsed = Number.parseInt(process.env.IMAGE_GENERATION_ABANDONED_JOB_TIMEOUT_MS || "480000", 10);
@@ -274,6 +276,22 @@ function isActiveTaskStatus(status: string | null | undefined) {
 
 function isTerminalJobStatus(status: string | null | undefined) {
   return TERMINAL_JOB_STATUSES.includes(String(status || "").trim() as ImageGenerationJobStatus);
+}
+
+function shouldLogAbandonedJob(jobId: string, timeoutCode: string) {
+  const key = `${jobId}:${timeoutCode}`;
+  const now = Date.now();
+  const lastLoggedAt = recentlyLoggedAbandonedJobs.get(key) || 0;
+  if (lastLoggedAt && now - lastLoggedAt < RECENT_ABANDONED_LOG_TTL_MS) {
+    return false;
+  }
+  recentlyLoggedAbandonedJobs.set(key, now);
+  for (const [cachedKey, loggedAt] of recentlyLoggedAbandonedJobs.entries()) {
+    if (now - loggedAt >= RECENT_ABANDONED_LOG_TTL_MS) {
+      recentlyLoggedAbandonedJobs.delete(cachedKey);
+    }
+  }
+  return true;
 }
 
 async function readStoredManifest(jobId: string) {
@@ -1700,11 +1718,15 @@ export async function syncImageGenerationJobFinalStatus(jobId: string) {
       errorMessage: `${failedCount} task(s) failed.`,
     });
   } else {
+    const allTimedOut = failedCount > 0 && failedCount === tasks.length && tasks.every((task) => task.status === "timed_out");
+    const firstFailedTask = tasks.find((task) => task.status === "failed" || task.status === "timed_out");
     await updateImageGenerationJobStatus({
       jobId,
-      status: "failed",
-      errorCode: "IMAGE_ALL_FAILED",
-      errorMessage: "All image generation tasks failed.",
+      status: allTimedOut ? "timed_out" : "failed",
+      errorCode: firstFailedTask?.errorCode || (allTimedOut ? "IMAGE_ALL_TIMED_OUT" : "IMAGE_ALL_FAILED"),
+      errorMessage:
+        firstFailedTask?.errorMessage ||
+        (allTimedOut ? "All image generation tasks timed out." : "All image generation tasks failed."),
     });
   }
   return getImageGenerationJobById(jobId);
@@ -1848,23 +1870,28 @@ export async function expireAbandonedImageGenerationJob(input: {
     }
   }
 
-  logOpsEvent({
-    category: "image",
-    action: "image_generation_job_abandoned",
-    status: "error",
-    source: input.source || "image_generation_jobs",
-    userEmail: result.job.userEmail,
-    projectId: result.job.projectId ?? undefined,
-    code: timeoutCode,
-    message: timeoutMessage,
-    details: {
-      jobId: result.job.id,
-      taskIds: activeTasks.map((task) => task.id),
-      taskIndexes: activeTasks.map((task) => task.taskIndex),
-      timeoutMs,
-      lastProgressAt: new Date(latestActiveProgressMs).toISOString(),
-    },
-  });
+  if (shouldLogAbandonedJob(result.job.id, timeoutCode)) {
+    logOpsEvent({
+      category: "image",
+      action: "image_generation_job_abandoned",
+      status: "error",
+      source: input.source || "image_generation_jobs",
+      userEmail: result.job.userEmail,
+      projectId: result.job.projectId ?? undefined,
+      code: timeoutCode,
+      message: timeoutMessage,
+      details: {
+        jobId: result.job.id,
+        runId: result.job.runId,
+        taskIds: activeTasks.map((task) => task.id),
+        taskIndexes: activeTasks.map((task) => task.taskIndex),
+        taskStatuses: activeTasks.map((task) => task.status),
+        providerUsed: activeTasks.map((task) => task.providerUsed).filter(Boolean),
+        timeoutMs,
+        lastProgressAt: new Date(latestActiveProgressMs).toISOString(),
+      },
+    });
+  }
 
   const finalState = await syncImageGenerationJobFinalStatus(result.job.id);
   if (!finalState) {
