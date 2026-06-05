@@ -4756,6 +4756,7 @@ export default function WorkspacePage() {
           "IMAGE_BILLING_FAILED",
           "TASK_NOT_QUEUED",
         ]);
+        const taskRunInFlightIds = new Set<string>();
         const mergePolledPayload = (
           nextPayload: ImageGenerateBatchResponse | null,
           previousPayload: ImageGenerateBatchResponse | null,
@@ -4919,9 +4920,13 @@ export default function WorkspacePage() {
             const status = (latestPayload?.job?.status || "").trim().toLowerCase();
             const taskStatuses = latestPayload?.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
             const hasPendingTask = taskStatuses.some((item) => pollActiveTaskStatuses.has(item));
-            const hasQueuedTask = taskStatuses.some((item) => item === "queued");
+            const runnableTaskForRun = latestPayload?.tasks?.find((task) =>
+              pollActiveTaskStatuses.has((task.status || "").trim().toLowerCase()),
+            );
+            const hasRunnableTask = Boolean(runnableTaskForRun);
             const isRunningJob = status === "queued" || status === "running" || status === "processing";
             if (pollTerminalJobStatuses.has(status)) {
+              writeReadyTasksFromPayload(latestPayload, jobId);
               emitUiEvent({
                 action: "ui.job.poll.stop",
                 status: "ok",
@@ -4936,6 +4941,7 @@ export default function WorkspacePage() {
               return latestPayload;
             }
             if (!isRunningJob && !hasPendingTask) {
+              writeReadyTasksFromPayload(latestPayload, jobId);
               emitUiEvent({
                 action: "ui.job.poll.stop",
                 status: "ok",
@@ -4954,6 +4960,7 @@ export default function WorkspacePage() {
                 taskStatuses.length > 0 &&
                 taskStatuses.every((item) => pollTerminalTaskStatuses.has(item));
               if (allTasksTerminal) {
+                writeReadyTasksFromPayload(latestPayload, jobId);
                 emitUiEvent({
                   action: "ui.job.poll.stop",
                   status: "ok",
@@ -4977,8 +4984,16 @@ export default function WorkspacePage() {
                 ),
               );
             }
-            if (hasQueuedTask) {
+            if (hasRunnableTask) {
+              const runTaskKey =
+                runnableTaskForRun?.taskId ||
+                `${jobId}:${runnableTaskForRun?.index || "unknown"}:${runnableTaskForRun?.status || "active"}`;
+              if (taskRunInFlightIds.has(runTaskKey)) {
+                await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
+                continue;
+              }
               let runResponse: Response;
+              taskRunInFlightIds.add(runTaskKey);
               try {
                 runResponse = await fetch("/api/workspace/image/tasks/run", {
                   method: "POST",
@@ -4989,6 +5004,7 @@ export default function WorkspacePage() {
                   body: JSON.stringify({ jobId }),
                 });
               } catch (error) {
+                taskRunInFlightIds.delete(runTaskKey);
                 const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
                   method: "GET",
                   credentials: "same-origin",
@@ -5023,6 +5039,7 @@ export default function WorkspacePage() {
                       ),
                 );
               }
+              taskRunInFlightIds.delete(runTaskKey);
               const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
               const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
               if (mergedRunPayload) {
@@ -5042,6 +5059,7 @@ export default function WorkspacePage() {
                       ),
                   );
                 }
+                await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
                 continue;
               }
               if (!runResponse.ok) {
@@ -5082,6 +5100,27 @@ export default function WorkspacePage() {
               finalJobStatus: latestPayload?.job?.status || "unknown",
             },
           });
+          const timeoutResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              action: "timeout",
+              reason: "frontend_poll_timeout",
+            }),
+          }).catch(() => null);
+          if (timeoutResponse?.ok) {
+            const timeoutPayload = (await timeoutResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+            const recoveredTimeoutPayload = mergePolledPayload(timeoutPayload, latestPayload, jobId);
+            if (recoveredTimeoutPayload) {
+              latestPayload = recoveredTimeoutPayload;
+              responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+              writeReadyTasksFromPayload(latestPayload, jobId);
+              return latestPayload;
+            }
+          }
           return buildPollFailurePayload(
             latestPayload,
             jobId,

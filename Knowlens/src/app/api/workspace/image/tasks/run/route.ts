@@ -1,18 +1,26 @@
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import {
   buildImage2ProviderConfig,
+  createDuomiImageGenerationTask,
+  pollDuomiImageGenerationTask,
   requestImage2Generation,
+  type Image2AllowedAspectRatio,
+  type Image2AsyncProviderConfig,
   type Image2ProviderFailure,
 } from "@/lib/server/image2";
 import {
   applyRefundsForFailedImageGenerationTasks,
   buildImageRenderUrl,
   claimQueuedImageGenerationTask,
+  decodeImageGenerationProviderTaskMetadata,
+  encodeImageGenerationProviderTaskMetadata,
   expireAbandonedImageGenerationJob,
   getImageGenerationJobById,
   persistRemoteImageAsset,
+  sanitizeImageGenerationRawImageUrl,
+  sanitizeImageGenerationTaskErrorMessage,
   syncImageGenerationJobFinalStatus,
   updateImageGenerationTask,
   type ImageGenerationTaskRow,
@@ -405,17 +413,54 @@ function serializeTask(task: ImageGenerationTaskRow, imageModel: string) {
     ok: task.status === "asset_ready",
     imageUrl: readyUrl,
     renderUrl: readyUrl,
-    rawImageUrl: task.rawImageUrl,
+    rawImageUrl: sanitizeImageGenerationRawImageUrl(task.rawImageUrl),
     storageKey: resolveTaskStorageKey(task),
     provider: task.providerUsed,
     model: imageModel,
-    error: task.errorMessage,
+    error: sanitizeImageGenerationTaskErrorMessage(task.errorMessage),
     errorCode: task.errorCode,
-    errorMessage: task.errorMessage,
+    errorMessage: sanitizeImageGenerationTaskErrorMessage(task.errorMessage),
     width: task.width,
     height: task.height,
     mimeType: task.mimeType,
   };
+}
+
+function resolveDuomiStepRunConfig(): Image2AsyncProviderConfig | null {
+  const config = buildImage2ProviderConfig("duomi");
+  if (!config) {
+    return null;
+  }
+  return config.duomiProvider ?? {
+    endpoint: config.endpoint,
+    apiKey: config.apiKey,
+    model: config.model,
+  };
+}
+
+function normalizeDuomiAspectRatio(value?: string | null): Image2AllowedAspectRatio {
+  const normalized = (value || "").trim();
+  return normalized === "1:1" ||
+    normalized === "9:16" ||
+    normalized === "16:9" ||
+    normalized === "4:3" ||
+    normalized === "3:4"
+    ? normalized
+    : "auto";
+}
+
+function mapAssetPersistError(message: string) {
+  if (/IMAGE_STORAGE_NOT_CONFIGURED/i.test(message)) return "IMAGE_STORAGE_NOT_CONFIGURED";
+  if (/IMAGE_DOWNLOAD_INVALID_CONTENT_TYPE/i.test(message)) return "IMAGE_DOWNLOAD_INVALID_CONTENT_TYPE";
+  if (/IMAGE_UPLOAD_FAILED/i.test(message)) return "IMAGE_UPLOAD_FAILED";
+  if (/IMAGE_DOWNLOAD_FAILED/i.test(message)) return "IMAGE_DOWNLOAD_FAILED";
+  if (/IMAGE_TASK_TIMEOUT/i.test(message)) return "IMAGE_TASK_TIMEOUT";
+  return "IMAGE_ASSET_PERSIST_FAILED";
+}
+
+function isTerminalTaskStatus(status?: string | null) {
+  const normalized = (status || "").trim();
+  return normalized === "asset_ready" || normalized === "failed" || normalized === "timed_out" || normalized === "billing_failed";
 }
 
 export async function POST(request: NextRequest) {
@@ -484,8 +529,10 @@ export async function POST(request: NextRequest) {
     }
 
     cleanupContext.imageModel = imageModel;
-    const queuedTask = current.tasks.find((task) => task.status === "queued");
-    if (!queuedTask) {
+    const runnableTask = current.tasks.find(
+      (task) => task.status === "queued" || task.status === "generating" || task.status === "asset_downloading",
+    );
+    if (!runnableTask) {
       const finalState = await syncImageGenerationJobFinalStatus(jobId);
       await applyRefundsForFailedImageGenerationTasks({
         job: finalState?.job ?? current.job,
@@ -499,21 +546,260 @@ export async function POST(request: NextRequest) {
         processed: false,
       });
     }
+    if (isTerminalTaskStatus(runnableTask.status)) {
+      return NextResponse.json({
+        ok: true,
+        job: current.job,
+        tasks: current.tasks.map((task) => serializeTask(task, imageModel)),
+        processed: false,
+      });
+    }
+    const queuedTask = runnableTask;
     cleanupContext.queuedTask = queuedTask;
 
     const providerPolicy = parseProviderPolicy(current.job.imageModelPolicy);
-    const allowProviderFallback = parseBooleanEnv("IMAGE2_PROVIDER_FALLBACK_ENABLED", true) && providerPolicy.length > 1;
-    const defaultProvider = providerPolicy[0] ?? "tuzi";
+    const allowProviderFallback = false;
+    const defaultProvider: OrderedImageProvider = "duomi";
     const taskStartedAt = Date.now();
     const taskDeadlineAt = taskStartedAt + normalizeTaskBudgetMs();
     const projectId = current.job.projectId;
     cleanupContext.projectId = projectId;
     const projectTraceId = readProjectTraceId(current.job);
+    const duomiConfig = resolveDuomiStepRunConfig();
+    const aspectRatio = queuedTask.aspectRatio || current.job.ratio || "9:16";
+    const size = resolveTuziImageSize(aspectRatio) || "864x1536";
+    const basePrompt = queuedTask.promptText.trim();
+    const markTaskFailed = async (input: {
+      task: ImageGenerationTaskRow;
+      status: "failed" | "timed_out";
+      providerUsed?: string | null;
+      errorCode: string;
+      errorMessage: string;
+      source: string;
+    }) => {
+      await updateImageGenerationTask({
+        taskId: input.task.id,
+        status: input.status,
+        providerUsed: input.providerUsed || input.task.providerUsed || defaultProvider,
+        errorCode: input.errorCode,
+        errorMessage: input.errorMessage,
+      });
+      if (projectId) {
+        await updateWorkspaceProjectPageImage({
+          userEmail: email,
+          projectId,
+          outputType: input.task.outputType || current.job.intent || "poster",
+          pageIndex: input.task.taskIndex,
+          taskId: input.task.id,
+          status: input.status,
+          errorCode: input.errorCode,
+        });
+      }
+      const finalState = await syncImageGenerationJobFinalStatus(jobId);
+      await applyRefundsForFailedImageGenerationTasks({
+        job: finalState?.job ?? current.job,
+        tasks: finalState?.tasks ?? current.tasks,
+        source: input.source,
+      });
+      const resolvedTasks = finalState?.tasks ?? current.tasks;
+      const resolvedJob = finalState?.job ?? current.job;
+      await logGenerationOpsEvent({
+        action: "generation.tasks.run.failure",
+        status: "error",
+        source: input.providerUsed || input.task.providerUsed || defaultProvider,
+        code: input.errorCode,
+        message: input.errorMessage,
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        runId: resolvedJob.runId ?? undefined,
+        jobId,
+        taskId: input.task.id,
+        taskIndex: input.task.taskIndex,
+        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
+        jobStatus: resolvedJob.status,
+        taskStatus: input.status,
+        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
+        outputType: input.task.outputType,
+        aspectRatio: input.task.aspectRatio,
+        ratio: resolvedJob.ratio ?? undefined,
+        taskCount: resolvedTasks.length,
+        providerOrder: providerPolicy.join(","),
+        providerUsed: input.providerUsed || input.task.providerUsed || defaultProvider,
+        attempts: input.task.attempts,
+        durationMs: Date.now() - routeStartedAt,
+        errorCode: input.errorCode,
+        safeErrorMessage: input.errorMessage,
+      });
+      return NextResponse.json({
+        ok: true,
+        job: resolvedJob,
+        tasks: resolvedTasks.map((task) => serializeTask(task, imageModel)),
+        processed: true,
+        error: input.errorMessage,
+        code: input.errorCode,
+      });
+    };
+    const persistGeneratedImage = async (input: {
+      task: ImageGenerationTaskRow;
+      providerUsed: string;
+      imageUrl: string;
+    }) => {
+      await logGenerationOpsEvent({
+        action: "generation.asset.persist.start",
+        status: "info",
+        source: input.providerUsed,
+        message: "Persisting generated image asset.",
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        runId: current.job.runId ?? undefined,
+        jobId,
+        taskId: input.task.id,
+        taskIndex: input.task.taskIndex,
+        jobStatus: "running",
+        taskStatus: "asset_downloading",
+        providerUsed: input.providerUsed,
+        durationMs: Date.now() - taskStartedAt,
+      });
+      await updateImageGenerationTask({
+        taskId: input.task.id,
+        status: "asset_downloading",
+        providerUsed: input.providerUsed,
+        rawImageUrl: input.imageUrl,
+      });
+      try {
+        const persisted = await persistRemoteImageAsset({
+          taskId: input.task.id,
+          projectId,
+          sourceUrl: input.imageUrl,
+          timeoutMs: normalizeAssetDownloadTimeoutMs(),
+        });
+        const renderUrl = persisted.renderUrl || buildImageRenderUrl(input.task.id, Date.now());
+        await updateImageGenerationTask({
+          taskId: input.task.id,
+          status: "asset_ready",
+          providerUsed: input.providerUsed,
+          rawImageUrl: input.imageUrl,
+          renderUrl,
+          assetPath: persisted.assetPath,
+          mimeType: persisted.mimeType,
+          errorCode: null,
+          errorMessage: null,
+        });
+        if (projectId) {
+          await updateWorkspaceProjectPageImage({
+            userEmail: email,
+            projectId,
+            outputType: input.task.outputType || current.job.intent || "poster",
+            pageIndex: input.task.taskIndex,
+            taskId: input.task.id,
+            status: "asset_ready",
+            imageUrl: renderUrl,
+            rawImageUrl: input.imageUrl,
+            assetPath: persisted.assetPath,
+            errorCode: null,
+          });
+        }
+        const finalState = await syncImageGenerationJobFinalStatus(jobId);
+        const resolvedTasks = finalState?.tasks ?? (await getImageGenerationJobById(jobId))?.tasks ?? current.tasks;
+        const resolvedJob = finalState?.job ?? current.job;
+        logOpsEvent({
+          category: "image",
+          action: "image_task_generation_success",
+          status: "ok",
+          source: input.providerUsed,
+          userEmail: email,
+          projectId: projectId ?? undefined,
+          message: "Image task generated and asset persisted.",
+          details: {
+            stage: "asset_ready",
+            jobId,
+            taskId: input.task.id,
+            taskIndex: input.task.taskIndex,
+            provider: input.providerUsed,
+            renderUrlExists: Boolean(renderUrl),
+            assetPathExists: Boolean(persisted.assetPath),
+            durationMs: Date.now() - taskStartedAt,
+          },
+        });
+        await logGenerationOpsEvent({
+          action: "generation.asset.persist.success",
+          status: "ok",
+          source: input.providerUsed,
+          message: "Image asset persisted successfully.",
+          userEmail: email,
+          projectId: projectId ?? undefined,
+          runId: resolvedJob.runId ?? undefined,
+          jobId,
+          taskId: input.task.id,
+          taskIndex: input.task.taskIndex,
+          idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
+          jobStatus: resolvedJob.status,
+          taskStatus: "asset_ready",
+          taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
+          outputType: input.task.outputType,
+          aspectRatio: input.task.aspectRatio,
+          ratio: resolvedJob.ratio ?? undefined,
+          taskCount: resolvedTasks.length,
+          providerUsed: input.providerUsed,
+          durationMs: Date.now() - taskStartedAt,
+        });
+        await logGenerationOpsEvent({
+          action: "generation.tasks.run.success",
+          status: "ok",
+          source: input.providerUsed,
+          message: "Image task completed successfully.",
+          userEmail: email,
+          projectId: projectId ?? undefined,
+          runId: resolvedJob.runId ?? undefined,
+          jobId,
+          taskId: input.task.id,
+          taskIndex: input.task.taskIndex,
+          idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
+          jobStatus: resolvedJob.status,
+          taskStatus: "asset_ready",
+          taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
+          outputType: input.task.outputType,
+          aspectRatio: input.task.aspectRatio,
+          ratio: resolvedJob.ratio ?? undefined,
+          taskCount: resolvedTasks.length,
+          providerUsed: input.providerUsed,
+          durationMs: Date.now() - routeStartedAt,
+        });
+        return NextResponse.json({
+          ok: true,
+          job: resolvedJob,
+          tasks: resolvedTasks.map((task) => serializeTask(task, imageModel)),
+          processed: true,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Image asset persistence failed.";
+        const mappedCode = mapAssetPersistError(message);
+        return markTaskFailed({
+          task: input.task,
+          status: isTimeoutCode(mappedCode) ? "timed_out" : "failed",
+          providerUsed: input.providerUsed,
+          errorCode: mappedCode,
+          errorMessage: message,
+          source: "image_task_run_asset_persist",
+        });
+      }
+    };
+
+    if (!duomiConfig) {
+      return markTaskFailed({
+        task: queuedTask,
+        status: "failed",
+        providerUsed: defaultProvider,
+        errorCode: "DUOMI_PROVIDER_NOT_CONFIGURED",
+        errorMessage: "Duomi image provider is not configured.",
+        source: "image_task_run_provider_config",
+      });
+    }
     await logGenerationOpsEvent({
       action: "generation.tasks.run.start",
       status: "info",
       source: "image_tasks_run",
-      message: "Started processing the next queued image task.",
+      message: "Started processing the next runnable image task.",
       userEmail: email,
       projectId: projectId ?? undefined,
       runId: current.job.runId ?? undefined,
@@ -532,6 +818,140 @@ export async function POST(request: NextRequest) {
       attempts: queuedTask.attempts,
       promptText: queuedTask.promptText,
     });
+
+    if (queuedTask.status === "generating") {
+      const metadata = decodeImageGenerationProviderTaskMetadata(queuedTask.errorMessage);
+      if (!metadata || metadata.provider !== "duomi") {
+        return markTaskFailed({
+          task: queuedTask,
+          status: "failed",
+          providerUsed: queuedTask.providerUsed || defaultProvider,
+          errorCode: "IMAGE_PROVIDER_METADATA_MISSING",
+          errorMessage: "Image provider task metadata is missing. Please retry manually.",
+          source: "image_task_run_metadata_missing",
+        });
+      }
+      if (metadata.deadlineAt && Date.now() >= metadata.deadlineAt) {
+        return markTaskFailed({
+          task: queuedTask,
+          status: "timed_out",
+          providerUsed: metadata.provider,
+          errorCode: "IMAGE_PROVIDER_DEADLINE_EXCEEDED",
+          errorMessage: "Image provider task timed out.",
+          source: "image_task_run_provider_deadline",
+        });
+      }
+      await logGenerationOpsEvent({
+        action: "generation.provider.poll.start",
+        status: "info",
+        source: "duomi",
+        message: "Polling Duomi image provider task.",
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        runId: current.job.runId ?? undefined,
+        jobId,
+        taskId: queuedTask.id,
+        taskIndex: queuedTask.taskIndex,
+        jobStatus: current.job.status,
+        taskStatus: queuedTask.status,
+        providerUsed: "duomi",
+      });
+      const pollResult = await pollDuomiImageGenerationTask(duomiConfig, {
+        providerTaskId: metadata.providerTaskId,
+      });
+      if (pollResult.ok && pollResult.status === "processing") {
+        await updateImageGenerationTask({
+          taskId: queuedTask.id,
+          status: "generating",
+          providerUsed: "duomi",
+          errorCode: null,
+          errorMessage: encodeImageGenerationProviderTaskMetadata({
+            ...metadata,
+            status: pollResult.providerStatus || "processing",
+            lastPolledAt: Date.now(),
+          }),
+        });
+        const latestState = await getImageGenerationJobById(jobId);
+        await logGenerationOpsEvent({
+          action: "generation.provider.poll.processing",
+          status: "info",
+          source: "duomi",
+          message: "Duomi image provider task is still processing.",
+          userEmail: email,
+          projectId: projectId ?? undefined,
+          runId: current.job.runId ?? undefined,
+          jobId,
+          taskId: queuedTask.id,
+          taskIndex: queuedTask.taskIndex,
+          jobStatus: latestState?.job.status ?? current.job.status,
+          taskStatus: "generating",
+          providerUsed: "duomi",
+          durationMs: Date.now() - taskStartedAt,
+        });
+        return NextResponse.json(
+          {
+            ok: true,
+            accepted: true,
+            processed: false,
+            status: "processing",
+            job: latestState?.job ?? current.job,
+            tasks: (latestState?.tasks ?? current.tasks).map((task) => serializeTask(task, imageModel)),
+            taskId: queuedTask.id,
+          },
+          { status: 202 },
+        );
+      }
+      if (pollResult.ok && pollResult.status === "succeeded") {
+        await logGenerationOpsEvent({
+          action: "generation.provider.poll.success",
+          status: "ok",
+          source: "duomi",
+          message: "Duomi image provider returned an image.",
+          userEmail: email,
+          projectId: projectId ?? undefined,
+          runId: current.job.runId ?? undefined,
+          jobId,
+          taskId: queuedTask.id,
+          taskIndex: queuedTask.taskIndex,
+          jobStatus: current.job.status,
+          taskStatus: "asset_downloading",
+          providerUsed: "duomi",
+          durationMs: Date.now() - taskStartedAt,
+        });
+        return persistGeneratedImage({
+          task: queuedTask,
+          providerUsed: "duomi",
+          imageUrl: pollResult.imageUrl,
+        });
+      }
+      return markTaskFailed({
+        task: queuedTask,
+        status: isTimeoutCode(pollResult.errorCode) ? "timed_out" : "failed",
+        providerUsed: "duomi",
+        errorCode: pollResult.errorCode || "DUOMI_POLL_FAILED",
+        errorMessage: pollResult.errorMessage || "Duomi provider polling failed.",
+        source: "image_task_run_provider_poll",
+      });
+    }
+
+    if (queuedTask.status === "asset_downloading") {
+      const rawImageUrl = sanitizeImageGenerationRawImageUrl(queuedTask.rawImageUrl);
+      if (!rawImageUrl || !/^https?:\/\//i.test(rawImageUrl)) {
+        return markTaskFailed({
+          task: queuedTask,
+          status: "failed",
+          providerUsed: queuedTask.providerUsed || defaultProvider,
+          errorCode: "IMAGE_ASSET_SOURCE_MISSING",
+          errorMessage: "Generated image source is missing. Please retry manually.",
+          source: "image_task_run_asset_source_missing",
+        });
+      }
+      return persistGeneratedImage({
+        task: queuedTask,
+        providerUsed: queuedTask.providerUsed || defaultProvider,
+        imageUrl: rawImageUrl,
+      });
+    }
 
     const claimedTask = await claimQueuedImageGenerationTask({
       taskId: queuedTask.id,
@@ -553,28 +973,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    after(async () => {
-      try {
-    logImageTaskRunEvent({
-      requestId: current.job.idempotencyKey || current.job.runId || jobId,
-      jobId,
-      projectId,
-      userEmail: email,
-      taskCount: current.tasks.length,
-      currentStep: "provider-generation-start",
-      provider: defaultProvider,
-      model: imageModel,
-      durationMs: Date.now() - routeStartedAt,
-      generatedCount: 0,
-      failedCount: 0,
-      taskId: queuedTask.id,
-      taskIndex: queuedTask.taskIndex,
-    });
-
-    const basePrompt = queuedTask.promptText.trim();
     const isFreeUser = await isFreeUserBySubscriptionSafe({
       email,
-      source: "workspace_image_task_run",
+      source: "workspace_image_task_run_step_create",
       projectId,
       details: {
         stage: "subscription_gate",
@@ -584,583 +985,41 @@ export async function POST(request: NextRequest) {
       },
     });
     const prompt = isFreeUser ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
-    const aspectRatio = queuedTask.aspectRatio || current.job.ratio || "9:16";
-    const size = resolveTuziImageSize(aspectRatio) || "864x1536";
     await logGenerationOpsEvent({
-      action: "generation.provider.start",
+      action: "generation.provider.create.start",
       status: "info",
-      source: defaultProvider,
-      message: "Starting provider generation request.",
+      source: "duomi",
+      message: "Creating Duomi async image provider task.",
       userEmail: email,
       projectId: projectId ?? undefined,
       runId: current.job.runId ?? undefined,
       jobId,
       taskId: queuedTask.id,
       taskIndex: queuedTask.taskIndex,
-      idempotencyKey: current.job.idempotencyKey ?? undefined,
       jobStatus: "running",
       taskStatus: "generating",
-      taskStatusSummary: buildGenerationTaskStatusSummary(
-        current.tasks.map((task) => (task.id === queuedTask.id ? { ...task, status: "generating" } : task)),
-      ),
-      outputType: queuedTask.outputType,
-      aspectRatio,
-      ratio: current.job.ratio ?? undefined,
-      taskCount: current.tasks.length,
-      providerOrder: providerPolicy.join(","),
-      providerUsed: defaultProvider,
-      attempts: queuedTask.attempts + 1,
-      promptText: prompt,
+      providerUsed: "duomi",
     });
-    const generatedByPolicy = await requestImageByPolicy({
-      providerPolicy,
-      imageModel,
+    const createResult = await createDuomiImageGenerationTask(duomiConfig, {
       prompt,
-      aspectRatio,
-      size,
-      routeStartedAt,
-      taskDeadlineAt,
-      allowProviderFallback,
+      aspectRatio: normalizeDuomiAspectRatio(aspectRatio),
     });
-    const generated = generatedByPolicy.result;
-    const providerUsed = generatedByPolicy.providerUsed || defaultProvider;
-    cleanupContext.providerUsed = providerUsed;
-
-    if (!generated.ok) {
-      const failedStatus = isTimeoutCode(generated.errorCode) ? "timed_out" : "failed";
+    if (createResult.ok && createResult.status === "created") {
       await updateImageGenerationTask({
         taskId: queuedTask.id,
-        status: failedStatus,
-        providerUsed,
-        errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        errorMessage: generated.errorMessage || "Image generation failed.",
-      });
-      if (projectId) {
-        await updateWorkspaceProjectPageImage({
-          userEmail: email,
-          projectId,
-          outputType: queuedTask.outputType || current.job.intent || "poster",
-          pageIndex: queuedTask.taskIndex,
-          taskId: queuedTask.id,
-          status: failedStatus,
-          errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        });
-      }
-      logOpsEvent({
-        category: "image",
-        action: "image_task_generation_failed",
-        status: "error",
-        source: providerUsed,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        message: generated.errorMessage || "Image generation failed.",
-        details: {
-          stage: "provider_generation",
-          projectTraceId,
-          jobId,
-          taskId: queuedTask.id,
-          taskIndex: queuedTask.taskIndex,
-          ratio: aspectRatio,
-          providerPolicy,
-          attemptedProviders: generatedByPolicy.attemptedProviders,
-          skippedProviders: generatedByPolicy.skippedProviders,
-          providerFallbackDisabled: generatedByPolicy.providerFallbackDisabled,
-          providerAttempts: generatedByPolicy.attempts,
-          renderUrlExists: false,
-          assetPathExists: false,
-        },
-      });
-      const finalState = await syncImageGenerationJobFinalStatus(jobId);
-      await applyRefundsForFailedImageGenerationTasks({
-        job: finalState?.job ?? current.job,
-        tasks: finalState?.tasks ?? current.tasks,
-        source: "image_task_run",
-      });
-      const resolvedTasks = finalState?.tasks ?? current.tasks;
-      const resolvedJob = finalState?.job ?? current.job;
-      await logGenerationOpsEvent({
-        action: "generation.provider.failure",
-        status: "error",
-        source: providerUsed,
-        code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        message: generated.errorMessage || "Image generation failed.",
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: providerPolicy.join(","),
-        providerUsed,
-        attempts: queuedTask.attempts + 1,
-        promptText: prompt,
-        durationMs: Date.now() - taskStartedAt,
-        errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        safeErrorMessage: generated.errorMessage || "Image generation failed.",
-      });
-      await logGenerationOpsEvent({
-        action: "generation.tasks.run.failure",
-        status: "error",
-        source: providerUsed,
-        code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        message: generated.errorMessage || "Image generation failed.",
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: providerPolicy.join(","),
-        providerUsed,
-        attempts: queuedTask.attempts + 1,
-        promptText: prompt,
-        durationMs: Date.now() - routeStartedAt,
-        errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        safeErrorMessage: generated.errorMessage || "Image generation failed.",
-      });
-      await logGenerationOpsEvent({
-        action: "generation.trace.summary",
-        status: "error",
-        source: providerUsed,
-        code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        message: generated.errorMessage || "Image generation failed.",
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: providerPolicy.join(","),
-        providerUsed,
-        attempts: queuedTask.attempts + 1,
-        promptText: prompt,
-        durationMs: Date.now() - routeStartedAt,
-        errorCode: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        safeErrorMessage: generated.errorMessage || "Image generation failed.",
-      });
-      return NextResponse.json({
-        ok: true,
-        job: resolvedJob,
-        tasks: resolvedTasks.map((task) => serializeTask(task, imageModel)),
-        processed: true,
-        error: generated.errorMessage || "Image generation failed.",
-        code: generated.errorCode || "IMAGE_PROVIDER_FAILED",
-        attemptedProviders: generatedByPolicy.attemptedProviders,
-        skippedProviders: generatedByPolicy.skippedProviders,
-        providerFallbackDisabled: generatedByPolicy.providerFallbackDisabled,
-        providerAttempts: generatedByPolicy.attempts,
-      });
-    }
-    await logGenerationOpsEvent({
-      action: "generation.provider.success",
-      status: "ok",
-      source: providerUsed,
-      message: "Provider generation returned an image URL.",
-      userEmail: email,
-      projectId: projectId ?? undefined,
-      runId: current.job.runId ?? undefined,
-      jobId,
-      taskId: queuedTask.id,
-      taskIndex: queuedTask.taskIndex,
-      idempotencyKey: current.job.idempotencyKey ?? undefined,
-      jobStatus: "running",
-      taskStatus: "asset_downloading",
-      taskStatusSummary: buildGenerationTaskStatusSummary(
-        current.tasks.map((task) => (task.id === queuedTask.id ? { ...task, status: "asset_downloading" } : task)),
-      ),
-      outputType: queuedTask.outputType,
-      aspectRatio,
-      ratio: current.job.ratio ?? undefined,
-      taskCount: current.tasks.length,
-      providerOrder: providerPolicy.join(","),
-      providerUsed,
-      attempts: queuedTask.attempts + 1,
-      promptText: prompt,
-      durationMs: Date.now() - taskStartedAt,
-    });
-
-    await updateImageGenerationTask({
-      taskId: queuedTask.id,
-      status: "asset_downloading",
-      providerUsed,
-      rawImageUrl: generated.imageUrl,
-    });
-
-    const remainingRouteBudget = normalizeRouteBudgetMs() - (Date.now() - routeStartedAt);
-    const remainingTaskBudget = taskDeadlineAt - Date.now();
-    const assetDownloadTimeoutMs = Math.min(
-      normalizeAssetDownloadTimeoutMs(),
-      Math.max(15_000, remainingRouteBudget - 4_000),
-      Math.max(10_000, remainingTaskBudget - 4_000),
-    );
-    if (remainingTaskBudget < 10_000) {
-      throw new Error("IMAGE_TASK_TIMEOUT: no task budget left before asset persistence.");
-    }
-
-    let persisted: Awaited<ReturnType<typeof persistRemoteImageAsset>>;
-    try {
-      persisted = await persistRemoteImageAsset({
-        taskId: queuedTask.id,
-        projectId,
-        sourceUrl: generated.imageUrl,
-        timeoutMs: assetDownloadTimeoutMs,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Image asset persistence failed.";
-      const mappedCode = (() => {
-        if (/IMAGE_STORAGE_NOT_CONFIGURED/i.test(message)) return "IMAGE_STORAGE_NOT_CONFIGURED";
-        if (/IMAGE_DOWNLOAD_INVALID_CONTENT_TYPE/i.test(message)) return "IMAGE_DOWNLOAD_INVALID_CONTENT_TYPE";
-        if (/IMAGE_UPLOAD_FAILED/i.test(message)) return "IMAGE_UPLOAD_FAILED";
-        if (/IMAGE_DOWNLOAD_FAILED/i.test(message)) return "IMAGE_DOWNLOAD_FAILED";
-        if (/IMAGE_TASK_TIMEOUT/i.test(message)) return "IMAGE_TASK_TIMEOUT";
-        return "IMAGE_ASSET_PERSIST_FAILED";
-      })();
-      const failedStatus = isTimeoutCode(mappedCode) ? "timed_out" : "failed";
-      await updateImageGenerationTask({
-        taskId: queuedTask.id,
-        status: failedStatus,
-        providerUsed,
-        rawImageUrl: generated.imageUrl,
-        errorCode: mappedCode,
-        errorMessage: message,
-      });
-      if (projectId) {
-        await updateWorkspaceProjectPageImage({
-          userEmail: email,
-          projectId,
-          outputType: queuedTask.outputType || current.job.intent || "poster",
-          pageIndex: queuedTask.taskIndex,
-          taskId: queuedTask.id,
-          status: failedStatus,
-          rawImageUrl: generated.imageUrl,
-          errorCode: mappedCode,
-        });
-      }
-      logOpsEvent({
-        category: "image",
-        action: "image_task_generation_failed",
-        status: "error",
-        source: providerUsed,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        code: mappedCode,
-        message,
-        details: {
-          stage: "asset_download",
-          projectTraceId,
-          jobId,
-          taskId: queuedTask.id,
-          taskIndex: queuedTask.taskIndex,
-          providerPolicy,
-          attemptedProviders: generatedByPolicy.attemptedProviders,
-          skippedProviders: generatedByPolicy.skippedProviders,
-          providerFallbackDisabled: generatedByPolicy.providerFallbackDisabled,
-          providerAttempts: generatedByPolicy.attempts,
-          renderUrlExists: false,
-          assetPathExists: false,
-        },
-      });
-      const finalState = await syncImageGenerationJobFinalStatus(jobId);
-      await applyRefundsForFailedImageGenerationTasks({
-        job: finalState?.job ?? current.job,
-        tasks: finalState?.tasks ?? current.tasks,
-        source: "image_task_run",
-      });
-      const resolvedTasks = finalState?.tasks ?? current.tasks;
-      const resolvedJob = finalState?.job ?? current.job;
-      await logGenerationOpsEvent({
-        action: "generation.asset.persist.failure",
-        status: "error",
-        source: providerUsed,
-        code: mappedCode,
-        message,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: providerPolicy.join(","),
-        providerUsed,
-        attempts: queuedTask.attempts + 1,
-        promptText: prompt,
-        renderUrl: null,
-        assetPath: null,
-        durationMs: Date.now() - taskStartedAt,
-        errorCode: mappedCode,
-        safeErrorMessage: message,
-      });
-      await logGenerationOpsEvent({
-        action: "generation.tasks.run.failure",
-        status: "error",
-        source: providerUsed,
-        code: mappedCode,
-        message,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: providerPolicy.join(","),
-        providerUsed,
-        attempts: queuedTask.attempts + 1,
-        promptText: prompt,
-        durationMs: Date.now() - routeStartedAt,
-        errorCode: mappedCode,
-        safeErrorMessage: message,
-      });
-      await logGenerationOpsEvent({
-        action: "generation.trace.summary",
-        status: "error",
-        source: providerUsed,
-        code: mappedCode,
-        message,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: providerPolicy.join(","),
-        providerUsed,
-        attempts: queuedTask.attempts + 1,
-        promptText: prompt,
-        durationMs: Date.now() - routeStartedAt,
-        errorCode: mappedCode,
-        safeErrorMessage: message,
-      });
-      return NextResponse.json({
-        ok: true,
-        job: resolvedJob,
-        tasks: resolvedTasks.map((task) => serializeTask(task, imageModel)),
-        processed: true,
-        error: message,
-        code: mappedCode,
-      });
-    }
-    const renderUrl = persisted.renderUrl || buildImageRenderUrl(queuedTask.id, Date.now());
-    await updateImageGenerationTask({
-      taskId: queuedTask.id,
-      status: "asset_ready",
-      providerUsed,
-      rawImageUrl: generated.imageUrl,
-      renderUrl,
-      assetPath: persisted.assetPath,
-      mimeType: persisted.mimeType,
-    });
-    if (projectId) {
-      await updateWorkspaceProjectPageImage({
-        userEmail: email,
-        projectId,
-        outputType: queuedTask.outputType || current.job.intent || "poster",
-        pageIndex: queuedTask.taskIndex,
-        taskId: queuedTask.id,
-        status: "asset_ready",
-        imageUrl: renderUrl,
-        rawImageUrl: generated.imageUrl,
-        assetPath: persisted.assetPath,
+        status: "generating",
+        providerUsed: "duomi",
+        rawImageUrl: null,
         errorCode: null,
+        errorMessage: encodeImageGenerationProviderTaskMetadata({
+          provider: "duomi",
+          providerTaskId: createResult.providerTaskId,
+          status: "created",
+          startedAt: taskStartedAt,
+          lastPolledAt: Date.now(),
+          deadlineAt: taskDeadlineAt,
+        }),
       });
-    }
-
-    logImageTaskRunEvent({
-      requestId: current.job.idempotencyKey || current.job.runId || jobId,
-      jobId,
-      projectId,
-      userEmail: email,
-      taskCount: current.tasks.length,
-      currentStep: "asset-ready",
-      provider: providerUsed,
-      model: imageModel,
-      durationMs: Date.now() - taskStartedAt,
-      generatedCount: 1,
-      failedCount: 0,
-      taskId: queuedTask.id,
-      taskIndex: queuedTask.taskIndex,
-    });
-    logOpsEvent({
-      category: "image",
-      action: "image_task_generation_success",
-      status: "ok",
-      source: providerUsed,
-      userEmail: email,
-      projectId: projectId ?? undefined,
-      message: "Image task generated and asset persisted.",
-        details: {
-          stage: "asset_ready",
-          projectTraceId,
-          jobId,
-          taskId: queuedTask.id,
-          taskIndex: queuedTask.taskIndex,
-          bytes: persisted.byteLength,
-          providerPolicy,
-          attemptedProviders: generatedByPolicy.attemptedProviders,
-          skippedProviders: generatedByPolicy.skippedProviders,
-          providerFallbackDisabled: generatedByPolicy.providerFallbackDisabled,
-          providerAttempts: generatedByPolicy.attempts,
-          renderUrlExists: Boolean(renderUrl),
-          assetPathExists: Boolean(persisted.assetPath),
-        },
-      });
-    await logGenerationOpsEvent({
-      action: "generation.asset.persist.success",
-      status: "ok",
-      source: providerUsed,
-      message: "Image asset persisted successfully.",
-      userEmail: email,
-      projectId: projectId ?? undefined,
-      runId: current.job.runId ?? undefined,
-      jobId,
-      taskId: queuedTask.id,
-      taskIndex: queuedTask.taskIndex,
-      idempotencyKey: current.job.idempotencyKey ?? undefined,
-      jobStatus: "running",
-      taskStatus: "asset_ready",
-      taskStatusSummary: buildGenerationTaskStatusSummary(
-        current.tasks.map((task) => (task.id === queuedTask.id ? { ...task, status: "asset_ready" } : task)),
-      ),
-      outputType: queuedTask.outputType,
-      aspectRatio,
-      ratio: current.job.ratio ?? undefined,
-      taskCount: current.tasks.length,
-      providerOrder: providerPolicy.join(","),
-      providerUsed,
-      attempts: queuedTask.attempts + 1,
-      promptText: prompt,
-      renderUrl,
-      assetPath: persisted.assetPath,
-      durationMs: Date.now() - taskStartedAt,
-    });
-
-    const finalState = await syncImageGenerationJobFinalStatus(jobId);
-    await applyRefundsForFailedImageGenerationTasks({
-      job: finalState?.job ?? current.job,
-      tasks: finalState?.tasks ?? current.tasks,
-      source: "image_task_run",
-    });
-    const resolvedTasks = finalState?.tasks ?? current.tasks;
-    const resolvedJob = finalState?.job ?? current.job;
-    await logGenerationOpsEvent({
-      action: "generation.tasks.run.success",
-      status: "ok",
-      source: providerUsed,
-      message: "Image task completed successfully.",
-      userEmail: email,
-      projectId: projectId ?? undefined,
-      runId: resolvedJob.runId ?? undefined,
-      jobId,
-      taskId: queuedTask.id,
-      taskIndex: queuedTask.taskIndex,
-      idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-      jobStatus: resolvedJob.status,
-      taskStatus: "asset_ready",
-      taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-      outputType: queuedTask.outputType,
-      aspectRatio,
-      ratio: resolvedJob.ratio ?? undefined,
-      taskCount: resolvedTasks.length,
-      providerOrder: providerPolicy.join(","),
-      providerUsed,
-      attempts: queuedTask.attempts + 1,
-      promptText: prompt,
-      renderUrl,
-      assetPath: persisted.assetPath,
-      durationMs: Date.now() - routeStartedAt,
-    });
-    await logGenerationOpsEvent({
-      action: "generation.trace.summary",
-      status: resolvedJob.status === "completed" ? "ok" : resolvedJob.status === "completed_with_errors" ? "info" : "ok",
-      source: providerUsed,
-      code: resolvedJob.errorCode ?? undefined,
-      message: resolvedJob.errorMessage || "Image generation trace completed.",
-      userEmail: email,
-      projectId: projectId ?? undefined,
-      runId: resolvedJob.runId ?? undefined,
-      jobId,
-      taskId: queuedTask.id,
-      taskIndex: queuedTask.taskIndex,
-      idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-      jobStatus: resolvedJob.status,
-      taskStatus: "asset_ready",
-      taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-      outputType: queuedTask.outputType,
-      aspectRatio,
-      ratio: resolvedJob.ratio ?? undefined,
-      taskCount: resolvedTasks.length,
-      providerOrder: providerPolicy.join(","),
-      providerUsed,
-      attempts: queuedTask.attempts + 1,
-      promptText: prompt,
-      renderUrl,
-      assetPath: persisted.assetPath,
-      durationMs: Date.now() - routeStartedAt,
-      errorCode: resolvedJob.errorCode ?? undefined,
-      safeErrorMessage: resolvedJob.errorMessage ?? undefined,
-    });
-    return;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Image task run failed.";
-    const code = isTimeoutCode(message) ? "IMAGE_TASK_TIMEOUT" : "IMAGE_TASK_RUN_FAILED";
-    const failedStatus = isTimeoutCode(code) ? "timed_out" : "failed";
-    const { email, jobId, queuedTask, current, imageModel, providerUsed, projectId } = cleanupContext;
-    if (email && jobId && queuedTask && current) {
-      await updateImageGenerationTask({
-        taskId: queuedTask.id,
-        status: failedStatus,
-        providerUsed: providerUsed || queuedTask.providerUsed,
-        errorCode: code,
-        errorMessage: message,
-      }).catch(() => undefined);
       if (projectId) {
         await updateWorkspaceProjectPageImage({
           userEmail: email,
@@ -1168,122 +1027,72 @@ export async function POST(request: NextRequest) {
           outputType: queuedTask.outputType || current.job.intent || "poster",
           pageIndex: queuedTask.taskIndex,
           taskId: queuedTask.id,
-          status: failedStatus,
-          errorCode: code,
-        }).catch(() => undefined);
+          status: "generating",
+          errorCode: null,
+        });
       }
-      const finalState = await syncImageGenerationJobFinalStatus(jobId).catch(() => null);
-      await applyRefundsForFailedImageGenerationTasks({
-        job: finalState?.job ?? current.job,
-        tasks: finalState?.tasks ?? current.tasks,
-        source: "image_task_run_internal_failure",
-      }).catch(() => undefined);
-      logOpsEvent({
-        category: "image",
-        action: "image_task_internal_failure_marked",
-        status: "error",
-        source: providerUsed || "unknown",
+      const latestState = await getImageGenerationJobById(jobId);
+      await logGenerationOpsEvent({
+        action: "generation.provider.create.success",
+        status: "ok",
+        source: "duomi",
+        message: "Duomi async image provider task was created.",
         userEmail: email,
         projectId: projectId ?? undefined,
-        code,
-        message,
-        details: {
-          stage: "image_task_run_internal_cleanup",
-          jobId,
-          taskId: queuedTask.id,
-          taskIndex: queuedTask.taskIndex,
-          durationMs: Date.now() - routeStartedAt,
+        runId: current.job.runId ?? undefined,
+        jobId,
+        taskId: queuedTask.id,
+        taskIndex: queuedTask.taskIndex,
+        jobStatus: latestState?.job.status ?? "running",
+        taskStatus: "generating",
+        providerUsed: "duomi",
+        durationMs: Date.now() - taskStartedAt,
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          accepted: true,
+          processed: false,
+          status: "processing",
+          job: latestState?.job ?? current.job,
+          tasks: (latestState?.tasks ?? current.tasks).map((task) => serializeTask(task, imageModel)),
+          taskId: claimedTask.id,
         },
-      });
-      const resolvedTasks = finalState?.tasks ?? current.tasks;
-      const resolvedJob = finalState?.job ?? current.job;
-      await logGenerationOpsEvent({
-        action: "generation.tasks.run.failure",
-        status: "error",
-        source: providerUsed || "unknown",
-        code,
-        message,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio: queuedTask.aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: queuedTask.providerOrder,
-        providerUsed: providerUsed || queuedTask.providerUsed || undefined,
-        attempts: queuedTask.attempts + 1,
-        promptText: queuedTask.promptText,
-        durationMs: Date.now() - routeStartedAt,
-        errorCode: code,
-        safeErrorMessage: message,
-      });
-      await logGenerationOpsEvent({
-        action: "generation.trace.summary",
-        status: "error",
-        source: providerUsed || "unknown",
-        code,
-        message,
-        userEmail: email,
-        projectId: projectId ?? undefined,
-        runId: resolvedJob.runId ?? undefined,
-        jobId,
-        taskId: queuedTask.id,
-        taskIndex: queuedTask.taskIndex,
-        idempotencyKey: resolvedJob.idempotencyKey ?? undefined,
-        jobStatus: resolvedJob.status,
-        taskStatus: failedStatus,
-        taskStatusSummary: buildGenerationTaskStatusSummary(resolvedTasks),
-        outputType: queuedTask.outputType,
-        aspectRatio: queuedTask.aspectRatio,
-        ratio: resolvedJob.ratio ?? undefined,
-        taskCount: resolvedTasks.length,
-        providerOrder: queuedTask.providerOrder,
-        providerUsed: providerUsed || queuedTask.providerUsed || undefined,
-        attempts: queuedTask.attempts + 1,
-        promptText: queuedTask.promptText,
-        durationMs: Date.now() - routeStartedAt,
-        errorCode: code,
-        safeErrorMessage: message,
-      });
-      return;
+        { status: 202 },
+      );
     }
-    logOpsEvent({
-      category: "image",
-      action: "image_task_run_failed",
-      status: "error",
-      source: "unknown",
-      code,
-      message,
-      details: {
-        stage: "image_task_run_internal",
-        errorStack: error instanceof Error ? error.stack : null,
-        durationMs: Date.now() - routeStartedAt,
-      },
+    if (createResult.ok && createResult.status === "succeeded") {
+      await logGenerationOpsEvent({
+        action: "generation.provider.create.success",
+        status: "ok",
+        source: "duomi",
+        message: "Duomi async create returned an image immediately.",
+        userEmail: email,
+        projectId: projectId ?? undefined,
+        runId: current.job.runId ?? undefined,
+        jobId,
+        taskId: queuedTask.id,
+        taskIndex: queuedTask.taskIndex,
+        jobStatus: "running",
+        taskStatus: "asset_downloading",
+        providerUsed: "duomi",
+        durationMs: Date.now() - taskStartedAt,
+      });
+      return persistGeneratedImage({
+        task: queuedTask,
+        providerUsed: "duomi",
+        imageUrl: createResult.imageUrl,
+      });
+    }
+    return markTaskFailed({
+      task: queuedTask,
+      status: isTimeoutCode(createResult.errorCode) ? "timed_out" : "failed",
+      providerUsed: "duomi",
+      errorCode: createResult.errorCode || "DUOMI_CREATE_FAILED",
+      errorMessage: createResult.errorMessage || "Duomi provider task creation failed.",
+      source: "image_task_run_provider_create",
     });
-    return;
-      }
-    });
-    const acceptedState = await getImageGenerationJobById(jobId);
-    return NextResponse.json(
-      {
-        ok: true,
-        accepted: true,
-        processed: false,
-        status: "processing",
-        job: acceptedState?.job ?? current.job,
-        tasks: (acceptedState?.tasks ?? current.tasks).map((task) => serializeTask(task, imageModel)),
-        taskId: claimedTask.id,
-      },
-      { status: 202 },
-    );
+
   } catch (error) {
     const message = error instanceof Error ? error.message : "Image task runner failed.";
     const code = isTimeoutCode(message) ? "IMAGE_TASK_TIMEOUT" : "IMAGE_TASK_RUN_FAILED";

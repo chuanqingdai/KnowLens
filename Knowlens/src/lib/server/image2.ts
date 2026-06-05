@@ -39,7 +39,40 @@ export type Image2ProviderFailure = {
 
 export type Image2ProviderResult = Image2ProviderSuccess | Image2ProviderFailure;
 
-type Image2AllowedAspectRatio = "auto" | "1:1" | "9:16" | "16:9" | "4:3" | "3:4";
+export type Image2AsyncCreateResult =
+  | {
+      ok: true;
+      status: "created";
+      provider: "duomi";
+      providerTaskId: string;
+      rawText: string;
+    }
+  | {
+      ok: true;
+      status: "succeeded";
+      provider: "duomi";
+      imageUrl: string;
+      rawText: string;
+    }
+  | Image2ProviderFailure;
+
+export type Image2AsyncPollResult =
+  | {
+      ok: true;
+      status: "processing";
+      providerStatus?: string;
+      rawText?: string;
+    }
+  | {
+      ok: true;
+      status: "succeeded";
+      imageUrl: string;
+      providerStatus?: string;
+      rawText: string;
+    }
+  | Image2ProviderFailure;
+
+export type Image2AllowedAspectRatio = "auto" | "1:1" | "9:16" | "16:9" | "4:3" | "3:4";
 
 const IMAGE2_ASPECT_RATIOS: ReadonlyArray<Image2AllowedAspectRatio> = [
   "auto",
@@ -84,6 +117,14 @@ const FALLBACK_POLL_TOTAL_TIMEOUT_MS = Number.parseInt(
 );
 const PROVIDER_FETCH_TIMEOUT_MS = Number.parseInt(
   process.env.IMAGE2_PROVIDER_FETCH_TIMEOUT_MS || "360000",
+  10,
+);
+const STEP_RUN_CREATE_TIMEOUT_MS = Number.parseInt(
+  process.env.IMAGE2_STEP_RUN_CREATE_TIMEOUT_MS || "30000",
+  10,
+);
+const STEP_RUN_POLL_TIMEOUT_MS = Number.parseInt(
+  process.env.IMAGE2_STEP_RUN_POLL_TIMEOUT_MS || "12000",
   10,
 );
 
@@ -339,6 +380,13 @@ export function extractImage2Url(data: unknown) {
   const nestedData = obj.data;
   if (nestedData && typeof nestedData === "object" && !Array.isArray(nestedData)) {
     const dataObj = nestedData as Record<string, unknown>;
+    const images = Array.isArray(dataObj.images) ? dataObj.images : [];
+    for (const imageItem of images) {
+      const url = extractFromOutputLike(imageItem);
+      if (url) {
+        return url;
+      }
+    }
     const outputs = Array.isArray(dataObj.outputs) ? dataObj.outputs : [];
     for (const outputItem of outputs) {
       const url = extractFromOutputLike(outputItem);
@@ -696,6 +744,20 @@ function isDuomiFailedStatus(statusValue: unknown) {
   return normalized === "failed" || normalized === "error" || normalized === "cancelled" || normalized === "canceled";
 }
 
+function normalizeStepRunCreateTimeoutMs() {
+  if (!Number.isFinite(STEP_RUN_CREATE_TIMEOUT_MS)) {
+    return 30_000;
+  }
+  return Math.max(5_000, Math.min(30_000, STEP_RUN_CREATE_TIMEOUT_MS));
+}
+
+function normalizeStepRunPollTimeoutMs() {
+  if (!Number.isFinite(STEP_RUN_POLL_TIMEOUT_MS)) {
+    return 12_000;
+  }
+  return Math.max(3_000, Math.min(20_000, STEP_RUN_POLL_TIMEOUT_MS));
+}
+
 function appendQueryParam(url: string, key: string, value: string) {
   if (!url) {
     return url;
@@ -737,9 +799,17 @@ function buildDuomiPollCandidates(createEndpoint: string, taskId: string, pollEn
     candidates.add(appendQueryParam(withoutQuery, "id", taskId));
     candidates.add(`${withoutQuery}/${encodeURIComponent(taskId)}`);
   }
+  candidates.add(`https://duomiapi.com/v1/tasks/${encodeURIComponent(taskId)}`);
   candidates.add(`https://duomiapi.com/v1/images/generations/${encodeURIComponent(taskId)}`);
   candidates.add(`https://duomiapi.com/v1/images/generations/result/${encodeURIComponent(taskId)}`);
-  return Array.from(candidates);
+  return Array.from(candidates).sort((a, b) => {
+    const aIsTask = /\/v1\/tasks\//i.test(a);
+    const bIsTask = /\/v1\/tasks\//i.test(b);
+    if (aIsTask !== bIsTask) {
+      return aIsTask ? -1 : 1;
+    }
+    return 0;
+  });
 }
 
 async function requestDuomiFallbackGeneration(
@@ -852,13 +922,14 @@ async function requestDuomiFallbackGeneration(
 
         const rootStatus =
           pollBody && typeof pollBody === "object"
-            ? (pollBody as Record<string, unknown>).status
+            ? ((pollBody as Record<string, unknown>).state ?? (pollBody as Record<string, unknown>).status)
             : null;
         const dataStatus =
           pollBody && typeof pollBody === "object"
             ? (pollBody as Record<string, unknown>).data &&
               typeof (pollBody as Record<string, unknown>).data === "object"
-              ? ((pollBody as Record<string, unknown>).data as Record<string, unknown>).status
+              ? (((pollBody as Record<string, unknown>).data as Record<string, unknown>).state ??
+                ((pollBody as Record<string, unknown>).data as Record<string, unknown>).status)
               : null
             : null;
         const currentStatus = dataStatus ?? rootStatus;
@@ -895,6 +966,196 @@ async function requestDuomiFallbackGeneration(
     errorCode: "DUOMI_POLL_TIMEOUT",
     errorMessage: "Duomi provider did not return image URL in time.",
     detail: createRaw ? `task_id=${taskId}` : "",
+  };
+}
+
+export async function createDuomiImageGenerationTask(
+  duomi: Image2AsyncProviderConfig,
+  input: {
+    prompt: string;
+    aspectRatio: Image2AllowedAspectRatio;
+  },
+): Promise<Image2AsyncCreateResult> {
+  const createEndpoint = appendQueryParam(duomi.endpoint, "async", "true");
+  const createController = new AbortController();
+  const createTimeout = setTimeout(() => createController.abort(), normalizeStepRunCreateTimeoutMs());
+  try {
+    const createResponse = await fetch(createEndpoint, {
+      method: "POST",
+      headers: {
+        Authorization: duomi.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: duomi.model,
+        prompt: input.prompt,
+        size: input.aspectRatio === "auto" ? "1:1" : input.aspectRatio,
+      }),
+      signal: createController.signal,
+    });
+    const createRaw = await createResponse.text();
+    const createBody = parseJsonBody(createRaw);
+    if (!createResponse.ok) {
+      return {
+        ok: false,
+        errorCode: `DUOMI_HTTP_${createResponse.status}`,
+        errorMessage: "Duomi image provider request failed.",
+        detail: safeTextFromBody(createBody) || createRaw.slice(0, 360),
+        status: createResponse.status,
+        rawText: createRaw,
+      };
+    }
+
+    const immediateUrl = extractImage2Url(createBody);
+    if (immediateUrl) {
+      return {
+        ok: true,
+        status: "succeeded",
+        provider: "duomi",
+        imageUrl: immediateUrl,
+        rawText: createRaw,
+      };
+    }
+
+    const providerTaskId = extractDuomiTaskId(createBody);
+    if (!providerTaskId) {
+      return {
+        ok: false,
+        errorCode: "DUOMI_MISSING_TASK_ID",
+        errorMessage: "Duomi response has no task id.",
+        detail: createRaw.slice(0, 360),
+        rawText: createRaw,
+      };
+    }
+    return {
+      ok: true,
+      status: "created",
+      provider: "duomi",
+      providerTaskId,
+      rawText: createRaw,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: error instanceof DOMException && error.name === "AbortError" ? "DUOMI_TIMEOUT" : "DUOMI_FETCH_ERROR",
+      errorMessage:
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Duomi image provider request timed out."
+          : "Duomi image provider request failed.",
+      detail: error instanceof Error ? error.message : "Unknown error",
+    };
+  } finally {
+    clearTimeout(createTimeout);
+  }
+}
+
+export async function pollDuomiImageGenerationTask(
+  duomi: Image2AsyncProviderConfig,
+  input: {
+    providerTaskId: string;
+  },
+): Promise<Image2AsyncPollResult> {
+  const providerTaskId = input.providerTaskId.trim();
+  if (!providerTaskId) {
+    return {
+      ok: false,
+      errorCode: "DUOMI_MISSING_TASK_ID",
+      errorMessage: "Duomi provider task id is missing.",
+    };
+  }
+  const pollCandidates = buildDuomiPollCandidates(duomi.endpoint, providerTaskId, duomi.pollEndpoint).slice(0, 4);
+  let lastFailure: Image2ProviderFailure | null = null;
+  for (const candidate of pollCandidates) {
+    const pollController = new AbortController();
+    const pollTimeout = setTimeout(() => pollController.abort(), normalizeStepRunPollTimeoutMs());
+    try {
+      const pollResponse = await fetch(candidate, {
+        method: "GET",
+        headers: {
+          Authorization: duomi.apiKey,
+        },
+        signal: pollController.signal,
+      });
+      const pollRaw = await pollResponse.text();
+      const pollBody = parseJsonBody(pollRaw);
+      if (!pollResponse.ok) {
+        lastFailure = {
+          ok: false,
+          errorCode: `DUOMI_POLL_HTTP_${pollResponse.status}`,
+          errorMessage: "Duomi image provider polling failed.",
+          detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
+          status: pollResponse.status,
+          rawText: pollRaw,
+        };
+        continue;
+      }
+
+      const imageUrl = extractImage2Url(pollBody);
+      if (imageUrl) {
+        return {
+          ok: true,
+          status: "succeeded",
+          imageUrl,
+          providerStatus: "succeeded",
+          rawText: pollRaw,
+        };
+      }
+
+      const rootStatus =
+        pollBody && typeof pollBody === "object"
+          ? ((pollBody as Record<string, unknown>).state ?? (pollBody as Record<string, unknown>).status)
+          : null;
+      const dataStatus =
+        pollBody && typeof pollBody === "object"
+          ? (pollBody as Record<string, unknown>).data &&
+            typeof (pollBody as Record<string, unknown>).data === "object"
+            ? (((pollBody as Record<string, unknown>).data as Record<string, unknown>).state ??
+              ((pollBody as Record<string, unknown>).data as Record<string, unknown>).status)
+            : null
+          : null;
+      const currentStatus = dataStatus ?? rootStatus;
+      if (isDuomiFailedStatus(currentStatus)) {
+        return {
+          ok: false,
+          errorCode: "DUOMI_RESULT_FAILED",
+          errorMessage: "Duomi provider returned failed status.",
+          detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
+          rawText: pollRaw,
+        };
+      }
+      if (isDuomiDoneStatus(currentStatus)) {
+        return {
+          ok: false,
+          errorCode: "DUOMI_NO_URL",
+          errorMessage: "Duomi provider completed but image URL is empty.",
+          detail: safeTextFromBody(pollBody) || pollRaw.slice(0, 360),
+          rawText: pollRaw,
+        };
+      }
+      return {
+        ok: true,
+        status: "processing",
+        providerStatus: typeof currentStatus === "string" ? currentStatus : undefined,
+        rawText: pollRaw,
+      };
+    } catch (error) {
+      lastFailure = {
+        ok: false,
+        errorCode: error instanceof DOMException && error.name === "AbortError" ? "DUOMI_TIMEOUT" : "DUOMI_FETCH_ERROR",
+        errorMessage:
+          error instanceof DOMException && error.name === "AbortError"
+            ? "Duomi image provider polling timed out."
+            : "Duomi image provider polling failed.",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      };
+      continue;
+    } finally {
+      clearTimeout(pollTimeout);
+    }
+  }
+  return lastFailure || {
+    ok: true,
+    status: "processing",
   };
 }
 
