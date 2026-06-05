@@ -68,6 +68,15 @@ export type ImageGenerationTaskRow = {
   updatedAt: string;
 };
 
+export type ImageGenerationProviderTaskMetadata = {
+  provider: string;
+  providerTaskId: string;
+  status?: string;
+  startedAt?: number;
+  lastPolledAt?: number;
+  deadlineAt?: number;
+};
+
 export type ImageGenerationJobRow = {
   id: string;
   userEmail: string;
@@ -120,6 +129,7 @@ const ABANDONED_JOB_TIMEOUT_MS = (() => {
   }
   return Math.max(60_000, Math.min(86_400_000, parsed));
 })();
+const PROVIDER_TASK_METADATA_PREFIX = "provider-task:";
 
 function nowIso() {
   return new Date().toISOString();
@@ -140,6 +150,62 @@ export function isImageGenerationSuccessStatus(status?: string | null) {
 
 export function isImageGenerationFailedStatus(status?: string | null) {
   return FAILED_IMAGE_GENERATION_STATUSES.has((status || "").trim() as ImageGenerationJobStatus);
+}
+
+export function isImageGenerationProviderTaskMetadata(value?: string | null) {
+  return (value || "").trim().startsWith(PROVIDER_TASK_METADATA_PREFIX);
+}
+
+export function encodeImageGenerationProviderTaskMetadata(input: ImageGenerationProviderTaskMetadata) {
+  return `${PROVIDER_TASK_METADATA_PREFIX}${JSON.stringify({
+    provider: normalizeText(input.provider, 40),
+    providerTaskId: normalizeText(input.providerTaskId, 300),
+    status: normalizeOptionalText(input.status, 80),
+    startedAt: Number.isFinite(input.startedAt) ? Math.round(Number(input.startedAt)) : undefined,
+    lastPolledAt: Number.isFinite(input.lastPolledAt) ? Math.round(Number(input.lastPolledAt)) : undefined,
+    deadlineAt: Number.isFinite(input.deadlineAt) ? Math.round(Number(input.deadlineAt)) : undefined,
+  })}`.slice(0, 1200);
+}
+
+export function decodeImageGenerationProviderTaskMetadata(value?: string | null): ImageGenerationProviderTaskMetadata | null {
+  const raw = (value || "").trim();
+  if (!raw.startsWith(PROVIDER_TASK_METADATA_PREFIX)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw.slice(PROVIDER_TASK_METADATA_PREFIX.length)) as Record<string, unknown>;
+    const provider = typeof parsed.provider === "string" ? parsed.provider.trim() : "";
+    const providerTaskId = typeof parsed.providerTaskId === "string" ? parsed.providerTaskId.trim() : "";
+    if (!provider || !providerTaskId) {
+      return null;
+    }
+    return {
+      provider,
+      providerTaskId,
+      status: typeof parsed.status === "string" ? parsed.status.trim() : undefined,
+      startedAt: Number.isFinite(parsed.startedAt) ? Number(parsed.startedAt) : undefined,
+      lastPolledAt: Number.isFinite(parsed.lastPolledAt) ? Number(parsed.lastPolledAt) : undefined,
+      deadlineAt: Number.isFinite(parsed.deadlineAt) ? Number(parsed.deadlineAt) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function sanitizeImageGenerationRawImageUrl(value?: string | null) {
+  const raw = (value || "").trim();
+  if (!raw || isImageGenerationProviderTaskMetadata(raw)) {
+    return null;
+  }
+  return raw;
+}
+
+export function sanitizeImageGenerationTaskErrorMessage(value?: string | null) {
+  const raw = (value || "").trim();
+  if (!raw || isImageGenerationProviderTaskMetadata(raw)) {
+    return null;
+  }
+  return raw;
 }
 
 function normalizeText(input: string | undefined, max = 1000) {
@@ -1970,6 +2036,7 @@ export async function expireAbandonedImageGenerationJob(input: {
   timeoutMs?: number;
   source?: string;
   emitAbandonedLog?: boolean;
+  force?: boolean;
 }) {
   const result = await getImageGenerationJobById(input.jobId);
   if (!result) {
@@ -2002,7 +2069,7 @@ export async function expireAbandonedImageGenerationJob(input: {
     parseTimestampMs(result.job.updatedAt || result.job.createdAt),
     ...activeTasks.map((task) => parseTimestampMs(task.updatedAt || task.createdAt)),
   );
-  if (!latestActiveProgressMs || Date.now() - latestActiveProgressMs < timeoutMs) {
+  if (!input.force && (!latestActiveProgressMs || Date.now() - latestActiveProgressMs < timeoutMs)) {
     return result;
   }
 
