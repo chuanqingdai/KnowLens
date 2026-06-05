@@ -7,6 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "db:migrate": "node scripts/migrate-managed-schema.mjs",
     "optimize:landing-images": "node scripts/optimize-landing-images.mjs",
     "image2:smoke": "node scripts/image2-smoke.mjs",
     "regression:image-state": "node --test scripts/regression-image-generation-state.mjs",
