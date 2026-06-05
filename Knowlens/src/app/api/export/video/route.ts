@@ -165,25 +165,18 @@ export async function POST(request: Request) {
             "attachment; filename*=UTF-8''KnowLens.ai-storyboard-video.mp4",
         },
       });
-    } catch {
-      // 部分运行环境不存在 avconvert，自动回退为原始 webm 导出，避免中断用户下载。
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "MP4 export failed";
       logOpsEvent({
         category: "download",
-        action: "video_export_success",
-        status: "ok",
+        action: "video_export_failed",
+        status: "error",
         source: "video",
         userEmail: email,
-        message: "fallback_original_media",
+        code: "VIDEO_MP4_TRANSCODE_FAILED",
+        message,
       });
-      return new Response(new Uint8Array(inputBytes), {
-        status: 200,
-        headers: {
-          "Content-Type": sourceType === "application/octet-stream" ? "video/webm" : sourceType,
-          "Cache-Control": "no-store",
-          "Content-Disposition":
-            "attachment; filename*=UTF-8''KnowLens.ai-storyboard-video.webm",
-        },
-      });
+      return NextResponse.json({ error: "MP4 export failed. Please retry." }, { status: 500 });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "视频导出失败";
