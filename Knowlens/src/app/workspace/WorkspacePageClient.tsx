@@ -542,12 +542,12 @@ const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
-const GENERATION_REQUEST_TIMEOUT_MS = 120000;
 const GENERATION_CONFIRM_PREPARE_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_CREDITS_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS = 30000;
 const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 660000;
+const STEP_RUN_MAX_CONCURRENT_TASKS = 3;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
@@ -4541,35 +4541,17 @@ export default function WorkspacePage() {
           taskIndexes: tasks.map((task) => task.index),
         },
       });
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
       try {
         let responseOk = true;
         let responseStatus = 200;
         let payload: ImageGenerateBatchResponse | null = preparedPayload ?? null;
         if (!payload?.job?.id) {
-          try {
-            const response = await fetch("/api/workspace/image/generate-batch", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                ...buildGenerationRequestPayload(tasks),
-                idempotencyKey,
-                runId: activeRunId,
-                imageModelPolicy: "tuzi",
-              }),
-              signal: controller.signal,
-            });
-            responseOk = response.ok;
-            responseStatus = response.status;
-            payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-          } finally {
-            window.clearTimeout(timeoutId);
-          }
-        } else {
-          window.clearTimeout(timeoutId);
+          throw new Error(
+            tr(
+              "Generation job is not prepared. Please confirm generation again.",
+              "生成任务尚未准备完成，请重新确认生成。",
+            ),
+          );
         }
         const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
         let responseJobId = (payload?.job?.id || "").trim() || null;
@@ -4906,6 +4888,10 @@ export default function WorkspacePage() {
         };
         const pollJobStatus = async (jobId: string, initialPayload: ImageGenerateBatchResponse | null) => {
           const pollStartedAt = Date.now();
+          const pollTimeoutMs = Math.max(
+            GENERATION_JOB_POLL_TIMEOUT_MS,
+            GENERATION_JOB_POLL_TIMEOUT_MS * Math.max(1, tasks.length),
+          );
           emitUiEvent({
             action: "ui.job.poll.start",
             status: "info",
@@ -4916,14 +4902,15 @@ export default function WorkspacePage() {
             },
           });
           let latestPayload = initialPayload;
-          while (Date.now() - pollStartedAt < GENERATION_JOB_POLL_TIMEOUT_MS) {
+          while (Date.now() - pollStartedAt < pollTimeoutMs) {
             const status = (latestPayload?.job?.status || "").trim().toLowerCase();
             const taskStatuses = latestPayload?.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
             const hasPendingTask = taskStatuses.some((item) => pollActiveTaskStatuses.has(item));
-            const runnableTaskForRun = latestPayload?.tasks?.find((task) =>
-              pollActiveTaskStatuses.has((task.status || "").trim().toLowerCase()),
-            );
-            const hasRunnableTask = Boolean(runnableTaskForRun);
+            const runnableTasksForRun =
+              latestPayload?.tasks
+                ?.filter((task) => pollActiveTaskStatuses.has((task.status || "").trim().toLowerCase()))
+                .slice(0, STEP_RUN_MAX_CONCURRENT_TASKS) ?? [];
+            const hasRunnableTask = runnableTasksForRun.length > 0;
             const isRunningJob = status === "queued" || status === "running" || status === "processing";
             if (pollTerminalJobStatuses.has(status)) {
               writeReadyTasksFromPayload(latestPayload, jobId);
@@ -4985,95 +4972,111 @@ export default function WorkspacePage() {
               );
             }
             if (hasRunnableTask) {
-              const runTaskKey =
-                runnableTaskForRun?.taskId ||
-                `${jobId}:${runnableTaskForRun?.index || "unknown"}:${runnableTaskForRun?.status || "active"}`;
-              if (taskRunInFlightIds.has(runTaskKey)) {
+              const runCandidates = runnableTasksForRun
+                .map((task) => ({
+                  task,
+                  key: task.taskId || `${jobId}:${task.index || "unknown"}:${task.status || "active"}`,
+                }))
+                .filter((item) => !taskRunInFlightIds.has(item.key))
+                .slice(0, STEP_RUN_MAX_CONCURRENT_TASKS);
+              if (!runCandidates.length) {
                 await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
                 continue;
               }
-              let runResponse: Response;
-              taskRunInFlightIds.add(runTaskKey);
-              try {
-                runResponse = await fetch("/api/workspace/image/tasks/run", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  credentials: "same-origin",
-                  body: JSON.stringify({ jobId }),
-                });
-              } catch (error) {
-                taskRunInFlightIds.delete(runTaskKey);
-                const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
-                  method: "GET",
-                  credentials: "same-origin",
-                }).catch(() => null);
-                const statusPayload = statusResponse
-                  ? ((await statusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null)
-                  : null;
-                const recoveredPayload = mergePolledPayload(statusPayload, latestPayload, jobId);
-                if (recoveredPayload) {
-                  latestPayload = recoveredPayload;
-                  responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-                  writeReadyTasksFromPayload(latestPayload, jobId);
-                  const recoveredJobStatus = (latestPayload.job?.status || "").trim().toLowerCase();
-                  const recoveredTaskStatuses = latestPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
-                  const hasRecoveredActiveTask = recoveredTaskStatuses.some((item) => pollActiveTaskStatuses.has(item));
-                  if (pollTerminalJobStatuses.has(recoveredJobStatus)) {
-                    return latestPayload;
+              const runResults = await Promise.all(
+                runCandidates.map(async ({ task, key }) => {
+                  taskRunInFlightIds.add(key);
+                  try {
+                    const runResponse = await fetch("/api/workspace/image/tasks/run", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      credentials: "same-origin",
+                      body: JSON.stringify({ jobId, taskId: task.taskId }),
+                    });
+                    const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+                    return { task, runResponse, runPayload, error: null as unknown };
+                  } catch (error) {
+                    return { task, runResponse: null, runPayload: null, error };
+                  } finally {
+                    taskRunInFlightIds.delete(key);
                   }
-                  if (hasRecoveredActiveTask || recoveredJobStatus === "queued" || recoveredJobStatus === "running") {
-                    continue;
+                }),
+              );
+              for (const result of runResults) {
+                if (result.error) {
+                  const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+                    method: "GET",
+                    credentials: "same-origin",
+                  }).catch(() => null);
+                  const statusPayload = statusResponse
+                    ? ((await statusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null)
+                    : null;
+                  const recoveredPayload = mergePolledPayload(statusPayload, latestPayload, jobId);
+                  if (recoveredPayload) {
+                    latestPayload = recoveredPayload;
+                    responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+                    writeReadyTasksFromPayload(latestPayload, jobId);
+                    const recoveredJobStatus = (latestPayload.job?.status || "").trim().toLowerCase();
+                    const recoveredTaskStatuses = latestPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
+                    const hasRecoveredActiveTask = recoveredTaskStatuses.some((item) => pollActiveTaskStatuses.has(item));
+                    if (pollTerminalJobStatuses.has(recoveredJobStatus)) {
+                      return latestPayload;
+                    }
+                    if (hasRecoveredActiveTask || recoveredJobStatus === "queued" || recoveredJobStatus === "running") {
+                      continue;
+                    }
                   }
-                }
-                return buildPollFailurePayload(
-                  latestPayload,
-                  jobId,
-                  "IMAGE_TASK_RUN_FETCH_FAILED",
-                  error instanceof Error
-                    ? error.message
-                    : tr(
-                        "Image generation task runner could not be reached. Please retry manually.",
-                        "图片生成任务执行器无法连接。请手动重试。",
-                      ),
-                );
-              }
-              taskRunInFlightIds.delete(runTaskKey);
-              const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-              const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
-              if (mergedRunPayload) {
-                latestPayload = mergedRunPayload;
-                responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-                writeReadyTasksFromPayload(latestPayload, jobId);
-                const runCode = (runPayload?.code || "").trim().toUpperCase();
-                if (!runResponse.ok || pollBlockingRunCodes.has(runCode)) {
                   return buildPollFailurePayload(
                     latestPayload,
                     jobId,
-                    runCode || `HTTP_${runResponse.status}`,
+                    "IMAGE_TASK_RUN_FETCH_FAILED",
+                    result.error instanceof Error
+                      ? result.error.message
+                      : tr(
+                          "Image generation task runner could not be reached. Please retry manually.",
+                          "图片生成任务执行器无法连接。请手动重试。",
+                        ),
+                  );
+                }
+                const runResponse = result.runResponse;
+                const runPayload = result.runPayload;
+                const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
+                if (mergedRunPayload) {
+                  latestPayload = mergedRunPayload;
+                  responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+                  writeReadyTasksFromPayload(latestPayload, jobId);
+                  const runCode = (runPayload?.code || "").trim().toUpperCase();
+                  if (!runResponse?.ok || pollBlockingRunCodes.has(runCode)) {
+                    return buildPollFailurePayload(
+                      latestPayload,
+                      jobId,
+                      runCode || `HTTP_${runResponse?.status || 0}`,
+                      runPayload?.error ||
+                        tr(
+                          "Image generation could not start. Please retry manually.",
+                          "图片生成无法启动。请手动重试。",
+                        ),
+                    );
+                  }
+                  continue;
+                }
+                if (!runResponse?.ok) {
+                  return buildPollFailurePayload(
+                    latestPayload,
+                    jobId,
+                    runPayload?.code || `HTTP_${runResponse?.status || 0}`,
                     runPayload?.error ||
                       tr(
-                        "Image generation could not start. Please retry manually.",
-                        "图片生成无法启动。请手动重试。",
+                        "Image generation task runner failed. Please retry manually.",
+                        "图片生成任务执行失败。请手动重试。",
                       ),
                   );
                 }
-                await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
-                continue;
               }
-              if (!runResponse.ok) {
-                return buildPollFailurePayload(
-                  latestPayload,
-                  jobId,
-                  runPayload?.code || `HTTP_${runResponse.status}`,
-                  runPayload?.error ||
-                    tr(
-                      "Image generation task runner failed. Please retry manually.",
-                      "图片生成任务执行失败。请手动重试。",
-                    ),
-                );
-              }
+              await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
+              continue;
             }
             await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
             const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
@@ -5097,6 +5100,7 @@ export default function WorkspacePage() {
               jobId,
               runId: activeRunId,
               durationMs: Date.now() - pollStartedAt,
+              timeoutMs: pollTimeoutMs,
               finalJobStatus: latestPayload?.job?.status || "unknown",
             },
           });
@@ -5457,8 +5461,6 @@ export default function WorkspacePage() {
             stack: error instanceof Error ? error.stack : undefined,
           },
         });
-      } finally {
-        window.clearTimeout(timeoutId);
       }
     },
     [buildGenerationRequestPayload, currentEmail, emitFlowAudit, imageModel, refundImageTaskCredits, setGenerationRunContext, tr],
@@ -7690,7 +7692,6 @@ export default function WorkspacePage() {
         action: "prepare",
         idempotencyKey,
         runId: nextRunId,
-        imageModelPolicy: "tuzi",
       }, { step: "prepare job", timeoutMs: GENERATION_CONFIRM_PREPARE_TIMEOUT_MS });
       preparedJobId = (preparePayload.job?.id || "").trim() || null;
       if (!preparedJobId || !preparePayload.tasks?.length) {

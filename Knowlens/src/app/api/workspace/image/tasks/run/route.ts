@@ -48,6 +48,7 @@ const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PRO
 const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "590000", 10);
 const TASK_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_TASK_EXECUTION_BUDGET_MS || "570000", 10);
 const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "45000", 10);
+const STEP_RUN_MAX_ACTIVE_TASKS = 3;
 
 function ensureSafeOrigin(req: NextRequest) {
   const origin = req.headers.get("origin");
@@ -58,6 +59,10 @@ function ensureSafeOrigin(req: NextRequest) {
 }
 
 function normalizeJobId(value?: string) {
+  return (value || "").trim().slice(0, 120);
+}
+
+function normalizeTaskId(value?: string) {
   return (value || "").trim().slice(0, 120);
 }
 
@@ -124,6 +129,14 @@ function normalizeAssetDownloadTimeoutMs() {
     return 45_000;
   }
   return Math.max(15_000, Math.min(60_000, ASSET_DOWNLOAD_TIMEOUT_MS));
+}
+
+function normalizeStepRunMaxActiveTasks() {
+  const raw = Number.parseInt(process.env.IMAGE2_STEP_RUN_MAX_ACTIVE_TASKS || "", 10);
+  if (!Number.isFinite(raw)) {
+    return STEP_RUN_MAX_ACTIVE_TASKS;
+  }
+  return Math.max(1, Math.min(4, raw));
 }
 
 function isTimeoutCode(code?: string | null) {
@@ -486,11 +499,12 @@ export async function POST(request: NextRequest) {
     }
     cleanupContext.email = email;
 
-    const body = (await request.json().catch(() => null)) as { jobId?: string } | null;
+    const body = (await request.json().catch(() => null)) as { jobId?: string; taskId?: string } | null;
     const jobId = normalizeJobId(body?.jobId);
     if (!jobId) {
       return NextResponse.json({ error: "jobId is required.", code: "IMAGE_JOB_ID_REQUIRED" }, { status: 400 });
     }
+    const requestedTaskId = normalizeTaskId(body?.taskId);
     cleanupContext.jobId = jobId;
 
     const current =
@@ -529,9 +543,44 @@ export async function POST(request: NextRequest) {
     }
 
     cleanupContext.imageModel = imageModel;
-    const runnableTask = current.tasks.find(
-      (task) => task.status === "queued" || task.status === "generating" || task.status === "asset_downloading",
-    );
+    const activeTaskStatuses = new Set(["generating", "asset_downloading"]);
+    const activeTaskCount = current.tasks.filter((task) => activeTaskStatuses.has(task.status)).length;
+    const maxActiveTasks = normalizeStepRunMaxActiveTasks();
+    const requestedTask = requestedTaskId
+      ? current.tasks.find((task) => task.id === requestedTaskId)
+      : null;
+    if (requestedTaskId && !requestedTask) {
+      return NextResponse.json(
+        {
+          ok: false,
+          processed: false,
+          code: "IMAGE_TASK_NOT_FOUND",
+          error: "Image generation task was not found.",
+          job: current.job,
+          tasks: current.tasks.map((task) => serializeTask(task, imageModel)),
+        },
+        { status: 404 },
+      );
+    }
+    if (requestedTask?.status === "queued" && activeTaskCount >= maxActiveTasks) {
+      return NextResponse.json(
+        {
+          ok: true,
+          accepted: false,
+          processed: false,
+          code: "IMAGE_TASK_ACTIVE_LIMIT",
+          status: "processing",
+          job: current.job,
+          tasks: current.tasks.map((task) => serializeTask(task, imageModel)),
+          maxActiveTasks,
+        },
+        { status: 202 },
+      );
+    }
+    const runnableTask =
+      requestedTask ||
+      (activeTaskCount < maxActiveTasks ? current.tasks.find((task) => task.status === "queued") : undefined) ||
+      current.tasks.find((task) => activeTaskStatuses.has(task.status));
     if (!runnableTask) {
       const finalState = await syncImageGenerationJobFinalStatus(jobId);
       await applyRefundsForFailedImageGenerationTasks({
@@ -817,6 +866,11 @@ export async function POST(request: NextRequest) {
       providerOrder: providerPolicy.join(","),
       attempts: queuedTask.attempts,
       promptText: queuedTask.promptText,
+      extraDetails: {
+        maxActiveTasks,
+        activeTaskCount,
+        requestedTaskId: requestedTaskId || null,
+      },
     });
 
     if (queuedTask.status === "generating") {

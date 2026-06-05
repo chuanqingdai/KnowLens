@@ -149,7 +149,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ jo
       jobId: normalizedJobId,
       source: "image_job_poll_timeout",
       emitAbandonedLog: true,
-      force: true,
     });
     const result = finalized || (await readImageGenerationJobStatus(normalizedJobId));
     if (!result) {
