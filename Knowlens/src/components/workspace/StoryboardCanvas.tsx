@@ -169,6 +169,9 @@ const STORAGE_KEY = "knowlens.workspace.storyboard.v1";
 const STORAGE_CLEAR_TOKEN_KEY = "knowlens.workspace.storyboard.clear-token.v1";
 const HISTORY_LIMIT = 60;
 const PPT_DOWNLOAD_FILENAME = "KnowLens.ai-visual-deck.pptx";
+const VIDEO_DOWNLOAD_FILENAME = "KnowLens.ai-storyboard-video.mp4";
+const VIDEO_EXPORT_FORMAT = "video/mp4";
+const MIN_RECORDED_VIDEO_BYTES = 4096;
 const FREE_CANVAS_IMAGE_NODE_Y = 44;
 const PPT_CANVAS_STORY_NODE_Y = 56;
 const PPT_CANVAS_IMAGE_NODE_Y = 570;
@@ -856,6 +859,66 @@ function formatDuration(totalSec: number) {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
+function toVideoExportErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  const lower = message.toLowerCase();
+  if (message.includes("暂不支持") || lower.includes("unsupported") || lower.includes("format")) {
+    return "This video format is not supported. Please retry the export.";
+  }
+  if (message.includes("缺少") || lower.includes("missing")) {
+    return "The video file was not prepared correctly. Please retry.";
+  }
+  if (message.includes("为空") || lower.includes("empty")) {
+    return "The video file is empty. Please retry.";
+  }
+  if (message.includes("过大") || lower.includes("too large")) {
+    return "The video file is too large. Please retry with fewer scenes or shorter narration.";
+  }
+  if (lower.includes("capture") || lower.includes("recorded video stream")) {
+    return "The video could not be recorded correctly. Please retry the export.";
+  }
+  if (lower.includes("mp4") || lower.includes("transcode")) {
+    return "MP4 export failed. Please retry.";
+  }
+  return "Video export failed. Please try again.";
+}
+
+function createVideoMediaRecorder(stream: MediaStream) {
+  if (typeof MediaRecorder === "undefined") {
+    throw new Error("MP4 export could not be prepared in this browser. Please try Chrome or Edge.");
+  }
+
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  for (const candidate of candidates) {
+    if (!MediaRecorder.isTypeSupported(candidate)) {
+      continue;
+    }
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType: candidate });
+      return {
+        recorder,
+        mimeType: recorder.mimeType || candidate,
+      };
+    } catch {
+      // Try the next browser-supported candidate.
+    }
+  }
+
+  try {
+    const recorder = new MediaRecorder(stream);
+    return {
+      recorder,
+      mimeType: recorder.mimeType || "video/webm",
+    };
+  } catch {
+    throw new Error("MP4 export could not initialize video recording. Please try Chrome or Edge.");
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1013,9 +1076,7 @@ export function StoryboardCanvas({
   });
   const [composeProgress, setComposeProgress] = useState(0);
   const [composedVideoUrl, setComposedVideoUrl] = useState<string | null>(null);
-  const [composedVideoFilename, setComposedVideoFilename] = useState(
-    "knowlens-compose-preview.webm",
-  );
+  const [composedVideoFilename, setComposedVideoFilename] = useState(VIDEO_DOWNLOAD_FILENAME);
   const [transitionPresetId] = useState<TransitionPresetId>(DEFAULT_TRANSITION_PRESET);
   const [composedVideoCurrentSec, setComposedVideoCurrentSec] = useState(0);
   const [composedVideoDurationSec, setComposedVideoDurationSec] = useState(0);
@@ -2569,7 +2630,7 @@ export function StoryboardCanvas({
     setComposeError(null);
     setComposeProgress(0);
     setComposedVideoUrl(null);
-    setComposedVideoFilename("knowlens-compose-preview.mp4");
+    setComposedVideoFilename(VIDEO_DOWNLOAD_FILENAME);
     setComposedVideoCurrentSec(0);
     setComposedVideoDurationSec(0);
     setIsComposedVideoPlaying(false);
@@ -2595,13 +2656,10 @@ export function StoryboardCanvas({
         throw new Error("Could not initialize the video canvas.");
       }
 
-      const mimeType =
-        MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-          ? "video/webm;codecs=vp9,opus"
-          : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-            ? "video/webm;codecs=vp8,opus"
-          : "video/webm";
       const videoStream = canvas.captureStream(fps);
+      if (!videoStream.getVideoTracks().length) {
+        throw new Error("MP4 export could not capture the video track. Please retry.");
+      }
 
       const audioContext = new AudioContext({ sampleRate: 48000 });
       const outputGain = audioContext.createGain();
@@ -2613,7 +2671,7 @@ export function StoryboardCanvas({
         ...videoStream.getVideoTracks(),
         ...mediaDest.stream.getAudioTracks(),
       ]);
-      const recorder = new MediaRecorder(composedStream, { mimeType });
+      const { recorder, mimeType } = createVideoMediaRecorder(composedStream);
       const chunks: BlobPart[] = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -2704,7 +2762,7 @@ export function StoryboardCanvas({
         sceneCount: slides.length,
         voicedSceneCount,
         durationSec: totalDurationSec,
-        format: mimeType,
+        format: VIDEO_EXPORT_FORMAT,
         estimatedSizeMB: Number((totalDurationSec * 0.75).toFixed(1)),
       });
 
@@ -2792,6 +2850,12 @@ export function StoryboardCanvas({
       await audioContext.close();
       videoStream.getTracks().forEach((track) => track.stop());
       composedStream.getTracks().forEach((track) => track.stop());
+      if (blob.size < MIN_RECORDED_VIDEO_BYTES) {
+        throw new Error("The recorded video stream was empty. Please retry the export.");
+      }
+      if (!blob.type.toLowerCase().startsWith("video/webm")) {
+        throw new Error("The recorded video stream could not be prepared for MP4 export. Please retry.");
+      }
 
       setComposeProgress(97);
       const formData = new FormData();
@@ -2817,11 +2881,11 @@ export function StoryboardCanvas({
       if (finalBlob.size <= 0) {
         throw new Error("MP4 export returned an empty file. Please retry.");
       }
-      const finalFormat = transcodeResponse.headers.get("content-type") || "video/mp4";
-      if (!finalFormat.toLowerCase().includes("video/mp4")) {
+      const finalFormat = transcodeResponse.headers.get("content-type") || VIDEO_EXPORT_FORMAT;
+      if (!finalFormat.toLowerCase().includes(VIDEO_EXPORT_FORMAT)) {
         throw new Error("MP4 export failed. Please retry.");
       }
-      const finalFilename = "knowlens-compose-preview.mp4";
+      const finalFilename = VIDEO_DOWNLOAD_FILENAME;
 
       if (composedVideoUrlRef.current) {
         URL.revokeObjectURL(composedVideoUrlRef.current);
@@ -2834,7 +2898,7 @@ export function StoryboardCanvas({
         prev
           ? {
               ...prev,
-              format: finalFormat,
+              format: VIDEO_EXPORT_FORMAT,
               estimatedSizeMB: Number((finalBlob.size / (1024 * 1024)).toFixed(1)),
             }
           : prev,
@@ -2872,7 +2936,7 @@ export function StoryboardCanvas({
         });
         return copy;
       });
-      setComposeError(error instanceof Error ? error.message : "Video export failed. Please try again.");
+      setComposeError(toVideoExportErrorMessage(error));
     }
   }, [
     activeImageIndexBySlideId,
@@ -3471,11 +3535,11 @@ export function StoryboardCanvas({
                         className="flex items-center gap-2"
                         onPointerDown={(event) => {
                           event.stopPropagation();
-                          keepTtsMenuOpenDuringInteraction(slide.id);
+                          keepTtsMenuOpenDuringInteraction();
                         }}
                         onMouseDown={(event) => {
                           event.stopPropagation();
-                          keepTtsMenuOpenDuringInteraction(slide.id);
+                          keepTtsMenuOpenDuringInteraction();
                         }}
                       >
                         <button
