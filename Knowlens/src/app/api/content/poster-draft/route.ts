@@ -2528,12 +2528,12 @@ function normalizeSlideDrafts(
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
       const isCover = row.isCover === true;
-      const bodyLines = isCover ? [body || mainPoint].filter(Boolean) : [mainPoint, body, support].filter(Boolean);
-      const safeBody = !bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line))
-        ? isCover
-          ? ""
-          : fallback?.body || fallback?.mainPoint || ""
-        : bodyLines.join("\n");
+      const bodyLines = isCover ? [] : [mainPoint, body, support].filter(Boolean);
+      const safeBody = isCover
+        ? ""
+        : !bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line))
+          ? fallback?.body || fallback?.mainPoint || ""
+          : bodyLines.join("\n");
       return {
         page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
         title,

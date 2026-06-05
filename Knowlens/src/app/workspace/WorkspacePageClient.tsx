@@ -1794,11 +1794,13 @@ function buildGenericSlides(
   return outline.map((title, index) => {
     const item = seed[index] || seed[seed.length - 1];
     if (intent === "video") {
+      const isCover = index === 0;
       return {
         page: index + 1,
         title: title || item.title,
-        body: item.videoBody,
+        body: isCover ? "" : item.videoBody,
         visual: item.visual,
+        isCover,
       };
     }
     return {

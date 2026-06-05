@@ -19,6 +19,7 @@ export const runtime = "nodejs";
 type TtsPayload = {
   text?: string;
   voice?: string;
+  sample?: boolean;
 };
 
 type TtsProvider = "edge" | "openai";
@@ -344,6 +345,7 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as TtsPayload;
     const text = (payload.text ?? "").trim();
     const voice = resolveTtsVoice(payload.voice);
+    const isSamplePreview = payload.sample === true;
 
     if (!text) {
       return new Response("text is required", { status: 400 });
@@ -353,7 +355,11 @@ export async function POST(request: Request) {
       return new Response("text is too long", { status: 400 });
     }
 
-    if (voice.provider === "openai") {
+    if (voice.provider === "openai" && isSamplePreview && text.length > 180) {
+      return new Response("sample text is too long", { status: 400 });
+    }
+
+    if (voice.provider === "openai" && !isSamplePreview) {
       const session = await getServerSession(nextAuthOptions);
       const email = session?.user?.email?.trim().toLowerCase();
       if (!email) {
