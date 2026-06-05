@@ -4,6 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { getServerSession } from "next-auth";
+import { nextAuthOptions } from "@/lib/nextAuth";
+import { isFreeUserBySubscriptionSafe } from "@/lib/server/store";
 
 const execFileAsync = promisify(execFile);
 
@@ -290,17 +293,28 @@ async function synthesizeWithOpenAi(
   voice: TtsVoiceConfig,
 ): Promise<TtsAudioResult> {
   const apiKey =
-    process.env.OPENAI_TTS_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim();
+    process.env.GPTSAPI_TTS_API_KEY?.trim() ||
+    process.env.GPTSAPI_API_KEY?.trim() ||
+    process.env.GPTSAPI_FREE_API_KEY?.trim() ||
+    process.env.GPTSAPI_GEMINI_API_KEY?.trim() ||
+    process.env.OPENAI_TTS_API_KEY?.trim() ||
+    process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("Missing OpenAI TTS API key");
+    throw new Error("Missing premium TTS API key");
   }
 
   const baseUrl = (
+    process.env.GPTSAPI_TTS_BASE_URL?.trim() ||
+    process.env.GPTSAPI_BASE_URL?.trim() ||
     process.env.OPENAI_TTS_BASE_URL?.trim() ||
     process.env.OPENAI_BASE_URL?.trim() ||
     "https://api.openai.com/v1"
   ).replace(/\/$/, "");
-  const model = voice.model || process.env.OPENAI_TTS_MODEL?.trim() || "gpt-4o-mini-tts";
+  const model =
+    voice.model ||
+    process.env.GPTSAPI_TTS_MODEL?.trim() ||
+    process.env.OPENAI_TTS_MODEL?.trim() ||
+    "gpt-4o-mini-tts";
   const response = await fetch(`${baseUrl}/audio/speech`, {
     method: "POST",
     headers: {
@@ -316,7 +330,7 @@ async function synthesizeWithOpenAi(
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI TTS failed: ${response.status}`);
+    throw new Error(`Premium TTS failed: ${response.status}`);
   }
 
   return {
@@ -337,6 +351,21 @@ export async function POST(request: Request) {
 
     if (text.length > MAX_TEXT_LEN) {
       return new Response("text is too long", { status: 400 });
+    }
+
+    if (voice.provider === "openai") {
+      const session = await getServerSession(nextAuthOptions);
+      const email = session?.user?.email?.trim().toLowerCase();
+      if (!email) {
+        return new Response("Premium TTS requires sign in", { status: 401 });
+      }
+      const isFreeUser = await isFreeUserBySubscriptionSafe({
+        email,
+        source: "tts_api",
+      });
+      if (isFreeUser) {
+        return new Response("Premium TTS requires membership", { status: 403 });
+      }
     }
 
     let audio: TtsAudioResult;

@@ -549,6 +549,28 @@ const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 660000;
 const STEP_RUN_MAX_CONCURRENT_TASKS = 3;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
+const BASIC_TTS_CREDITS_PER_1000_CHARS = 10;
+const PRO_TTS_CREDITS_PER_1000_CHARS = 40;
+const VIDEO_TTS_DEFAULT_KEY = "knowlens-video-tts-default-v1";
+const DEFAULT_FREE_TTS_VOICE_ID = "basic_narrator_female";
+const DEFAULT_MEMBER_TTS_VOICE_ID = "pro_balanced_narrator";
+const PRO_TTS_VOICE_IDS = new Set([
+  "pro_documentary_male",
+  "pro_documentary_female",
+  "pro_deep_science",
+  "pro_bright_explainer",
+  "pro_neutral_tech",
+  "pro_warm_host",
+  "pro_calm_teacher",
+  "pro_classic_storyteller",
+  "pro_soft_presenter",
+  "pro_balanced_narrator",
+]);
+const KNOWN_TTS_VOICE_IDS = new Set([
+  DEFAULT_FREE_TTS_VOICE_ID,
+  "basic_narrator_male",
+  ...Array.from(PRO_TTS_VOICE_IDS),
+]);
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
 const GENERATION_UI_HARD_TIMEOUT_MS = 660000;
@@ -2457,6 +2479,48 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
   }
 }
 
+function buildVideoTtsDefaultStorageKey(email?: string | null) {
+  const scope = (email ?? "").trim().toLowerCase() || "guest";
+  return `${VIDEO_TTS_DEFAULT_KEY}:${scope}`;
+}
+
+function normalizeVideoTtsVoicePreference(voiceId: string | null | undefined, hasMembership: boolean) {
+  const normalized = (voiceId ?? "").trim();
+  if (!KNOWN_TTS_VOICE_IDS.has(normalized)) {
+    return hasMembership ? DEFAULT_MEMBER_TTS_VOICE_ID : DEFAULT_FREE_TTS_VOICE_ID;
+  }
+  if (PRO_TTS_VOICE_IDS.has(normalized) && !hasMembership) {
+    return DEFAULT_FREE_TTS_VOICE_ID;
+  }
+  return normalized;
+}
+
+function readVideoTtsVoicePreference(email: string | null | undefined, hasMembership: boolean) {
+  if (typeof window === "undefined") {
+    return hasMembership ? DEFAULT_MEMBER_TTS_VOICE_ID : DEFAULT_FREE_TTS_VOICE_ID;
+  }
+  try {
+    return normalizeVideoTtsVoicePreference(
+      window.localStorage.getItem(buildVideoTtsDefaultStorageKey(email)),
+      hasMembership,
+    );
+  } catch {
+    return hasMembership ? DEFAULT_MEMBER_TTS_VOICE_ID : DEFAULT_FREE_TTS_VOICE_ID;
+  }
+}
+
+function saveVideoTtsVoicePreference(email: string | null | undefined, voiceId: string, hasMembership: boolean) {
+  const normalized = normalizeVideoTtsVoicePreference(voiceId, hasMembership);
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(buildVideoTtsDefaultStorageKey(email), normalized);
+    } catch {
+      // Ignore storage failures; the current session still uses the selected voice.
+    }
+  }
+  return normalized;
+}
+
 export default function WorkspacePage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -2499,6 +2563,13 @@ export default function WorkspacePage() {
     }
     return !(subscription.status === "active" || subscription.status === "canceling");
   }, [currentEmail]);
+  const hasActiveMembership = !isFreeUser;
+  const [videoTtsDefaultVoiceId, setVideoTtsDefaultVoiceId] = useState(() =>
+    readVideoTtsVoicePreference(currentEmail, hasActiveMembership),
+  );
+  useEffect(() => {
+    setVideoTtsDefaultVoiceId(readVideoTtsVoicePreference(currentEmail, hasActiveMembership));
+  }, [currentEmail, hasActiveMembership]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [updates, setUpdates] = useState<ChatTurn[]>(() => {
@@ -3115,6 +3186,86 @@ export default function WorkspacePage() {
   const getAvailableCredits = useCallback(() => {
     return getCreditRecords(currentEmail)[0]?.balance ?? 50;
   }, [currentEmail]);
+  const handleTtsVoiceBilling = useCallback(
+    async (input: {
+      voiceId: string;
+      voiceName: string;
+      tier: "basic" | "pro";
+      narrationCharCount: number;
+      credits: number;
+      creditsPer1000Chars: number;
+    }) => {
+      if (input.tier !== "pro") {
+        return true;
+      }
+      if (!currentEmail || isFreeUser) {
+        openCreditsPaywall({ scene: "tts_premium" });
+        return false;
+      }
+      const creditsToConsume = Math.max(
+        0,
+        Math.ceil((Math.max(0, input.narrationCharCount) / 1000) * PRO_TTS_CREDITS_PER_1000_CHARS),
+      );
+      if (creditsToConsume <= 0) {
+        return true;
+      }
+      const availableCredits = getAvailableCredits();
+      if (availableCredits < creditsToConsume) {
+        openCreditsPaywall({
+          scene: "billing_insufficient",
+          kind: "video",
+        });
+        pushWorkspaceToast("Not enough credits for premium voice.");
+        return false;
+      }
+      const user = getAdminUserByEmail(currentEmail);
+      const projectTitle = workspaceProjectTitle || topic || "Video storyboard";
+      try {
+        await appendCreditRecordOnServer(
+          {
+            type: "consume",
+            description: `${projectTitle} · Premium TTS voice ${input.voiceName} (${creditsToConsume} credits, ${PRO_TTS_CREDITS_PER_1000_CHARS}/1000 chars)`,
+            delta: -creditsToConsume,
+            userId: user?.id,
+            userEmail: currentEmail,
+            projectId: projectIdRef.current ?? initialEntry.project?.projectId,
+            projectTitle,
+            entrySource: resolveEntrySource().entrySource,
+            estimatedCreditsCost: creditsToConsume,
+            creditsBefore: availableCredits,
+            creditsAfter: Math.max(0, availableCredits - creditsToConsume),
+            creditBalanceSource: "server_synced_local_cache",
+          },
+          currentEmail,
+        );
+        setCreditVersion((prev) => prev + 1);
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("INSUFFICIENT") || message.includes("NOT_ENOUGH")) {
+          openCreditsPaywall({
+            scene: "billing_insufficient",
+            kind: "video",
+          });
+          pushWorkspaceToast("Not enough credits for premium voice.");
+          return false;
+        }
+        pushWorkspaceToast("Premium voice switch failed.");
+        return false;
+      }
+    },
+    [
+      currentEmail,
+      getAvailableCredits,
+      initialEntry.project?.projectId,
+      isFreeUser,
+      openCreditsPaywall,
+      pushWorkspaceToast,
+      resolveEntrySource,
+      topic,
+      workspaceProjectTitle,
+    ],
+  );
   const chargeImageTaskCredits = useCallback(
     (input: { runId: string; taskIndex: number; action: "retry" | "redraw" }) => {
       const taskIndex = Math.max(1, Math.round(input.taskIndex));
@@ -3505,7 +3656,22 @@ export default function WorkspacePage() {
   );
   const languageModelCredits = Math.max(1, Math.ceil(totalTokenEstimate / languageModelBillingUnit));
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
-  const billingCost = languageModelCredits + imageModelCredits;
+  const ttsNarrationCharCount = useMemo(() => {
+    if (effectiveIntent !== "video") {
+      return 0;
+    }
+    return displaySlideDrafts
+      .filter((slide) => !slide.isCover)
+      .reduce((total, slide) => total + String(slide.body ?? "").trim().length, 0);
+  }, [displaySlideDrafts, effectiveIntent]);
+  const videoTtsCreditsPer1000Chars = PRO_TTS_VOICE_IDS.has(videoTtsDefaultVoiceId)
+    ? PRO_TTS_CREDITS_PER_1000_CHARS
+    : BASIC_TTS_CREDITS_PER_1000_CHARS;
+  const ttsNarrationCredits =
+    effectiveIntent === "video" && ttsNarrationCharCount > 0
+      ? Math.ceil((ttsNarrationCharCount / 1000) * videoTtsCreditsPer1000Chars)
+      : 0;
+  const billingCost = languageModelCredits + imageModelCredits + ttsNarrationCredits;
   const buildFreshImageGenerationTasks = useCallback(() => {
     if (effectiveIntent === "unknown") {
       return [] as ImageGenerationTask[];
@@ -7717,10 +7883,18 @@ export default function WorkspacePage() {
             description: isZhOutput
               ? `${selectedProject?.title ?? "生成项目"} · ${
                   effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-                }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+                }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分${
+                  ttsNarrationCredits > 0
+                    ? ` + TTS旁白 ${ttsNarrationCredits} 积分（${videoTtsCreditsPer1000Chars}/1000字符）`
+                    : ""
+                }，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
               : `${selectedProject?.title ?? "Generation Project"} · ${
                   effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
-                } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+                } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits${
+                  ttsNarrationCredits > 0
+                    ? ` + TTS narration ${ttsNarrationCredits} credits (${videoTtsCreditsPer1000Chars}/1000 chars)`
+                    : ""
+                }, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
             delta: -billingCost,
             userId: user?.id,
             userEmail: currentEmail || undefined,
@@ -8828,6 +9002,9 @@ export default function WorkspacePage() {
                     styleName: selectedStyle.englishName ?? selectedStyle.name,
                     languageModelCredits,
                     imageModelCredits,
+                    ttsNarrationCredits,
+                    ttsNarrationCharCount,
+                    ttsCreditsPer1000Chars: videoTtsCreditsPer1000Chars,
                     totalCost: billingCost,
                     standardOutputCount,
                     promoCreditsPerOutput: STANDARD_OUTPUT_PROMO_CREDITS,
@@ -8934,9 +9111,19 @@ export default function WorkspacePage() {
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
-                hasMembership={!isFreeUser}
+                hasMembership={hasActiveMembership}
                 onRequestTtsUpgrade={() => {
                   openCreditsPaywall({ scene: "tts_premium" });
+                }}
+                defaultTtsVoiceId={videoTtsDefaultVoiceId}
+                onTtsVoicePreferenceChange={(voiceId) => {
+                  setVideoTtsDefaultVoiceId(
+                    saveVideoTtsVoicePreference(currentEmail, voiceId, hasActiveMembership),
+                  );
+                }}
+                onTtsVoiceBilling={handleTtsVoiceBilling}
+                onTtsVoiceApplied={(voiceName) => {
+                  pushWorkspaceToast(`All scenes use ${voiceName}.`);
                 }}
                 imageAspectRatio={normalizedGenerationConfig.normalizedRatio}
                 onModeActionRegister={(actions) => {

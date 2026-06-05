@@ -2128,6 +2128,7 @@ export function getAdminOpsSummary(input?: { errorLimit?: number; checkoutDays?:
 }
 
 export async function listOpsEvents(input?: {
+  id?: string;
   userEmail?: string;
   projectId?: string;
   category?: string;
@@ -2145,6 +2146,12 @@ export async function listOpsEvents(input?: {
 }) {
   const filters: string[] = [];
   const params: Array<string | number> = [];
+
+  const normalizedId = clampText(input?.id, 160);
+  if (normalizedId) {
+    filters.push("id = ?");
+    params.push(normalizedId);
+  }
 
   const pushFilter = (column: string, value?: string) => {
     const normalized = clampText(value, 160);

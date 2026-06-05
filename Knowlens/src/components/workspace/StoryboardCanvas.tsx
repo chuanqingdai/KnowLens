@@ -18,7 +18,6 @@ import {
   Plus,
   Redo2,
   RotateCcw,
-  Volume2,
   X,
 } from "lucide-react";
 
@@ -58,6 +57,17 @@ type StoryboardCanvasProps = {
   onRetryGenerationTask?: (index: number) => void;
   hasMembership?: boolean;
   onRequestTtsUpgrade?: () => void;
+  onTtsVoiceBilling?: (input: {
+    voiceId: string;
+    voiceName: string;
+    tier: "basic" | "pro";
+    narrationCharCount: number;
+    credits: number;
+    creditsPer1000Chars: number;
+  }) => Promise<boolean> | boolean;
+  onTtsVoiceApplied?: (voiceName: string) => void;
+  onTtsVoicePreferenceChange?: (voiceId: string) => void;
+  defaultTtsVoiceId?: string;
   imageAspectRatio?: string;
   onModeActionRegister?: (actions: {
     exportPpt: () => void;
@@ -141,6 +151,7 @@ type GeneratedAudioMeta = {
   url: string;
   durationSec: number;
   status: "ready" | "generating" | "error";
+  voiceId?: string;
   error?: string;
 };
 
@@ -151,6 +162,12 @@ const STORAGE_KEY = "knowlens.workspace.storyboard.v1";
 const STORAGE_CLEAR_TOKEN_KEY = "knowlens.workspace.storyboard.clear-token.v1";
 const HISTORY_LIMIT = 60;
 const PPT_DOWNLOAD_FILENAME = "KnowLens.ai-visual-deck.pptx";
+const FREE_CANVAS_IMAGE_NODE_Y = 44;
+const PPT_CANVAS_STORY_NODE_Y = 56;
+const PPT_CANVAS_IMAGE_NODE_Y = 570;
+const IMAGE_NODE_WIDTH = 380;
+const IMAGE_NODE_GAP = 80;
+const IMAGE_NODE_STEP = IMAGE_NODE_WIDTH + IMAGE_NODE_GAP;
 
 const LENS_MODES = [
   "Wide establishing shot",
@@ -203,7 +220,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Steady male tone for general science explainers.",
     notes: "Included male voice",
-    creditPer1000Chars: 1,
+    creditPer1000Chars: 10,
     profile: "male",
   },
   {
@@ -217,7 +234,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Warm female tone for friendly classroom explainers.",
     notes: "Included female voice",
-    creditPer1000Chars: 1,
+    creditPer1000Chars: 10,
     profile: "female",
   },
   {
@@ -230,7 +247,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "middle_aged",
     description: "Deep documentary tone for science, finance, and history.",
     notes: "Premium documentary voice",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "male",
   },
   {
@@ -243,7 +260,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Smooth presenter tone for polished educational explainers.",
     notes: "Premium warm narrator",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "female",
   },
   {
@@ -256,7 +273,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "mature",
     description: "Low, serious tone for research, science, and history topics.",
     notes: "Premium deep narrator",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "male",
   },
   {
@@ -269,7 +286,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "young_adult",
     description: "Bright, energetic tone for fast-paced short explainers.",
     notes: "Premium bright explainer",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "youth",
   },
   {
@@ -282,7 +299,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Neutral tech tone for AI, product, and software topics.",
     notes: "Premium tech voice",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "neutral",
   },
   {
@@ -295,7 +312,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "young_adult",
     description: "Friendly host tone for lifestyle and social explainers.",
     notes: "Premium friendly host",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "youth",
   },
   {
@@ -308,7 +325,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "middle_aged",
     description: "Calm teaching tone for lessons, tutorials, and training.",
     notes: "Premium calm teacher",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "neutral",
   },
   {
@@ -321,7 +338,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "mature",
     description: "Narrative tone for story-led educational videos.",
     notes: "Premium storyteller",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "neutral",
   },
   {
@@ -334,7 +351,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Soft presenter tone for gentle learning videos.",
     notes: "Premium soft presenter",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "female",
   },
   {
@@ -347,10 +364,37 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Balanced all-purpose tone for mixed explainer content.",
     notes: "Premium balanced narrator",
-    creditPer1000Chars: 3,
+    creditPer1000Chars: 40,
     profile: "neutral",
   },
 ];
+
+const TTS_SAMPLE_TEXT_BY_ID: Record<string, string> = {
+  basic_narrator_male:
+    "The Sun powers life on Earth by sending a steady stream of energy across space.",
+  basic_narrator_female:
+    "A single drop of water can travel through clouds, rivers, oceans, and ice.",
+  pro_documentary_male:
+    "Deep beneath our feet, slow-moving tectonic plates reshape continents over millions of years.",
+  pro_documentary_female:
+    "Every heartbeat moves oxygen through the body, helping each cell release usable energy.",
+  pro_deep_science:
+    "Inside every atom, invisible forces hold particles together with extraordinary precision.",
+  pro_bright_explainer:
+    "Plants turn sunlight into sugar, storing solar energy in a form animals can eat.",
+  pro_neutral_tech:
+    "Modern sensors convert real-world signals into data that computers can analyze instantly.",
+  pro_warm_host:
+    "A rainbow appears when sunlight bends, reflects, and separates inside tiny water droplets.",
+  pro_calm_teacher:
+    "Learning strengthens neural connections, making future thoughts faster and easier to recall.",
+  pro_classic_storyteller:
+    "Long before telescopes, careful sky watchers used patterns of stars to tell time and navigate.",
+  pro_soft_presenter:
+    "The ocean absorbs heat and carbon dioxide, quietly shaping the planet's climate system.",
+  pro_balanced_narrator:
+    "Gravity keeps planets in orbit and gives structure to galaxies across the universe.",
+};
 
 const TTS_OPTION_IDS = new Set(TTS_OPTIONS.map((option) => option.id));
 const DEFAULT_EMOTION_TTS_ID = "basic_narrator_female";
@@ -359,11 +403,28 @@ function buildPrompt(title: string, visual: string) {
   return visual.trim() || title.trim();
 }
 
+function stripVisibleAspectRatioText(text: string) {
+  return text
+    .trim()
+    .replace(
+      /(?:^|[\s,，;；|])(?:aspect\s*ratio|ratio)\s*(?:of|:|=)?\s*(?:16\s*:\s*9|9\s*:\s*16|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)\b/gi,
+      " ",
+    )
+    .replace(
+      /(?:^|[\s,，;；|])(?:16\s*:\s*9|9\s*:\s*16|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)\s*(?:aspect\s*ratio|ratio)\b/gi,
+      " ",
+    )
+    .replace(/^[\s.,，;；|。]+$/g, "")
+    .replace(/\s*[,，;；|]\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildPromptFromSeed(seedSlide: CanvasSeedSlide) {
-  return (
+  return stripVisibleAspectRatioText(
     seedSlide.imagePromptDraft?.trim() ||
     seedSlide.imagePrompt?.trim() ||
-    buildPrompt(seedSlide.title, seedSlide.visual)
+    buildPrompt(seedSlide.title, seedSlide.visual),
   );
 }
 
@@ -377,6 +438,10 @@ function isLegacyAutoPrompt(currentPrompt: string, slide: SlideItem) {
   }
   const title = slide.title.trim();
   const visual = slide.visual.trim();
+  const currentWithoutRatio = stripVisibleAspectRatioText(current);
+  if (currentWithoutRatio !== current) {
+    return true;
+  }
   return Boolean(visual && current === visual) || Boolean(title && current === title);
 }
 
@@ -454,18 +519,27 @@ function buildSeedSlides(count: number): CanvasSeedSlide[] {
   }));
 }
 
-function createInitialCanvasState(seedCount = 6): PersistedCanvasState {
-  return createCanvasStateFromSeed(buildSeedSlides(seedCount));
+function normalizeTtsVoiceIdValue(ttsId?: string | null) {
+  const value = (ttsId ?? "").trim();
+  return TTS_OPTION_IDS.has(value) ? value : DEFAULT_EMOTION_TTS_ID;
 }
 
-function createCanvasStateFromSeed(seedSlides: CanvasSeedSlide[]): PersistedCanvasState {
+function createInitialCanvasState(seedCount = 6, defaultTtsVoiceId = DEFAULT_EMOTION_TTS_ID): PersistedCanvasState {
+  return createCanvasStateFromSeed(buildSeedSlides(seedCount), defaultTtsVoiceId);
+}
+
+function createCanvasStateFromSeed(
+  seedSlides: CanvasSeedSlide[],
+  defaultTtsVoiceId = DEFAULT_EMOTION_TTS_ID,
+): PersistedCanvasState {
   const normalizedSeedSlides = seedSlides.length ? seedSlides : buildSeedSlides(1);
   const baseSlides = buildSlides(normalizedSeedSlides);
+  const normalizedDefaultTtsVoiceId = normalizeTtsVoiceIdValue(defaultTtsVoiceId);
   return {
     version: 1,
     slides: baseSlides,
     ttsBySlideId: Object.fromEntries(
-      baseSlides.map((slide) => [slide.id, DEFAULT_EMOTION_TTS_ID]),
+      baseSlides.map((slide) => [slide.id, normalizedDefaultTtsVoiceId]),
     ),
     promptBySlideId: Object.fromEntries(
       baseSlides.map((slide, idx) => [
@@ -630,6 +704,10 @@ export function StoryboardCanvas({
   onRetryGenerationTask,
   hasMembership = false,
   onRequestTtsUpgrade,
+  onTtsVoiceBilling,
+  onTtsVoiceApplied,
+  onTtsVoicePreferenceChange,
+  defaultTtsVoiceId = DEFAULT_EMOTION_TTS_ID,
   imageAspectRatio = "16:9",
   onModeActionRegister,
 }: StoryboardCanvasProps) {
@@ -638,9 +716,16 @@ export function StoryboardCanvas({
   const audioTokenRef = useRef(0);
   const audioPausedRef = useRef(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const sampleAudioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const composedVideoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const composedVideoUrlRef = useRef<string | null>(null);
   const exportedPptUrlRef = useRef<string | null>(null);
   const generatedAudioRef = useRef<Record<string, GeneratedAudioMeta>>({});
+  const sampleAudioByVoiceIdRef = useRef<
+    Record<string, { url: string; status: "loading" | "ready" | "error" }>
+  >({});
+  const ttsBySlideIdRef = useRef<Record<string, string>>({});
+  const ttsVoiceChangeInFlightRef = useRef(false);
   const initialPack = useMemo(() => {
     if (typeof window === "undefined") {
       return createInitialPack();
@@ -652,14 +737,14 @@ export function StoryboardCanvas({
         // ignore
       }
       const seedSlides = generationSeedSlides?.length ? generationSeedSlides : buildSeedSlides(6);
-      const seededState = createCanvasStateFromSeed(seedSlides);
+      const seededState = createCanvasStateFromSeed(seedSlides, defaultTtsVoiceId);
       return {
         state: seededState,
         snapshot: JSON.stringify(seededState),
       };
     }
     return createInitialPack();
-  }, [generationClearToken, generationSeedSlides]);
+  }, [defaultTtsVoiceId, generationClearToken, generationSeedSlides]);
   const lastSavedSnapshotRef = useRef(initialPack.snapshot);
   const saveTimerRef = useRef<number | null>(null);
   const previewPauseRef = useRef(false);
@@ -709,6 +794,10 @@ export function StoryboardCanvas({
   const [generatedAudioBySlideId, setGeneratedAudioBySlideId] = useState<
     Record<string, GeneratedAudioMeta>
   >({});
+  const [sampleAudioByVoiceId, setSampleAudioByVoiceId] = useState<
+    Record<string, { url: string; status: "loading" | "ready" | "error" }>
+  >({});
+  const [playingSampleVoiceId, setPlayingSampleVoiceId] = useState<string | null>(null);
   const [openTtsMenuSlideId, setOpenTtsMenuSlideId] = useState<string | null>(
     null,
   );
@@ -727,6 +816,9 @@ export function StoryboardCanvas({
   const [composedVideoFilename, setComposedVideoFilename] = useState(
     "knowlens-compose-preview.webm",
   );
+  const [composedVideoCurrentSec, setComposedVideoCurrentSec] = useState(0);
+  const [composedVideoDurationSec, setComposedVideoDurationSec] = useState(0);
+  const [isComposedVideoPlaying, setIsComposedVideoPlaying] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composeMeta, setComposeMeta] = useState<ComposeMeta | null>(null);
   const [isExportingPpt, setIsExportingPpt] = useState(false);
@@ -769,6 +861,14 @@ export function StoryboardCanvas({
   const activeImageIndexBySlideId = present.activeImageIndexBySlideId;
 
   const canvasMode: CanvasMode = canvasModeExternal ?? "free";
+
+  useEffect(() => {
+    ttsBySlideIdRef.current = ttsBySlideId;
+  }, [ttsBySlideId]);
+
+  useEffect(() => {
+    sampleAudioByVoiceIdRef.current = sampleAudioByVoiceId;
+  }, [sampleAudioByVoiceId]);
   const resolvedImageAspectRatio = useMemo(
     () => parseAspectRatioValue(imageAspectRatio),
     [imageAspectRatio],
@@ -817,7 +917,7 @@ export function StoryboardCanvas({
       return;
     }
     const seedSlides = generationSeedSlides?.length ? generationSeedSlides : buildSeedSlides(6);
-    const seededState = sanitizeCanvasState(createCanvasStateFromSeed(seedSlides));
+    const seededState = sanitizeCanvasState(createCanvasStateFromSeed(seedSlides, defaultTtsVoiceId));
     setHistory({
       past: [],
       present: seededState,
@@ -827,7 +927,7 @@ export function StoryboardCanvas({
     lastSavedSnapshotRef.current = JSON.stringify(seededState);
     setSaveState("saved");
     setHasUnsavedChanges(false);
-  }, [generationClearToken, generationSeedSlides]);
+  }, [defaultTtsVoiceId, generationClearToken, generationSeedSlides]);
 
   useEffect(() => {
     if (!generationSeedSlides?.length) {
@@ -1066,14 +1166,19 @@ export function StoryboardCanvas({
       if (!reactFlowRef.current || idx < 0) {
         return;
       }
-      const centerX = idx * 460 + 190;
-      const centerY = target === "story" ? 220 : 770;
+      const centerX = idx * IMAGE_NODE_STEP + IMAGE_NODE_WIDTH / 2;
+      const centerY =
+        canvasMode === "free"
+          ? FREE_CANVAS_IMAGE_NODE_Y + 260
+          : target === "story"
+            ? PPT_CANVAS_STORY_NODE_Y + 170
+            : PPT_CANVAS_IMAGE_NODE_Y + 200;
       await reactFlowRef.current.setCenter(centerX, centerY, {
         zoom,
         duration: 280,
       });
     },
-    [slides],
+    [canvasMode, slides],
   );
 
   useEffect(() => {
@@ -1298,11 +1403,14 @@ export function StoryboardCanvas({
     audioPausedRef.current = false;
     audioPreviewRef.current?.pause();
     audioPreviewRef.current = null;
+    sampleAudioPreviewRef.current?.pause();
+    sampleAudioPreviewRef.current = null;
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
     setPlayingAudioSlideId(null);
     setPausedAudioSlideId(null);
+    setPlayingSampleVoiceId(null);
   }, []);
 
   const normalizeTtsVoiceId = useCallback((ttsId: string) => {
@@ -1365,8 +1473,9 @@ export function StoryboardCanvas({
 
   const ensureAudioFileForSlide = useCallback(
     async (slideId: string, body: string, ttsId: string) => {
+      const normalizedVoiceId = normalizeTtsVoiceId(ttsId);
       const existing = generatedAudioBySlideId[slideId];
-      if (existing?.status === "ready") {
+      if (existing?.status === "ready" && existing.voiceId === normalizedVoiceId) {
         return existing;
       }
       if (!body.trim()) {
@@ -1379,6 +1488,7 @@ export function StoryboardCanvas({
           url: prev[slideId]?.url ?? "",
           durationSec: prev[slideId]?.durationSec ?? 0,
           status: "generating",
+          voiceId: normalizedVoiceId,
         },
       }));
 
@@ -1389,7 +1499,7 @@ export function StoryboardCanvas({
         },
         body: JSON.stringify({
           text: body,
-          voice: normalizeTtsVoiceId(ttsId),
+          voice: normalizedVoiceId,
         }),
       });
       if (!response.ok) {
@@ -1404,17 +1514,23 @@ export function StoryboardCanvas({
         url: nextUrl,
         durationSec: durationSec || fallbackDurationSec,
         status: "ready" as const,
-      };
-      generatedAudioRef.current = {
-        ...generatedAudioRef.current,
-        [slideId]: readyAudio,
+        voiceId: normalizedVoiceId,
       };
 
       setGeneratedAudioBySlideId((prev) => {
+        const currentVoiceId = ttsBySlideIdRef.current[slideId] ?? DEFAULT_EMOTION_TTS_ID;
+        if (normalizeTtsVoiceId(currentVoiceId) !== normalizedVoiceId) {
+          URL.revokeObjectURL(nextUrl);
+          return prev;
+        }
         const oldUrl = prev[slideId]?.url;
         if (oldUrl && oldUrl.startsWith("blob:") && oldUrl !== nextUrl) {
           URL.revokeObjectURL(oldUrl);
         }
+        generatedAudioRef.current = {
+          ...generatedAudioRef.current,
+          [slideId]: readyAudio,
+        };
         return {
           ...prev,
           [slideId]: readyAudio,
@@ -1429,32 +1545,152 @@ export function StoryboardCanvas({
   const previewAudioForSlide = useCallback(
     async (slideId: string, body: string) => {
       const ttsId = ttsBySlideId[slideId] ?? DEFAULT_EMOTION_TTS_ID;
-      const selectedOption = TTS_OPTIONS.find((item) => item.id === ttsId);
+      const normalizedVoiceId = normalizeTtsVoiceId(ttsId);
+      const selectedOption = TTS_OPTIONS.find((item) => item.id === normalizedVoiceId);
       if (selectedOption?.provider === "openai" && !hasMembership) {
         onRequestTtsUpgrade?.();
         return;
       }
       try {
-        await ensureAudioFileForSlide(slideId, body, ttsId);
+        await ensureAudioFileForSlide(slideId, body, normalizedVoiceId);
       } catch (error) {
+        const currentVoiceId = normalizeTtsVoiceId(ttsBySlideIdRef.current[slideId] ?? DEFAULT_EMOTION_TTS_ID);
+        if (currentVoiceId !== normalizedVoiceId) {
+          return;
+        }
         setGeneratedAudioBySlideId((prev) => ({
           ...prev,
           [slideId]: {
             url: prev[slideId]?.url ?? "",
             durationSec: prev[slideId]?.durationSec ?? 0,
             status: "error",
+            voiceId: normalizedVoiceId,
             error: error instanceof Error ? error.message : "Audio generation failed",
           },
         }));
       }
-      await playTtsWithProgress(slideId, body, ttsId);
+      const currentVoiceId = normalizeTtsVoiceId(ttsBySlideIdRef.current[slideId] ?? DEFAULT_EMOTION_TTS_ID);
+      if (currentVoiceId !== normalizedVoiceId) {
+        return;
+      }
+      await playTtsWithProgress(slideId, body, normalizedVoiceId);
     },
     [
       ensureAudioFileForSlide,
       hasMembership,
+      normalizeTtsVoiceId,
       onRequestTtsUpgrade,
       playTtsWithProgress,
       ttsBySlideId,
+    ],
+  );
+
+  const previewTtsSample = useCallback(
+    async (voiceId: string) => {
+      const normalizedVoiceId = normalizeTtsVoiceId(voiceId);
+      const selectedOption = TTS_OPTIONS.find((item) => item.id === normalizedVoiceId);
+      if (!selectedOption) {
+        return;
+      }
+      if (selectedOption.provider === "openai" && !hasMembership) {
+        onRequestTtsUpgrade?.();
+        return;
+      }
+      if (playingSampleVoiceId === normalizedVoiceId) {
+        sampleAudioPreviewRef.current?.pause();
+        sampleAudioPreviewRef.current = null;
+        setPlayingSampleVoiceId(null);
+        return;
+      }
+
+      audioTokenRef.current += 1;
+      audioPausedRef.current = false;
+      audioPreviewRef.current?.pause();
+      audioPreviewRef.current = null;
+      setPlayingAudioSlideId(null);
+      setPausedAudioSlideId(null);
+
+      const cached = sampleAudioByVoiceIdRef.current[normalizedVoiceId];
+      let sampleUrl = cached?.status === "ready" ? cached.url : "";
+      if (!sampleUrl) {
+        setSampleAudioByVoiceId((prev) => ({
+          ...prev,
+          [normalizedVoiceId]: {
+            url: prev[normalizedVoiceId]?.url ?? "",
+            status: "loading",
+          },
+        }));
+        try {
+          const response = await fetch("/api/tts", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: TTS_SAMPLE_TEXT_BY_ID[normalizedVoiceId] ?? TTS_SAMPLE_TEXT_BY_ID[DEFAULT_EMOTION_TTS_ID],
+              voice: normalizedVoiceId,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error("Voice sample failed");
+          }
+          const blob = await response.blob();
+          sampleUrl = URL.createObjectURL(blob);
+          setSampleAudioByVoiceId((prev) => {
+            const oldUrl = prev[normalizedVoiceId]?.url;
+            if (oldUrl?.startsWith("blob:") && oldUrl !== sampleUrl) {
+              URL.revokeObjectURL(oldUrl);
+            }
+            return {
+              ...prev,
+              [normalizedVoiceId]: {
+                url: sampleUrl,
+                status: "ready",
+              },
+            };
+          });
+        } catch {
+          setSampleAudioByVoiceId((prev) => ({
+            ...prev,
+            [normalizedVoiceId]: {
+              url: prev[normalizedVoiceId]?.url ?? "",
+              status: "error",
+            },
+          }));
+          return;
+        }
+      }
+
+      sampleAudioPreviewRef.current?.pause();
+      const audio = new Audio(sampleUrl);
+      sampleAudioPreviewRef.current = audio;
+      setPlayingSampleVoiceId(normalizedVoiceId);
+      audio.onended = () => {
+        if (sampleAudioPreviewRef.current === audio) {
+          sampleAudioPreviewRef.current = null;
+        }
+        setPlayingSampleVoiceId(null);
+      };
+      audio.onerror = () => {
+        if (sampleAudioPreviewRef.current === audio) {
+          sampleAudioPreviewRef.current = null;
+        }
+        setPlayingSampleVoiceId(null);
+      };
+      void audio.play().catch(() => {
+        if (sampleAudioPreviewRef.current === audio) {
+          sampleAudioPreviewRef.current = null;
+        }
+        setPlayingSampleVoiceId(null);
+      });
+    },
+    [
+      hasMembership,
+      normalizeTtsVoiceId,
+      onRequestTtsUpgrade,
+      pausedAudioSlideId,
+      playingAudioSlideId,
+      playingSampleVoiceId,
     ],
   );
 
@@ -1753,23 +1989,144 @@ export function StoryboardCanvas({
   );
 
   const updateTtsForSlide = useCallback(
-    (slideId: string, ttsId: string) => {
-      const selectedOption = TTS_OPTIONS.find((item) => item.id === ttsId);
+    async (slideId: string, ttsId: string) => {
+      const normalizedVoiceId = normalizeTtsVoiceId(ttsId);
+      const selectedOption = TTS_OPTIONS.find((item) => item.id === normalizedVoiceId);
       if (selectedOption?.provider === "openai" && !hasMembership) {
         setOpenTtsMenuSlideId(null);
         onRequestTtsUpgrade?.();
         return;
       }
+      const changedSlideIds = present.slides
+        .filter((slide) => normalizeTtsVoiceId(ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID) !== normalizedVoiceId)
+        .map((slide) => slide.id);
+      if (!changedSlideIds.length) {
+        setOpenTtsMenuSlideId(null);
+        return;
+      }
+      if (ttsVoiceChangeInFlightRef.current) {
+        setOpenTtsMenuSlideId(null);
+        return;
+      }
+      ttsVoiceChangeInFlightRef.current = true;
+      try {
+        const narrationCharCount = present.slides
+          .filter((slide) => !slide.isCover)
+          .reduce((total, slide) => total + slide.body.trim().length, 0);
+        const creditsPer1000Chars = selectedOption?.creditPer1000Chars ?? 0;
+        const credits =
+          selectedOption?.tier === "pro" && narrationCharCount > 0
+            ? Math.ceil((narrationCharCount / 1000) * creditsPer1000Chars)
+            : 0;
+        if (selectedOption && onTtsVoiceBilling) {
+          const allowed = await onTtsVoiceBilling({
+            voiceId: normalizedVoiceId,
+            voiceName: selectedOption.displayName,
+            tier: selectedOption.tier,
+            narrationCharCount,
+            credits,
+            creditsPer1000Chars,
+          });
+          if (allowed === false) {
+            setOpenTtsMenuSlideId(null);
+            return;
+          }
+        }
+      } finally {
+        ttsVoiceChangeInFlightRef.current = false;
+      }
+
+      const wasActiveAudio =
+        (playingAudioSlideId && changedSlideIds.includes(playingAudioSlideId)) ||
+        (pausedAudioSlideId && changedSlideIds.includes(pausedAudioSlideId));
+      if (wasActiveAudio) {
+        audioTokenRef.current += 1;
+        audioPausedRef.current = false;
+        audioPreviewRef.current?.pause();
+        audioPreviewRef.current = null;
+        if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+        setPlayingAudioSlideId(null);
+        setPausedAudioSlideId(null);
+      }
+      const nextGeneratedAudio = { ...generatedAudioRef.current };
+      changedSlideIds.forEach((changedSlideId) => {
+        const existingAudio = generatedAudioRef.current[changedSlideId];
+        if (existingAudio?.url?.startsWith("blob:")) {
+          URL.revokeObjectURL(existingAudio.url);
+        }
+        delete nextGeneratedAudio[changedSlideId];
+      });
+      generatedAudioRef.current = nextGeneratedAudio;
+      setGeneratedAudioBySlideId((prev) => {
+        const next = { ...prev };
+        changedSlideIds.forEach((changedSlideId) => {
+          const oldAudio = prev[changedSlideId];
+          if (oldAudio?.url?.startsWith("blob:") && oldAudio.url !== generatedAudioRef.current[changedSlideId]?.url) {
+            URL.revokeObjectURL(oldAudio.url);
+          }
+          delete next[changedSlideId];
+        });
+        return next;
+      });
+      setAudioProgressBySlideId((prev) => {
+        const next = { ...prev };
+        changedSlideIds.forEach((changedSlideId) => {
+          next[changedSlideId] = 0;
+        });
+        return next;
+      });
+      setAudioDurationBySlideId((prev) => {
+        const next = { ...prev };
+        changedSlideIds.forEach((changedSlideId) => {
+          delete next[changedSlideId];
+        });
+        return next;
+      });
+      const nextTtsBySlideId = Object.fromEntries(
+        present.slides.map((slide) => [slide.id, normalizedVoiceId]),
+      );
+      ttsBySlideIdRef.current = nextTtsBySlideId;
       commitChange((prev) => ({
         ...prev,
-        ttsBySlideId: {
-          ...prev.ttsBySlideId,
-          [slideId]: ttsId,
-        },
+        ttsBySlideId: nextTtsBySlideId,
       }));
+      onTtsVoicePreferenceChange?.(normalizedVoiceId);
+      if (selectedOption) {
+        onTtsVoiceApplied?.(selectedOption.displayName);
+      }
       setOpenTtsMenuSlideId(null);
+      const selectedSlide = present.slides.find((slide) => slide.id === slideId);
+      if (selectedSlide && !selectedSlide.isCover && selectedSlide.body.trim()) {
+        void ensureAudioFileForSlide(slideId, selectedSlide.body, normalizedVoiceId).catch((error) => {
+          setGeneratedAudioBySlideId((prev) => ({
+            ...prev,
+            [slideId]: {
+              url: prev[slideId]?.url ?? "",
+              durationSec: prev[slideId]?.durationSec ?? 0,
+              status: "error",
+              voiceId: normalizedVoiceId,
+              error: error instanceof Error ? error.message : "Audio generation failed",
+            },
+          }));
+        });
+      }
     },
-    [commitChange, hasMembership, onRequestTtsUpgrade],
+    [
+      commitChange,
+      ensureAudioFileForSlide,
+      hasMembership,
+      normalizeTtsVoiceId,
+      onRequestTtsUpgrade,
+      onTtsVoiceApplied,
+      onTtsVoiceBilling,
+      onTtsVoicePreferenceChange,
+      pausedAudioSlideId,
+      playingAudioSlideId,
+      present.slides,
+      ttsBySlideId,
+    ],
   );
 
   const updatePromptForSlide = useCallback(
@@ -1928,6 +2285,9 @@ export function StoryboardCanvas({
     setComposeProgress(0);
     setComposedVideoUrl(null);
     setComposedVideoFilename("knowlens-compose-preview.webm");
+    setComposedVideoCurrentSec(0);
+    setComposedVideoDurationSec(0);
+    setIsComposedVideoPlaying(false);
     setComposeStatus("running");
     setComposeSteps({
       prepare: "waiting",
@@ -1986,7 +2346,7 @@ export function StoryboardCanvas({
       const sceneAssets: SceneAudioAsset[] = [];
       for (let i = 0; i < slides.length; i += 1) {
         const slide = slides[i];
-        const narrationText = slide.isCover ? "" : slide.body.trim();
+        const narrationText = slide.body.trim();
         const ttsId = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
         if (!narrationText) {
           sceneAssets.push({
@@ -2188,6 +2548,30 @@ export function StoryboardCanvas({
     ttsBySlideId,
   ]);
 
+  const toggleComposedVideoPlayback = useCallback(() => {
+    const video = composedVideoPreviewRef.current;
+    if (!video) {
+      return;
+    }
+    if (video.paused) {
+      void video.play().catch(() => undefined);
+      return;
+    }
+    video.pause();
+  }, []);
+
+  const seekComposedVideo = useCallback(
+    (value: number) => {
+      const nextTime = clamp(value, 0, composedVideoDurationSec || 0);
+      setComposedVideoCurrentSec(nextTime);
+      const video = composedVideoPreviewRef.current;
+      if (video) {
+        video.currentTime = nextTime;
+      }
+    },
+    [composedVideoDurationSec],
+  );
+
   const exportPptx = useCallback(async () => {
     if (!slides.length || isExportingPpt) {
       return;
@@ -2365,9 +2749,9 @@ export function StoryboardCanvas({
 
         return {
           id: `story-${slide.id}`,
-          position: { x: idx * 460, y: 44 },
+          position: { x: idx * IMAGE_NODE_STEP, y: PPT_CANVAS_STORY_NODE_Y },
           extent: [
-            [-100000, 24],
+            [-100000, PPT_CANVAS_STORY_NODE_Y - 32],
             [100000, 124],
           ] as [[number, number], [number, number]],
           sourcePosition: Position.Bottom,
@@ -2376,7 +2760,7 @@ export function StoryboardCanvas({
             background: "transparent",
             boxShadow: "none",
             padding: 0,
-            width: 380,
+            width: IMAGE_NODE_WIDTH,
           },
           data: {
             label: (
@@ -2500,7 +2884,7 @@ export function StoryboardCanvas({
         const imagePrompt =
           promptBySlideId[slide.id] ?? buildPrompt(slide.title, slide.visual);
         const isPromptEditing = editingPromptSlideId === slide.id;
-        const narrationText = slide.isCover ? "" : slide.body;
+        const narrationText = slide.body;
         const hasNarration = narrationText.trim().length > 0;
         const isNodeSelected = selectedSlideId === slide.id;
         const isAudioPlaying = playingAudioSlideId === slide.id;
@@ -2509,7 +2893,7 @@ export function StoryboardCanvas({
           ? "Pause"
           : isAudioPaused
             ? "Resume"
-            : "Preview";
+            : "Play";
         const audioDurationSec = Math.max(
           0,
           generatedAudio?.durationSec ||
@@ -2538,9 +2922,12 @@ export function StoryboardCanvas({
 
         return {
           id: `image-${slide.id}`,
-          position: { x: idx * 460, y: canvasMode === "free" ? 44 : 570 },
+          position: {
+            x: idx * IMAGE_NODE_STEP,
+            y: canvasMode === "free" ? FREE_CANVAS_IMAGE_NODE_Y : PPT_CANVAS_IMAGE_NODE_Y,
+          },
           extent: [
-            [-100000, canvasMode === "free" ? 24 : 520],
+            [-100000, canvasMode === "free" ? FREE_CANVAS_IMAGE_NODE_Y - 20 : PPT_CANVAS_IMAGE_NODE_Y - 50],
             [100000, canvasMode === "free" ? 520 : 980],
           ] as [[number, number], [number, number]],
           targetPosition: canvasMode === "free" ? undefined : Position.Top,
@@ -2549,7 +2936,7 @@ export function StoryboardCanvas({
             background: "transparent",
             boxShadow: "none",
             padding: 0,
-            width: 380,
+            width: IMAGE_NODE_WIDTH,
           },
           data: {
             label: (
@@ -2704,15 +3091,14 @@ export function StoryboardCanvas({
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
                     <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
                       <span>Narration</span>
-                      <span>{slide.isCover ? "Cover has no narration" : "Voice-over script"}</span>
+                      <span>{slide.isCover ? "Optional cover voice-over" : "Voice-over script"}</span>
                     </div>
                     <textarea
                       value={narrationText}
                       onChange={(event) =>
                         updateSlide(slide.id, "body", event.target.value)
                       }
-                      placeholder={slide.isCover ? "" : "Narration for this scene..."}
-                      disabled={slide.isCover}
+                      placeholder={slide.isCover ? "Optional narration for the cover..." : "Narration for this scene..."}
                       className={`nodrag nopan nowheel h-20 w-full resize-none rounded border bg-white px-2 py-1.5 text-[11px] leading-5 text-zinc-700 outline-none ${
                         validationMap[slide.id]?.body
                           ? "border-red-300"
@@ -2752,7 +3138,7 @@ export function StoryboardCanvas({
                               : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
                           }`}
                         >
-                          {isAudioPlaying ? <PauseCircle size={12} /> : <Volume2 size={12} />}
+                          {isAudioPlaying ? <PauseCircle size={12} /> : <PlayCircle size={12} />}
                           {audioPreviewLabel}
                         </button>
                         <div className="relative flex-1">
@@ -2790,36 +3176,60 @@ export function StoryboardCanvas({
                               {TTS_OPTIONS.map((option) => {
                                 const isSelected = selectedTts === option.id;
                                 const isPremiumVoice = option.provider === "openai";
+                                const sampleState = sampleAudioByVoiceId[option.id]?.status;
+                                const isSamplePlaying = playingSampleVoiceId === option.id;
                                 return (
-                                  <button
+                                  <div
                                     key={option.id}
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      updateTtsForSlide(slide.id, option.id);
-                                    }}
-                                    className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
+                                    className="flex items-start gap-1 rounded-lg transition hover:bg-zinc-100"
                                   >
-                                    <span className="flex items-center justify-between gap-2 text-xs font-medium text-zinc-900">
-                                      <span className="min-w-0">
-                                        {option.displayName}
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void updateTtsForSlide(slide.id, option.id);
+                                      }}
+                                      className="min-w-0 flex-1 px-2.5 py-2 text-left"
+                                    >
+                                      <span className="flex items-center justify-between gap-2 text-xs font-medium text-zinc-900">
+                                        <span className="min-w-0">
+                                          {option.displayName}
+                                        </span>
+                                        <span className="inline-flex shrink-0 items-center gap-1.5">
+                                          {isPremiumVoice ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                              <Crown size={10} />
+                                              Pro
+                                            </span>
+                                          ) : null}
+                                          {isSelected ? (
+                                            <Check size={14} className="text-zinc-900" />
+                                          ) : null}
+                                        </span>
                                       </span>
-                                      <span className="inline-flex shrink-0 items-center gap-1.5">
-                                        {isPremiumVoice ? (
-                                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                                            <Crown size={10} />
-                                            Pro
-                                          </span>
-                                        ) : null}
-                                        {isSelected ? (
-                                          <Check size={14} className="text-zinc-900" />
-                                        ) : null}
+                                      <span className="mt-1 block text-[11px] leading-4 text-zinc-500">
+                                        {option.description}
                                       </span>
-                                    </span>
-                                    <span className="mt-1 block text-[11px] leading-4 text-zinc-500">
-                                      {option.description}
-                                    </span>
-                                  </button>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={`Play ${option.displayName} sample`}
+                                      aria-label={`Play ${option.displayName} sample`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void previewTtsSample(option.id);
+                                      }}
+                                      className="mr-1 mt-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"
+                                    >
+                                      {sampleState === "loading" ? (
+                                        <LoaderCircle size={13} className="animate-spin" />
+                                      ) : isSamplePlaying ? (
+                                        <PauseCircle size={13} />
+                                      ) : (
+                                        <PlayCircle size={13} />
+                                      )}
+                                    </button>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -2889,11 +3299,14 @@ export function StoryboardCanvas({
       openTtsMenuSlideId,
       pausedAudioSlideId,
       playingAudioSlideId,
+      playingSampleVoiceId,
+      previewTtsSample,
       promptBySlideId,
       regenerateSlideImage,
       resolvedImageAspectRatio,
       selectHistoryImage,
       selectedSlideId,
+      sampleAudioByVoiceId,
       slides,
       ttsBySlideId,
       toggleAudioPreviewForSlide,
@@ -3022,6 +3435,11 @@ export function StoryboardCanvas({
           URL.revokeObjectURL(item.url);
         }
       });
+      Object.values(sampleAudioByVoiceIdRef.current).forEach((item) => {
+        if (item.url?.startsWith("blob:")) {
+          URL.revokeObjectURL(item.url);
+        }
+      });
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
       }
@@ -3130,7 +3548,7 @@ export function StoryboardCanvas({
           fitView
           fitViewOptions={{ padding: 0.18, minZoom: 0.4 }}
           snapToGrid
-          snapGrid={[460, 10]}
+          snapGrid={[IMAGE_NODE_STEP, 10]}
           minZoom={0.34}
           maxZoom={1.9}
           defaultViewport={{ x: 0, y: 0, zoom: 0.56 }}
@@ -3415,6 +3833,54 @@ export function StoryboardCanvas({
                 />
               </div>
             </div>
+
+            {composeStatus === "success" && composedVideoUrl ? (
+              <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950">
+                <video
+                  ref={composedVideoPreviewRef}
+                  src={composedVideoUrl}
+                  className="block aspect-video w-full bg-zinc-950 object-contain"
+                  playsInline
+                  onLoadedMetadata={(event) => {
+                    const duration = event.currentTarget.duration;
+                    setComposedVideoDurationSec(Number.isFinite(duration) ? duration : composeMeta?.durationSec ?? 0);
+                    setComposedVideoCurrentSec(0);
+                    setIsComposedVideoPlaying(false);
+                  }}
+                  onTimeUpdate={(event) => {
+                    setComposedVideoCurrentSec(event.currentTarget.currentTime || 0);
+                  }}
+                  onPlay={() => setIsComposedVideoPlaying(true)}
+                  onPause={() => setIsComposedVideoPlaying(false)}
+                  onEnded={() => setIsComposedVideoPlaying(false)}
+                />
+                <div className="border-t border-white/10 bg-white px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleComposedVideoPlayback}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                      aria-label={isComposedVideoPlaying ? "Pause video preview" : "Play video preview"}
+                    >
+                      {isComposedVideoPlaying ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
+                    </button>
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.max(0.1, composedVideoDurationSec || composeMeta?.durationSec || 0.1)}
+                      step={0.05}
+                      value={clamp(composedVideoCurrentSec, 0, composedVideoDurationSec || composeMeta?.durationSec || 0)}
+                      onChange={(event) => seekComposedVideo(Number(event.target.value))}
+                      className="nodrag nopan h-2 min-w-0 flex-1 accent-zinc-900"
+                      aria-label="Video preview progress"
+                    />
+                    <span className="w-[92px] shrink-0 text-right text-xs tabular-nums text-zinc-500">
+                      {formatDuration(composedVideoCurrentSec)} / {formatDuration(composedVideoDurationSec || composeMeta?.durationSec || 0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4 flex justify-end gap-2">
               {composeStatus === "error" ? (

@@ -197,6 +197,43 @@ function sanitizePromptLine(text: string) {
   return normalized;
 }
 
+function stripVisibleAspectRatioText(text: string) {
+  return cleanText(
+    text
+      .replace(
+        /(?:^|[\s,，;；|])(?:aspect\s*ratio|ratio)\s*(?:of|:|=)?\s*(?:16\s*:\s*9|9\s*:\s*16|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)\b/gi,
+        " ",
+      )
+      .replace(
+        /(?:^|[\s,，;；|])(?:16\s*:\s*9|9\s*:\s*16|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)\s*(?:aspect\s*ratio|ratio)\b/gi,
+        " ",
+      )
+      .replace(/^[\s.,，;；|。]+$/g, "")
+      .replace(/\s*[,，;；|]\s*$/g, ""),
+  );
+}
+
+function buildVideoScenePromptDraft(input: {
+  title: string;
+  visual: string;
+  promptDraft: string;
+  isCover: boolean;
+}) {
+  const sceneText = stripVisibleAspectRatioText(sanitizePromptLine(input.visual));
+  const fallbackPrompt = stripVisibleAspectRatioText(input.promptDraft);
+  if (input.isCover) {
+    return cleanText(
+      [
+        input.title ? `Cover title: ${input.title}` : "",
+        sceneText || fallbackPrompt,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+  return sceneText || fallbackPrompt;
+}
+
 function splitLabels(value: string, maxCount = 4) {
   return value
     .split(/[\n,，;；|、]/g)
@@ -637,9 +674,19 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const contentTitle = cleanText(slide?.title) || cleanText(outline[idx]) || `${normalizedDirection === "ppt" ? "Slide" : "Frame"} ${index}`;
     const contentBody = cleanText(slide?.body) || cleanText(outline[idx]) || input.topic;
     const rawSlideVisual = sanitizeBrandSensitiveVisualText(slide?.visual || "");
-    const imagePromptDraft = sanitizeBrandSensitiveVisualText(
+    const sourceImagePromptDraft = sanitizeBrandSensitiveVisualText(
       sanitizePromptLine(cleanText(slide?.imagePromptDraft || slide?.imagePrompt)),
     );
+    const isIndependentCover = slide?.isCover === true;
+    const imagePromptDraft =
+      normalizedDirection === "video"
+        ? buildVideoScenePromptDraft({
+            title: contentTitle,
+            visual: rawSlideVisual,
+            promptDraft: sourceImagePromptDraft,
+            isCover: isIndependentCover,
+          })
+        : sourceImagePromptDraft;
     const videoImageSignal = cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join("\n"));
     const visibleLabelSource =
       normalizedDirection === "video"
@@ -649,7 +696,6 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       normalizedDirection === "video"
         ? cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join(" | "))
         : cleanText([contentTitle, contentBody].join(" | "));
-    const isIndependentCover = slide?.isCover === true;
     const isDataLikeSlide =
       !isIndependentCover &&
       (isHighRiskDataContent([contentTitle, normalizedDirection === "video" ? "" : contentBody, rawSlideVisual, imagePromptDraft].join(" ")) ||

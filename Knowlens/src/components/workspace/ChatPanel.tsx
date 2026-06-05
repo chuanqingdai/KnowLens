@@ -466,6 +466,9 @@ type ChatPanelProps = {
     styleName: string;
     languageModelCredits: number;
     imageModelCredits: number;
+    ttsNarrationCredits?: number;
+    ttsNarrationCharCount?: number;
+    ttsCreditsPer1000Chars?: number;
     totalCost: number;
     standardOutputCount: number;
     promoCreditsPerOutput: number;
@@ -1850,6 +1853,17 @@ export const ChatPanel = memo(function ChatPanel({
                     (<span className="line-through">{billingSummary.regularCreditsPerOutput} credits</span>)
                   </span>
                 </p>
+                {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
+                  <>
+                    <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">TTS Narration</p>
+                    <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
+                      {billingSummary.ttsNarrationCredits} credits
+                      <span className="ml-1 text-zinc-500">
+                        ({billingSummary.ttsNarrationCharCount ?? 0} chars)
+                      </span>
+                    </p>
+                  </>
+                ) : null}
                 <p className="whitespace-nowrap border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-600">Total</p>
                 <p className="px-3 py-2 text-base font-semibold text-zinc-900">{billingSummary.totalCost} credits</p>
               </div>
@@ -2763,6 +2777,17 @@ export const ChatPanel = memo(function ChatPanel({
                   (<span className="line-through">{billingSummary.regularCreditsPerOutput} credits</span>)
                 </span>
               </p>
+              {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
+                <>
+                  <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">TTS Narration</p>
+                  <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
+                    {billingSummary.ttsNarrationCredits} credits
+                    <span className="ml-1 text-zinc-500">
+                      ({billingSummary.ttsNarrationCharCount ?? 0} chars)
+                    </span>
+                  </p>
+                </>
+              ) : null}
               <p className="whitespace-nowrap border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-600">Total</p>
               <p className="px-3 py-2 text-base font-semibold text-zinc-900">{billingSummary.totalCost} credits</p>
             </div>
