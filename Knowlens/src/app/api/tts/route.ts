@@ -30,6 +30,7 @@ type TtsVoiceConfig = {
   languageCode?: string;
   gender: "male" | "female" | "neutral";
   model?: string;
+  styleInstructions?: string;
 };
 
 type TtsAudioResult = {
@@ -58,51 +59,71 @@ const TTS_VOICES: Record<string, TtsVoiceConfig> = {
     provider: "openai",
     voiceName: "cedar",
     gender: "male",
+    styleInstructions:
+      "Speak like a calm documentary narrator for a science explainer. Use a grounded, credible tone, measured pacing, subtle emphasis on discoveries, and short pauses before important cause-and-effect ideas. Keep it authoritative but not dramatic.",
   },
   pro_documentary_female: {
     provider: "openai",
     voiceName: "marin",
     gender: "female",
+    styleInstructions:
+      "Speak like a polished educational presenter. Use warm clarity, graceful intonation, confident pacing, and gentle emphasis on key facts. Make the narration feel premium, composed, and easy to follow.",
   },
   pro_deep_science: {
     provider: "openai",
     voiceName: "onyx",
     gender: "male",
+    styleInstructions:
+      "Speak with a deep, serious science-documentary tone. Use slower pacing, thoughtful pauses, and restrained emphasis for complex terms. Sound precise, mature, and analytical without becoming monotonous.",
   },
   pro_bright_explainer: {
     provider: "openai",
     voiceName: "nova",
     gender: "female",
+    styleInstructions:
+      "Speak like an energetic short-form science explainer. Use bright intonation, lively emphasis, and a clear sense of momentum. Keep the delivery upbeat and engaging while preserving accuracy.",
   },
   pro_neutral_tech: {
     provider: "openai",
     voiceName: "echo",
     gender: "neutral",
+    styleInstructions:
+      "Speak like a clean technology analyst. Use crisp articulation, steady pacing, precise emphasis on mechanisms and numbers, and a modern professional tone. Avoid hype and keep it easy to scan by ear.",
   },
   pro_warm_host: {
     provider: "openai",
     voiceName: "coral",
     gender: "female",
+    styleInstructions:
+      "Speak like a friendly educational host. Use warm curiosity, conversational rhythm, and inviting emphasis on surprising facts. Sound approachable and expressive without sounding theatrical.",
   },
   pro_calm_teacher: {
     provider: "openai",
     voiceName: "sage",
     gender: "neutral",
+    styleInstructions:
+      "Speak like a patient teacher explaining a concept step by step. Use calm pacing, clear pauses after each idea, and reassuring emphasis on definitions and transitions. Make it feel organized and understandable.",
   },
   pro_classic_storyteller: {
     provider: "openai",
     voiceName: "fable",
     gender: "neutral",
+    styleInstructions:
+      "Speak like a thoughtful educational storyteller. Use narrative cadence, gentle suspense, and expressive pauses that make facts feel connected. Keep it informative, not overly dramatic.",
   },
   pro_soft_presenter: {
     provider: "openai",
     voiceName: "shimmer",
     gender: "female",
+    styleInstructions:
+      "Speak with a soft, reassuring presenter tone. Use smooth phrasing, gentle rises and falls, and relaxed pacing. Make the narration feel calm, premium, and comfortable for learning.",
   },
   pro_balanced_narrator: {
     provider: "openai",
     voiceName: "alloy",
     gender: "neutral",
+    styleInstructions:
+      "Speak like a balanced professional narrator for visual explainers. Use natural intonation, steady pacing, and clear emphasis on conclusions, contrasts, and key terms. Keep the tone versatile and polished.",
   },
 };
 
@@ -316,19 +337,38 @@ async function synthesizeWithOpenAi(
     process.env.GPTSAPI_TTS_MODEL?.trim() ||
     process.env.OPENAI_TTS_MODEL?.trim() ||
     "gpt-4o-mini-tts";
-  const response = await fetch(`${baseUrl}/audio/speech`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      input: text,
-      voice: voice.voiceName,
-      response_format: "mp3",
-    }),
-  });
+
+  const instructions = buildTtsStyleInstructions(text, voice);
+  const basePayload = {
+    model,
+    input: text,
+    voice: voice.voiceName,
+    response_format: "mp3",
+  };
+  const speechUrl = `${baseUrl}/audio/speech`;
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  const postSpeech = (payload: typeof basePayload & { instructions?: string }) =>
+    fetch(speechUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+  let response = await postSpeech(
+    instructions
+      ? {
+          ...basePayload,
+          instructions,
+        }
+      : basePayload,
+  );
+
+  if (!response.ok && instructions && (response.status === 400 || response.status === 422)) {
+    response = await postSpeech(basePayload);
+  }
 
   if (!response.ok) {
     throw new Error(`Premium TTS failed: ${response.status}`);
@@ -338,6 +378,29 @@ async function synthesizeWithOpenAi(
     data: Buffer.from(await response.arrayBuffer()),
     contentType: response.headers.get("content-type") || "audio/mpeg",
   };
+}
+
+function buildTtsStyleInstructions(text: string, voice: TtsVoiceConfig) {
+  const base = voice.styleInstructions?.trim();
+  if (!base) {
+    return "";
+  }
+
+  const normalized = text.toLowerCase();
+  const additions: string[] = [
+    "Do not read as a flat transcript. Shape the delivery for a short visual video, with natural stress and clean pauses.",
+  ];
+  if (/[?？]/.test(text)) {
+    additions.push("When a question appears, lift the tone slightly and leave a brief reflective pause after it.");
+  }
+  if (/\b(first|second|third|next|then|finally|step|process|cause|result|therefore)\b|首先|然后|接着|最后|步骤|流程|原因|结果/.test(normalized)) {
+    additions.push("Make sequence words easy to hear, as if guiding the viewer through visible steps.");
+  }
+  if (/\b(vs|versus|compare|comparison|but|however|whereas|while)\b|对比|相比|但是|然而|优点|缺点/.test(normalized)) {
+    additions.push("Add a small pause before contrast words and emphasize the difference without exaggeration.");
+  }
+
+  return [base, ...additions].join(" ").slice(0, 1200);
 }
 
 export async function POST(request: Request) {
