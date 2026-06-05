@@ -1715,7 +1715,7 @@ export const ChatPanel = memo(function ChatPanel({
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
             <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
             <p className="mt-1 text-[11px] leading-5 text-zinc-400">Style selection is confirmed for this generation.</p>
-            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3">
               {styleOptions.map((style) => {
                 const active = style.id === selectedStyleId;
                 return (
@@ -1766,7 +1766,7 @@ export const ChatPanel = memo(function ChatPanel({
             <p className="mt-1 text-[11px] leading-5 text-zinc-400">
               Select one style card. Hover each card to preview the visual tone and best-fit use cases.
             </p>
-            <div className="mt-3 grid grid-cols-3 gap-3 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-3 gap-3">
               {styleOptions.map((style) => (
                 <button
                   key={`style-en-${style.id}`}

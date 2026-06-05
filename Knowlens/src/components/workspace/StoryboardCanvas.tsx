@@ -2,7 +2,7 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertCircle,
   Check,
@@ -31,6 +31,13 @@ import {
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
+import {
+  buildSceneTransitions,
+  DEFAULT_TRANSITION_FPS,
+  DEFAULT_TRANSITION_PRESET,
+  type SceneTransition,
+  type TransitionPresetId,
+} from "@/lib/video/transitions";
 
 type SaveState = "saved" | "saving" | "error";
 
@@ -245,8 +252,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "cedar",
     gender: "male",
     ageGroup: "middle_aged",
-    description: "Deep documentary tone for science, finance, and history.",
-    notes: "Premium documentary voice",
+    description: "Grounded documentary narration with calm authority and subtle suspense.",
+    notes: "Calm documentary",
     creditPer1000Chars: 40,
     profile: "male",
   },
@@ -258,8 +265,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "marin",
     gender: "female",
     ageGroup: "adult",
-    description: "Smooth presenter tone for polished educational explainers.",
-    notes: "Premium warm narrator",
+    description: "Polished educational presenter with warm clarity and graceful emphasis.",
+    notes: "Polished presenter",
     creditPer1000Chars: 40,
     profile: "female",
   },
@@ -271,8 +278,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "onyx",
     gender: "male",
     ageGroup: "mature",
-    description: "Low, serious tone for research, science, and history topics.",
-    notes: "Premium deep narrator",
+    description: "Deep analytical science tone with slower pacing and thoughtful pauses.",
+    notes: "Deep science",
     creditPer1000Chars: 40,
     profile: "male",
   },
@@ -284,8 +291,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "nova",
     gender: "female",
     ageGroup: "young_adult",
-    description: "Bright, energetic tone for fast-paced short explainers.",
-    notes: "Premium bright explainer",
+    description: "Bright short-form explainer with lively rhythm and clear momentum.",
+    notes: "Bright explainer",
     creditPer1000Chars: 40,
     profile: "youth",
   },
@@ -297,8 +304,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "echo",
     gender: "neutral",
     ageGroup: "adult",
-    description: "Neutral tech tone for AI, product, and software topics.",
-    notes: "Premium tech voice",
+    description: "Crisp tech analyst voice for mechanisms, numbers, and product logic.",
+    notes: "Tech analyst",
     creditPer1000Chars: 40,
     profile: "neutral",
   },
@@ -310,8 +317,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "coral",
     gender: "female",
     ageGroup: "young_adult",
-    description: "Friendly host tone for lifestyle and social explainers.",
-    notes: "Premium friendly host",
+    description: "Friendly host voice with curious, conversational ups and downs.",
+    notes: "Warm host",
     creditPer1000Chars: 40,
     profile: "youth",
   },
@@ -323,8 +330,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "sage",
     gender: "neutral",
     ageGroup: "middle_aged",
-    description: "Calm teaching tone for lessons, tutorials, and training.",
-    notes: "Premium calm teacher",
+    description: "Patient teacher voice that makes steps, definitions, and transitions clear.",
+    notes: "Calm teacher",
     creditPer1000Chars: 40,
     profile: "neutral",
   },
@@ -336,8 +343,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "fable",
     gender: "neutral",
     ageGroup: "mature",
-    description: "Narrative tone for story-led educational videos.",
-    notes: "Premium storyteller",
+    description: "Thoughtful storyteller voice with narrative cadence and gentle suspense.",
+    notes: "Storyteller",
     creditPer1000Chars: 40,
     profile: "neutral",
   },
@@ -349,8 +356,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "shimmer",
     gender: "female",
     ageGroup: "adult",
-    description: "Soft presenter tone for gentle learning videos.",
-    notes: "Premium soft presenter",
+    description: "Soft reassuring presenter with smooth phrasing and relaxed pacing.",
+    notes: "Soft presenter",
     creditPer1000Chars: 40,
     profile: "female",
   },
@@ -362,8 +369,8 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     voiceName: "alloy",
     gender: "neutral",
     ageGroup: "adult",
-    description: "Balanced all-purpose tone for mixed explainer content.",
-    notes: "Premium balanced narrator",
+    description: "Balanced professional narrator for clear, versatile visual explainers.",
+    notes: "Balanced narrator",
     creditPer1000Chars: 40,
     profile: "neutral",
   },
@@ -375,29 +382,34 @@ const TTS_SAMPLE_TEXT_BY_ID: Record<string, string> = {
   basic_narrator_female:
     "A single drop of water can travel through clouds, rivers, oceans, and ice.",
   pro_documentary_male:
-    "Deep beneath our feet, slow-moving tectonic plates reshape continents over millions of years.",
+    "Deep beneath our feet, tectonic plates move slowly, yet their quiet force can raise mountains and redraw continents.",
   pro_documentary_female:
-    "Every heartbeat moves oxygen through the body, helping each cell release usable energy.",
+    "With every heartbeat, oxygen travels through the body, helping each cell unlock the energy it needs to work.",
   pro_deep_science:
-    "Inside every atom, invisible forces hold particles together with extraordinary precision.",
+    "Inside every atom, invisible forces balance motion and attraction with a precision that shapes all matter.",
   pro_bright_explainer:
-    "Plants turn sunlight into sugar, storing solar energy in a form animals can eat.",
+    "Plants capture sunlight, turn it into sugar, and store solar energy in a form the rest of life can use.",
   pro_neutral_tech:
-    "Modern sensors convert real-world signals into data that computers can analyze instantly.",
+    "Modern sensors translate heat, motion, and light into data, so computers can understand the physical world.",
   pro_warm_host:
-    "A rainbow appears when sunlight bends, reflects, and separates inside tiny water droplets.",
+    "A rainbow appears when sunlight enters tiny water droplets, bends, reflects, and separates into visible color.",
   pro_calm_teacher:
-    "Learning strengthens neural connections, making future thoughts faster and easier to recall.",
+    "Learning strengthens neural connections step by step, making future thoughts faster, smoother, and easier to recall.",
   pro_classic_storyteller:
-    "Long before telescopes, careful sky watchers used patterns of stars to tell time and navigate.",
+    "Long before telescopes, sky watchers followed the stars, turning patterns of light into maps, calendars, and stories.",
   pro_soft_presenter:
-    "The ocean absorbs heat and carbon dioxide, quietly shaping the planet's climate system.",
+    "The ocean quietly absorbs heat and carbon dioxide, softening changes in the atmosphere and shaping Earth's climate.",
   pro_balanced_narrator:
-    "Gravity keeps planets in orbit and gives structure to galaxies across the universe.",
+    "Gravity keeps planets in orbit, gathers stars into galaxies, and gives the universe its large-scale structure.",
 };
 
 const TTS_OPTION_IDS = new Set(TTS_OPTIONS.map((option) => option.id));
 const DEFAULT_EMOTION_TTS_ID = "basic_narrator_female";
+const TTS_SAMPLE_CACHE_VERSION = "expressive-v2";
+
+function getTtsSampleCacheKey(voiceId: string) {
+  return `${voiceId}:${TTS_SAMPLE_CACHE_VERSION}`;
+}
 
 function buildPrompt(title: string, visual: string) {
   return visual.trim() || title.trim();
@@ -505,6 +517,167 @@ function normalizeCoverNarration(slide: { isCover?: boolean; body?: string }) {
     return slide.body ?? "";
   }
   return isTemplateCoverNarration(slide.body) ? "" : slide.body ?? "";
+}
+
+function easeInOut(progress: number) {
+  const p = clamp(progress, 0, 1);
+  return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+}
+
+function drawImageContain(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  canvasWidth: number,
+  canvasHeight: number,
+  alpha = 1,
+  offsetX = 0,
+  offsetY = 0,
+) {
+  const imageWidth = image.naturalWidth || image.width || canvasWidth;
+  const imageHeight = image.naturalHeight || image.height || canvasHeight;
+  const scale = Math.min(canvasWidth / imageWidth, canvasHeight / imageHeight);
+  const drawW = imageWidth * scale;
+  const drawH = imageHeight * scale;
+  const drawX = (canvasWidth - drawW) / 2 + offsetX;
+  const drawY = (canvasHeight - drawH) / 2 + offsetY;
+
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.drawImage(image, drawX, drawY, drawW, drawH);
+  ctx.restore();
+}
+
+function drawLightSweepOverlay(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  progress: number,
+  intensity: SceneTransition["intensity"],
+) {
+  const strength = intensity === "strong" ? 0.34 : intensity === "subtle" ? 0.16 : 0.24;
+  const sweepWidth = canvasWidth * 0.18;
+  const centerX = -sweepWidth + (canvasWidth + sweepWidth * 2) * progress;
+  const gradient = ctx.createLinearGradient(centerX - sweepWidth, 0, centerX + sweepWidth, 0);
+  gradient.addColorStop(0, "rgba(255,255,255,0)");
+  gradient.addColorStop(0.5, `rgba(255,255,255,${strength})`);
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+
+  ctx.save();
+  ctx.translate(centerX, canvasHeight / 2);
+  ctx.rotate((-16 * Math.PI) / 180);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(-sweepWidth, -canvasHeight, sweepWidth * 2, canvasHeight * 2);
+  ctx.restore();
+}
+
+function drawSceneTransitionFrame(input: {
+  ctx: CanvasRenderingContext2D;
+  fromImage: HTMLImageElement;
+  toImage: HTMLImageElement;
+  transition: SceneTransition;
+  progress: number;
+  width: number;
+  height: number;
+  backgroundColor: string;
+}) {
+  const { ctx, fromImage, toImage, transition, width, height, backgroundColor } = input;
+  const progress = easeInOut(input.progress);
+  ctx.fillStyle = backgroundColor;
+  ctx.fillRect(0, 0, width, height);
+
+  if (transition.type === "dip_to_color") {
+    const color = transition.color || backgroundColor;
+    if (progress < 0.5) {
+      drawImageContain(ctx, fromImage, width, height, 1 - progress * 2);
+      ctx.save();
+      ctx.globalAlpha = progress * 2;
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+      return;
+    }
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, width, height);
+    drawImageContain(ctx, toImage, width, height, (progress - 0.5) * 2);
+    return;
+  }
+
+  if (transition.type === "wipe") {
+    drawImageContain(ctx, fromImage, width, height);
+    ctx.save();
+    if (transition.direction === "left") {
+      ctx.beginPath();
+      ctx.rect(width * (1 - progress), 0, width * progress, height);
+    } else if (transition.direction === "up") {
+      ctx.beginPath();
+      ctx.rect(0, height * (1 - progress), width, height * progress);
+    } else if (transition.direction === "down") {
+      ctx.beginPath();
+      ctx.rect(0, 0, width, height * progress);
+    } else {
+      ctx.beginPath();
+      ctx.rect(0, 0, width * progress, height);
+    }
+    ctx.clip();
+    drawImageContain(ctx, toImage, width, height);
+    ctx.restore();
+    return;
+  }
+
+  if (transition.type === "slide") {
+    const direction = transition.direction || "right";
+    const dx = direction === "left" ? -width : direction === "right" ? width : 0;
+    const dy = direction === "up" ? -height : direction === "down" ? height : 0;
+    drawImageContain(ctx, fromImage, width, height, 1, -dx * progress, -dy * progress);
+    drawImageContain(ctx, toImage, width, height, 1, dx * (1 - progress), dy * (1 - progress));
+    return;
+  }
+
+  drawImageContain(ctx, fromImage, width, height, 1 - progress);
+  drawImageContain(ctx, toImage, width, height, progress);
+  if (transition.type === "light_sweep") {
+    drawLightSweepOverlay(ctx, width, height, progress, transition.intensity);
+  }
+}
+
+function getPreviewTransitionImageStyle(
+  transition: SceneTransition,
+  progressInput: number,
+  layer: "from" | "to",
+): CSSProperties {
+  const progress = easeInOut(progressInput);
+  if (transition.type === "wipe") {
+    if (layer === "from") return { opacity: 1 };
+    if (transition.direction === "left") {
+      return { clipPath: `inset(0 0 0 ${100 - progress * 100}%)` };
+    }
+    if (transition.direction === "up") {
+      return { clipPath: `inset(${100 - progress * 100}% 0 0 0)` };
+    }
+    if (transition.direction === "down") {
+      return { clipPath: `inset(0 0 ${100 - progress * 100}% 0)` };
+    }
+    return { clipPath: `inset(0 ${100 - progress * 100}% 0 0)` };
+  }
+  if (transition.type === "slide") {
+    const direction = transition.direction || "right";
+    const fromX = direction === "left" ? -progress * 100 : direction === "right" ? progress * 100 : 0;
+    const fromY = direction === "up" ? -progress * 100 : direction === "down" ? progress * 100 : 0;
+    const toX = direction === "left" ? (1 - progress) * 100 : direction === "right" ? -(1 - progress) * 100 : 0;
+    const toY = direction === "up" ? (1 - progress) * 100 : direction === "down" ? -(1 - progress) * 100 : 0;
+    return {
+      opacity: 1,
+      transform:
+        layer === "from"
+          ? `translate(${fromX}%, ${fromY}%)`
+          : `translate(${toX}%, ${toY}%)`,
+    };
+  }
+  if (transition.type === "dip_to_color") {
+    if (layer === "from") return { opacity: progress < 0.5 ? 1 - progress * 2 : 0 };
+    return { opacity: progress < 0.5 ? 0 : (progress - 0.5) * 2 };
+  }
+  return { opacity: layer === "from" ? 1 - progress : progress };
 }
 
 function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
@@ -743,6 +916,8 @@ export function StoryboardCanvas({
   >({});
   const ttsBySlideIdRef = useRef<Record<string, string>>({});
   const ttsVoiceChangeInFlightRef = useRef(false);
+  const ignoreNextTtsMenuCloseRef = useRef(false);
+  const ttsMenuInteractionTimerRef = useRef<number | null>(null);
   const initialPack = useMemo(() => {
     if (typeof window === "undefined") {
       return createInitialPack();
@@ -796,6 +971,14 @@ export function StoryboardCanvas({
     title: string;
     page: number;
   } | null>(null);
+  const [previewTransitionFrame, setPreviewTransitionFrame] = useState<{
+    fromImageSrc: string;
+    toImageSrc: string;
+    title: string;
+    page: number;
+    transition: SceneTransition;
+  } | null>(null);
+  const [previewTransitionProgress, setPreviewTransitionProgress] = useState(0);
   const [playingAudioSlideId, setPlayingAudioSlideId] = useState<string | null>(
     null,
   );
@@ -833,6 +1016,7 @@ export function StoryboardCanvas({
   const [composedVideoFilename, setComposedVideoFilename] = useState(
     "knowlens-compose-preview.webm",
   );
+  const [transitionPresetId] = useState<TransitionPresetId>(DEFAULT_TRANSITION_PRESET);
   const [composedVideoCurrentSec, setComposedVideoCurrentSec] = useState(0);
   const [composedVideoDurationSec, setComposedVideoDurationSec] = useState(0);
   const [isComposedVideoPlaying, setIsComposedVideoPlaying] = useState(false);
@@ -847,6 +1031,20 @@ export function StoryboardCanvas({
   const [exportedPptUrl, setExportedPptUrl] = useState<string | null>(null);
   const [pptDownloadNotice, setPptDownloadNotice] = useState<string | null>(null);
 
+  const keepTtsMenuOpenDuringInteraction = useCallback((slideId?: string) => {
+    ignoreNextTtsMenuCloseRef.current = true;
+    if (slideId) {
+      setOpenTtsMenuSlideId(slideId);
+    }
+    if (ttsMenuInteractionTimerRef.current) {
+      window.clearTimeout(ttsMenuInteractionTimerRef.current);
+    }
+    ttsMenuInteractionTimerRef.current = window.setTimeout(() => {
+      ignoreNextTtsMenuCloseRef.current = false;
+      ttsMenuInteractionTimerRef.current = null;
+    }, 250);
+  }, []);
+
   useEffect(() => {
     generatedAudioRef.current = generatedAudioBySlideId;
   }, [generatedAudioBySlideId]);
@@ -856,6 +1054,9 @@ export function StoryboardCanvas({
       return;
     }
     const handleDocumentClick = (event: MouseEvent) => {
+      if (ignoreNextTtsMenuCloseRef.current) {
+        return;
+      }
       if (
         event.target instanceof Element &&
         event.target.closest("[data-tts-menu-root='true']")
@@ -1637,13 +1838,14 @@ export function StoryboardCanvas({
       setPlayingAudioSlideId(null);
       setPausedAudioSlideId(null);
 
-      const cached = sampleAudioByVoiceIdRef.current[normalizedVoiceId];
+      const sampleCacheKey = getTtsSampleCacheKey(normalizedVoiceId);
+      const cached = sampleAudioByVoiceIdRef.current[sampleCacheKey];
       let sampleUrl = cached?.status === "ready" ? cached.url : "";
       if (!sampleUrl) {
         setSampleAudioByVoiceId((prev) => ({
           ...prev,
-          [normalizedVoiceId]: {
-            url: prev[normalizedVoiceId]?.url ?? "",
+          [sampleCacheKey]: {
+            url: prev[sampleCacheKey]?.url ?? "",
             status: "loading",
           },
         }));
@@ -1665,13 +1867,13 @@ export function StoryboardCanvas({
           const blob = await response.blob();
           sampleUrl = URL.createObjectURL(blob);
           setSampleAudioByVoiceId((prev) => {
-            const oldUrl = prev[normalizedVoiceId]?.url;
+            const oldUrl = prev[sampleCacheKey]?.url;
             if (oldUrl?.startsWith("blob:") && oldUrl !== sampleUrl) {
               URL.revokeObjectURL(oldUrl);
             }
             return {
               ...prev,
-              [normalizedVoiceId]: {
+              [sampleCacheKey]: {
                 url: sampleUrl,
                 status: "ready",
               },
@@ -1680,8 +1882,8 @@ export function StoryboardCanvas({
         } catch {
           setSampleAudioByVoiceId((prev) => ({
             ...prev,
-            [normalizedVoiceId]: {
-              url: prev[normalizedVoiceId]?.url ?? "",
+            [sampleCacheKey]: {
+              url: prev[sampleCacheKey]?.url ?? "",
               status: "error",
             },
           }));
@@ -2177,6 +2379,8 @@ export function StoryboardCanvas({
     setIsPreviewPaused(false);
     setActivePreviewSlideId(null);
     setPreviewFrame(null);
+    setPreviewTransitionFrame(null);
+    setPreviewTransitionProgress(0);
     stopAllAudio();
   }, [stopAllAudio]);
 
@@ -2249,6 +2453,24 @@ export function StoryboardCanvas({
             slides.findIndex((slide) => slide.id === selectedSlideId),
           )
         : 0;
+      const previewTransitions = buildSceneTransitions(
+        slides.map((slide) => ({
+          id: slide.id,
+          title: slide.title,
+          voiceover: slide.body,
+        })),
+        {
+          fps: DEFAULT_TRANSITION_FPS,
+          preset: transitionPresetId,
+        },
+      );
+      let previousPreview:
+        | {
+            imageSrc: string;
+            title: string;
+            page: number;
+          }
+        | null = null;
 
       for (let idx = startIndex; idx < slides.length; idx += 1) {
         if (cancelPreviewRef.current) {
@@ -2270,11 +2492,45 @@ export function StoryboardCanvas({
         if (!src) {
           continue;
         }
-        setPreviewFrame({
+        const nextPreview = {
           imageSrc: src,
           title: slide.title,
           page: slide.page,
+        };
+        const transition = idx > 0 ? previewTransitions[idx - 1] : null;
+        if (previousPreview && transition) {
+          const transitionMs = (transition.durationFrames / DEFAULT_TRANSITION_FPS) * 1000;
+          setPreviewTransitionFrame({
+            fromImageSrc: previousPreview.imageSrc,
+            toImageSrc: nextPreview.imageSrc,
+            title: nextPreview.title,
+            page: nextPreview.page,
+            transition,
+          });
+          const transitionStartedAt = performance.now();
+          while (!cancelPreviewRef.current) {
+            while (previewPauseRef.current && !cancelPreviewRef.current) {
+              await sleep(100);
+            }
+            if (cancelPreviewRef.current) {
+              break;
+            }
+            const progress = Math.min(1, (performance.now() - transitionStartedAt) / transitionMs);
+            setPreviewTransitionProgress(progress);
+            if (progress >= 1) {
+              break;
+            }
+            await sleep(1000 / DEFAULT_TRANSITION_FPS);
+          }
+          setPreviewTransitionFrame(null);
+          setPreviewTransitionProgress(0);
+        }
+        setPreviewFrame({
+          imageSrc: nextPreview.imageSrc,
+          title: nextPreview.title,
+          page: nextPreview.page,
         });
+        previousPreview = nextPreview;
         const centerX = idx * 460 + 190;
         const centerY = 760;
         setActivePreviewSlideId(slide.id);
@@ -2301,6 +2557,7 @@ export function StoryboardCanvas({
       sleep,
       slides,
       stopPreview,
+      transitionPresetId,
     ],
   );
 
@@ -2312,7 +2569,7 @@ export function StoryboardCanvas({
     setComposeError(null);
     setComposeProgress(0);
     setComposedVideoUrl(null);
-    setComposedVideoFilename("knowlens-compose-preview.webm");
+    setComposedVideoFilename("knowlens-compose-preview.mp4");
     setComposedVideoCurrentSec(0);
     setComposedVideoDurationSec(0);
     setIsComposedVideoPlaying(false);
@@ -2328,7 +2585,7 @@ export function StoryboardCanvas({
     try {
       setComposeSteps((prev) => ({ ...prev, prepare: "running" }));
 
-      const fps = 24;
+      const fps = DEFAULT_TRANSITION_FPS;
       const size = { width: 1280, height: 720 };
       const canvas = document.createElement("canvas");
       canvas.width = size.width;
@@ -2372,10 +2629,20 @@ export function StoryboardCanvas({
       setComposeSteps((prev) => ({ ...prev, prepare: "done", tts: "running" }));
 
       const sceneAssets: SceneAudioAsset[] = [];
+      const sceneImageSources: string[] = [];
       for (let i = 0; i < slides.length; i += 1) {
         const slide = slides[i];
         const narrationText = slide.body.trim();
         const ttsId = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
+        const generationState = generationTaskStateByIndex?.[slide.page];
+        const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
+        const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
+        const imageSrc = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
+        if (!imageSrc) {
+          throw new Error(`Scene ${slide.page} image is not ready. Please retry the failed scene first.`);
+        }
+        sceneImageSources.push(imageSrc);
+
         if (!narrationText) {
           sceneAssets.push({
             slideId: slide.id,
@@ -2398,9 +2665,37 @@ export function StoryboardCanvas({
         setComposeProgress(Math.round(((i + 1) / Math.max(1, slides.length)) * 28));
       }
 
+      const sceneImages = await Promise.all(
+        sceneImageSources.map(
+          (src, index) =>
+            new Promise<HTMLImageElement>((resolve, reject) => {
+              const image = new window.Image();
+              image.crossOrigin = "anonymous";
+              image.src = src;
+              image.onload = () => resolve(image);
+              image.onerror = () =>
+                reject(new Error(`Scene ${slides[index]?.page ?? index + 1} image could not be loaded. Please retry this scene.`));
+            }),
+        ),
+      );
+      const sceneTransitions = buildSceneTransitions(
+        slides.map((slide) => ({
+          id: slide.id,
+          title: slide.title,
+          voiceover: slide.body,
+        })),
+        {
+          fps,
+          preset: transitionPresetId,
+        },
+      );
+      const transitionDurationSec = sceneTransitions.reduce(
+        (sum, transition) => sum + transition.durationFrames / fps,
+        0,
+      );
       const totalDurationSec = sceneAssets.reduce(
         (sum, item) => sum + item.durationSec,
-        0,
+        transitionDurationSec,
       );
       const voicedSceneCount = sceneAssets.filter((scene) => scene.buffer).length;
       setComposeMeta({
@@ -2423,15 +2718,7 @@ export function StoryboardCanvas({
       const drawFrame = (image: HTMLImageElement) => {
         ctx.fillStyle = "#0b0c0f";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        const imageWidth = image.naturalWidth || image.width || canvas.width;
-        const imageHeight = image.naturalHeight || image.height || canvas.height;
-        const scale = Math.max(canvas.width / imageWidth, canvas.height / imageHeight);
-        const drawW = imageWidth * scale;
-        const drawH = imageHeight * scale;
-        const drawX = (canvas.width - drawW) / 2;
-        const drawY = (canvas.height - drawH) / 2;
-        ctx.drawImage(image, drawX, drawY, drawW, drawH);
+        drawImageContain(ctx, image, canvas.width, canvas.height);
       };
 
       let elapsedSec = 0;
@@ -2439,20 +2726,10 @@ export function StoryboardCanvas({
       for (let i = 0; i < slides.length; i += 1) {
         const slide = slides[i];
         const sceneAsset = sceneAssets[i];
-        const generationState = generationTaskStateByIndex?.[slide.page];
-        const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
-        const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-        const src = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
-        if (!src) {
-          throw new Error(`Scene ${slide.page} image is not ready. Please retry the failed scene first.`);
+        const image = sceneImages[i];
+        if (!image) {
+          throw new Error(`Scene ${slide.page} image could not be loaded. Please retry this scene.`);
         }
-
-        const image = new window.Image();
-        image.src = src;
-        await new Promise<void>((resolve, reject) => {
-          image.onload = () => resolve();
-          image.onerror = () => reject(new Error(`Scene ${slide.page} image could not be loaded. Please retry this scene.`));
-        });
 
         const sceneDuration = sceneAsset.durationSec;
         const startAt = performance.now();
@@ -2478,6 +2755,35 @@ export function StoryboardCanvas({
           await sleep(1000 / fps);
         }
         elapsedSec += sceneDuration;
+
+        const transition = sceneTransitions[i];
+        const nextImage = sceneImages[i + 1];
+        if (transition && nextImage) {
+          const transitionDuration = transition.durationFrames / fps;
+          const transitionStartAt = performance.now();
+          while (true) {
+            const elapsedMs = performance.now() - transitionStartAt;
+            const progress = Math.min(1, elapsedMs / (transitionDuration * 1000));
+            drawSceneTransitionFrame({
+              ctx,
+              fromImage: image,
+              toImage: nextImage,
+              transition,
+              progress,
+              width: canvas.width,
+              height: canvas.height,
+              backgroundColor: "#0B0B0F",
+            });
+            const globalSec = elapsedSec + progress * transitionDuration;
+            const composePct = 28 + (globalSec / Math.max(1, totalDurationSec)) * 64;
+            setComposeProgress(Math.min(96, Math.round(composePct)));
+            if (progress >= 1) {
+              break;
+            }
+            await sleep(1000 / fps);
+          }
+          elapsedSec += transitionDuration;
+        }
       }
 
       setComposeSteps((prev) => ({ ...prev, render: "done", finalize: "running" }));
@@ -2578,6 +2884,7 @@ export function StoryboardCanvas({
     sleep,
     slides,
     triggerVideoDownload,
+    transitionPresetId,
     ttsBySlideId,
   ]);
 
@@ -2953,15 +3260,18 @@ export function StoryboardCanvas({
               ? 0.92
               : 1;
 
+        const imageNodeY =
+          canvasMode === "free" ? FREE_CANVAS_IMAGE_NODE_Y : PPT_CANVAS_IMAGE_NODE_Y;
+
         return {
           id: `image-${slide.id}`,
           position: {
             x: idx * IMAGE_NODE_STEP,
-            y: canvasMode === "free" ? FREE_CANVAS_IMAGE_NODE_Y : PPT_CANVAS_IMAGE_NODE_Y,
+            y: imageNodeY,
           },
           extent: [
-            [-100000, canvasMode === "free" ? FREE_CANVAS_IMAGE_NODE_Y - 20 : PPT_CANVAS_IMAGE_NODE_Y - 50],
-            [100000, canvasMode === "free" ? 520 : 980],
+            [-100000, imageNodeY],
+            [100000, imageNodeY],
           ] as [[number, number], [number, number]],
           targetPosition: canvasMode === "free" ? undefined : Position.Top,
           style: {
@@ -3159,8 +3469,14 @@ export function StoryboardCanvas({
                       <div
                         data-tts-menu-root="true"
                         className="flex items-center gap-2"
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onMouseDown={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          keepTtsMenuOpenDuringInteraction(slide.id);
+                        }}
+                        onMouseDown={(event) => {
+                          event.stopPropagation();
+                          keepTtsMenuOpenDuringInteraction(slide.id);
+                        }}
                       >
                         <button
                           type="button"
@@ -3209,14 +3525,24 @@ export function StoryboardCanvas({
                           {openTtsMenuSlideId === slide.id ? (
                             <div
                               className="nodrag nopan nowheel absolute left-0 top-8 z-50 max-h-[420px] w-[340px] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]"
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => {
+                                event.stopPropagation();
+                                keepTtsMenuOpenDuringInteraction(slide.id);
+                              }}
+                              onMouseDown={(event) => {
+                                event.stopPropagation();
+                                keepTtsMenuOpenDuringInteraction(slide.id);
+                              }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                keepTtsMenuOpenDuringInteraction(slide.id);
+                              }}
                             >
                               {TTS_OPTIONS.map((option) => {
                                 const isSelected = selectedTts === option.id;
                                 const isPremiumVoice = option.provider === "openai";
-                                const sampleState = sampleAudioByVoiceId[option.id]?.status;
+                                const sampleState =
+                                  sampleAudioByVoiceId[getTtsSampleCacheKey(option.id)]?.status;
                                 const isSamplePlaying = playingSampleVoiceId === option.id;
                                 return (
                                   <div
@@ -3255,11 +3581,17 @@ export function StoryboardCanvas({
                                       type="button"
                                       title={`Play ${option.displayName} sample`}
                                       aria-label={`Play ${option.displayName} sample`}
-                                      onPointerDown={(event) => event.stopPropagation()}
-                                      onMouseDown={(event) => event.stopPropagation()}
+                                      onPointerDown={(event) => {
+                                        event.stopPropagation();
+                                        keepTtsMenuOpenDuringInteraction(slide.id);
+                                      }}
+                                      onMouseDown={(event) => {
+                                        event.stopPropagation();
+                                        keepTtsMenuOpenDuringInteraction(slide.id);
+                                      }}
                                       onClick={(event) => {
                                         event.stopPropagation();
-                                        setOpenTtsMenuSlideId(slide.id);
+                                        keepTtsMenuOpenDuringInteraction(slide.id);
                                         void previewTtsSample(option.id);
                                       }}
                                       className="mr-1 mt-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"
@@ -3338,6 +3670,7 @@ export function StoryboardCanvas({
       generationInProgress,
       generationTaskStateByIndex,
       imageHistoryBySlideId,
+      keepTtsMenuOpenDuringInteraction,
       onRetryGenerationTask,
       openTtsMenuSlideId,
       pausedAudioSlideId,
@@ -3486,6 +3819,9 @@ export function StoryboardCanvas({
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
       }
+      if (ttsMenuInteractionTimerRef.current) {
+        window.clearTimeout(ttsMenuInteractionTimerRef.current);
+      }
       if (composedVideoUrlRef.current) {
         URL.revokeObjectURL(composedVideoUrlRef.current);
       }
@@ -3577,7 +3913,6 @@ export function StoryboardCanvas({
               <PauseCircle size={14} />
               {isPreviewPaused ? "Resume" : "Pause"}
             </button>
-
           </div>
         </div>
         ) : null}
@@ -3797,7 +4132,63 @@ export function StoryboardCanvas({
           </div>
         ) : null}
 
-        {isPreviewing && previewFrame?.imageSrc ? (
+        {isPreviewing && previewTransitionFrame ? (
+          <div className="pointer-events-none absolute inset-0 z-20 bg-black">
+            <div className="relative h-full w-full overflow-hidden bg-[#0B0B0F]">
+              <img
+                src={previewTransitionFrame.fromImageSrc}
+                alt=""
+                className="absolute inset-0 h-full w-full object-contain"
+                style={getPreviewTransitionImageStyle(
+                  previewTransitionFrame.transition,
+                  previewTransitionProgress,
+                  "from",
+                )}
+              />
+              <img
+                src={previewTransitionFrame.toImageSrc}
+                alt={`Preview scene ${previewTransitionFrame.page}`}
+                className="absolute inset-0 h-full w-full object-contain"
+                style={getPreviewTransitionImageStyle(
+                  previewTransitionFrame.transition,
+                  previewTransitionProgress,
+                  "to",
+                )}
+              />
+              {previewTransitionFrame.transition.type === "dip_to_color" ? (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundColor: previewTransitionFrame.transition.color || "#0B0B0F",
+                    opacity:
+                      previewTransitionProgress < 0.5
+                        ? previewTransitionProgress * 2
+                        : (1 - previewTransitionProgress) * 2,
+                  }}
+                />
+              ) : null}
+              {previewTransitionFrame.transition.type === "light_sweep" ? (
+                <div className="absolute inset-0 overflow-hidden">
+                  <div
+                    className="absolute -top-[12%] bottom-[-12%] w-[18%] -skew-x-12 bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.55)_50%,rgba(255,255,255,0)_100%)] blur-[2px]"
+                    style={{
+                      left: `${-28 + 156 * previewTransitionProgress}%`,
+                      opacity:
+                        previewTransitionFrame.transition.intensity === "strong"
+                          ? 0.34
+                          : previewTransitionFrame.transition.intensity === "subtle"
+                            ? 0.16
+                            : 0.24,
+                    }}
+                  />
+                </div>
+              ) : null}
+              <div className="absolute left-4 top-4 rounded-lg bg-black/55 px-3 py-1.5 text-xs text-white">
+                Scene {previewTransitionFrame.page} · {previewTransitionFrame.title}
+              </div>
+            </div>
+          </div>
+        ) : isPreviewing && previewFrame?.imageSrc ? (
           <div className="pointer-events-none absolute inset-0 z-20 bg-black">
             <div className="relative h-full w-full">
               <img
