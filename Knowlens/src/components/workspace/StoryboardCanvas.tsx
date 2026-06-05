@@ -148,17 +148,27 @@ type ComposeMeta = {
   estimatedSizeMB: number;
 };
 
-type SceneAudioAsset = {
-  slideId: string;
-  durationSec: number;
-  buffer: AudioBuffer | null;
-};
-
 type GeneratedAudioMeta = {
   url: string;
   durationSec: number;
   status: "ready" | "generating" | "error";
   voiceId?: string;
+  error?: string;
+};
+
+type ClientVideoExportJob = {
+  id?: string;
+  status?: string;
+  step?: string;
+  progress?: number;
+  message?: string;
+  currentScene?: number;
+  totalScenes?: number;
+  resultUrl?: string;
+  downloadUrl?: string;
+  filename?: string;
+  contentType?: string;
+  size?: number;
   error?: string;
 };
 
@@ -171,7 +181,6 @@ const HISTORY_LIMIT = 60;
 const PPT_DOWNLOAD_FILENAME = "KnowLens.ai-visual-deck.pptx";
 const VIDEO_DOWNLOAD_FILENAME = "KnowLens.ai-storyboard-video.mp4";
 const VIDEO_EXPORT_FORMAT = "video/mp4";
-const MIN_RECORDED_VIDEO_BYTES = 4096;
 const FREE_CANVAS_IMAGE_NODE_Y = 44;
 const PPT_CANVAS_STORY_NODE_Y = 56;
 const PPT_CANVAS_IMAGE_NODE_Y = 570;
@@ -527,122 +536,6 @@ function easeInOut(progress: number) {
   return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
 }
 
-function drawImageContain(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  canvasWidth: number,
-  canvasHeight: number,
-  alpha = 1,
-  offsetX = 0,
-  offsetY = 0,
-) {
-  const imageWidth = image.naturalWidth || image.width || canvasWidth;
-  const imageHeight = image.naturalHeight || image.height || canvasHeight;
-  const scale = Math.min(canvasWidth / imageWidth, canvasHeight / imageHeight);
-  const drawW = imageWidth * scale;
-  const drawH = imageHeight * scale;
-  const drawX = (canvasWidth - drawW) / 2 + offsetX;
-  const drawY = (canvasHeight - drawH) / 2 + offsetY;
-
-  ctx.save();
-  ctx.globalAlpha = clamp(alpha, 0, 1);
-  ctx.drawImage(image, drawX, drawY, drawW, drawH);
-  ctx.restore();
-}
-
-function drawLightSweepOverlay(
-  ctx: CanvasRenderingContext2D,
-  canvasWidth: number,
-  canvasHeight: number,
-  progress: number,
-  intensity: SceneTransition["intensity"],
-) {
-  const strength = intensity === "strong" ? 0.34 : intensity === "subtle" ? 0.16 : 0.24;
-  const sweepWidth = canvasWidth * 0.18;
-  const centerX = -sweepWidth + (canvasWidth + sweepWidth * 2) * progress;
-  const gradient = ctx.createLinearGradient(centerX - sweepWidth, 0, centerX + sweepWidth, 0);
-  gradient.addColorStop(0, "rgba(255,255,255,0)");
-  gradient.addColorStop(0.5, `rgba(255,255,255,${strength})`);
-  gradient.addColorStop(1, "rgba(255,255,255,0)");
-
-  ctx.save();
-  ctx.translate(centerX, canvasHeight / 2);
-  ctx.rotate((-16 * Math.PI) / 180);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(-sweepWidth, -canvasHeight, sweepWidth * 2, canvasHeight * 2);
-  ctx.restore();
-}
-
-function drawSceneTransitionFrame(input: {
-  ctx: CanvasRenderingContext2D;
-  fromImage: HTMLImageElement;
-  toImage: HTMLImageElement;
-  transition: SceneTransition;
-  progress: number;
-  width: number;
-  height: number;
-  backgroundColor: string;
-}) {
-  const { ctx, fromImage, toImage, transition, width, height, backgroundColor } = input;
-  const progress = easeInOut(input.progress);
-  ctx.fillStyle = backgroundColor;
-  ctx.fillRect(0, 0, width, height);
-
-  if (transition.type === "dip_to_color") {
-    const color = transition.color || backgroundColor;
-    if (progress < 0.5) {
-      drawImageContain(ctx, fromImage, width, height, 1 - progress * 2);
-      ctx.save();
-      ctx.globalAlpha = progress * 2;
-      ctx.fillStyle = color;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-      return;
-    }
-    ctx.fillStyle = color;
-    ctx.fillRect(0, 0, width, height);
-    drawImageContain(ctx, toImage, width, height, (progress - 0.5) * 2);
-    return;
-  }
-
-  if (transition.type === "wipe") {
-    drawImageContain(ctx, fromImage, width, height);
-    ctx.save();
-    if (transition.direction === "left") {
-      ctx.beginPath();
-      ctx.rect(width * (1 - progress), 0, width * progress, height);
-    } else if (transition.direction === "up") {
-      ctx.beginPath();
-      ctx.rect(0, height * (1 - progress), width, height * progress);
-    } else if (transition.direction === "down") {
-      ctx.beginPath();
-      ctx.rect(0, 0, width, height * progress);
-    } else {
-      ctx.beginPath();
-      ctx.rect(0, 0, width * progress, height);
-    }
-    ctx.clip();
-    drawImageContain(ctx, toImage, width, height);
-    ctx.restore();
-    return;
-  }
-
-  if (transition.type === "slide") {
-    const direction = transition.direction || "right";
-    const dx = direction === "left" ? -width : direction === "right" ? width : 0;
-    const dy = direction === "up" ? -height : direction === "down" ? height : 0;
-    drawImageContain(ctx, fromImage, width, height, 1, -dx * progress, -dy * progress);
-    drawImageContain(ctx, toImage, width, height, 1, dx * (1 - progress), dy * (1 - progress));
-    return;
-  }
-
-  drawImageContain(ctx, fromImage, width, height, 1 - progress);
-  drawImageContain(ctx, toImage, width, height, progress);
-  if (transition.type === "light_sweep") {
-    drawLightSweepOverlay(ctx, width, height, progress, transition.intensity);
-  }
-}
-
 function getPreviewTransitionImageStyle(
   transition: SceneTransition,
   progressInput: number,
@@ -883,44 +776,25 @@ function toVideoExportErrorMessage(error: unknown) {
   return "Video export failed. Please try again.";
 }
 
-function createVideoMediaRecorder(stream: MediaStream) {
-  if (typeof MediaRecorder === "undefined") {
-    throw new Error("MP4 export could not be prepared in this browser. Please try Chrome or Edge.");
-  }
-
-  const candidates = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-  ];
-  for (const candidate of candidates) {
-    if (!MediaRecorder.isTypeSupported(candidate)) {
-      continue;
-    }
-    try {
-      const recorder = new MediaRecorder(stream, { mimeType: candidate });
-      return {
-        recorder,
-        mimeType: recorder.mimeType || candidate,
-      };
-    } catch {
-      // Try the next browser-supported candidate.
-    }
-  }
-
-  try {
-    const recorder = new MediaRecorder(stream);
-    return {
-      recorder,
-      mimeType: recorder.mimeType || "video/webm",
-    };
-  } catch {
-    throw new Error("MP4 export could not initialize video recording. Please try Chrome or Edge.");
+function safeRevokeObjectUrl(value: string | null) {
+  if (value?.startsWith("blob:")) {
+    URL.revokeObjectURL(value);
   }
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function toServerReadableImageUrl(src: string) {
+  const value = src.trim();
+  if (!value) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) {
+    return value;
+  }
+  return new URL(value, window.location.origin).toString();
 }
 
 function parseAspectRatioValue(value?: string | null) {
@@ -1082,6 +956,7 @@ export function StoryboardCanvas({
   const [composedVideoDurationSec, setComposedVideoDurationSec] = useState(0);
   const [isComposedVideoPlaying, setIsComposedVideoPlaying] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
+  const [composeServerMessage, setComposeServerMessage] = useState("");
   const [composeMeta, setComposeMeta] = useState<ComposeMeta | null>(null);
   const [isExportingPpt, setIsExportingPpt] = useState(false);
   const [exportPptProgress, setExportPptProgress] = useState(0);
@@ -1262,6 +1137,9 @@ export function StoryboardCanvas({
     setSelectedSlideId(slides[0].id);
   }, [selectedSlideId, slides]);
   const composeLoadingHint = useMemo(() => {
+    if (composeServerMessage) {
+      return composeServerMessage;
+    }
     if (composeSteps.prepare === "running") {
       return "Preparing export settings...";
     }
@@ -1275,7 +1153,13 @@ export function StoryboardCanvas({
       return "Finalizing the video file...";
     }
     return "Exporting video...";
-  }, [composeSteps.finalize, composeSteps.prepare, composeSteps.render, composeSteps.tts]);
+  }, [
+    composeServerMessage,
+    composeSteps.finalize,
+    composeSteps.prepare,
+    composeSteps.render,
+    composeSteps.tts,
+  ]);
   const exportPptHint = useMemo(() => {
     if (pptDownloadNotice) {
       return pptDownloadNotice;
@@ -1497,10 +1381,14 @@ export function StoryboardCanvas({
   }, [focusSlide, selectedSlideId, slides]);
 
   const playTtsWithProgress = useCallback(
-    async (slideId: string, text: string, ttsId: string) => {
+    async (
+      slideId: string,
+      text: string,
+      readyAudio?: GeneratedAudioMeta,
+    ) => {
       audioTokenRef.current += 1;
       const token = audioTokenRef.current;
-      const generatedAudio = generatedAudioRef.current[slideId];
+      const generatedAudio = readyAudio ?? generatedAudioRef.current[slideId];
       const estimatedDurationSec =
         generatedAudio?.durationSec || estimateNarrationDurationSec(text);
       audioPausedRef.current = false;
@@ -1584,121 +1472,12 @@ export function StoryboardCanvas({
         return;
       }
 
-      if (!("speechSynthesis" in window)) {
-        const durationSec = estimatedDurationSec || 12;
-        const startedAt = performance.now();
-        let totalPausedMs = 0;
-        let pausedAt: number | null = null;
-        const getElapsedSec = () => {
-          if (audioPausedRef.current) {
-            pausedAt ??= performance.now();
-          } else if (pausedAt !== null) {
-            totalPausedMs += performance.now() - pausedAt;
-            pausedAt = null;
-          }
-          return (performance.now() - startedAt - totalPausedMs) / 1000;
-        };
-        while (true) {
-          if (token !== audioTokenRef.current) {
-            return;
-          }
-          const elapsedSec = getElapsedSec();
-          setAudioProgressBySlideId((prev) => ({
-            ...prev,
-            [slideId]: clamp(elapsedSec, 0, durationSec),
-          }));
-          if (elapsedSec >= durationSec) {
-            break;
-          }
-          await sleep(120);
-        }
-        setPlayingAudioSlideId(null);
-        return;
-      }
-
-      window.speechSynthesis.cancel();
-
-      await new Promise<void>((resolve) => {
-        const selectedProfile =
-          TTS_OPTIONS.find((item) => item.id === ttsId)?.profile ?? "neutral";
-        const utterance = new SpeechSynthesisUtterance(
-          text || "Add narration before previewing audio.",
-        );
-        utterance.lang = "zh-CN";
-        utterance.rate = selectedProfile === "youth" ? 1.08 : 1;
-        utterance.pitch =
-          selectedProfile === "female"
-            ? 1.15
-            : selectedProfile === "male"
-              ? 0.88
-              : 1;
-        utterance.volume = 1;
-
-        const durationSec = estimatedDurationSec || 12;
-        const startedAt = performance.now();
-        let totalPausedMs = 0;
-        let pausedAt: number | null = null;
-        const getElapsedSec = () => {
-          if (audioPausedRef.current) {
-            pausedAt ??= performance.now();
-          } else if (pausedAt !== null) {
-            totalPausedMs += performance.now() - pausedAt;
-            pausedAt = null;
-          }
-          return (performance.now() - startedAt - totalPausedMs) / 1000;
-        };
-        const fallbackTimer = window.setInterval(() => {
-          if (token !== audioTokenRef.current) {
-            window.clearInterval(fallbackTimer);
-            return;
-          }
-          const elapsedSec = getElapsedSec();
-          setAudioProgressBySlideId((prev) => {
-            return { ...prev, [slideId]: clamp(elapsedSec, 0, durationSec) };
-          });
-        }, 120);
-
-        utterance.onboundary = (event) => {
-          if (token !== audioTokenRef.current) {
-            return;
-          }
-          const total = Math.max(1, utterance.text.length);
-          const nextSec = (event.charIndex / total) * durationSec;
-          setAudioProgressBySlideId((prev) => ({
-            ...prev,
-            [slideId]: Math.max(prev[slideId] ?? 0, nextSec),
-          }));
-        };
-
-        utterance.onend = () => {
-          window.clearInterval(fallbackTimer);
-          const elapsedSec = getElapsedSec();
-          const remainingMs = Math.max(0, durationSec - elapsedSec) * 1000;
-          window.setTimeout(() => {
-            if (token === audioTokenRef.current) {
-              setAudioProgressBySlideId((prev) => ({
-                ...prev,
-                [slideId]: durationSec,
-              }));
-            }
-            resolve();
-          }, remainingMs);
-        };
-
-        utterance.onerror = () => {
-          window.clearInterval(fallbackTimer);
-          resolve();
-        };
-
-        window.speechSynthesis.speak(utterance);
-      });
-
       if (token === audioTokenRef.current) {
         setPlayingAudioSlideId(null);
         setPausedAudioSlideId(null);
       }
     },
-    [sleep],
+    [],
   );
 
   const stopAllAudio = useCallback(() => {
@@ -1719,29 +1498,6 @@ export function StoryboardCanvas({
   const normalizeTtsVoiceId = useCallback((ttsId: string) => {
     return TTS_OPTION_IDS.has(ttsId) ? ttsId : DEFAULT_EMOTION_TTS_ID;
   }, []);
-
-  const decodeGeneratedAudioFromUrl = useCallback(
-    async (url: string): Promise<SceneAudioAsset["buffer"]> => {
-      if (!url.trim()) {
-        return null;
-      }
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error("Generated audio could not be loaded");
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const audioContext = new AudioContext({ sampleRate: 48000 });
-      try {
-        const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-        return decoded;
-      } finally {
-        await audioContext.close();
-      }
-    },
-    [],
-  );
 
   const getAudioDurationFromBlob = useCallback((blob: Blob) => {
     return new Promise<number>((resolve) => {
@@ -1767,22 +1523,27 @@ export function StoryboardCanvas({
   const ensureAudioFileForSlide = useCallback(
     async (slideId: string, body: string, ttsId: string) => {
       const normalizedVoiceId = normalizeTtsVoiceId(ttsId);
-      const existing = generatedAudioBySlideId[slideId];
-      if (existing?.status === "ready" && existing.voiceId === normalizedVoiceId) {
-        return existing;
-      }
       if (!body.trim()) {
         throw new Error("Add narration before generating audio");
       }
+      const existing = generatedAudioRef.current[slideId] ?? generatedAudioBySlideId[slideId];
+      if (existing?.status === "ready" && existing.voiceId === normalizedVoiceId) {
+        return existing;
+      }
 
+      const generatingAudio = {
+        url: existing?.url ?? "",
+        durationSec: existing?.durationSec ?? 0,
+        status: "generating" as const,
+        voiceId: normalizedVoiceId,
+      };
+      generatedAudioRef.current = {
+        ...generatedAudioRef.current,
+        [slideId]: generatingAudio,
+      };
       setGeneratedAudioBySlideId((prev) => ({
         ...prev,
-        [slideId]: {
-          url: prev[slideId]?.url ?? "",
-          durationSec: prev[slideId]?.durationSec ?? 0,
-          status: "generating",
-          voiceId: normalizedVoiceId,
-        },
+        [slideId]: generatingAudio,
       }));
 
       const response = await fetch("/api/tts", {
@@ -1802,10 +1563,9 @@ export function StoryboardCanvas({
       const audioBlob = await response.blob();
       const nextUrl = URL.createObjectURL(audioBlob);
       const durationSec = await getAudioDurationFromBlob(audioBlob);
-      const fallbackDurationSec = estimateNarrationDurationSec(body) || 12;
       const readyAudio = {
         url: nextUrl,
-        durationSec: durationSec || fallbackDurationSec,
+        durationSec,
         status: "ready" as const,
         voiceId: normalizedVoiceId,
       };
@@ -1837,6 +1597,9 @@ export function StoryboardCanvas({
 
   const previewAudioForSlide = useCallback(
     async (slideId: string, body: string) => {
+      if (!body.trim()) {
+        return;
+      }
       const ttsId = ttsBySlideId[slideId] ?? DEFAULT_EMOTION_TTS_ID;
       const normalizedVoiceId = normalizeTtsVoiceId(ttsId);
       const selectedOption = TTS_OPTIONS.find((item) => item.id === normalizedVoiceId);
@@ -1845,7 +1608,12 @@ export function StoryboardCanvas({
         return;
       }
       try {
-        await ensureAudioFileForSlide(slideId, body, normalizedVoiceId);
+        const readyAudio = await ensureAudioFileForSlide(slideId, body, normalizedVoiceId);
+        const currentVoiceId = normalizeTtsVoiceId(ttsBySlideIdRef.current[slideId] ?? DEFAULT_EMOTION_TTS_ID);
+        if (currentVoiceId !== normalizedVoiceId) {
+          return;
+        }
+        await playTtsWithProgress(slideId, body, readyAudio);
       } catch (error) {
         const currentVoiceId = normalizeTtsVoiceId(ttsBySlideIdRef.current[slideId] ?? DEFAULT_EMOTION_TTS_ID);
         if (currentVoiceId !== normalizedVoiceId) {
@@ -1861,12 +1629,8 @@ export function StoryboardCanvas({
             error: error instanceof Error ? error.message : "Audio generation failed",
           },
         }));
-      }
-      const currentVoiceId = normalizeTtsVoiceId(ttsBySlideIdRef.current[slideId] ?? DEFAULT_EMOTION_TTS_ID);
-      if (currentVoiceId !== normalizedVoiceId) {
         return;
       }
-      await playTtsWithProgress(slideId, body, normalizedVoiceId);
     },
     [
       ensureAudioFileForSlide,
@@ -2257,6 +2021,51 @@ export function StoryboardCanvas({
 
   const updateSlide = useCallback(
     (slideId: string, key: "title" | "body" | "visual", value: string) => {
+      if (key === "body" && !value.trim()) {
+        const existingAudio = generatedAudioRef.current[slideId];
+        if (existingAudio?.url?.startsWith("blob:")) {
+          URL.revokeObjectURL(existingAudio.url);
+        }
+        const nextGeneratedAudio = { ...generatedAudioRef.current };
+        delete nextGeneratedAudio[slideId];
+        generatedAudioRef.current = nextGeneratedAudio;
+        setGeneratedAudioBySlideId((prev) => {
+          if (!prev[slideId]) {
+            return prev;
+          }
+          const next = { ...prev };
+          const oldAudio = next[slideId];
+          if (oldAudio?.url?.startsWith("blob:") && oldAudio.url !== existingAudio?.url) {
+            URL.revokeObjectURL(oldAudio.url);
+          }
+          delete next[slideId];
+          return next;
+        });
+        setAudioProgressBySlideId((prev) => {
+          if (prev[slideId] == null) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[slideId];
+          return next;
+        });
+        setAudioDurationBySlideId((prev) => {
+          if (prev[slideId] == null) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[slideId];
+          return next;
+        });
+        if (playingAudioSlideId === slideId || pausedAudioSlideId === slideId) {
+          audioTokenRef.current += 1;
+          audioPausedRef.current = false;
+          audioPreviewRef.current?.pause();
+          audioPreviewRef.current = null;
+          setPlayingAudioSlideId(null);
+          setPausedAudioSlideId(null);
+        }
+      }
       commitChange((prev) => ({
         ...prev,
         slides: prev.slides.map((slide) =>
@@ -2264,7 +2073,7 @@ export function StoryboardCanvas({
         ),
       }));
     },
-    [commitChange],
+    [commitChange, pausedAudioSlideId, playingAudioSlideId],
   );
 
   const updateSlideField = useCallback(
@@ -2628,6 +2437,7 @@ export function StoryboardCanvas({
     }
     setShowComposeModal(true);
     setComposeError(null);
+    setComposeServerMessage("");
     setComposeProgress(0);
     setComposedVideoUrl(null);
     setComposedVideoFilename(VIDEO_DOWNLOAD_FILENAME);
@@ -2645,53 +2455,10 @@ export function StoryboardCanvas({
 
     try {
       setComposeSteps((prev) => ({ ...prev, prepare: "running" }));
+      setComposeServerMessage("Preparing scene timeline...");
 
-      const fps = DEFAULT_TRANSITION_FPS;
       const size = { width: 1280, height: 720 };
-      const canvas = document.createElement("canvas");
-      canvas.width = size.width;
-      canvas.height = size.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        throw new Error("Could not initialize the video canvas.");
-      }
-
-      const videoStream = canvas.captureStream(fps);
-      if (!videoStream.getVideoTracks().length) {
-        throw new Error("MP4 export could not capture the video track. Please retry.");
-      }
-
-      const audioContext = new AudioContext({ sampleRate: 48000 });
-      const outputGain = audioContext.createGain();
-      outputGain.gain.value = 1;
-      const mediaDest = audioContext.createMediaStreamDestination();
-      outputGain.connect(mediaDest);
-
-      const composedStream = new MediaStream([
-        ...videoStream.getVideoTracks(),
-        ...mediaDest.stream.getAudioTracks(),
-      ]);
-      const { recorder, mimeType } = createVideoMediaRecorder(composedStream);
-      const chunks: BlobPart[] = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      const completed = new Promise<Blob>((resolve, reject) => {
-        recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
-        recorder.onerror = () => reject(new Error("Video recording failed."));
-      });
-
-      setComposeSteps((prev) => ({ ...prev, prepare: "done", tts: "running" }));
-
-      const sceneAssets: SceneAudioAsset[] = [];
-      const sceneImageSources: string[] = [];
-      for (let i = 0; i < slides.length; i += 1) {
-        const slide = slides[i];
-        const narrationText = slide.body.trim();
-        const ttsId = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
+      const scenes = slides.map((slide) => {
         const generationState = generationTaskStateByIndex?.[slide.page];
         const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
@@ -2699,217 +2466,172 @@ export function StoryboardCanvas({
         if (!imageSrc) {
           throw new Error(`Scene ${slide.page} image is not ready. Please retry the failed scene first.`);
         }
-        sceneImageSources.push(imageSrc);
-
-        if (!narrationText) {
-          sceneAssets.push({
-            slideId: slide.id,
-            buffer: null,
-            durationSec: slide.isCover ? 1 / fps : 3.4,
-          });
-          setComposeProgress(Math.round(((i + 1) / Math.max(1, slides.length)) * 28));
-          continue;
-        }
-        const generatedAudio = await ensureAudioFileForSlide(slide.id, narrationText, ttsId);
-        const audioBuffer = await decodeGeneratedAudioFromUrl(generatedAudio.url);
-        if (!audioBuffer?.duration) {
-          throw new Error(`Scene ${slide.page} audio could not be prepared. Please retry.`);
-        }
-        sceneAssets.push({
-          slideId: slide.id,
-          buffer: audioBuffer,
-          durationSec: audioBuffer.duration,
-        });
-        setComposeProgress(Math.round(((i + 1) / Math.max(1, slides.length)) * 28));
-      }
-
-      const sceneImages = await Promise.all(
-        sceneImageSources.map(
-          (src, index) =>
-            new Promise<HTMLImageElement>((resolve, reject) => {
-              const image = new window.Image();
-              image.crossOrigin = "anonymous";
-              image.src = src;
-              image.onload = () => resolve(image);
-              image.onerror = () =>
-                reject(new Error(`Scene ${slides[index]?.page ?? index + 1} image could not be loaded. Please retry this scene.`));
-            }),
-        ),
-      );
-      const sceneTransitions = buildSceneTransitions(
-        slides.map((slide) => ({
+        return {
           id: slide.id,
+          page: slide.page,
           title: slide.title,
-          voiceover: slide.body,
-        })),
-        {
-          fps,
-          preset: transitionPresetId,
-        },
-      );
-      const transitionDurationSec = sceneTransitions.reduce(
-        (sum, transition) => sum + transition.durationFrames / fps,
-        0,
-      );
-      const totalDurationSec = sceneAssets.reduce(
-        (sum, item) => sum + item.durationSec,
-        transitionDurationSec,
-      );
-      const voicedSceneCount = sceneAssets.filter((scene) => scene.buffer).length;
+          imageUrl: toServerReadableImageUrl(imageSrc),
+          narrationText: slide.body.trim(),
+          ttsId: ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID,
+          isCover: slide.isCover === true,
+        };
+      });
+      const voicedSceneCount = scenes.filter((scene) => scene.narrationText).length;
       setComposeMeta({
-        fps,
+        fps: DEFAULT_TRANSITION_FPS,
         resolution: `${size.width}×${size.height}`,
         sceneCount: slides.length,
         voicedSceneCount,
-        durationSec: totalDurationSec,
+        durationSec: 0,
         format: VIDEO_EXPORT_FORMAT,
-        estimatedSizeMB: Number((totalDurationSec * 0.75).toFixed(1)),
+        estimatedSizeMB: 0,
       });
 
-      setComposeSteps((prev) => ({ ...prev, tts: "done", render: "running" }));
-
-      recorder.start(200);
-      if (audioContext.state === "suspended") {
-        await audioContext.resume();
+      const projectId = new URLSearchParams(window.location.search).get("projectId");
+      const createResponse = await fetch("/api/export/video/jobs", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId,
+          scenes,
+          width: size.width,
+          height: size.height,
+          fps: DEFAULT_TRANSITION_FPS,
+          transitionPresetId,
+        }),
+      });
+      const createBody = (await createResponse.json().catch(() => ({}))) as {
+        error?: string;
+        job?: ClientVideoExportJob;
+      };
+      if (!createResponse.ok || !createBody.job?.id) {
+        throw new Error(createBody.error?.trim() || "MP4 export job could not be created.");
       }
+      const jobId = createBody.job.id;
 
-      const drawFrame = (image: HTMLImageElement) => {
-        ctx.fillStyle = "#0b0c0f";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        drawImageContain(ctx, image, canvas.width, canvas.height);
+      const applyJobState = (job: ClientVideoExportJob) => {
+        setComposeProgress(
+          Math.max(0, Math.min(100, Math.round(Number(job.progress ?? 0)))),
+        );
+        const currentScene = Number(job.currentScene || 0);
+        const totalScenes = Number(job.totalScenes || scenes.length);
+        if (job.message?.trim()) {
+          setComposeServerMessage(job.message.trim());
+        } else if (job.step === "tts" && currentScene > 0) {
+          setComposeServerMessage(`Generating ${currentScene}/${totalScenes}`);
+        } else if (job.step === "render") {
+          setComposeServerMessage("Rendering video");
+        } else if (job.step === "done") {
+          setComposeServerMessage("Ready");
+        }
+        if (job.status === "success" || job.step === "done") {
+          setComposeSteps({
+            prepare: "done",
+            tts: "done",
+            render: "done",
+            finalize: "done",
+          });
+          return;
+        }
+        if (job.step === "upload") {
+          setComposeSteps({
+            prepare: "done",
+            tts: "done",
+            render: "done",
+            finalize: "running",
+          });
+          return;
+        }
+        if (job.step === "render") {
+          setComposeSteps({
+            prepare: "done",
+            tts: "done",
+            render: "running",
+            finalize: "waiting",
+          });
+          return;
+        }
+        if (job.step === "tts") {
+          setComposeSteps({
+            prepare: "done",
+            tts: "running",
+            render: "waiting",
+            finalize: "waiting",
+          });
+          return;
+        }
+        setComposeSteps({
+          prepare: "running",
+          tts: "waiting",
+          render: "waiting",
+          finalize: "waiting",
+        });
       };
 
-      let elapsedSec = 0;
-
-      for (let i = 0; i < slides.length; i += 1) {
-        const slide = slides[i];
-        const sceneAsset = sceneAssets[i];
-        const image = sceneImages[i];
-        if (!image) {
-          throw new Error(`Scene ${slide.page} image could not be loaded. Please retry this scene.`);
+      applyJobState(createBody.job);
+      let finalJob: ClientVideoExportJob | null = null;
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < 12 * 60 * 1000) {
+        await sleep(2500);
+        const statusResponse = await fetch(
+          `/api/export/video/jobs/${encodeURIComponent(jobId)}`,
+          {
+            headers: {
+              Accept: "application/json",
+            },
+          },
+        );
+        const statusBody = (await statusResponse.json().catch(() => ({}))) as {
+          error?: string;
+          job?: ClientVideoExportJob;
+        };
+        if (!statusResponse.ok || !statusBody.job) {
+          throw new Error(statusBody.error?.trim() || "MP4 export status could not be loaded.");
         }
-
-        const sceneDuration = sceneAsset.durationSec;
-        const startAt = performance.now();
-        const scheduledStart = audioContext.currentTime;
-
-        if (sceneAsset.buffer) {
-          const source = audioContext.createBufferSource();
-          source.buffer = sceneAsset.buffer;
-          source.connect(outputGain);
-          source.start(scheduledStart);
+        applyJobState(statusBody.job);
+        if (statusBody.job.status === "success") {
+          finalJob = statusBody.job;
+          break;
         }
-
-        while (true) {
-          const elapsedMs = performance.now() - startAt;
-          const progress = Math.min(1, elapsedMs / (sceneDuration * 1000));
-          drawFrame(image);
-          const globalSec = elapsedSec + progress * sceneDuration;
-          const composePct = 28 + (globalSec / Math.max(1, totalDurationSec)) * 64;
-          setComposeProgress(Math.min(96, Math.round(composePct)));
-          if (progress >= 1) {
-            break;
-          }
-          await sleep(1000 / fps);
-        }
-        elapsedSec += sceneDuration;
-
-        const transition = sceneTransitions[i];
-        const nextImage = sceneImages[i + 1];
-        if (transition && nextImage) {
-          const transitionDuration = transition.durationFrames / fps;
-          const transitionStartAt = performance.now();
-          while (true) {
-            const elapsedMs = performance.now() - transitionStartAt;
-            const progress = Math.min(1, elapsedMs / (transitionDuration * 1000));
-            drawSceneTransitionFrame({
-              ctx,
-              fromImage: image,
-              toImage: nextImage,
-              transition,
-              progress,
-              width: canvas.width,
-              height: canvas.height,
-              backgroundColor: "#0B0B0F",
-            });
-            const globalSec = elapsedSec + progress * transitionDuration;
-            const composePct = 28 + (globalSec / Math.max(1, totalDurationSec)) * 64;
-            setComposeProgress(Math.min(96, Math.round(composePct)));
-            if (progress >= 1) {
-              break;
-            }
-            await sleep(1000 / fps);
-          }
-          elapsedSec += transitionDuration;
+        if (statusBody.job.status === "error") {
+          throw new Error(statusBody.job.error?.trim() || "MP4 export failed. Please retry.");
         }
       }
 
-      setComposeSteps((prev) => ({ ...prev, render: "done", finalize: "running" }));
-      recorder.stop();
-      const blob = await completed;
-      await audioContext.close();
-      videoStream.getTracks().forEach((track) => track.stop());
-      composedStream.getTracks().forEach((track) => track.stop());
-      if (blob.size < MIN_RECORDED_VIDEO_BYTES) {
-        throw new Error("The recorded video stream was empty. Please retry the export.");
+      if (!finalJob?.resultUrl?.trim()) {
+        throw new Error("MP4 export timed out. Please retry.");
       }
-      if (!blob.type.toLowerCase().startsWith("video/webm")) {
-        throw new Error("The recorded video stream could not be prepared for MP4 export. Please retry.");
-      }
-
-      setComposeProgress(97);
-      const formData = new FormData();
-      formData.append(
-        "video",
-        new File([blob], "knowlens-compose-preview.webm", { type: mimeType }),
-      );
-      const transcodeResponse = await fetch("/api/export/video", {
-        method: "POST",
-        body: formData,
-      });
-      if (!transcodeResponse.ok) {
-        let message = "MP4 export failed. Please retry.";
-        try {
-          const body = (await transcodeResponse.json()) as { error?: string };
-          message = body.error?.trim() || message;
-        } catch {
-          // keep generic message
-        }
-        throw new Error(message);
-      }
-      const finalBlob = await transcodeResponse.blob();
-      if (finalBlob.size <= 0) {
-        throw new Error("MP4 export returned an empty file. Please retry.");
-      }
-      const finalFormat = transcodeResponse.headers.get("content-type") || VIDEO_EXPORT_FORMAT;
+      const finalUrl = finalJob.resultUrl.trim();
+      const finalDownloadUrl = finalJob.downloadUrl?.trim() || finalUrl;
+      const finalFilename = finalJob.filename?.trim() || VIDEO_DOWNLOAD_FILENAME;
+      const finalSize = Number(finalJob.size || 0);
+      const finalFormat = finalJob.contentType?.trim() || VIDEO_EXPORT_FORMAT;
       if (!finalFormat.toLowerCase().includes(VIDEO_EXPORT_FORMAT)) {
         throw new Error("MP4 export failed. Please retry.");
       }
-      const finalFilename = VIDEO_DOWNLOAD_FILENAME;
-
-      if (composedVideoUrlRef.current) {
-        URL.revokeObjectURL(composedVideoUrlRef.current);
-      }
-      const url = URL.createObjectURL(finalBlob);
-      composedVideoUrlRef.current = url;
-      setComposedVideoUrl(url);
+      safeRevokeObjectUrl(composedVideoUrlRef.current);
+      composedVideoUrlRef.current = finalUrl;
+      setComposedVideoUrl(finalUrl);
       setComposedVideoFilename(finalFilename);
       setComposeMeta((prev) =>
         prev
           ? {
               ...prev,
               format: VIDEO_EXPORT_FORMAT,
-              estimatedSizeMB: Number((finalBlob.size / (1024 * 1024)).toFixed(1)),
+              estimatedSizeMB: Number((finalSize / (1024 * 1024)).toFixed(1)),
             }
           : prev,
       );
       setComposeProgress(100);
+      setComposeServerMessage("Ready");
       setComposeSteps((prev) => ({ ...prev, finalize: "done" }));
       setComposeStatus("success");
       window.setTimeout(() => {
-        const downloadStarted = triggerVideoDownload(url, finalFilename);
+        const downloadStarted = triggerVideoDownload(finalDownloadUrl || finalUrl, finalFilename);
         if (downloadStarted) {
-          setShowComposeModal(false);
           return;
         }
         setComposeStatus("error");
@@ -2917,6 +2639,7 @@ export function StoryboardCanvas({
       }, 0);
     } catch (error) {
       setComposeStatus("error");
+      setComposeServerMessage("");
       setComposeProgress(0);
       setComposeSteps((prev) => {
         const hasRunning = Object.values(prev).some((status) => status === "running");
@@ -2941,8 +2664,6 @@ export function StoryboardCanvas({
   }, [
     activeImageIndexBySlideId,
     composeStatus,
-    decodeGeneratedAudioFromUrl,
-    ensureAudioFileForSlide,
     generationTaskStateByIndex,
     imageHistoryBySlideId,
     sleep,
@@ -3293,17 +3014,21 @@ export function StoryboardCanvas({
         const isNodeSelected = selectedSlideId === slide.id;
         const isAudioPlaying = playingAudioSlideId === slide.id;
         const isAudioPaused = pausedAudioSlideId === slide.id;
-        const audioPreviewLabel = isAudioPlaying
+        const isAudioGenerating = generatedAudio?.status === "generating";
+        const audioPreviewLabel = isAudioGenerating
+          ? "Loading"
+          : isAudioPlaying
           ? "Pause"
           : isAudioPaused
             ? "Resume"
             : "Play";
-        const audioDurationSec = Math.max(
-          0,
-          generatedAudio?.durationSec ||
-            audioDurationBySlideId[slide.id] ||
-            estimateNarrationDurationSec(narrationText),
-        );
+        const audioDurationSec =
+          generatedAudio?.status === "ready"
+            ? Math.max(
+                0,
+                generatedAudio.durationSec || audioDurationBySlideId[slide.id] || 0,
+              )
+            : 0;
         const currentAudioSec = clamp(
           audioProgressBySlideId[slide.id] ?? 0,
           0,
@@ -3314,7 +3039,7 @@ export function StoryboardCanvas({
         const audioTimeLabel =
           audioDurationSec > 0
             ? `${formatDuration(currentAudioSec)} / ${formatDuration(audioDurationSec)}`
-            : "00:00 / 00:00";
+            : "";
         const audioDurationLabel =
           audioDurationSec > 0 ? `${Math.round(audioDurationSec)}s` : "";
         const waveformScale =
@@ -3367,7 +3092,7 @@ export function StoryboardCanvas({
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
                     <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
                       <span>A Track · Visual</span>
-                      <span>{audioDurationLabel}</span>
+                      {audioDurationLabel ? <span>{audioDurationLabel}</span> : null}
                     </div>
                     {storyboardImage && !isGeneratingImage ? (
                       <div
@@ -3535,28 +3260,42 @@ export function StoryboardCanvas({
                         className="flex items-center gap-2"
                         onPointerDown={(event) => {
                           event.stopPropagation();
-                          keepTtsMenuOpenDuringInteraction(slide.id);
                         }}
                         onMouseDown={(event) => {
                           event.stopPropagation();
-                          keepTtsMenuOpenDuringInteraction(slide.id);
                         }}
                       >
                         <button
                           type="button"
+                          disabled={isAudioGenerating}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                          }}
+                          onMouseDown={(event) => {
+                            event.stopPropagation();
+                          }}
                           onClick={(event) => {
                             event.stopPropagation();
+                            setOpenTtsMenuSlideId((prev) => (prev === slide.id ? null : prev));
                             toggleAudioPreviewForSlide(slide.id, narrationText);
                           }}
-                          className={`nodrag nopan nowheel inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] ${
-                            isAudioPlaying
+                          className={`nodrag nopan nowheel inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] disabled:cursor-wait ${
+                            isAudioGenerating
+                              ? "border-zinc-200 bg-zinc-200 text-zinc-600"
+                              : isAudioPlaying
                               ? "border-zinc-900 bg-zinc-900 text-white"
                               : isAudioPaused
                                 ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                               : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
                           }`}
                         >
-                          {isAudioPlaying ? <PauseCircle size={12} /> : <PlayCircle size={12} />}
+                          {isAudioGenerating ? (
+                            <LoaderCircle size={12} className="animate-spin" />
+                          ) : isAudioPlaying ? (
+                            <PauseCircle size={12} />
+                          ) : (
+                            <PlayCircle size={12} />
+                          )}
                           {audioPreviewLabel}
                         </button>
                         <div className="relative flex-1">
@@ -3706,7 +3445,7 @@ export function StoryboardCanvas({
                         </div>
                         <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
                           <span>Audio preview</span>
-                          <span>{audioTimeLabel}</span>
+                          {audioTimeLabel ? <span>{audioTimeLabel}</span> : null}
                         </div>
                       </div>
                     </div>
@@ -3886,9 +3625,7 @@ export function StoryboardCanvas({
       if (ttsMenuInteractionTimerRef.current) {
         window.clearTimeout(ttsMenuInteractionTimerRef.current);
       }
-      if (composedVideoUrlRef.current) {
-        URL.revokeObjectURL(composedVideoUrlRef.current);
-      }
+      safeRevokeObjectUrl(composedVideoUrlRef.current);
       if (exportedPptUrlRef.current) {
         URL.revokeObjectURL(exportedPptUrlRef.current);
       }

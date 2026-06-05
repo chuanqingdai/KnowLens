@@ -113,18 +113,14 @@ export function TopBar({
               type="button"
               disabled={isPrimaryUnavailable}
               onClick={showPptAction ? onDownloadPpt : onDownloadVideo}
-              className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed ${
-                isPrimaryUnavailable
-                  ? "bg-zinc-200 text-zinc-600"
-                  : "bg-blue-600 text-white hover:bg-blue-500"
-              }`}
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
             >
               {isPrimaryUnavailable ? (
-                <LoaderCircle size={15} className="animate-spin" />
+                <LoaderCircle size={15} className="shrink-0 animate-spin" aria-hidden="true" />
               ) : (
-                <Download size={15} />
+                <Download size={15} className="shrink-0" aria-hidden="true" />
               )}
-              {primaryActionLabel}
+              <span>{primaryActionLabel}</span>
             </button>
           ) : null}
           <button

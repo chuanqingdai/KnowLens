@@ -566,6 +566,28 @@ const PRO_TTS_VOICE_IDS = new Set([
   "pro_soft_presenter",
   "pro_balanced_narrator",
 ]);
+const TEXT_MODEL_OPTION_LABELS: Record<string, string> = {
+  "gemini-2.5": "Gemini 3",
+  "gemini-2.5-flash": "Gemini 3",
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.4": "GPT-5.4",
+  "gemini-3.1-pro": "Gemini 3.5",
+  "claude-sonnet-4.6": "Claude Sonnet 4.7",
+};
+const TTS_VOICE_BILLING_LABELS: Record<string, string> = {
+  basic_narrator_male: "Basic model · Guy",
+  basic_narrator_female: "Basic model · Jenny",
+  pro_documentary_male: "Pro model · Cedar",
+  pro_documentary_female: "Pro model · Marin",
+  pro_deep_science: "Pro model · Onyx",
+  pro_bright_explainer: "Pro model · Nova",
+  pro_neutral_tech: "Pro model · Echo",
+  pro_warm_host: "Pro model · Coral",
+  pro_calm_teacher: "Pro model · Sage",
+  pro_classic_storyteller: "Pro model · Fable",
+  pro_soft_presenter: "Pro model · Shimmer",
+  pro_balanced_narrator: "Pro model · Alloy",
+};
 const KNOWN_TTS_VOICE_IDS = new Set([
   DEFAULT_FREE_TTS_VOICE_ID,
   "basic_narrator_male",
@@ -592,6 +614,29 @@ const workspaceClientLogDedupedAt = new Map<string, number>();
 const workspaceClientLogQueue: WorkspaceClientLogInput[] = [];
 let workspaceClientLogFlushTimer: number | null = null;
 let workspaceClientLogInFlight = false;
+
+function formatUnknownModelLabel(model?: string) {
+  const normalized = (model || "").trim();
+  if (!normalized) {
+    return "Gemini 3";
+  }
+  return normalized
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getTextModelOptionLabel(model?: string) {
+  const normalized = (model || "").trim().toLowerCase();
+  return TEXT_MODEL_OPTION_LABELS[normalized] ?? formatUnknownModelLabel(model);
+}
+
+function getImageModelBillingLabel() {
+  return "GPT image2";
+}
+
+function getTtsBillingModelLabel(voiceId: string) {
+  return TTS_VOICE_BILLING_LABELS[voiceId] ?? (PRO_TTS_VOICE_IDS.has(voiceId) ? "Pro model" : "Basic model");
+}
 
 function scheduleWorkspaceClientLogFlush() {
   if (typeof window === "undefined") {
@@ -3653,9 +3698,11 @@ export default function WorkspacePage() {
     1,
     usageTotalTokens > 0 ? usageTotalTokens : inputTokenEstimate + outputTokenEstimate,
   );
-  const languageModelBillingUnit = getLanguageModelCreditTokenUnit(
-    draftLlmUsage?.model || initialEntry.models?.textModel,
-  );
+  const selectedLanguageModel = initialEntry.models?.textModel || draftLlmUsage?.model || "gemini-2.5";
+  const languageModelLabel = getTextModelOptionLabel(selectedLanguageModel);
+  const imageModelLabel = getImageModelBillingLabel();
+  const ttsBillingModelLabel = getTtsBillingModelLabel(videoTtsDefaultVoiceId);
+  const languageModelBillingUnit = getLanguageModelCreditTokenUnit(selectedLanguageModel);
   const languageModelCredits = Math.max(1, Math.ceil(totalTokenEstimate / languageModelBillingUnit));
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
   const ttsNarrationCharCount = useMemo(() => {
@@ -4710,8 +4757,8 @@ export default function WorkspacePage() {
         },
       });
       try {
-        let responseOk = true;
-        let responseStatus = 200;
+        const responseOk = true;
+        const responseStatus = 200;
         let payload: ImageGenerateBatchResponse | null = preparedPayload ?? null;
         if (!payload?.job?.id) {
           throw new Error(
@@ -6290,6 +6337,18 @@ export default function WorkspacePage() {
     }
     modeActionsRef.current.downloadPoster();
   }, [effectiveIntent]);
+  const topBarGenerationLabel = generationProgressLabel
+    ? `Generating ${generationProgressLabel}`
+    : "Generating";
+  const isTopBarPptActionDisabled = lockedCanvasMode === "ppt" && !isPptExportReady;
+  const isTopBarVideoActionDisabled =
+    lockedCanvasMode === "free" && effectiveIntent === "video" && !allGenerationReady;
+  const topBarActionsDisabled =
+    !showStoryboard || isTopBarPptActionDisabled || isTopBarVideoActionDisabled;
+  const topBarDisabledPrimaryActionLabel =
+    isTopBarPptActionDisabled || isTopBarVideoActionDisabled
+      ? topBarGenerationLabel
+      : undefined;
 
   const isHydrated = useSyncExternalStore(
     useCallback(() => () => undefined, []),
@@ -7887,16 +7946,16 @@ export default function WorkspacePage() {
                   effectiveIntent === "poster" ? "海报生成" : "分镜生成"
                 }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分${
                   ttsNarrationCredits > 0
-                    ? ` + TTS旁白 ${ttsNarrationCredits} 积分（${videoTtsCreditsPer1000Chars}/1000字符）`
+                    ? ` + TTS旁白 ${ttsNarrationCredits} 积分（${ttsBillingModelLabel}，${videoTtsCreditsPer1000Chars}/1000字符）`
                     : ""
-                }，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+                }，语言模型 ${languageModelLabel}，图像模型 ${imageModelLabel}，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
               : `${selectedProject?.title ?? "Generation Project"} · ${
                   effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
                 } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits${
                   ttsNarrationCredits > 0
-                    ? ` + TTS narration ${ttsNarrationCredits} credits (${videoTtsCreditsPer1000Chars}/1000 chars)`
+                    ? ` + TTS narration ${ttsNarrationCredits} credits (${ttsBillingModelLabel}, ${videoTtsCreditsPer1000Chars}/1000 chars)`
                     : ""
-                }, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+                }, language model ${languageModelLabel}, image model ${imageModelLabel}, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
             delta: -billingCost,
             userId: user?.id,
             userEmail: currentEmail || undefined,
@@ -8897,14 +8956,8 @@ export default function WorkspacePage() {
               }
             : undefined
         }
-        actionsDisabled={!showStoryboard || (lockedCanvasMode === "ppt" && !isPptExportReady)}
-        disabledPrimaryActionLabel={
-          lockedCanvasMode === "ppt" && !isPptExportReady
-            ? generationProgressLabel
-              ? `Generating ${generationProgressLabel}`
-              : "Generating"
-            : undefined
-        }
+        actionsDisabled={topBarActionsDisabled}
+        disabledPrimaryActionLabel={topBarDisabledPrimaryActionLabel}
         isExportingPpt={isExportingPpt}
         isComposingVideo={isComposingVideo}
         showOpenCanvasButton={isMobileViewport && hasCanvasPanel && mobileWorkspaceView === "chat"}
@@ -9003,10 +9056,13 @@ export default function WorkspacePage() {
                   billingSummary={{
                     styleName: selectedStyle.englishName ?? selectedStyle.name,
                     languageModelCredits,
+                    languageModelLabel,
                     imageModelCredits,
+                    imageModelLabel,
                     ttsNarrationCredits,
                     ttsNarrationCharCount,
                     ttsCreditsPer1000Chars: videoTtsCreditsPer1000Chars,
+                    ttsModelLabel: ttsBillingModelLabel,
                     totalCost: billingCost,
                     standardOutputCount,
                     promoCreditsPerOutput: STANDARD_OUTPUT_PROMO_CREDITS,

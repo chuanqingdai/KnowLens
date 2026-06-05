@@ -465,10 +465,13 @@ type ChatPanelProps = {
   billingSummary: {
     styleName: string;
     languageModelCredits: number;
+    languageModelLabel?: string;
     imageModelCredits: number;
+    imageModelLabel?: string;
     ttsNarrationCredits?: number;
     ttsNarrationCharCount?: number;
     ttsCreditsPer1000Chars?: number;
+    ttsModelLabel?: string;
     totalCost: number;
     standardOutputCount: number;
     promoCreditsPerOutput: number;
@@ -761,12 +764,12 @@ export const ChatPanel = memo(function ChatPanel({
               event.stopPropagation();
               outputSummaryCard.onDownload();
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 sm:w-auto"
           >
             {outputSummaryCard.canDownload ? (
-              <Download size={15} aria-hidden="true" />
+              <Download size={15} className="shrink-0" aria-hidden="true" />
             ) : (
-              <LoaderCircle size={15} className="animate-spin" aria-hidden="true" />
+              <LoaderCircle size={15} className="shrink-0 animate-spin" aria-hidden="true" />
             )}
             <span>
               {outputSummaryCard.canDownload
@@ -1845,12 +1848,18 @@ export const ChatPanel = memo(function ChatPanel({
                 <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Language Model</p>
                 <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                   {billingSummary.languageModelCredits} credits
+                  <span className="ml-1 text-zinc-500">
+                    ({billingSummary.languageModelLabel || "Gemini 3"})
+                  </span>
                 </p>
                 <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Image Model</p>
                 <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                   {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
                   <span className="ml-1 text-zinc-500">
                     (<span className="line-through">{billingSummary.regularCreditsPerOutput} credits</span>)
+                  </span>
+                  <span className="ml-1 text-zinc-500">
+                    ({billingSummary.imageModelLabel || "GPT image2"})
                   </span>
                 </p>
                 {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
@@ -1859,7 +1868,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                       {billingSummary.ttsNarrationCredits} credits
                       <span className="ml-1 text-zinc-500">
-                        ({billingSummary.ttsNarrationCharCount ?? 0} chars)
+                        ({billingSummary.ttsModelLabel || "Pro model"}, {billingSummary.ttsNarrationCharCount ?? 0} chars)
                       </span>
                     </p>
                   </>
@@ -2769,12 +2778,18 @@ export const ChatPanel = memo(function ChatPanel({
               <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Language Model</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                 {billingSummary.languageModelCredits} credits
+                <span className="ml-1 text-zinc-500">
+                  ({billingSummary.languageModelLabel || "Gemini 3"})
+                </span>
               </p>
               <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Image Model</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                 {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
                 <span className="ml-1 text-zinc-500">
                   (<span className="line-through">{billingSummary.regularCreditsPerOutput} credits</span>)
+                </span>
+                <span className="ml-1 text-zinc-500">
+                  ({billingSummary.imageModelLabel || "GPT image2"})
                 </span>
               </p>
               {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
@@ -2783,7 +2798,7 @@ export const ChatPanel = memo(function ChatPanel({
                   <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                     {billingSummary.ttsNarrationCredits} credits
                     <span className="ml-1 text-zinc-500">
-                      ({billingSummary.ttsNarrationCharCount ?? 0} chars)
+                      ({billingSummary.ttsModelLabel || "Pro model"}, {billingSummary.ttsNarrationCharCount ?? 0} chars)
                     </span>
                   </p>
                 </>
