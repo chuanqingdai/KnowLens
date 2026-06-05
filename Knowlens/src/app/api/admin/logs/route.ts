@@ -19,6 +19,19 @@ function parseIntInRange(raw: string | null, fallback: number, min: number, max:
   return Math.min(max, Math.max(min, value));
 }
 
+function resolveLogsRange(input: { from: string; to: string }) {
+  if (input.from || input.to) {
+    return {
+      from: input.from || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      to: input.to || new Date().toISOString(),
+    };
+  }
+  return {
+    from: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    to: new Date().toISOString(),
+  };
+}
+
 function resolveFailureStage(input: { category?: string | null; code?: string | null }) {
   const code = (input.code || "").trim().toUpperCase();
   if (code.startsWith("DRAFT_INVALID_JSON")) return "draft_response_parsing";
@@ -337,6 +350,7 @@ export async function GET(request: NextRequest) {
   }
 
   const userEmail = request.nextUrl.searchParams.get("userEmail") ?? "";
+  const id = request.nextUrl.searchParams.get("id") ?? "";
   const projectId = request.nextUrl.searchParams.get("projectId") ?? "";
   const runId = request.nextUrl.searchParams.get("runId") ?? "";
   const jobId = request.nextUrl.searchParams.get("jobId") ?? "";
@@ -348,19 +362,23 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code") ?? "";
   const from = request.nextUrl.searchParams.get("from") ?? "";
   const to = request.nextUrl.searchParams.get("to") ?? "";
+  const includeDetails = request.nextUrl.searchParams.get("includeDetails") === "1";
   const onlyErrors = request.nextUrl.searchParams.get("onlyErrors") === "1";
   const onlySlow = request.nextUrl.searchParams.get("onlySlow") === "1";
   const criticalOnly = request.nextUrl.searchParams.get("criticalOnly") === "1";
-  const limit = parseIntInRange(request.nextUrl.searchParams.get("limit"), 120, 1, 500);
+  const limit = parseIntInRange(request.nextUrl.searchParams.get("limit"), 50, 1, 200);
   const page = parseIntInRange(request.nextUrl.searchParams.get("page"), 1, 1, 9999);
   const offset = (page - 1) * limit;
-  const requiresPostFilterPagination = onlyErrors || onlySlow;
+  const effectiveStatus = onlyErrors && !status.trim() ? "error" : status;
+  const range = resolveLogsRange({ from, to });
+  const requiresPostFilterPagination = onlySlow || criticalOnly;
   const dbLimit = requiresPostFilterPagination
-    ? Math.min(2000, Math.max(limit * Math.max(page, 1) * 4, limit * 4))
+    ? Math.min(500, Math.max(limit * Math.max(page, 1) * 3, limit * 3))
     : limit;
   const dbOffset = requiresPostFilterPagination ? 0 : offset;
 
   const dbLogs = await listOpsEvents({
+    id,
     userEmail,
     projectId,
     runId,
@@ -368,13 +386,13 @@ export async function GET(request: NextRequest) {
     taskId,
     category,
     action,
-    status,
+    status: effectiveStatus,
     source,
     code,
     limit: dbLimit,
     offset: dbOffset,
-    from,
-    to,
+    from: range.from,
+    to: range.to,
   }) as UsageLogRow[];
 
   const mergedById = new Map<string, UsageLogRow>();
@@ -418,7 +436,6 @@ export async function GET(request: NextRequest) {
       const details = item.details ?? parseOpsEventDetailsJson(item.detailsJson);
       return {
         ...item,
-        details,
         runId: item.runId ?? ((details?.runId as string | undefined) ?? null),
         jobId: item.jobId ?? ((details?.jobId as string | undefined) ?? null),
         taskId: item.taskId ?? ((details?.taskId as string | undefined) ?? null),
@@ -426,9 +443,10 @@ export async function GET(request: NextRequest) {
         taskStatusSummary:
           item.taskStatusSummary ?? ((details?.taskStatusSummary as GenerationTaskStatusSummary | undefined) ?? null),
         stage: resolveFailureStage(item),
+        detailsJson: includeDetails ? item.detailsJson : null,
+        details: includeDetails ? details : null,
       };
     })
-    .filter((item) => (onlyErrors ? item.status === "error" : true))
     .filter((item) => (criticalOnly ? isCriticalOpsEvent(item) : true))
     .filter((item) => {
       if (!onlySlow) {
@@ -443,7 +461,7 @@ export async function GET(request: NextRequest) {
   let summary: Record<string, unknown> | null = null;
   if (normalizedUserEmail) {
     const subscription = await getLatestSubscriptionDb(normalizedUserEmail).catch(() => null);
-    const creditRecords = await listCreditRecords(normalizedUserEmail).catch(() => []);
+    const creditRecords = await listCreditRecords(normalizedUserEmail, { limit: 1 }).catch(() => []);
     const last24hCutoff = Date.now() - 24 * 60 * 60 * 1000;
     const recentLogs = normalizedLogs.filter((item) => {
       const ts = Date.parse(item.createdAt);

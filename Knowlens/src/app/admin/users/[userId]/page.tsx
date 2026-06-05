@@ -70,24 +70,51 @@ type UserDetailResponse = {
 };
 
 type UserLogResponse = UserDetailResponse & {
-  logs: Array<{
-    id: string;
-    category: string;
-    action: string;
-    status: "ok" | "error" | "info";
-    source: string | null;
-    code: string | null;
-    message: string | null;
-    userEmail: string | null;
-    projectId: string | null;
-    detailsJson: string | null;
-    createdAt: string;
-    runId: string | null;
-    jobId: string | null;
-    taskId: string | null;
-    durationMs: number | null;
-  }>;
+  logs: AdminUserLogItem[];
   logText: string;
+};
+
+type AdminUserLogItem = {
+  id: string;
+  category: string;
+  action: string;
+  status: "ok" | "error" | "info";
+  source: string | null;
+  code: string | null;
+  message: string | null;
+  userEmail: string | null;
+  projectId: string | null;
+  detailsJson?: string | null;
+  createdAt: string;
+  runId: string | null;
+  jobId: string | null;
+  taskId: string | null;
+  durationMs: number | null;
+};
+
+type CreditsPageResponse = {
+  records?: UserDetailResponse["credits"]["records"];
+  page?: number;
+  limit?: number;
+  hasMore?: boolean;
+};
+
+type ProjectsPageResponse = {
+  projects?: UserDetailResponse["projects"];
+  page?: number;
+  limit?: number;
+  hasMore?: boolean;
+};
+
+type AdminLogsResponse = {
+  logs?: AdminUserLogItem[];
+  summary?: {
+    failureCount24h?: number;
+    latestError?: { createdAt?: string | null } | null;
+  } | null;
+  page?: number;
+  limit?: number;
+  hasMore?: boolean;
 };
 
 function formatDateTime(input?: string | null) {
@@ -126,6 +153,36 @@ function formatDialogTimestamp(input?: string | null) {
   });
 }
 
+function buildLogTimelineText(logs: AdminUserLogItem[]) {
+  if (!logs.length) {
+    return "暂无日志记录。";
+  }
+  return logs
+    .map((item) => {
+      const headline = [
+        `[${formatDialogTimestamp(item.createdAt)}]`,
+        item.status.toUpperCase(),
+        `${item.category}/${item.action}`,
+      ].join(" ");
+      const meta = [
+        item.projectId ? `projectId: ${item.projectId}` : null,
+        item.runId ? `runId: ${item.runId}` : null,
+        item.jobId ? `jobId: ${item.jobId}` : null,
+        item.taskId ? `taskId: ${item.taskId}` : null,
+        item.code ? `errorCode: ${item.code}` : null,
+        typeof item.durationMs === "number" ? `duration: ${item.durationMs}ms` : null,
+      ].filter(Boolean);
+      const extra = [
+        item.source ? `source: ${item.source}` : null,
+        item.message ? `message: ${item.message}` : null,
+      ].filter(Boolean);
+      return [headline, meta.length ? `  ${meta.join(" | ")}` : null, ...extra.map((line) => `  ${line}`)]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
+}
+
 async function readJsonOrThrow(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -145,10 +202,22 @@ export default function AdminUserDetailPage() {
   const [data, setData] = useState<UserDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [creditsRecords, setCreditsRecords] = useState<UserDetailResponse["credits"]["records"]>([]);
+  const [creditsLoading, setCreditsLoading] = useState(false);
+  const [creditsError, setCreditsError] = useState("");
+  const [creditsPage, setCreditsPage] = useState(1);
+  const [creditsHasMore, setCreditsHasMore] = useState(false);
+  const [projectRows, setProjectRows] = useState<UserDetailResponse["projects"]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState("");
+  const [projectsPage, setProjectsPage] = useState(1);
+  const [projectsHasMore, setProjectsHasMore] = useState(false);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logDialogLoading, setLogDialogLoading] = useState(false);
   const [logDialogError, setLogDialogError] = useState("");
   const [logDialogText, setLogDialogText] = useState("");
+  const [logDialogPage, setLogDialogPage] = useState(1);
+  const [logDialogHasMore, setLogDialogHasMore] = useState(false);
   const [logDialogMeta, setLogDialogMeta] = useState<{
     totalCount: number;
     errorCount: number;
@@ -167,8 +236,18 @@ export default function AdminUserDetailPage() {
     setLoading(true);
     setError("");
     setData(null);
+    setCreditsRecords([]);
+    setCreditsError("");
+    setCreditsPage(1);
+    setCreditsHasMore(false);
+    setProjectRows([]);
+    setProjectsError("");
+    setProjectsPage(1);
+    setProjectsHasMore(false);
     setLogDialogOpen(false);
     setLogDialogText("");
+    setLogDialogPage(1);
+    setLogDialogHasMore(false);
     setLogDialogMeta(null);
     setLogDialogError("");
 
@@ -194,6 +273,64 @@ export default function AdminUserDetailPage() {
     return () => controller.abort();
   }, [userId]);
 
+  async function loadCreditsPage(nextPage = 1) {
+    if (!data?.user?.id) {
+      return;
+    }
+    setCreditsLoading(true);
+    setCreditsError("");
+    try {
+      const payload = (await fetch(
+        `/api/admin/users/${encodeURIComponent(data.user.id)}?view=credits&page=${nextPage}&limit=30&ts=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      ).then(readJsonOrThrow)) as CreditsPageResponse;
+      const records = payload.records || [];
+      setCreditsRecords((prev) => (nextPage === 1 ? records : [...prev, ...records]));
+      setCreditsPage(nextPage);
+      setCreditsHasMore(Boolean(payload.hasMore));
+    } catch (fetchError) {
+      setCreditsError(fetchError instanceof Error ? fetchError.message : "积分流水加载失败。");
+    } finally {
+      setCreditsLoading(false);
+    }
+  }
+
+  async function loadProjectsPage(nextPage = 1) {
+    if (!data?.user?.id) {
+      return;
+    }
+    setProjectsLoading(true);
+    setProjectsError("");
+    try {
+      const payload = (await fetch(
+        `/api/admin/users/${encodeURIComponent(data.user.id)}?view=projects&page=${nextPage}&limit=30&ts=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      ).then(readJsonOrThrow)) as ProjectsPageResponse;
+      const rows = payload.projects || [];
+      setProjectRows((prev) => (nextPage === 1 ? rows : [...prev, ...rows]));
+      setProjectsPage(nextPage);
+      setProjectsHasMore(Boolean(payload.hasMore));
+    } catch (fetchError) {
+      setProjectsError(fetchError instanceof Error ? fetchError.message : "项目历史加载失败。");
+    } finally {
+      setProjectsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!data?.user?.id) {
+      return;
+    }
+    void loadCreditsPage(1);
+    void loadProjectsPage(1);
+  }, [data?.user?.id]);
+
   const userLogSummaryText = useMemo(() => {
     if (!data) {
       return {
@@ -217,24 +354,35 @@ export default function AdminUserDetailPage() {
     window.setTimeout(() => setHint(""), 2200);
   }
 
-  async function openLogDialog() {
+  async function openLogDialog(nextPage = 1) {
     if (!data?.user?.id) {
       return;
     }
     setLogDialogOpen(true);
     setLogDialogLoading(true);
     setLogDialogError("");
-    setLogDialogText("");
+    if (nextPage === 1) {
+      setLogDialogText("");
+    }
     try {
       const payload = (await fetch(
-        `/api/admin/users/${encodeURIComponent(data.user.id)}?view=logs&logLimit=5000&ts=${Date.now()}`,
+        `/api/admin/logs?userEmail=${encodeURIComponent(data.user.email)}&page=${nextPage}&limit=50&ts=${Date.now()}`,
         {
           method: "GET",
           cache: "no-store",
         },
-      ).then(readJsonOrThrow)) as UserLogResponse;
-      setLogDialogText(payload.logText || "暂无日志记录。");
-      setLogDialogMeta(payload.logSummary);
+      ).then(readJsonOrThrow)) as AdminLogsResponse;
+      const nextText = buildLogTimelineText(payload.logs || []);
+      setLogDialogText((prev) =>
+        nextPage === 1 || !prev || prev === "暂无日志记录。" ? nextText : `${prev}\n\n${nextText}`,
+      );
+      setLogDialogPage(nextPage);
+      setLogDialogHasMore(Boolean(payload.hasMore));
+      setLogDialogMeta({
+        totalCount: payload.logs?.length || 0,
+        errorCount: payload.logs?.filter((item) => item.status === "error").length || 0,
+        latestAt: payload.logs?.[0]?.createdAt || null,
+      });
     } catch (fetchError) {
       setLogDialogError(fetchError instanceof Error ? fetchError.message : "加载日志失败。");
     } finally {
@@ -247,6 +395,8 @@ export default function AdminUserDetailPage() {
     setLogDialogError("");
     setLogDialogLoading(false);
     setLogDialogText("");
+    setLogDialogPage(1);
+    setLogDialogHasMore(false);
     setLogDialogMeta(null);
   }
 
@@ -276,7 +426,7 @@ export default function AdminUserDetailPage() {
     );
   }
 
-  const { user, subscription, payments, credits, projects, tickets } = data;
+  const { user, subscription, payments, credits, tickets } = data;
 
   return (
     <AdminShell title={`用户详情 · ${user.email}`} description="真实用户详情页：基础信息、订阅支付、积分、项目历史、使用日志和工单。">
@@ -333,8 +483,18 @@ export default function AdminUserDetailPage() {
             <p className="text-sm font-semibold text-zinc-900">积分余额与流水</p>
             <p className="mt-2 text-2xl font-semibold text-zinc-900">{credits.currentBalance}</p>
             <div className="mt-3 space-y-2">
-              {credits.records.length ? (
-                credits.records.slice(0, 8).map((item) => (
+              {creditsError ? (
+                <button
+                  type="button"
+                  onClick={() => loadCreditsPage(1)}
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-left text-xs text-red-700"
+                >
+                  积分流水加载失败，点击重试：{creditsError}
+                </button>
+              ) : creditsLoading && !creditsRecords.length ? (
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">正在加载积分流水...</p>
+              ) : creditsRecords.length ? (
+                creditsRecords.map((item) => (
                   <div key={item.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-700">
                     <p>{formatDateTime(item.createdAt)}</p>
                     <p className="mt-1">
@@ -351,6 +511,16 @@ export default function AdminUserDetailPage() {
               ) : (
                 <p className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-xs text-zinc-500">暂无积分流水</p>
               )}
+              {creditsHasMore ? (
+                <button
+                  type="button"
+                  disabled={creditsLoading}
+                  onClick={() => loadCreditsPage(creditsPage + 1)}
+                  className="h-8 rounded-lg border border-zinc-300 px-3 text-xs hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {creditsLoading ? "加载中..." : "加载更多积分流水"}
+                </button>
+              ) : null}
             </div>
           </article>
         </section>
@@ -359,8 +529,18 @@ export default function AdminUserDetailPage() {
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-zinc-900">项目历史</p>
             <div className="mt-3 space-y-2">
-              {projects.length ? (
-                projects.map((item) => (
+              {projectsError ? (
+                <button
+                  type="button"
+                  onClick={() => loadProjectsPage(1)}
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-left text-xs text-red-700"
+                >
+                  项目历史加载失败，点击重试：{projectsError}
+                </button>
+              ) : projectsLoading && !projectRows.length ? (
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">正在加载项目历史...</p>
+              ) : projectRows.length ? (
+                projectRows.map((item) => (
                   <Link key={item.id} href={`/admin/projects/${item.id}`} className="block rounded-lg border border-zinc-200 bg-zinc-50 p-3 hover:bg-white">
                     <p className="text-sm font-medium text-zinc-900">{item.title}</p>
                     <p className="mt-1 text-xs text-zinc-500">
@@ -371,6 +551,16 @@ export default function AdminUserDetailPage() {
               ) : (
                 <p className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-xs text-zinc-500">暂无项目记录</p>
               )}
+              {projectsHasMore ? (
+                <button
+                  type="button"
+                  disabled={projectsLoading}
+                  onClick={() => loadProjectsPage(projectsPage + 1)}
+                  className="h-8 rounded-lg border border-zinc-300 px-3 text-xs hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {projectsLoading ? "加载中..." : "加载更多项目"}
+                </button>
+              ) : null}
             </div>
           </article>
 
@@ -382,7 +572,7 @@ export default function AdminUserDetailPage() {
               </div>
               <button
                 type="button"
-                onClick={openLogDialog}
+                onClick={() => openLogDialog(1)}
                 className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 text-sm text-zinc-800 hover:bg-zinc-100"
               >
                 查看该用户日志
@@ -427,9 +617,9 @@ export default function AdminUserDetailPage() {
           <div className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-zinc-200 px-5 py-4">
               <div>
-                <p className="text-base font-semibold text-zinc-900">该用户全部使用日志</p>
+                <p className="text-base font-semibold text-zinc-900">该用户使用日志</p>
                 <p className="mt-1 text-xs text-zinc-500">
-                  {user.email} · 真实数据 · 秒级时间点 · 可直接复制文本
+                  {user.email} · 真实数据 · 秒级时间点 · 分页加载 · 可直接复制文本
                 </p>
                 {logDialogMeta ? (
                   <p className="mt-2 text-xs text-zinc-600">
@@ -440,19 +630,29 @@ export default function AdminUserDetailPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={openLogDialog}
+                  onClick={() => openLogDialog(1)}
                   className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 text-sm text-zinc-800 hover:bg-zinc-100"
                 >
                   刷新
                 </button>
                 <button
                   type="button"
-                  onClick={() => copyText(logDialogText || "暂无日志记录。", "用户全部日志")}
+                  onClick={() => copyText(logDialogText || "暂无日志记录。", "当前用户日志")}
                   className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-800 hover:bg-zinc-100"
                 >
                   <Copy size={14} />
                   复制文本
                 </button>
+                {logDialogHasMore ? (
+                  <button
+                    type="button"
+                    disabled={logDialogLoading}
+                    onClick={() => openLogDialog(logDialogPage + 1)}
+                    className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 text-sm text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {logDialogLoading ? "加载中..." : "加载更多"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={closeLogDialog}

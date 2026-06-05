@@ -82,12 +82,35 @@ type UsageLogRow = {
   durationMs: number | null;
 };
 
+type UserActivitySummary = {
+  latestAt: string | null;
+  totalCount: number;
+  errorCount: number;
+};
+
 function parseIntInRange(raw: string | null, fallback: number, min: number, max: number) {
   const value = Number.parseInt((raw ?? "").trim(), 10);
   if (!Number.isFinite(value)) {
     return fallback;
   }
   return Math.min(max, Math.max(min, value));
+}
+
+function resolveDateRange(request: NextRequest) {
+  const from = (request.nextUrl.searchParams.get("from") || "").trim();
+  const to = (request.nextUrl.searchParams.get("to") || "").trim();
+  if (from || to) {
+    const maxFrom =
+      Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return {
+      from: from || new Date(maxFrom).toISOString(),
+      to: to || new Date().toISOString(),
+    };
+  }
+  return {
+    from: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    to: new Date().toISOString(),
+  };
 }
 
 async function queryAll(sqlText: string, params: unknown[] = []) {
@@ -263,23 +286,51 @@ async function getUserLogs(userEmail: string, limit: number) {
   return Array.from(merged.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+async function getUserLogSummary(userEmail: string): Promise<UserActivitySummary> {
+  const normalizedUserEmail = userEmail.trim().toLowerCase();
+  const from24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [latestRow, countRow] = await Promise.all([
+    queryOne(
+      `SELECT created_at as "createdAt"
+       FROM ops_events
+       WHERE user_email = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [normalizedUserEmail],
+    ).catch(() => null),
+    queryOne(
+      `SELECT
+         COUNT(*) as "totalCount",
+         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as "errorCount"
+       FROM ops_events
+       WHERE user_email = ? AND created_at >= ?`,
+      [normalizedUserEmail, from24h],
+    ).catch(() => null),
+  ]);
+  return {
+    latestAt: asNullableString(latestRow?.createdAt),
+    totalCount: asNumber(countRow?.totalCount),
+    errorCount: asNumber(countRow?.errorCount),
+  };
+}
+
 function buildRecentActiveAt(input: {
   user: UserRow;
-  projects: ProjectRow[];
-  credits: CreditRow[];
+  latestProjectAt?: string | null;
+  latestCreditAt?: string | null;
   subscription: SubscriptionRow | null;
-  payments: PaymentRow[];
-  tickets: TicketRow[];
-  logs: UsageLogRow[];
+  latestPaymentAt?: string | null;
+  latestTicketAt?: string | null;
+  latestLogAt?: string | null;
 }) {
   return [
     input.user.updatedAt,
-    input.projects[0]?.updatedAt ?? null,
-    input.credits[0]?.createdAt ?? null,
+    input.latestProjectAt ?? null,
+    input.latestCreditAt ?? null,
     input.subscription?.updatedAt ?? null,
-    input.payments[0]?.createdAt ?? null,
-    input.tickets[0]?.createdAt ?? null,
-    input.logs[0]?.createdAt ?? null,
+    input.latestPaymentAt ?? null,
+    input.latestTicketAt ?? null,
+    input.latestLogAt ?? null,
   ]
     .filter((value): value is string => Boolean(value))
     .sort((a, b) => b.localeCompare(a))[0] ?? input.user.createdAt;
@@ -297,7 +348,10 @@ export async function GET(
   const resolvedParams = await context.params;
   const userLookup = decodeURIComponent(resolvedParams?.userId ?? "").trim();
   const view = (request.nextUrl.searchParams.get("view") ?? "summary").trim().toLowerCase();
-  const logLimit = parseIntInRange(request.nextUrl.searchParams.get("logLimit"), 5000, 50, 5000);
+  const limit = parseIntInRange(request.nextUrl.searchParams.get("limit") ?? request.nextUrl.searchParams.get("logLimit"), 50, 1, 200);
+  const page = parseIntInRange(request.nextUrl.searchParams.get("page"), 1, 1, 9999);
+  const offset = (page - 1) * limit;
+  const range = resolveDateRange(request);
 
   if (!userLookup) {
     return NextResponse.json({ error: "userId is required." }, { status: 400 });
@@ -331,37 +385,104 @@ export async function GET(
     updatedAt: asString(userRow.updatedAt),
   };
 
-  const [projectsRaw, creditsRaw, subscriptionRaw, paymentsRaw, ticketsRaw, logs] = await Promise.all([
-    queryAll(
+  if (view === "credits") {
+    const creditsRaw = await queryAll(
       `SELECT
-         id,
-         title,
-         status,
-         format,
-         duration,
-         updated_at as "updatedAt"
-       FROM projects
-       WHERE user_id = ?
-       ORDER BY updated_at DESC
-       LIMIT 50`,
-      [user.id],
-    ),
-    queryAll(
+           id,
+           type,
+           description,
+           delta,
+           balance,
+           project_id as "projectId",
+           project_title as "projectTitle",
+           created_at as "createdAt"
+         FROM credit_records
+         WHERE user_email = ?
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?
+         OFFSET ?`,
+      [user.email, limit, offset],
+    );
+    const credits: CreditRow[] = creditsRaw.map((row) => ({
+      id: asString(row.id),
+      type: asString(row.type),
+      description: asString(row.description),
+      delta: asNumber(row.delta),
+      balance: asNumber(row.balance),
+      projectId: asNullableString(row.projectId),
+      projectTitle: asNullableString(row.projectTitle),
+      createdAt: asString(row.createdAt),
+    }));
+    return NextResponse.json(
+      {
+        ok: true,
+        records: credits,
+        page,
+        limit,
+        hasMore: credits.length === limit,
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" } },
+    );
+  }
+
+  if (view === "projects") {
+    const projectsRaw = await queryAll(
       `SELECT
-         id,
-         type,
-         description,
-         delta,
-         balance,
-         project_id as "projectId",
-         project_title as "projectTitle",
-         created_at as "createdAt"
-       FROM credit_records
-       WHERE LOWER(COALESCE(user_email, '')) = ?
-       ORDER BY created_at DESC, id DESC
-       LIMIT 50`,
-      [user.email],
-    ),
+           id,
+           title,
+           status,
+           format,
+           duration,
+           updated_at as "updatedAt"
+         FROM projects
+         WHERE user_id = ?
+         ORDER BY updated_at DESC
+         LIMIT ?
+         OFFSET ?`,
+      [user.id, limit, offset],
+    );
+    const projects: ProjectRow[] = projectsRaw.map((row) => ({
+      id: asString(row.id),
+      title: asString(row.title),
+      status: asNullableString(row.status),
+      format: asNullableString(row.format),
+      duration: asNullableString(row.duration),
+      updatedAt: asString(row.updatedAt),
+    }));
+    return NextResponse.json(
+      {
+        ok: true,
+        projects,
+        page,
+        limit,
+        hasMore: projects.length === limit,
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" } },
+    );
+  }
+
+  if (view === "logs") {
+    const logs = await getUserLogs(user.email, limit);
+    const pageLogs = logs.filter((item) => item.createdAt >= range.from && item.createdAt <= range.to);
+    return NextResponse.json(
+      {
+        ok: true,
+        logs: pageLogs,
+        logText: buildLogTimelineText(pageLogs),
+        logSummary: {
+          totalCount: pageLogs.length,
+          errorCount: pageLogs.filter((item) => item.status === "error").length,
+          latestAt: pageLogs[0]?.createdAt ?? null,
+        },
+        page,
+        limit,
+        hasMore: pageLogs.length === limit,
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" } },
+    );
+  }
+
+  const [subscriptionRaw, latestCreditRaw, latestProjectRaw, latestPaymentRaw, latestTicketRaw, logSummary] = await Promise.all([
     queryOne(
       `SELECT
          id,
@@ -378,58 +499,45 @@ export async function GET(
          CASE WHEN status IN ('active', 'canceling') THEN 0 ELSE 1 END ASC,
          updated_at DESC,
          created_at DESC
+      LIMIT 1`,
+      [user.id],
+    ),
+    queryOne(
+      `SELECT
+         balance,
+         created_at as "createdAt"
+       FROM credit_records
+       WHERE user_email = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [user.email],
+    ),
+    queryOne(
+      `SELECT updated_at as "updatedAt"
+       FROM projects
+       WHERE user_id = ?
+       ORDER BY updated_at DESC
        LIMIT 1`,
       [user.id],
     ),
-    queryAll(
-      `SELECT
-         session_id as "sessionId",
-         plan_id as "planId",
-         cycle,
-         checkout_source as "checkoutSource",
-         checkout_status as "checkoutStatus",
-         created_at as "createdAt"
+    queryOne(
+      `SELECT created_at as "createdAt"
        FROM billing_fulfillments
-       WHERE LOWER(COALESCE(user_email, '')) = ?
+       WHERE user_email = ?
        ORDER BY created_at DESC
-       LIMIT 20`,
+       LIMIT 1`,
       [user.email],
     ),
-    queryAll(
-      `SELECT
-         id,
-         type,
-         detail,
-         status,
-         created_at as "createdAt"
+    queryOne(
+      `SELECT created_at as "createdAt"
        FROM feedback_tickets
-       WHERE LOWER(COALESCE(submitter_email, '')) = ?
+       WHERE submitter_email = ?
        ORDER BY created_at DESC
-       LIMIT 20`,
+       LIMIT 1`,
       [user.email],
     ),
-    getUserLogs(user.email, logLimit),
+    getUserLogSummary(user.email),
   ]);
-
-  const projects: ProjectRow[] = projectsRaw.map((row) => ({
-    id: asString(row.id),
-    title: asString(row.title),
-    status: asNullableString(row.status),
-    format: asNullableString(row.format),
-    duration: asNullableString(row.duration),
-    updatedAt: asString(row.updatedAt),
-  }));
-
-  const credits: CreditRow[] = creditsRaw.map((row) => ({
-    id: asString(row.id),
-    type: asString(row.type),
-    description: asString(row.description),
-    delta: asNumber(row.delta),
-    balance: asNumber(row.balance),
-    projectId: asNullableString(row.projectId),
-    projectTitle: asNullableString(row.projectTitle),
-    createdAt: asString(row.createdAt),
-  }));
 
   const subscription: SubscriptionRow | null = subscriptionRaw
     ? {
@@ -444,31 +552,14 @@ export async function GET(
       }
     : null;
 
-  const payments: PaymentRow[] = paymentsRaw.map((row) => ({
-    sessionId: asString(row.sessionId),
-    planId: asNullableString(row.planId),
-    cycle: asNullableString(row.cycle),
-    checkoutSource: asNullableString(row.checkoutSource),
-    checkoutStatus: asNullableString(row.checkoutStatus),
-    createdAt: asString(row.createdAt),
-  }));
-
-  const tickets: TicketRow[] = ticketsRaw.map((row) => ({
-    id: asString(row.id),
-    type: asString(row.type),
-    detail: asString(row.detail),
-    status: asNullableString(row.status),
-    createdAt: asString(row.createdAt),
-  }));
-
   const recentActiveAt = buildRecentActiveAt({
     user,
-    projects,
-    credits,
+    latestProjectAt: asNullableString(latestProjectRaw?.updatedAt),
+    latestCreditAt: asNullableString(latestCreditRaw?.createdAt),
     subscription,
-    payments,
-    tickets,
-    logs,
+    latestPaymentAt: asNullableString(latestPaymentRaw?.createdAt),
+    latestTicketAt: asNullableString(latestTicketRaw?.createdAt),
+    latestLogAt: logSummary.latestAt,
   });
 
   const payload = {
@@ -477,34 +568,23 @@ export async function GET(
       recentActiveAt,
     },
     subscription,
-    payments,
+    payments: [],
     credits: {
-      currentBalance: credits[0]?.balance ?? 0,
-      records: credits,
+      currentBalance: asNumber(latestCreditRaw?.balance),
+      records: [],
     },
-    projects,
-    tickets,
+    projects: [],
+    tickets: [],
     logSummary: {
-      totalCount: logs.length,
-      errorCount: logs.filter((item) => item.status === "error").length,
-      latestAt: logs[0]?.createdAt ?? null,
+      totalCount: logSummary.totalCount,
+      errorCount: logSummary.errorCount,
+      latestAt: logSummary.latestAt,
     },
   };
 
   const headers = {
     "Cache-Control": "no-store, max-age=0, must-revalidate",
   };
-
-  if (view === "logs") {
-    return NextResponse.json(
-      {
-        ...payload,
-        logs,
-        logText: buildLogTimelineText(logs),
-      },
-      { headers },
-    );
-  }
 
   return NextResponse.json(payload, { headers });
 }

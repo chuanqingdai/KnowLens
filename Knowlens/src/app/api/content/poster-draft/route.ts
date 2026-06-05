@@ -2258,6 +2258,72 @@ function normalizeTextItem(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function estimateNarrationSeconds(text: string, outputLanguage: OutputLanguage) {
+  const compact = text.trim().replace(/\s+/g, "");
+  if (!compact) {
+    return 0;
+  }
+  return isChineseLanguage(outputLanguage)
+    ? Math.ceil(compact.length / 5)
+    : Math.ceil(text.trim().split(/\s+/).filter(Boolean).length / 2.4);
+}
+
+function splitNarrationSentences(text: string, outputLanguage: OutputLanguage) {
+  const source = text.trim();
+  if (!source) {
+    return [];
+  }
+  const matches = isChineseLanguage(outputLanguage)
+    ? source.match(/[^。！？!?;；]+[。！？!?;；]?/g)
+    : source.match(/[^.!?;]+[.!?;]?/g);
+  return (matches ?? [source]).map((item) => item.trim()).filter(Boolean);
+}
+
+function tuneStoryboardNarrationLength(input: {
+  narration: string;
+  fallbackNarration: string;
+  title: string;
+  visual: string;
+  outputLanguage: OutputLanguage;
+}) {
+  const base = input.narration.trim() || input.fallbackNarration.trim();
+  if (!base) {
+    return "";
+  }
+  const isZh = isChineseLanguage(input.outputLanguage);
+  const estimatedSec = estimateNarrationSeconds(base, input.outputLanguage);
+  if (estimatedSec > 12) {
+    const sentences = splitNarrationSentences(base, input.outputLanguage);
+    const kept: string[] = [];
+    for (const sentence of sentences) {
+      const next = ensureSentenceEnding([...kept, sentence].join(isZh ? "" : " "), input.outputLanguage);
+      if (estimateNarrationSeconds(next, input.outputLanguage) > 12 && kept.length >= 1) {
+        break;
+      }
+      kept.push(sentence);
+      if (estimateNarrationSeconds(kept.join(isZh ? "" : " "), input.outputLanguage) >= 8) {
+        break;
+      }
+    }
+    const compressed = kept.length ? kept.join(isZh ? "" : " ") : base;
+    return ensureSentenceEnding(compressed, input.outputLanguage);
+  }
+  if (estimatedSec >= 8) {
+    return ensureSentenceEnding(base, input.outputLanguage);
+  }
+
+  const visualContext = input.visual.replace(/[。！？.!?;；]\s*$/g, "").trim();
+  const titleContext = input.title.replace(/[。！？.!?;；]\s*$/g, "").trim();
+  const extension = isZh
+    ? visualContext
+      ? `画面会围绕“${visualContext}”展开，让观众更容易把这一点和前后镜头连接起来。`
+      : `这一帧要把“${titleContext || "这个重点"}”讲清楚，并自然连接到下一个分镜。`
+    : visualContext
+      ? `The visual focuses on ${visualContext}, so the viewer can connect this beat with the surrounding scenes.`
+      : `This beat should make ${titleContext || "the key idea"} clear and connect naturally to the next frame.`;
+  return ensureSentenceEnding(`${base}${isZh ? "" : " "}${extension}`, input.outputLanguage);
+}
+
 function isTemplateInstructionText(value: string) {
   const compact = value.replace(/\s+/g, "").toLowerCase();
   if (!compact) {
@@ -2524,16 +2590,29 @@ function normalizeStoryboardDrafts(
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
       const isCover = row.isCover === true;
+      const safeVisual = visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "";
       const safeNarration = isCover
         ? ""
         : narration && !isTemplateInstructionText(narration)
-        ? narration
-        : fallback?.narration || fallback?.mainPoint || "";
+        ? tuneStoryboardNarrationLength({
+            narration,
+            fallbackNarration: fallback?.narration || fallback?.mainPoint || "",
+            title,
+            visual: safeVisual,
+            outputLanguage,
+          })
+        : tuneStoryboardNarrationLength({
+            narration: "",
+            fallbackNarration: fallback?.narration || fallback?.mainPoint || "",
+            title,
+            visual: safeVisual,
+            outputLanguage,
+          });
       return {
         index: Number.isFinite(row.index) ? Number(row.index) : idx + 1,
         title,
         narration: safeNarration,
-        visual: visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "",
+        visual: safeVisual,
         imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
         imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
         isCover,
@@ -2553,7 +2632,13 @@ function normalizeStoryboardDrafts(
       index: idx + 1,
       title: toConciseDraftTitle(title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`, topic, outputLanguage)
         || title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
-      narration: fallbackFrames[idx]?.narration || "",
+      narration: tuneStoryboardNarrationLength({
+        narration: "",
+        fallbackNarration: fallbackFrames[idx]?.narration || "",
+        title: title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
+        visual: fallbackFrames[idx]?.visual || "",
+        outputLanguage,
+      }),
       visual: fallbackFrames[idx]?.visual || "",
       imagePromptDraft: fallbackFrames[idx]?.imagePrompt || "",
       imagePrompt: fallbackFrames[idx]?.imagePrompt || "",

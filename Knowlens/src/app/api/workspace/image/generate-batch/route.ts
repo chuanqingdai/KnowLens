@@ -845,8 +845,48 @@ export async function POST(request: NextRequest) {
 	      },
 	    });
 
-    const action = payload.action || "start";
     const imageModel = normalizeImageModel(payload.imageModel);
+    const action = payload.action;
+    const supportedActions = new Set(["prepare", "activate", "recover", "mark_billing_failed", "mark_failed"]);
+    if (!action || !supportedActions.has(action)) {
+      await logGenerationOpsEvent({
+        action: "generation.legacy_start.rejected",
+        status: "error",
+        source: "image_generate_batch",
+        code: "IMAGE_GENERATE_BATCH_ACTION_REQUIRED",
+        message: "Legacy image generate-batch start requests are disabled. Use prepare/activate/tasks-run.",
+        userEmail: email,
+        projectId: payload.projectId,
+        runId: payload.runId,
+        idempotencyKey: payload.idempotencyKey,
+        taskCount: Array.isArray(payload.tasks) ? payload.tasks.length : 0,
+        errorCode: "IMAGE_GENERATE_BATCH_ACTION_REQUIRED",
+        safeErrorMessage: "Legacy image generate-batch start requests are disabled.",
+        extraDetails: payload.clientContext,
+      });
+      logImageBatchEvent({
+        requestId: payload.idempotencyKey || payload.runId || "legacy-start",
+        jobId: null,
+        projectId: payload.projectId || null,
+        userEmail: email,
+        taskCount: Array.isArray(payload.tasks) ? payload.tasks.length : 0,
+        currentStep: "legacy-start-rejected",
+        provider: "none",
+        model: imageModel,
+        durationMs: Date.now() - routeStartedAt,
+        generatedCount: 0,
+        failedCount: 0,
+        errorMessage: "Legacy image generate-batch start requests are disabled.",
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Image generation must be prepared and activated before task execution.",
+          code: "IMAGE_GENERATE_BATCH_ACTION_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
     if (action === "recover") {
       const recoverStartedAt = Date.now();
       await logGenerationOpsEvent({

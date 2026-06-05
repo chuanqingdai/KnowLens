@@ -542,13 +542,35 @@ const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
-const GENERATION_REQUEST_TIMEOUT_MS = 120000;
 const GENERATION_CONFIRM_PREPARE_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_CREDITS_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS = 30000;
 const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 660000;
+const STEP_RUN_MAX_CONCURRENT_TASKS = 3;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
+const BASIC_TTS_CREDITS_PER_1000_CHARS = 10;
+const PRO_TTS_CREDITS_PER_1000_CHARS = 40;
+const VIDEO_TTS_DEFAULT_KEY = "knowlens-video-tts-default-v1";
+const DEFAULT_FREE_TTS_VOICE_ID = "basic_narrator_female";
+const DEFAULT_MEMBER_TTS_VOICE_ID = "pro_balanced_narrator";
+const PRO_TTS_VOICE_IDS = new Set([
+  "pro_documentary_male",
+  "pro_documentary_female",
+  "pro_deep_science",
+  "pro_bright_explainer",
+  "pro_neutral_tech",
+  "pro_warm_host",
+  "pro_calm_teacher",
+  "pro_classic_storyteller",
+  "pro_soft_presenter",
+  "pro_balanced_narrator",
+]);
+const KNOWN_TTS_VOICE_IDS = new Set([
+  DEFAULT_FREE_TTS_VOICE_ID,
+  "basic_narrator_male",
+  ...Array.from(PRO_TTS_VOICE_IDS),
+]);
 const GENERATION_MAX_RETRY_ATTEMPTS = 3;
 const GENERATION_RETRY_DELAYS_MS = [1100, 2300];
 const GENERATION_UI_HARD_TIMEOUT_MS = 660000;
@@ -2457,6 +2479,48 @@ function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
   }
 }
 
+function buildVideoTtsDefaultStorageKey(email?: string | null) {
+  const scope = (email ?? "").trim().toLowerCase() || "guest";
+  return `${VIDEO_TTS_DEFAULT_KEY}:${scope}`;
+}
+
+function normalizeVideoTtsVoicePreference(voiceId: string | null | undefined, hasMembership: boolean) {
+  const normalized = (voiceId ?? "").trim();
+  if (!KNOWN_TTS_VOICE_IDS.has(normalized)) {
+    return hasMembership ? DEFAULT_MEMBER_TTS_VOICE_ID : DEFAULT_FREE_TTS_VOICE_ID;
+  }
+  if (PRO_TTS_VOICE_IDS.has(normalized) && !hasMembership) {
+    return DEFAULT_FREE_TTS_VOICE_ID;
+  }
+  return normalized;
+}
+
+function readVideoTtsVoicePreference(email: string | null | undefined, hasMembership: boolean) {
+  if (typeof window === "undefined") {
+    return hasMembership ? DEFAULT_MEMBER_TTS_VOICE_ID : DEFAULT_FREE_TTS_VOICE_ID;
+  }
+  try {
+    return normalizeVideoTtsVoicePreference(
+      window.localStorage.getItem(buildVideoTtsDefaultStorageKey(email)),
+      hasMembership,
+    );
+  } catch {
+    return hasMembership ? DEFAULT_MEMBER_TTS_VOICE_ID : DEFAULT_FREE_TTS_VOICE_ID;
+  }
+}
+
+function saveVideoTtsVoicePreference(email: string | null | undefined, voiceId: string, hasMembership: boolean) {
+  const normalized = normalizeVideoTtsVoicePreference(voiceId, hasMembership);
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(buildVideoTtsDefaultStorageKey(email), normalized);
+    } catch {
+      // Ignore storage failures; the current session still uses the selected voice.
+    }
+  }
+  return normalized;
+}
+
 export default function WorkspacePage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -2499,6 +2563,13 @@ export default function WorkspacePage() {
     }
     return !(subscription.status === "active" || subscription.status === "canceling");
   }, [currentEmail]);
+  const hasActiveMembership = !isFreeUser;
+  const [videoTtsDefaultVoiceId, setVideoTtsDefaultVoiceId] = useState(() =>
+    readVideoTtsVoicePreference(currentEmail, hasActiveMembership),
+  );
+  useEffect(() => {
+    setVideoTtsDefaultVoiceId(readVideoTtsVoicePreference(currentEmail, hasActiveMembership));
+  }, [currentEmail, hasActiveMembership]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [updates, setUpdates] = useState<ChatTurn[]>(() => {
@@ -3115,6 +3186,86 @@ export default function WorkspacePage() {
   const getAvailableCredits = useCallback(() => {
     return getCreditRecords(currentEmail)[0]?.balance ?? 50;
   }, [currentEmail]);
+  const handleTtsVoiceBilling = useCallback(
+    async (input: {
+      voiceId: string;
+      voiceName: string;
+      tier: "basic" | "pro";
+      narrationCharCount: number;
+      credits: number;
+      creditsPer1000Chars: number;
+    }) => {
+      if (input.tier !== "pro") {
+        return true;
+      }
+      if (!currentEmail || isFreeUser) {
+        openCreditsPaywall({ scene: "tts_premium" });
+        return false;
+      }
+      const creditsToConsume = Math.max(
+        0,
+        Math.ceil((Math.max(0, input.narrationCharCount) / 1000) * PRO_TTS_CREDITS_PER_1000_CHARS),
+      );
+      if (creditsToConsume <= 0) {
+        return true;
+      }
+      const availableCredits = getAvailableCredits();
+      if (availableCredits < creditsToConsume) {
+        openCreditsPaywall({
+          scene: "billing_insufficient",
+          kind: "video",
+        });
+        pushWorkspaceToast("Not enough credits for premium voice.");
+        return false;
+      }
+      const user = getAdminUserByEmail(currentEmail);
+      const projectTitle = workspaceProjectTitle || topic || "Video storyboard";
+      try {
+        await appendCreditRecordOnServer(
+          {
+            type: "consume",
+            description: `${projectTitle} · Premium TTS voice ${input.voiceName} (${creditsToConsume} credits, ${PRO_TTS_CREDITS_PER_1000_CHARS}/1000 chars)`,
+            delta: -creditsToConsume,
+            userId: user?.id,
+            userEmail: currentEmail,
+            projectId: projectIdRef.current ?? initialEntry.project?.projectId,
+            projectTitle,
+            entrySource: resolveEntrySource().entrySource,
+            estimatedCreditsCost: creditsToConsume,
+            creditsBefore: availableCredits,
+            creditsAfter: Math.max(0, availableCredits - creditsToConsume),
+            creditBalanceSource: "server_synced_local_cache",
+          },
+          currentEmail,
+        );
+        setCreditVersion((prev) => prev + 1);
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("INSUFFICIENT") || message.includes("NOT_ENOUGH")) {
+          openCreditsPaywall({
+            scene: "billing_insufficient",
+            kind: "video",
+          });
+          pushWorkspaceToast("Not enough credits for premium voice.");
+          return false;
+        }
+        pushWorkspaceToast("Premium voice switch failed.");
+        return false;
+      }
+    },
+    [
+      currentEmail,
+      getAvailableCredits,
+      initialEntry.project?.projectId,
+      isFreeUser,
+      openCreditsPaywall,
+      pushWorkspaceToast,
+      resolveEntrySource,
+      topic,
+      workspaceProjectTitle,
+    ],
+  );
   const chargeImageTaskCredits = useCallback(
     (input: { runId: string; taskIndex: number; action: "retry" | "redraw" }) => {
       const taskIndex = Math.max(1, Math.round(input.taskIndex));
@@ -3505,7 +3656,22 @@ export default function WorkspacePage() {
   );
   const languageModelCredits = Math.max(1, Math.ceil(totalTokenEstimate / languageModelBillingUnit));
   const imageModelCredits = standardOutputCount * STANDARD_OUTPUT_PROMO_CREDITS;
-  const billingCost = languageModelCredits + imageModelCredits;
+  const ttsNarrationCharCount = useMemo(() => {
+    if (effectiveIntent !== "video") {
+      return 0;
+    }
+    return displaySlideDrafts
+      .filter((slide) => !slide.isCover)
+      .reduce((total, slide) => total + String(slide.body ?? "").trim().length, 0);
+  }, [displaySlideDrafts, effectiveIntent]);
+  const videoTtsCreditsPer1000Chars = PRO_TTS_VOICE_IDS.has(videoTtsDefaultVoiceId)
+    ? PRO_TTS_CREDITS_PER_1000_CHARS
+    : BASIC_TTS_CREDITS_PER_1000_CHARS;
+  const ttsNarrationCredits =
+    effectiveIntent === "video" && ttsNarrationCharCount > 0
+      ? Math.ceil((ttsNarrationCharCount / 1000) * videoTtsCreditsPer1000Chars)
+      : 0;
+  const billingCost = languageModelCredits + imageModelCredits + ttsNarrationCredits;
   const buildFreshImageGenerationTasks = useCallback(() => {
     if (effectiveIntent === "unknown") {
       return [] as ImageGenerationTask[];
@@ -4541,35 +4707,17 @@ export default function WorkspacePage() {
           taskIndexes: tasks.map((task) => task.index),
         },
       });
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), GENERATION_REQUEST_TIMEOUT_MS);
       try {
         let responseOk = true;
         let responseStatus = 200;
         let payload: ImageGenerateBatchResponse | null = preparedPayload ?? null;
         if (!payload?.job?.id) {
-          try {
-            const response = await fetch("/api/workspace/image/generate-batch", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                ...buildGenerationRequestPayload(tasks),
-                idempotencyKey,
-                runId: activeRunId,
-                imageModelPolicy: "tuzi",
-              }),
-              signal: controller.signal,
-            });
-            responseOk = response.ok;
-            responseStatus = response.status;
-            payload = (await response.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-          } finally {
-            window.clearTimeout(timeoutId);
-          }
-        } else {
-          window.clearTimeout(timeoutId);
+          throw new Error(
+            tr(
+              "Generation job is not prepared. Please confirm generation again.",
+              "生成任务尚未准备完成，请重新确认生成。",
+            ),
+          );
         }
         const responseRunId = normalizeGenerationRunId(payload?.job?.runId);
         let responseJobId = (payload?.job?.id || "").trim() || null;
@@ -4756,6 +4904,7 @@ export default function WorkspacePage() {
           "IMAGE_BILLING_FAILED",
           "TASK_NOT_QUEUED",
         ]);
+        const taskRunInFlightIds = new Set<string>();
         const mergePolledPayload = (
           nextPayload: ImageGenerateBatchResponse | null,
           previousPayload: ImageGenerateBatchResponse | null,
@@ -4905,6 +5054,10 @@ export default function WorkspacePage() {
         };
         const pollJobStatus = async (jobId: string, initialPayload: ImageGenerateBatchResponse | null) => {
           const pollStartedAt = Date.now();
+          const pollTimeoutMs = Math.max(
+            GENERATION_JOB_POLL_TIMEOUT_MS,
+            GENERATION_JOB_POLL_TIMEOUT_MS * Math.max(1, tasks.length),
+          );
           emitUiEvent({
             action: "ui.job.poll.start",
             status: "info",
@@ -4915,13 +5068,18 @@ export default function WorkspacePage() {
             },
           });
           let latestPayload = initialPayload;
-          while (Date.now() - pollStartedAt < GENERATION_JOB_POLL_TIMEOUT_MS) {
+          while (Date.now() - pollStartedAt < pollTimeoutMs) {
             const status = (latestPayload?.job?.status || "").trim().toLowerCase();
             const taskStatuses = latestPayload?.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
             const hasPendingTask = taskStatuses.some((item) => pollActiveTaskStatuses.has(item));
-            const hasQueuedTask = taskStatuses.some((item) => item === "queued");
+            const runnableTasksForRun =
+              latestPayload?.tasks
+                ?.filter((task) => pollActiveTaskStatuses.has((task.status || "").trim().toLowerCase()))
+                .slice(0, STEP_RUN_MAX_CONCURRENT_TASKS) ?? [];
+            const hasRunnableTask = runnableTasksForRun.length > 0;
             const isRunningJob = status === "queued" || status === "running" || status === "processing";
             if (pollTerminalJobStatuses.has(status)) {
+              writeReadyTasksFromPayload(latestPayload, jobId);
               emitUiEvent({
                 action: "ui.job.poll.stop",
                 status: "ok",
@@ -4936,6 +5094,7 @@ export default function WorkspacePage() {
               return latestPayload;
             }
             if (!isRunningJob && !hasPendingTask) {
+              writeReadyTasksFromPayload(latestPayload, jobId);
               emitUiEvent({
                 action: "ui.job.poll.stop",
                 status: "ok",
@@ -4954,6 +5113,7 @@ export default function WorkspacePage() {
                 taskStatuses.length > 0 &&
                 taskStatuses.every((item) => pollTerminalTaskStatuses.has(item));
               if (allTasksTerminal) {
+                writeReadyTasksFromPayload(latestPayload, jobId);
                 emitUiEvent({
                   action: "ui.job.poll.stop",
                   status: "ok",
@@ -4977,85 +5137,112 @@ export default function WorkspacePage() {
                 ),
               );
             }
-            if (hasQueuedTask) {
-              let runResponse: Response;
-              try {
-                runResponse = await fetch("/api/workspace/image/tasks/run", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  credentials: "same-origin",
-                  body: JSON.stringify({ jobId }),
-                });
-              } catch (error) {
-                const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
-                  method: "GET",
-                  credentials: "same-origin",
-                }).catch(() => null);
-                const statusPayload = statusResponse
-                  ? ((await statusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null)
-                  : null;
-                const recoveredPayload = mergePolledPayload(statusPayload, latestPayload, jobId);
-                if (recoveredPayload) {
-                  latestPayload = recoveredPayload;
-                  responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-                  writeReadyTasksFromPayload(latestPayload, jobId);
-                  const recoveredJobStatus = (latestPayload.job?.status || "").trim().toLowerCase();
-                  const recoveredTaskStatuses = latestPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
-                  const hasRecoveredActiveTask = recoveredTaskStatuses.some((item) => pollActiveTaskStatuses.has(item));
-                  if (pollTerminalJobStatuses.has(recoveredJobStatus)) {
-                    return latestPayload;
-                  }
-                  if (hasRecoveredActiveTask || recoveredJobStatus === "queued" || recoveredJobStatus === "running") {
-                    continue;
-                  }
-                }
-                return buildPollFailurePayload(
-                  latestPayload,
-                  jobId,
-                  "IMAGE_TASK_RUN_FETCH_FAILED",
-                  error instanceof Error
-                    ? error.message
-                    : tr(
-                        "Image generation task runner could not be reached. Please retry manually.",
-                        "图片生成任务执行器无法连接。请手动重试。",
-                      ),
-                );
+            if (hasRunnableTask) {
+              const runCandidates = runnableTasksForRun
+                .map((task) => ({
+                  task,
+                  key: task.taskId || `${jobId}:${task.index || "unknown"}:${task.status || "active"}`,
+                }))
+                .filter((item) => !taskRunInFlightIds.has(item.key))
+                .slice(0, STEP_RUN_MAX_CONCURRENT_TASKS);
+              if (!runCandidates.length) {
+                await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
+                continue;
               }
-              const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-              const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
-              if (mergedRunPayload) {
-                latestPayload = mergedRunPayload;
-                responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-                writeReadyTasksFromPayload(latestPayload, jobId);
-                const runCode = (runPayload?.code || "").trim().toUpperCase();
-                if (!runResponse.ok || pollBlockingRunCodes.has(runCode)) {
+              const runResults = await Promise.all(
+                runCandidates.map(async ({ task, key }) => {
+                  taskRunInFlightIds.add(key);
+                  try {
+                    const runResponse = await fetch("/api/workspace/image/tasks/run", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      credentials: "same-origin",
+                      body: JSON.stringify({ jobId, taskId: task.taskId }),
+                    });
+                    const runPayload = (await runResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+                    return { task, runResponse, runPayload, error: null as unknown };
+                  } catch (error) {
+                    return { task, runResponse: null, runPayload: null, error };
+                  } finally {
+                    taskRunInFlightIds.delete(key);
+                  }
+                }),
+              );
+              for (const result of runResults) {
+                if (result.error) {
+                  const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+                    method: "GET",
+                    credentials: "same-origin",
+                  }).catch(() => null);
+                  const statusPayload = statusResponse
+                    ? ((await statusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null)
+                    : null;
+                  const recoveredPayload = mergePolledPayload(statusPayload, latestPayload, jobId);
+                  if (recoveredPayload) {
+                    latestPayload = recoveredPayload;
+                    responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+                    writeReadyTasksFromPayload(latestPayload, jobId);
+                    const recoveredJobStatus = (latestPayload.job?.status || "").trim().toLowerCase();
+                    const recoveredTaskStatuses = latestPayload.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
+                    const hasRecoveredActiveTask = recoveredTaskStatuses.some((item) => pollActiveTaskStatuses.has(item));
+                    if (pollTerminalJobStatuses.has(recoveredJobStatus)) {
+                      return latestPayload;
+                    }
+                    if (hasRecoveredActiveTask || recoveredJobStatus === "queued" || recoveredJobStatus === "running") {
+                      continue;
+                    }
+                  }
                   return buildPollFailurePayload(
                     latestPayload,
                     jobId,
-                    runCode || `HTTP_${runResponse.status}`,
+                    "IMAGE_TASK_RUN_FETCH_FAILED",
+                    result.error instanceof Error
+                      ? result.error.message
+                      : tr(
+                          "Image generation task runner could not be reached. Please retry manually.",
+                          "图片生成任务执行器无法连接。请手动重试。",
+                        ),
+                  );
+                }
+                const runResponse = result.runResponse;
+                const runPayload = result.runPayload;
+                const mergedRunPayload = mergePolledPayload(runPayload, latestPayload, jobId);
+                if (mergedRunPayload) {
+                  latestPayload = mergedRunPayload;
+                  responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+                  writeReadyTasksFromPayload(latestPayload, jobId);
+                  const runCode = (runPayload?.code || "").trim().toUpperCase();
+                  if (!runResponse?.ok || pollBlockingRunCodes.has(runCode)) {
+                    return buildPollFailurePayload(
+                      latestPayload,
+                      jobId,
+                      runCode || `HTTP_${runResponse?.status || 0}`,
+                      runPayload?.error ||
+                        tr(
+                          "Image generation could not start. Please retry manually.",
+                          "图片生成无法启动。请手动重试。",
+                        ),
+                    );
+                  }
+                  continue;
+                }
+                if (!runResponse?.ok) {
+                  return buildPollFailurePayload(
+                    latestPayload,
+                    jobId,
+                    runPayload?.code || `HTTP_${runResponse?.status || 0}`,
                     runPayload?.error ||
                       tr(
-                        "Image generation could not start. Please retry manually.",
-                        "图片生成无法启动。请手动重试。",
+                        "Image generation task runner failed. Please retry manually.",
+                        "图片生成任务执行失败。请手动重试。",
                       ),
                   );
                 }
-                continue;
               }
-              if (!runResponse.ok) {
-                return buildPollFailurePayload(
-                  latestPayload,
-                  jobId,
-                  runPayload?.code || `HTTP_${runResponse.status}`,
-                  runPayload?.error ||
-                    tr(
-                      "Image generation task runner failed. Please retry manually.",
-                      "图片生成任务执行失败。请手动重试。",
-                    ),
-                );
-              }
+              await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
+              continue;
             }
             await new Promise((resolve) => window.setTimeout(resolve, GENERATION_JOB_POLL_INTERVAL_MS));
             const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
@@ -5079,9 +5266,31 @@ export default function WorkspacePage() {
               jobId,
               runId: activeRunId,
               durationMs: Date.now() - pollStartedAt,
+              timeoutMs: pollTimeoutMs,
               finalJobStatus: latestPayload?.job?.status || "unknown",
             },
           });
+          const timeoutResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              action: "timeout",
+              reason: "frontend_poll_timeout",
+            }),
+          }).catch(() => null);
+          if (timeoutResponse?.ok) {
+            const timeoutPayload = (await timeoutResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+            const recoveredTimeoutPayload = mergePolledPayload(timeoutPayload, latestPayload, jobId);
+            if (recoveredTimeoutPayload) {
+              latestPayload = recoveredTimeoutPayload;
+              responseJobId = (latestPayload.job?.id || "").trim() || jobId;
+              writeReadyTasksFromPayload(latestPayload, jobId);
+              return latestPayload;
+            }
+          }
           return buildPollFailurePayload(
             latestPayload,
             jobId,
@@ -5418,8 +5627,6 @@ export default function WorkspacePage() {
             stack: error instanceof Error ? error.stack : undefined,
           },
         });
-      } finally {
-        window.clearTimeout(timeoutId);
       }
     },
     [buildGenerationRequestPayload, currentEmail, emitFlowAudit, imageModel, refundImageTaskCredits, setGenerationRunContext, tr],
@@ -7651,7 +7858,6 @@ export default function WorkspacePage() {
         action: "prepare",
         idempotencyKey,
         runId: nextRunId,
-        imageModelPolicy: "tuzi",
       }, { step: "prepare job", timeoutMs: GENERATION_CONFIRM_PREPARE_TIMEOUT_MS });
       preparedJobId = (preparePayload.job?.id || "").trim() || null;
       if (!preparedJobId || !preparePayload.tasks?.length) {
@@ -7677,10 +7883,18 @@ export default function WorkspacePage() {
             description: isZhOutput
               ? `${selectedProject?.title ?? "生成项目"} · ${
                   effectiveIntent === "poster" ? "海报生成" : "分镜生成"
-                }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
+                }（语言模型 ${languageModelCredits} 积分 + 图像模型 ${imageModelCredits} 积分${
+                  ttsNarrationCredits > 0
+                    ? ` + TTS旁白 ${ttsNarrationCredits} 积分（${videoTtsCreditsPer1000Chars}/1000字符）`
+                    : ""
+                }，图像限时 ${STANDARD_OUTPUT_PROMO_CREDITS}/标准输出，原价 ${STANDARD_OUTPUT_REGULAR_CREDITS}）`
               : `${selectedProject?.title ?? "Generation Project"} · ${
                   effectiveIntent === "poster" ? "Poster Generation" : "Storyboard Generation"
-                } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
+                } (Language model ${languageModelCredits} credits + Image model ${imageModelCredits} credits${
+                  ttsNarrationCredits > 0
+                    ? ` + TTS narration ${ttsNarrationCredits} credits (${videoTtsCreditsPer1000Chars}/1000 chars)`
+                    : ""
+                }, image limited-time ${STANDARD_OUTPUT_PROMO_CREDITS}/output, regular ${STANDARD_OUTPUT_REGULAR_CREDITS})`,
             delta: -billingCost,
             userId: user?.id,
             userEmail: currentEmail || undefined,
@@ -8788,6 +9002,9 @@ export default function WorkspacePage() {
                     styleName: selectedStyle.englishName ?? selectedStyle.name,
                     languageModelCredits,
                     imageModelCredits,
+                    ttsNarrationCredits,
+                    ttsNarrationCharCount,
+                    ttsCreditsPer1000Chars: videoTtsCreditsPer1000Chars,
                     totalCost: billingCost,
                     standardOutputCount,
                     promoCreditsPerOutput: STANDARD_OUTPUT_PROMO_CREDITS,
@@ -8894,9 +9111,19 @@ export default function WorkspacePage() {
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
-                hasMembership={!isFreeUser}
+                hasMembership={hasActiveMembership}
                 onRequestTtsUpgrade={() => {
                   openCreditsPaywall({ scene: "tts_premium" });
+                }}
+                defaultTtsVoiceId={videoTtsDefaultVoiceId}
+                onTtsVoicePreferenceChange={(voiceId) => {
+                  setVideoTtsDefaultVoiceId(
+                    saveVideoTtsVoicePreference(currentEmail, voiceId, hasActiveMembership),
+                  );
+                }}
+                onTtsVoiceBilling={handleTtsVoiceBilling}
+                onTtsVoiceApplied={(voiceName) => {
+                  pushWorkspaceToast(`All scenes use ${voiceName}.`);
                 }}
                 imageAspectRatio={normalizedGenerationConfig.normalizedRatio}
                 onModeActionRegister={(actions) => {
