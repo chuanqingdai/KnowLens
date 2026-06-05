@@ -23,6 +23,7 @@ assertProductionAuthConfigLock(AUTH_ENV);
 const AUTH_SECRET = AUTH_ENV.authSecret;
 const AUTH_COOKIE_DOMAIN = resolveAuthCookieDomain(AUTH_ENV);
 const AUTH_USE_SECURE_COOKIES = AUTH_ENV.useSecureCookies;
+const SIGNIN_DB_TIMEOUT_MS = 8_000;
 
 const AUTH_COOKIES = AUTH_COOKIE_DOMAIN
   ? {
@@ -107,9 +108,25 @@ function stringifyLoggerDetails(parts: unknown[]) {
 
 function safeLogAuthEvent(input: Parameters<typeof logOpsEvent>[0]) {
   try {
-    logOpsEvent(input);
+    void logOpsEvent(input);
   } catch {
     // Never break auth flow because of telemetry write failures.
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 }
 
@@ -282,18 +299,37 @@ export const nextAuthOptions: NextAuthOptions = {
     },
     async signIn({ user }) {
       if (user?.email) {
-        await upsertUser({
-          email: user.email,
-          name: user.name || user.email.split("@")[0] || "User",
-          role: resolveRoleByEmail(user.email),
-        });
-        safeLogAuthEvent({
-          category: "auth",
-          action: "signin_success",
-          status: "ok",
-          source: "nextauth",
-          userEmail: user.email,
-        });
+        const role = resolveRoleByEmail(user.email);
+        try {
+          await withTimeout(
+            upsertUser({
+              email: user.email,
+              name: user.name || user.email.split("@")[0] || "User",
+              role,
+            }),
+            SIGNIN_DB_TIMEOUT_MS,
+            `Auth user upsert timed out after ${SIGNIN_DB_TIMEOUT_MS}ms.`,
+          );
+          safeLogAuthEvent({
+            category: "auth",
+            action: "signin_success",
+            status: "ok",
+            source: "nextauth",
+            userEmail: user.email,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error ?? "Unknown auth user upsert error.");
+          console.error("[next-auth][signin][user-upsert-degraded]", message);
+          safeLogAuthEvent({
+            category: "auth",
+            action: "signin_user_upsert_degraded",
+            status: "error",
+            source: "nextauth",
+            code: "AUTH_USER_UPSERT_DEGRADED",
+            message,
+            userEmail: user.email,
+          });
+        }
       }
       return true;
     },

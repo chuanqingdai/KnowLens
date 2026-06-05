@@ -29,6 +29,7 @@ import {
   logGenerationOpsEvent,
   logOpsEvent,
 } from "@/lib/server/store";
+import { hasManagedDatabase } from "@/lib/server/postgres";
 import {
   bindWorkspaceProjectPageTask,
   updateWorkspaceProjectPageImage,
@@ -1147,19 +1148,20 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    const productionRequiresRemoteState =
+    const productionRequiresDurableState =
       process.env.NODE_ENV === "production" &&
       parseBooleanEnv("IMAGE_GENERATION_USE_BLOB_STATE", true) &&
       !parseBooleanEnv("IMAGE_GENERATION_ALLOW_SQLITE_IN_PRODUCTION", false);
     if (
-      productionRequiresRemoteState &&
+      productionRequiresDurableState &&
+      !hasManagedDatabase() &&
       !process.env.BLOB_READ_WRITE_TOKEN &&
       !process.env.BLOB_STORE_ID
     ) {
       return NextResponse.json(
         {
           error:
-            "Image generation state store is not configured for production. Configure Vercel Blob state (BLOB_READ_WRITE_TOKEN) or explicitly allow sqlite fallback.",
+            "Image generation state store is not configured for production. Configure DATABASE_URL or Vercel Blob state (BLOB_READ_WRITE_TOKEN), or explicitly allow sqlite fallback.",
           code: "IMAGE_STATE_STORE_NOT_CONFIGURED",
         },
         { status: 503 },
