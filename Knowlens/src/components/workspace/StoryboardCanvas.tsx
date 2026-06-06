@@ -2568,7 +2568,7 @@ export function StoryboardCanvas({
       setComposeSteps((prev) => ({ ...prev, prepare: "running" }));
       setComposeServerMessage("Preparing scene timeline...");
 
-      const size = { width: 1280, height: 720 };
+      const size = { width: 1920, height: 1080 };
       const scenes = slides.map((slide) => {
         const generationState = generationTaskStateByIndex?.[slide.page];
         const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);

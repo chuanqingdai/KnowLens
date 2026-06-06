@@ -27,9 +27,12 @@ const MAX_SCENES = 40;
 const MAX_NARRATION_CHARS_PER_SCENE = 1800;
 const DEFAULT_SCENE_DURATION_SEC = 3.4;
 const COVER_SCENE_DURATION_SEC = 1;
-const DEFAULT_WIDTH = 1280;
-const DEFAULT_HEIGHT = 720;
+const DEFAULT_WIDTH = 1920;
+const DEFAULT_HEIGHT = 1080;
 const DEFAULT_FPS = 30;
+const VIDEO_EXPORT_CRF = "17";
+const VIDEO_EXPORT_PRESET = "veryfast";
+const VIDEO_EXPORT_AUDIO_BITRATE = "192k";
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -408,6 +411,33 @@ async function runFfmpeg(args: string[], timeout = 180_000) {
   }
 }
 
+async function getMediaDurationSec(filePath: string, fallbackSec: number) {
+  if (!ffmpegStatic) {
+    return fallbackSec;
+  }
+  const parseDuration = (output: string) => {
+    const match = /Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(output);
+    if (!match) {
+      return null;
+    }
+    const hours = Number(match[1] || 0);
+    const minutes = Number(match[2] || 0);
+    const seconds = Number(match[3] || 0);
+    const durationSec = hours * 3600 + minutes * 60 + seconds;
+    return Number.isFinite(durationSec) && durationSec > 0 ? durationSec : null;
+  };
+  try {
+    const result = await execFileAsync(ffmpegStatic, ["-hide_banner", "-i", filePath, "-f", "null", "-"], {
+      timeout: 60_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    return parseDuration(String(result.stderr || "")) ?? fallbackSec;
+  } catch (error) {
+    const output = getProcessErrorMessage(error);
+    return parseDuration(output) ?? fallbackSec;
+  }
+}
+
 async function renderSceneSegment(input: {
   imagePath: string;
   audioPath: string | null;
@@ -421,41 +451,51 @@ async function renderSceneSegment(input: {
     `scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease,` +
     `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2:color=0x0b0c0f,` +
     "format=yuv420p";
-  const baseVideoArgs = [
-    "-loop",
-    "1",
-    "-framerate",
-    String(input.fps),
-    "-i",
-    input.imagePath,
-  ];
-
   if (input.audioPath) {
+    const durationSec = Math.max(0.5, await getMediaDurationSec(input.audioPath, input.durationSec));
+    const durationText = durationSec.toFixed(3);
+    const videoFilter = `${scaleFilter},setpts=PTS-STARTPTS`;
+    const audioFilter =
+      `apad=whole_dur=${durationText},atrim=0:${durationText},` +
+      "aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo," +
+      "asetpts=PTS-STARTPTS,alimiter=limit=0.95";
     await runFfmpeg([
-      ...baseVideoArgs,
+      "-loop",
+      "1",
+      "-framerate",
+      String(input.fps),
+      "-t",
+      durationText,
+      "-i",
+      input.imagePath,
       "-i",
       input.audioPath,
-      "-vf",
-      scaleFilter,
+      "-t",
+      durationText,
+      "-filter_complex",
+      `[0:v]${videoFilter}[v];[1:a]${audioFilter}[a]`,
       "-map",
-      "0:v:0",
+      "[v]",
       "-map",
-      "1:a:0",
+      "[a]",
       "-c:v",
       "libx264",
       "-preset",
-      "veryfast",
+      VIDEO_EXPORT_PRESET,
       "-crf",
-      "23",
+      VIDEO_EXPORT_CRF,
+      "-tune",
+      "stillimage",
       "-pix_fmt",
       "yuv420p",
       "-c:a",
       "aac",
       "-b:a",
-      "128k",
-      "-shortest",
+      VIDEO_EXPORT_AUDIO_BITRATE,
       "-movflags",
       "+faststart",
+      "-avoid_negative_ts",
+      "make_zero",
       input.outputPath,
     ]);
     return;
@@ -478,58 +518,75 @@ async function renderSceneSegment(input: {
     "anullsrc=channel_layout=stereo:sample_rate=48000",
     "-t",
     input.durationSec.toFixed(3),
-    "-vf",
-    scaleFilter,
+    "-filter_complex",
+    `[0:v]${scaleFilter},setpts=PTS-STARTPTS[v];[1:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a]`,
     "-map",
-    "0:v:0",
+    "[v]",
     "-map",
-    "1:a:0",
+    "[a]",
     "-c:v",
     "libx264",
     "-preset",
-    "veryfast",
+    VIDEO_EXPORT_PRESET,
     "-crf",
-    "23",
+    VIDEO_EXPORT_CRF,
+    "-tune",
+    "stillimage",
     "-pix_fmt",
     "yuv420p",
     "-c:a",
     "aac",
     "-b:a",
-    "128k",
+    VIDEO_EXPORT_AUDIO_BITRATE,
     "-movflags",
     "+faststart",
+    "-avoid_negative_ts",
+    "make_zero",
     input.outputPath,
   ]);
 }
 
 async function concatSegments(segmentPaths: string[], outputPath: string) {
-  const listPath = path.join(path.dirname(outputPath), "concat.txt");
-  const content = segmentPaths
-    .map((segmentPath) => `file '${segmentPath.replaceAll("'", "'\\''")}'`)
-    .join("\n");
-  await fs.writeFile(listPath, content);
+  if (!segmentPaths.length) {
+    throw new Error("No rendered video segments to concatenate.");
+  }
+  const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const normalizedInputs = segmentPaths
+    .map((_, index) => {
+      return (
+        `[${index}:v]setpts=PTS-STARTPTS[v${index}];` +
+        `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`
+      );
+    })
+    .join(";");
+  const concatInputs = segmentPaths.map((_, index) => `[v${index}][a${index}]`).join("");
   await runFfmpeg(
     [
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      listPath,
+      ...inputArgs,
+      "-filter_complex",
+      `${normalizedInputs};${concatInputs}concat=n=${segmentPaths.length}:v=1:a=1[v][a]`,
+      "-map",
+      "[v]",
+      "-map",
+      "[a]",
       "-c:v",
       "libx264",
       "-preset",
-      "veryfast",
+      VIDEO_EXPORT_PRESET,
       "-crf",
-      "23",
+      VIDEO_EXPORT_CRF,
+      "-tune",
+      "stillimage",
       "-pix_fmt",
       "yuv420p",
       "-c:a",
       "aac",
       "-b:a",
-      "128k",
+      VIDEO_EXPORT_AUDIO_BITRATE,
       "-movflags",
       "+faststart",
+      "-avoid_negative_ts",
+      "make_zero",
       outputPath,
     ],
     240_000,
