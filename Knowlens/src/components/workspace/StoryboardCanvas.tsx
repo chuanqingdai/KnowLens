@@ -6,11 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import {
   AlertCircle,
   Check,
-  CheckCircle2,
   ChevronDown,
   Copy,
   Crown,
   Download,
+  FileText,
+  FileVideo,
   LoaderCircle,
   LocateFixed,
   PauseCircle,
@@ -1242,7 +1243,7 @@ export function StoryboardCanvas({
       return "Finalizing the file...";
     }
     if (exportPptPhase === "done") {
-      return "PPT file is ready. If the browser does not start downloading, click Download PPT again.";
+      return "Download started. If not, click Download PPT.";
     }
     return "Preparing export...";
   }, [pptDownloadNotice, pptExportError, exportPptPhase, pptExportStatus]);
@@ -1264,9 +1265,7 @@ export function StoryboardCanvas({
         document.body.appendChild(anchor);
         anchor.click();
         document.body.removeChild(anchor);
-        setPptDownloadNotice(
-          "PPT file is ready. If the browser does not start downloading, click Download PPT again.",
-        );
+        setPptDownloadNotice("Download started. If not, click Download PPT.");
         return true;
       } catch {
         setPptDownloadNotice("Download could not start. Please click Download PPT again.");
@@ -4216,7 +4215,7 @@ export function StoryboardCanvas({
                 <h3 className="text-sm font-semibold text-zinc-900">Download Video</h3>
                 <p className="mt-1 text-xs text-zinc-500">
                   {composeStatus === "success"
-                    ? "Your video file is ready to download."
+                    ? "Download started. If not, use the button below."
                     : composeStatus === "error"
                       ? "Please fix the issue below and retry."
                       : "Preparing your video file."}
@@ -4238,39 +4237,59 @@ export function StoryboardCanvas({
               </button>
             </div>
 
-            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between text-sm text-zinc-700">
-                <div className="flex items-center gap-2">
-                  {composeStatus === "running" ? (
-                    <LoaderCircle className="animate-spin" size={16} />
-                  ) : composeStatus === "success" ? (
-                    <CheckCircle2 size={16} className="text-emerald-600" />
-                  ) : composeStatus === "error" ? (
-                    <AlertCircle size={16} className="text-red-500" />
-                  ) : null}
-                  <span
-                    className={
-                      composeStatus === "error" ? "text-red-600" : "text-zinc-700"
-                    }
+            {composeStatus === "success" && composedVideoUrl ? (
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <FileVideo size={20} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-900">{composedVideoFilename}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">Download started. If not, click again.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerVideoDownload();
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
                   >
-                    {composeStatus === "success"
-                      ? "Video file is ready. If the browser does not start downloading, click Download Video again."
-                      : composeStatus === "error"
+                    <Download size={13} />
+                    Download Video
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
+                <div className="flex items-center justify-between text-sm text-zinc-700">
+                  <div className="flex items-center gap-2">
+                    {composeStatus === "running" ? (
+                      <LoaderCircle className="animate-spin" size={16} />
+                    ) : composeStatus === "error" ? (
+                      <AlertCircle size={16} className="text-red-500" />
+                    ) : null}
+                    <span
+                      className={
+                        composeStatus === "error" ? "text-red-600" : "text-zinc-700"
+                      }
+                    >
+                      {composeStatus === "error"
                         ? composeError || "Video export failed. Please retry."
                         : composeLoadingHint}
-                  </span>
+                    </span>
+                  </div>
+                  <span className="text-xs font-medium text-zinc-500">{composeProgress}%</span>
                 </div>
-                <span className="text-xs font-medium text-zinc-500">{composeProgress}%</span>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-300 ${
+                      composeStatus === "error" ? "bg-red-500" : "bg-zinc-900"
+                    }`}
+                    style={{ width: `${composeProgress}%` }}
+                  />
+                </div>
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
-                <div
-                  className={`h-full rounded-full transition-[width] duration-300 ${
-                    composeStatus === "error" ? "bg-red-500" : "bg-zinc-900"
-                  }`}
-                  style={{ width: `${composeProgress}%` }}
-                />
-              </div>
-            </div>
+            )}
 
             <div className="mt-4 flex justify-end gap-2">
               {composeStatus === "error" ? (
@@ -4304,7 +4323,7 @@ export function StoryboardCanvas({
                 <h3 className="text-sm font-semibold text-zinc-900">Download PPT</h3>
                 <p className="mt-1 text-xs text-zinc-500">
                   {pptExportStatus === "success"
-                    ? "Your PPT file is ready to download."
+                    ? "Download started. If not, use the button below."
                     : pptExportStatus === "error"
                       ? "Please fix the issue below and retry."
                       : "Preparing your PPT file."}
@@ -4326,35 +4345,57 @@ export function StoryboardCanvas({
               </button>
             </div>
 
-            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between text-sm text-zinc-700">
-                <div className="flex items-center gap-2">
-                  {pptExportStatus === "running" ? (
-                    <LoaderCircle className="animate-spin" size={16} />
-                  ) : pptExportStatus === "success" ? (
-                    <CheckCircle2 size={16} className="text-emerald-600" />
-                  ) : pptExportStatus === "error" ? (
-                    <AlertCircle size={16} className="text-red-500" />
-                  ) : null}
-                  <span
-                    className={
-                      pptExportStatus === "error" ? "text-red-600" : "text-zinc-700"
-                    }
+            {pptExportStatus === "success" && exportedPptUrl ? (
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                    <FileText size={20} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-900">{PPT_DOWNLOAD_FILENAME}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">Download started. If not, click again.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerPptDownload();
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
                   >
-                    {exportPptHint}
-                  </span>
+                    <Download size={13} />
+                    Download PPT
+                  </button>
                 </div>
-                <span className="text-xs font-medium text-zinc-500">{exportPptProgress}%</span>
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
-                <div
-                  className={`h-full rounded-full transition-[width] duration-300 ${
-                    pptExportStatus === "error" ? "bg-red-500" : "bg-zinc-900"
-                  }`}
-                  style={{ width: `${exportPptProgress}%` }}
-                />
+            ) : (
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
+                <div className="flex items-center justify-between text-sm text-zinc-700">
+                  <div className="flex items-center gap-2">
+                    {pptExportStatus === "running" ? (
+                      <LoaderCircle className="animate-spin" size={16} />
+                    ) : pptExportStatus === "error" ? (
+                      <AlertCircle size={16} className="text-red-500" />
+                    ) : null}
+                    <span
+                      className={
+                        pptExportStatus === "error" ? "text-red-600" : "text-zinc-700"
+                      }
+                    >
+                      {exportPptHint}
+                    </span>
+                  </div>
+                  <span className="text-xs font-medium text-zinc-500">{exportPptProgress}%</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-300 ${
+                      pptExportStatus === "error" ? "bg-red-500" : "bg-zinc-900"
+                    }`}
+                    style={{ width: `${exportPptProgress}%` }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="mt-4 flex justify-end gap-2">
               {pptExportStatus === "error" ? (
@@ -4378,18 +4419,6 @@ export function StoryboardCanvas({
                 </>
               ) : null}
 
-              {pptExportStatus === "success" && exportedPptUrl ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerPptDownload();
-                  }}
-                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
-                >
-                  <Download size={13} />
-                  Download PPT
-                </button>
-              ) : null}
             </div>
           </div>
         </div>

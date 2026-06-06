@@ -103,10 +103,16 @@ function extractProtectedFacts(input: string, maxItems = 6) {
 
 function describeTextDensity(role: string, outputType: string, density: string) {
   if (outputType === "video") {
-    return "Text density: very low; prioritize the scene, motion cue, and one short label only when useful.";
+    return "Text density: ultra low; prioritize the scene and motion cue. Use no text on body frames unless one large label is essential.";
   }
   if (role === "cover") {
     return "Text density: low; for title-only cover tasks, use the supplied title as the only visible text.";
+  }
+  if (outputType === "ppt") {
+    if (role === "comparison" || role === "checklist" || role === "system-model") {
+      return "Text density: low-medium; use at most 3 large, short labels and avoid paragraph copy.";
+    }
+    return "Text density: low; use 1-2 large, short labels around one dominant visual. Do not render body paragraphs.";
   }
   if (role === "comparison") {
     return "Text density: medium; use 3-5 short comparison points if they help explain the contrast.";
@@ -324,9 +330,19 @@ export function buildTuziImagePrompt(input: {
   const sourceImagePromptDraft = sanitizePromptSignal(input.imagePromptDraft || input.imagePrompt || "", 120);
   const visibleTitle = sanitizePromptSignal(input.visibleText?.title || "", 120);
   const visibleSubtitle = sanitizePromptSignal(input.visibleText?.subtitle || "", 120);
+  const visibleLabelLimit =
+    pageRole === "cover"
+      ? 2
+      : outputType === "video"
+        ? 0
+        : outputType === "ppt"
+          ? pageRole === "comparison" || pageRole === "checklist" || pageRole === "system-model"
+            ? 3
+            : 2
+          : 4;
   const visibleLabels = uniquePromptItems((input.visibleText?.labels || [])
     .map((item) => sanitizePromptSignal(item, 56))
-    .filter(Boolean), pageRole === "cover" ? 2 : outputType === "video" ? 1 : 4)
+    .filter(Boolean), visibleLabelLimit)
     .join(" | ");
   const visualDesignLayout = sanitizePromptSignal(input.visualDesign?.layout || "", 140);
   const visualDesignMainVisual = sanitizePromptSignal(input.visualDesign?.mainVisual || "", 150);

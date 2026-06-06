@@ -244,6 +244,7 @@ function uniquePromptItems(items: string[], maxItems: number) {
 
 function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["tasks"]>[number]) {
   const outputType = compactPromptText(task.outputType || "poster", 20) || "poster";
+  const pageRole = compactPromptText(task.pageRole || task.visualDesign?.pageRole || "", 40);
   const aspectRatio = compactPromptText(task.aspectRatio || "9:16", 24) || "9:16";
   const stylePrompt = compactPromptText(task.stylePrompt || "", 520);
   const title = compactPromptText(task.contentTitle || "", 120);
@@ -254,10 +255,20 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
   const visualHint = compactPromptText(task.visualHint || "", 160);
   const visibleTitle = compactPromptText(task.visibleText?.title || "", 120);
   const visibleSubtitle = compactPromptText(task.visibleText?.subtitle || "", 120);
+  const visibleLabelLimit =
+    pageRole === "cover"
+      ? 2
+      : outputType === "video"
+        ? 0
+        : outputType === "ppt"
+          ? pageRole === "comparison" || pageRole === "checklist" || pageRole === "system-model"
+            ? 3
+            : 2
+          : 4;
   const visibleLabels = Array.isArray(task.visibleText?.labels)
     ? uniquePromptItems(
         task.visibleText.labels.map((item) => compactPromptText(String(item || ""), 54)).filter(Boolean),
-        4,
+        visibleLabelLimit,
       ).join(" | ")
     : "";
   const layout = compactPromptText(task.visualDesign?.layout || "", 180);
@@ -299,7 +310,7 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
   ).join(" | ");
   const shortViewVideoRule =
     outputType === "video"
-      ? "Video storyboard readability rule: frames are viewed briefly, so avoid small text, dense labels, subtitle-style overlays, tiny chart annotations, fine print, and multi-line notes. If any text appears, keep it very short, large, bold, and glance-readable."
+      ? "Video storyboard readability rule: frames are viewed briefly, so avoid small text, dense labels, subtitle-style overlays, tiny chart annotations, fine print, and multi-line notes. Prefer no on-screen text on body frames; if any text appears, keep it very short, large, bold, and glance-readable."
       : "";
 
   return [

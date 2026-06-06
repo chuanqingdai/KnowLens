@@ -12,6 +12,16 @@ const navItems = [
 
 const releaseTimeline = [
   {
+    date: "June 6, 2026",
+    title: "Video Motion and Style Layouts",
+    cadence: "Live",
+    desc: "Video creation and visual style generation were refined for smoother outputs and more consistent multi-image layouts.",
+    items: [
+      "Videos now support scene transition motion effects for a more polished viewing experience.",
+      "Optimized the layouts across 12 visual styles so multi-image results feel more unified.",
+    ],
+  },
+  {
     date: "June 5, 2026",
     title: "Official Launch",
     cadence: "Live",

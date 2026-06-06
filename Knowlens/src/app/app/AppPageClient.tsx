@@ -128,6 +128,50 @@ function defaultFreeModelByLocale(locale: "en" | "zh") {
   return "gemini-2.5";
 }
 
+function isKnownTextModel(value: string | null | undefined): value is string {
+  if (!value) {
+    return false;
+  }
+  return textModelOptions.some((option) => option.value === value);
+}
+
+function getHomeTextModelPreferenceKey(email?: string) {
+  const normalizedEmail = email?.trim().toLowerCase();
+  return normalizedEmail ? `${HOME_TEXT_MODEL_KEY}:${normalizedEmail}` : HOME_TEXT_MODEL_KEY;
+}
+
+function readStoredHomeTextModel(email?: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const keys = email
+      ? [getHomeTextModelPreferenceKey(email), HOME_TEXT_MODEL_KEY]
+      : [HOME_TEXT_MODEL_KEY];
+    for (const key of keys) {
+      const storedValue = window.localStorage.getItem(key)?.trim();
+      if (isKnownTextModel(storedValue)) {
+        return storedValue;
+      }
+    }
+  } catch {
+    // Ignore unavailable storage, private browsing, or malformed values.
+  }
+  return null;
+}
+
+function writeStoredHomeTextModel(modelValue: string | null, email?: string) {
+  if (typeof window === "undefined" || !isKnownTextModel(modelValue)) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(HOME_TEXT_MODEL_KEY, modelValue);
+    window.localStorage.setItem(getHomeTextModelPreferenceKey(email), modelValue);
+  } catch {
+    // Ignore storage quota or permission failures.
+  }
+}
+
 const inputPlaceholders = [
   'Describe what you want to explain, for example: "Why do tides happen?"',
   "Upload a PDF, PPT, or document to generate visual learning content quickly",
@@ -392,6 +436,7 @@ const MAX_COMPOSER_HEIGHT = 260;
 const DEFAULT_COVER_FALLBACK = "/picture/text-to-poster.png";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 const HOME_DRAFT_KEY = "knowlens-home-draft";
+const HOME_TEXT_MODEL_KEY = "knowlens-home-text-model-v1";
 const GENERATE_INTENT_KEY = "knowlens:generate-intent";
 const GENERATE_INTENT_TTL_MS = 15 * 60 * 1000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
@@ -977,6 +1022,15 @@ export default function Home() {
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
   const hydratedHomeDraftRef = useRef(false);
+  useEffect(() => {
+    const storedTextModel = readStoredHomeTextModel(currentEmail);
+    if (storedTextModel) {
+      setTextModel(storedTextModel);
+    }
+  }, [currentEmail]);
+  useEffect(() => {
+    writeStoredHomeTextModel(textModel, currentEmail);
+  }, [currentEmail, textModel]);
   useEffect(() => {
     let isCancelled = false;
     fetch("/api/public/cases")
@@ -1982,80 +2036,29 @@ export default function Home() {
     }
   }
 
-  async function handleFeaturedDownload() {
+  function getFeaturedSharePath() {
     if (!previewItem) {
-      return;
+      return "/";
     }
-    if (!hasMembership) {
-      setPreviewPaywallOpen(true);
-      return;
+    return activePreviewAsset?.viewerUrl || getFeaturedDetailPath(previewItem);
+  }
+
+  async function handleFeaturedShare() {
+    const shareUrl = new URL(getFeaturedSharePath(), window.location.origin).toString();
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = shareUrl;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
     }
-    if (previewFormat === "PPT") {
-      const deckAsset = (previewItem.assets || []).find(isPptDeckPreviewAsset);
-      if (deckAsset?.downloadUrl || deckAsset?.fileUrl) {
-        const link = document.createElement("a");
-        link.href = deckAsset.downloadUrl || deckAsset.fileUrl;
-        link.download = "KnowLens.ai-visual-deck.pptx";
-        link.rel = "noopener";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        return;
-      }
-      const slideAssets = previewAssets.filter(isImagePreviewAsset);
-      if (!slideAssets.length) {
-        setUploadToast("No PPT slides are available to download.");
-        return;
-      }
-      try {
-        const response = await fetch("/api/export/ppt", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: previewItem.title,
-            slides: slideAssets.map((asset, index) => ({
-              page: asset.pageIndex || index + 1,
-              title: asset.title || `Slide ${index + 1}`,
-              body: asset.description || "",
-              imageSrc: asset.fileUrl,
-            })),
-          }),
-        });
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(payload?.error || "PPT download failed.");
-        }
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "KnowLens.ai-visual-deck.pptx";
-        link.rel = "noopener";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-      } catch (error) {
-        setUploadToast(error instanceof Error ? error.message : "PPT download failed.");
-      }
-      return;
-    }
-    if (previewFormat === "Video" && !activePreviewIsVideo) {
-      setUploadToast("No video file is available to download.");
-      return;
-    }
-    const link = document.createElement("a");
-    link.href = activePreviewAsset?.downloadUrl || activePreviewAsset?.fileUrl || previewItem.cover;
-    link.download =
-      previewFormat === "Video"
-        ? `${toFileSlug(activePreviewAsset?.title || previewItem.title)}.mp4`
-        : `${toFileSlug(activePreviewAsset?.title || previewItem.title)}.png`;
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    setUploadToast("Link copied");
   }
 
   function openFeaturedPreview(item: FeaturedCaseItem) {
@@ -2677,10 +2680,10 @@ export default function Home() {
                 ) : null}
                 <button
                   type="button"
-                  onClick={handleFeaturedDownload}
+                  onClick={() => void handleFeaturedShare()}
                   className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
                 >
-                  Download
+                  Share
                 </button>
                 {activePreviewAsset?.viewerUrl ? (
                   <button
@@ -2767,7 +2770,7 @@ export default function Home() {
                     <div>
                       <p className="text-base font-semibold">PPT file preview</p>
                       <p className="mt-2 text-sm leading-6 text-white/70">
-                        This case includes a presentation file. Use Open details or Download to view the deck.
+                        This case includes a presentation file. Use Open details to view the deck.
                       </p>
                     </div>
                     <img
@@ -2861,16 +2864,5 @@ export default function Home() {
         confirmLabel="Go to Membership"
       />
     </div>
-  );
-}
-
-function toFileSlug(value: string) {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, " ")
-      .replace(/\s+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || "featured-case"
   );
 }

@@ -2334,6 +2334,183 @@ function isTemplateInstructionText(value: string) {
   );
 }
 
+function stripSourceEvidencePack(value: string) {
+  return value
+    .replace(/\n+\[Source evidence pack\]\n+[\s\S]*$/i, "")
+    .replace(/^User request:\s*/i, "")
+    .trim();
+}
+
+function splitSourceDraftSentences(value: string, outputLanguage: OutputLanguage) {
+  const source = stripSourceEvidencePack(value)
+    .replace(/\r/g, "\n")
+    .replace(/\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!source) {
+    return [];
+  }
+  const matches = isChineseLanguage(outputLanguage)
+    ? source.match(/[^。！？!?;；]+[。！？!?;；]?/g)
+    : source.match(/[^.!?;]+[.!?;]?/g);
+  return (matches ?? [source])
+    .map((item) => ensureSentenceEnding(item.trim(), outputLanguage))
+    .filter((item) => {
+      const compact = item.replace(/\s+/g, "");
+      return compact.length >= (isChineseLanguage(outputLanguage) ? 8 : 24);
+    });
+}
+
+function trimDraftSentenceForDisplay(value: string, maxChars: number) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxChars) {
+    return compact;
+  }
+  const sliced = compact.slice(0, maxChars).replace(/\s+\S*$/g, "").trim();
+  return sliced || compact.slice(0, maxChars).trim();
+}
+
+function compactPptSlideBody(value: string, outputLanguage: OutputLanguage) {
+  const isZh = isChineseLanguage(outputLanguage);
+  const maxChars = isZh ? 120 : 220;
+  const sentences = splitSourceDraftSentences(value, outputLanguage);
+  const sourceSentences = sentences.length
+    ? sentences
+    : value
+        .split(/\n+/g)
+        .map((item) => ensureSentenceEnding(item.trim(), outputLanguage))
+        .filter(Boolean);
+  const kept: string[] = [];
+  for (const sentence of sourceSentences) {
+    const candidate = trimDraftSentenceForDisplay(sentence, maxChars);
+    const nextLength = [...kept, candidate].join(isZh ? "" : " ").length;
+    if (kept.length >= 2 || (kept.length > 0 && nextLength > maxChars)) {
+      break;
+    }
+    kept.push(candidate);
+  }
+  return kept.join("\n");
+}
+
+function isLongSourceDraftInput(value: string, outputLanguage: OutputLanguage) {
+  const source = stripSourceEvidencePack(value);
+  if (!source) {
+    return false;
+  }
+  const sentenceCount = splitSourceDraftSentences(source, outputLanguage).length;
+  return source.length >= (isChineseLanguage(outputLanguage) ? 180 : 360) || sentenceCount >= 4;
+}
+
+function summarizeSourceTitle(value: string, fallbackTopic: string, outputLanguage: OutputLanguage) {
+  const source = stripSourceEvidencePack(value);
+  const firstSentence = splitSourceDraftSentences(source, outputLanguage)[0] || fallbackTopic;
+  if (isChineseLanguage(outputLanguage)) {
+    return toConciseDraftTitle(firstSentence, fallbackTopic, outputLanguage) || fallbackTopic || "核心主题";
+  }
+  const lowerSource = source.toLowerCase();
+  if (/\bvaccines?\b/.test(lowerSource) && /immune system|immunity|infection/.test(lowerSource)) {
+    return "How Vaccines Train Immunity";
+  }
+  const words = firstSentence
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 7);
+  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ") ||
+    toConciseDraftTitle(fallbackTopic, fallbackTopic, outputLanguage) ||
+    "Source Summary";
+}
+
+function distributeSourceSentences(sentences: string[], groups: number) {
+  const safeGroups = Math.max(1, groups);
+  const buckets: string[][] = Array.from({ length: safeGroups }, () => []);
+  sentences.forEach((sentence, index) => {
+    const bucketIndex = Math.min(safeGroups - 1, Math.floor((index * safeGroups) / Math.max(1, sentences.length)));
+    buckets[bucketIndex].push(sentence);
+  });
+  return buckets.map((bucket, index) => bucket.length ? bucket : [sentences[Math.min(index, sentences.length - 1)] || ""]);
+}
+
+function buildSourceAwareMediaSeed(
+  sourceText: string,
+  topic: string,
+  count: number,
+  direction: "ppt" | "video",
+  outputLanguage: OutputLanguage,
+) {
+  if (!isLongSourceDraftInput(sourceText, outputLanguage)) {
+    return null;
+  }
+  const sentences = splitSourceDraftSentences(sourceText, outputLanguage);
+  if (sentences.length < 3 || count < 2) {
+    return null;
+  }
+  const isZh = isChineseLanguage(outputLanguage);
+  const title = summarizeSourceTitle(sourceText, topic, outputLanguage);
+  const bodyCount = Math.max(1, count - 1);
+  const buckets = distributeSourceSentences(sentences, bodyCount);
+  const bodyItems = buckets.map((bucket, idx) => {
+    const sourceBody = bucket.join(isZh ? "" : " ");
+    const body = direction === "ppt" ? compactPptSlideBody(sourceBody, outputLanguage) : sourceBody;
+    const rawTitle = bucket[0] || body || `${direction === "ppt" ? "Slide" : "Frame"} ${idx + 2}`;
+    const itemTitle =
+      toConciseDraftTitle(rawTitle, topic, outputLanguage) ||
+      (isZh ? `重点 ${idx + 1}` : `${direction === "ppt" ? "Slide" : "Frame"} ${idx + 2}`);
+    const visual = isZh
+      ? `围绕“${itemTitle}”的信息图：一个主体、一个关键动作、一个结果，用箭头或对比关系表达。`
+      : `Source-faithful educational infographic for "${itemTitle}": one main subject, one key action, and one result, using arrows or comparison.`;
+    return {
+      title: itemTitle,
+      mainPoint: bucket[0] || body,
+      body,
+      narration: sourceBody,
+      visual,
+      imagePrompt:
+        direction === "video"
+          ? `Educational explainer still frame based on the source text: ${itemTitle}. ${visual} No dense subtitles, no invented facts.`
+          : `Educational presentation slide based on the source text: ${itemTitle}. ${visual} Concise hierarchy, preserve source facts.`,
+      isCover: false,
+    };
+  });
+  return [
+    {
+      title,
+      mainPoint: title,
+      body: "",
+      narration: "",
+      visual: isZh
+        ? `标题封面：一个简洁主视觉，概括“${title}”，不要小字说明。`
+        : `Title cover: one clean hero visual that summarizes "${title}", no small explanatory text.`,
+      imagePrompt: isZh
+        ? `标题封面，主题：${title}，一个简洁主视觉，不要小字、标签或密集说明。`
+        : `Title cover for ${title}, one clean hero subject, no small labels, no dense text.`,
+      isCover: true,
+    },
+    ...bodyItems,
+  ].slice(0, count);
+}
+
+function isGenericMediaTemplateTitle(value: string) {
+  return /^(?:core question|observable pattern|key mechanism|variable path|contrast check|misconception|judgment framework|opening tension|visible pattern|first cause|mechanism path|contrast beat|myth correction|final model|extension frame|核心问题|现象观察|关键机制|变量路径|对比验证|误区澄清|判断框架|冲突开场|现象镜头|第一原因|机制传导|对比镜头|误区纠偏|结尾模型|补充镜头)/i.test(
+    value.trim(),
+  );
+}
+
+function shouldPreferSourceAwareMediaSeed(input: {
+  sourceText: string;
+  outputLanguage: OutputLanguage;
+  titles: string[];
+  bodyTexts: string[];
+}) {
+  if (!isLongSourceDraftInput(input.sourceText, input.outputLanguage)) {
+    return false;
+  }
+  const genericTitleCount = input.titles.filter(isGenericMediaTemplateTitle).length;
+  const emptyBodyCount = input.bodyTexts.filter((item) => !item.trim()).length;
+  return genericTitleCount >= Math.max(2, Math.ceil(input.titles.length / 3)) ||
+    emptyBodyCount >= Math.max(2, Math.ceil(input.bodyTexts.length / 2));
+}
+
 function buildGenericMediaSeed(topic: string, count: number, direction: "ppt" | "video", outputLanguage: OutputLanguage) {
   const topicSeed = buildQuestionTopicSeed(topic, outputLanguage);
   if (topicSeed?.length) {
@@ -2532,8 +2709,8 @@ function normalizeSlideDrafts(
       const safeBody = isCover
         ? ""
         : !bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line))
-          ? fallback?.body || fallback?.mainPoint || ""
-          : bodyLines.join("\n");
+          ? compactPptSlideBody(fallback?.body || fallback?.mainPoint || "", outputLanguage)
+          : compactPptSlideBody(bodyLines.join("\n"), outputLanguage);
       return {
         page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
         title,
@@ -2559,7 +2736,7 @@ function normalizeSlideDrafts(
       page: idx + 1,
       title: toConciseDraftTitle(title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`, topic, outputLanguage)
         || title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`,
-      body: isCover ? "" : fallbackSlides[idx]?.body || "",
+      body: isCover ? "" : compactPptSlideBody(fallbackSlides[idx]?.body || "", outputLanguage),
       visual: fallbackSlides[idx]?.visual || "",
       imagePromptDraft: fallbackSlides[idx]?.imagePrompt || "",
       imagePrompt: fallbackSlides[idx]?.imagePrompt || "",
@@ -2656,19 +2833,29 @@ function buildFallbackMediaDraftPayload(input: {
   outputCount: number;
   posterSizeLabel: string;
   topic: string;
+  sourceText?: string;
   outputLanguage: OutputLanguage;
   promptBundle: ReturnType<typeof buildContentDraftPrompt>;
   modelForLog: string;
   generatedText?: string;
   providerPath?: DraftProviderPath;
 }) {
-  const outlineItems = normalizeOutlineItems(
-    null,
-    input.outputCount,
+  const sourceSeed = buildSourceAwareMediaSeed(
+    input.sourceText || "",
     input.topic,
+    input.outputCount,
     input.direction,
     input.outputLanguage,
   );
+  const outlineItems = sourceSeed?.length
+    ? sourceSeed.map((item) => item.title)
+    : normalizeOutlineItems(
+        null,
+        input.outputCount,
+        input.topic,
+        input.direction,
+        input.outputLanguage,
+      );
   if (input.direction === "ppt") {
     return {
       direction: input.direction,
@@ -2676,13 +2863,23 @@ function buildFallbackMediaDraftPayload(input: {
       normalizedCount: input.outputCount,
       normalizedRatio: input.posterSizeLabel,
       outlineItems,
-      slideDrafts: normalizeSlideDrafts(
-        null,
-        outlineItems,
-        input.outputCount,
-        input.topic,
-        input.outputLanguage,
-      ),
+      slideDrafts: sourceSeed?.length
+        ? sourceSeed.map((item, idx) => ({
+            page: idx + 1,
+            title: item.title,
+            body: item.isCover ? "" : item.body || item.mainPoint,
+            visual: item.visual,
+            imagePromptDraft: item.imagePrompt,
+            imagePrompt: item.imagePrompt,
+            isCover: item.isCover === true,
+          }))
+        : normalizeSlideDrafts(
+            null,
+            outlineItems,
+            input.outputCount,
+            input.topic,
+            input.outputLanguage,
+          ),
       outputLanguage: input.outputLanguage,
       source: "fallback",
       providerPath: input.providerPath ?? "fallback",
@@ -2699,13 +2896,29 @@ function buildFallbackMediaDraftPayload(input: {
     normalizedCount: input.outputCount,
     normalizedRatio: input.posterSizeLabel,
     outlineItems,
-    storyboardDrafts: normalizeStoryboardDrafts(
-      null,
-      outlineItems,
-      input.outputCount,
-      input.topic,
-      input.outputLanguage,
-    ),
+    storyboardDrafts: sourceSeed?.length
+      ? sourceSeed.map((item, idx) => ({
+          index: idx + 1,
+          title: item.title,
+          narration: item.isCover ? "" : tuneStoryboardNarrationLength({
+            narration: item.narration || item.body || item.mainPoint,
+            fallbackNarration: item.body || item.mainPoint,
+            title: item.title,
+            visual: item.visual,
+            outputLanguage: input.outputLanguage,
+          }),
+          visual: item.visual,
+          imagePromptDraft: item.imagePrompt,
+          imagePrompt: item.imagePrompt,
+          isCover: item.isCover === true,
+        }))
+      : normalizeStoryboardDrafts(
+          null,
+          outlineItems,
+          input.outputCount,
+          input.topic,
+          input.outputLanguage,
+        ),
     outputLanguage: input.outputLanguage,
     source: "fallback",
     providerPath: input.providerPath ?? "fallback",
@@ -3123,6 +3336,7 @@ export async function POST(request: NextRequest) {
           outputCount,
           posterSizeLabel,
           topic,
+          sourceText: prompt,
           outputLanguage,
           promptBundle,
           modelForLog,
@@ -3157,6 +3371,7 @@ export async function POST(request: NextRequest) {
             outputCount,
             posterSizeLabel,
             topic,
+            sourceText: prompt,
             outputLanguage,
             promptBundle,
             modelForLog,
@@ -3185,8 +3400,48 @@ export async function POST(request: NextRequest) {
         details: { direction, outputCount, providerPath },
       });
       const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic, direction, outputLanguage);
+      const sourceAwareSeed = buildSourceAwareMediaSeed(prompt, topic, outputCount, direction, outputLanguage);
       if (direction === "ppt") {
         const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount, topic, outputLanguage);
+        if (
+          sourceAwareSeed?.length &&
+          shouldPreferSourceAwareMediaSeed({
+            sourceText: prompt,
+            outputLanguage,
+            titles: slideDrafts.map((item) => item.title),
+            bodyTexts: slideDrafts.map((item) => item.body),
+          })
+        ) {
+          const sourceOutlineItems = sourceAwareSeed.map((item) => item.title);
+          const sourceSlideDrafts = sourceAwareSeed.map((item, idx) => ({
+            page: idx + 1,
+            title: item.title,
+            body: item.isCover ? "" : item.body || item.mainPoint,
+            visual: item.visual,
+            imagePromptDraft: item.imagePrompt,
+            imagePrompt: item.imagePrompt,
+            isCover: item.isCover === true,
+          }));
+          return NextResponse.json({
+            direction,
+            normalizedDirection: direction,
+            normalizedCount: outputCount,
+            normalizedRatio: posterSizeLabel,
+            outlineItems: sourceOutlineItems,
+            slideDrafts: sourceSlideDrafts,
+            outputLanguage,
+            source: "fallback",
+            providerPath,
+            fallbackReason: "source_aware_template_repair",
+            llmUsage:
+              llmUsage ??
+              buildEstimatedDraftLlmUsage({
+                promptBundle,
+                generatedText: content,
+                model: modelForLog,
+              }),
+          });
+        }
         return NextResponse.json({
           direction,
           normalizedDirection: direction,
@@ -3207,6 +3462,51 @@ export async function POST(request: NextRequest) {
         });
       }
       const storyboardDrafts = normalizeStoryboardDrafts(parsed.storyboardDrafts, outlineItems, outputCount, topic, outputLanguage);
+      if (
+        sourceAwareSeed?.length &&
+        shouldPreferSourceAwareMediaSeed({
+          sourceText: prompt,
+          outputLanguage,
+          titles: storyboardDrafts.map((item) => item.title),
+          bodyTexts: storyboardDrafts.map((item) => item.narration),
+        })
+      ) {
+        const sourceOutlineItems = sourceAwareSeed.map((item) => item.title);
+        const sourceStoryboardDrafts = sourceAwareSeed.map((item, idx) => ({
+          index: idx + 1,
+          title: item.title,
+          narration: item.isCover ? "" : tuneStoryboardNarrationLength({
+            narration: item.narration || item.body || item.mainPoint,
+            fallbackNarration: item.body || item.mainPoint,
+            title: item.title,
+            visual: item.visual,
+            outputLanguage,
+          }),
+          visual: item.visual,
+          imagePromptDraft: item.imagePrompt,
+          imagePrompt: item.imagePrompt,
+          isCover: item.isCover === true,
+        }));
+        return NextResponse.json({
+          direction,
+          normalizedDirection: direction,
+          normalizedCount: outputCount,
+          normalizedRatio: posterSizeLabel,
+          outlineItems: sourceOutlineItems,
+          storyboardDrafts: sourceStoryboardDrafts,
+          outputLanguage,
+          source: "fallback",
+          providerPath,
+          fallbackReason: "source_aware_template_repair",
+          llmUsage:
+            llmUsage ??
+            buildEstimatedDraftLlmUsage({
+              promptBundle,
+              generatedText: content,
+              model: modelForLog,
+            }),
+        });
+      }
       return NextResponse.json({
         direction,
         normalizedDirection: direction,

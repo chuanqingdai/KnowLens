@@ -156,6 +156,33 @@ function cleanText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
+function compactVisualBrief(value: string, outputType: NormalizedDirection) {
+  const source = cleanText(value);
+  if (!source) {
+    return "";
+  }
+  const maxChars = outputType === "ppt" ? 180 : outputType === "video" ? 120 : 320;
+  const maxSentences = outputType === "ppt" ? 2 : outputType === "video" ? 1 : 3;
+  const matches = source.match(/[^。！？!?;；.]+[。！？!?;；.]?/g) || [source];
+  const kept: string[] = [];
+  for (const match of matches) {
+    const sentence = cleanText(match);
+    if (!sentence) {
+      continue;
+    }
+    const next = cleanText([...kept, sentence].join(" "));
+    if (kept.length >= maxSentences || (kept.length > 0 && next.length > maxChars)) {
+      break;
+    }
+    kept.push(sentence);
+  }
+  const brief = cleanText(kept.join(" ")) || source;
+  if (brief.length <= maxChars) {
+    return brief;
+  }
+  return cleanText(brief.slice(0, maxChars).replace(/\s+\S*$/g, ""));
+}
+
 function sanitizeBrandSensitiveVisualText(value: string | null | undefined) {
   const source = cleanText(value);
   if (!source) {
@@ -673,6 +700,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const slide = slides[idx];
     const contentTitle = cleanText(slide?.title) || cleanText(outline[idx]) || `${normalizedDirection === "ppt" ? "Slide" : "Frame"} ${index}`;
     const contentBody = cleanText(slide?.body) || cleanText(outline[idx]) || input.topic;
+    const visualBrief = compactVisualBrief(contentBody, normalizedDirection);
     const rawSlideVisual = sanitizeBrandSensitiveVisualText(slide?.visual || "");
     const sourceImagePromptDraft = sanitizeBrandSensitiveVisualText(
       sanitizePromptLine(cleanText(slide?.imagePromptDraft || slide?.imagePrompt)),
@@ -690,12 +718,12 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const videoImageSignal = cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join("\n"));
     const visibleLabelSource =
       normalizedDirection === "video"
-        ? cleanText([sanitizePromptLine(rawSlideVisual), imagePromptDraft].join(" | "))
-        : sanitizePromptLine(rawSlideVisual) || sanitizePromptLine(cleanText(contentBody));
+        ? ""
+        : sanitizePromptLine(rawSlideVisual) || sanitizePromptLine(visualBrief);
     const conceptSource =
       normalizedDirection === "video"
-        ? cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join(" | "))
-        : cleanText([contentTitle, contentBody].join(" | "));
+        ? ""
+        : cleanText([contentTitle, visualBrief].join(" | "));
     const isDataLikeSlide =
       !isIndependentCover &&
       (isHighRiskDataContent([contentTitle, normalizedDirection === "video" ? "" : contentBody, rawSlideVisual, imagePromptDraft].join(" ")) ||
@@ -703,10 +731,10 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
           [contentTitle, normalizedDirection === "video" ? "" : contentBody, rawSlideVisual].join(" "),
         ));
     const visibleText: VisibleText = {
-      title: contentTitle,
+      title: normalizedDirection === "video" && !isIndependentCover ? "" : contentTitle,
       labels: isIndependentCover
         ? []
-        : splitLabels(visibleLabelSource, normalizedDirection === "video" ? 2 : 4),
+        : splitLabels(visibleLabelSource, isDataLikeSlide ? 3 : 2),
     };
     const pageRole: CompiledGenerationTask["pageRole"] =
       isIndependentCover
@@ -755,15 +783,15 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
           ? "single-frame-keypoint"
           : "single-slide-keypoint",
       pageRole,
-      textDensity: isIndependentCover || normalizedDirection === "video" ? "low" : "medium",
+      textDensity: isIndependentCover || normalizedDirection === "video" || !isDataLikeSlide ? "low" : "medium",
       chartType: isDataLikeSlide || /chart|趋势|对比|柱|折线/i.test(rawSlideVisual) ? "comparison-or-trend-chart" : undefined,
       workflowType: /流程|步骤|闭环|workflow|loop/i.test(rawSlideVisual) ? "step-or-flow-workflow" : undefined,
       mapRegion: /地图|map|区域|东亚|中国|全球/i.test(rawSlideVisual) ? rawSlideVisual : undefined,
     };
     const textStrategy: TextStrategy = {
-      mode: isIndependentCover ? "minimal" : isDataLikeSlide ? "strict" : "guided",
-      titleIdea: isIndependentCover ? "" : contentTitle,
-      keyConcepts: isIndependentCover ? [] : splitLabels(conceptSource, normalizedDirection === "video" ? 3 : 5),
+      mode: isIndependentCover || normalizedDirection === "video" ? "minimal" : isDataLikeSlide ? "strict" : "guided",
+      titleIdea: isIndependentCover || normalizedDirection === "video" ? "" : contentTitle,
+      keyConcepts: isIndependentCover || normalizedDirection === "video" ? [] : splitLabels(conceptSource, isDataLikeSlide ? 3 : 2),
       language: dominantVisibleLanguage,
       density: visualDesign.textDensity,
       allowRewrite: !isIndependentCover && !isDataLikeSlide,
@@ -787,6 +815,11 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
           "No fake trading dashboard, unsupported official logo, or made-up financial data.",
           "Avoid generic mechanism-flow templates when the content is a metric summary.",
         ]
+      : normalizedDirection === "video"
+      ? [
+          ...negativeRules,
+          "Body storyboard frames should use little to no visible text; avoid subtitles, bullet lists, tiny callouts, dense labels, and small UI text.",
+        ]
       : negativeRules;
     const visualHint = cleanText([sanitizePromptLine(rawSlideVisual), imagePromptDraft].join(" | "));
     const composedPrompt = buildTuziImagePrompt({
@@ -794,7 +827,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         ? cleanText([contentTitle, "Independent title-only cover image. Use this title as the only on-image text. One simple hero subject."].join("\n"))
         : normalizedDirection === "video"
           ? videoImageSignal
-          : cleanText([contentTitle, sanitizePromptLine(contentBody)].join("\n")),
+          : cleanText([contentTitle, sanitizePromptLine(visualBrief)].join("\n")),
       selectedStyle: input.style.prompt || input.style.name,
       aspectRatio: normalizedAspectRatio,
       posterIndex: index,
