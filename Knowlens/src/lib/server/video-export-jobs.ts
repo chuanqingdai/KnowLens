@@ -16,6 +16,7 @@ import {
   isMockImageGenerationTaskId,
   readImageAsset,
 } from "@/lib/server/image-generation-jobs";
+import { linkVideoExportToPublishedCases } from "@/lib/server/published-case-video-assets";
 import { logOpsEvent } from "@/lib/server/store";
 
 const execFileAsync = promisify(execFile);
@@ -923,6 +924,7 @@ export async function runVideoExportJob(jobId: string) {
       addRandomSuffix: false,
       contentType: "video/mp4",
     });
+    const completedJob = job;
     await updateJob(job, {
       status: "success",
       step: "done",
@@ -931,6 +933,26 @@ export async function runVideoExportJob(jobId: string) {
       resultUrl: blob.url,
       downloadUrl: blob.downloadUrl || blob.url,
       size: data.length,
+    });
+    const publicCaseLink = await linkVideoExportToPublishedCases({
+      projectId: completedJob.projectId,
+      userEmail: completedJob.userEmail,
+      resultUrl: blob.url,
+      downloadUrl: blob.downloadUrl || blob.url,
+      jobId: completedJob.id,
+      title: completedJob.timeline.scenes[0]?.title || null,
+      contentType: "video/mp4",
+      size: data.length,
+      width: completedJob.timeline.width,
+      height: completedJob.timeline.height,
+    }).catch((error) => {
+      console.error("[video-export-public-case-link-failed]", {
+        jobId: completedJob.id,
+        projectId: completedJob.projectId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return { linked: 0 };
     });
     await logVideoExportJobEvent({
       job: {
@@ -945,6 +967,7 @@ export async function runVideoExportJob(jobId: string) {
         scenes: job.totalScenes,
         bytes: data.length,
         resultUrl: blob.url,
+        linkedPublicVideoCases: publicCaseLink.linked,
         durationMs: Date.now() - jobStartedAt,
       },
     });
