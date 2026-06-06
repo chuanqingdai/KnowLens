@@ -32,7 +32,7 @@ function SessionDataSync({ children }: { children: React.ReactNode }) {
 
 export function AuthSessionProvider({ children }: AuthSessionProviderProps) {
   return (
-    <SessionProvider>
+    <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
       <LocaleProvider>
         <SessionDataSync>{children}</SessionDataSync>
       </LocaleProvider>

@@ -408,20 +408,36 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
 
 const TTS_OPTION_IDS = new Set(TTS_OPTIONS.map((option) => option.id));
 const DEFAULT_EMOTION_TTS_ID = "basic_narrator_female";
-const TTS_SAMPLE_CACHE_VERSION = "static-v1";
-const TTS_SAMPLE_AUDIO_BY_ID: Record<string, string> = {
+const TTS_SAMPLE_CACHE_VERSION = "api-v3";
+const FREE_TTS_SAMPLE_AUDIO_BY_ID: Record<string, string> = {
   basic_narrator_male: "/tts-samples/basic_narrator_male.wav",
   basic_narrator_female: "/tts-samples/basic_narrator_female.wav",
-  pro_documentary_male: "/tts-samples/pro_documentary_male.wav",
-  pro_documentary_female: "/tts-samples/pro_documentary_female.wav",
-  pro_deep_science: "/tts-samples/pro_deep_science.mp3",
-  pro_bright_explainer: "/tts-samples/pro_bright_explainer.mp3",
-  pro_neutral_tech: "/tts-samples/pro_neutral_tech.mp3",
-  pro_warm_host: "/tts-samples/pro_warm_host.wav",
-  pro_calm_teacher: "/tts-samples/pro_calm_teacher.wav",
-  pro_classic_storyteller: "/tts-samples/pro_classic_storyteller.mp3",
-  pro_soft_presenter: "/tts-samples/pro_soft_presenter.mp3",
-  pro_balanced_narrator: "/tts-samples/pro_balanced_narrator.mp3",
+};
+const TTS_SAMPLE_TEXT_BY_ID: Record<string, string> = {
+  basic_narrator_male:
+    "The Sun powers life on Earth by sending a steady stream of energy across space.",
+  basic_narrator_female:
+    "A single drop of water can travel through clouds, rivers, oceans, and ice.",
+  pro_documentary_male:
+    "Deep beneath our feet, tectonic plates move slowly, yet their quiet force can raise mountains and redraw continents.",
+  pro_documentary_female:
+    "With every heartbeat, oxygen travels through the body, helping each cell unlock the energy it needs to work.",
+  pro_deep_science:
+    "Inside every atom, invisible forces balance motion and attraction with a precision that shapes all matter.",
+  pro_bright_explainer:
+    "Plants capture sunlight, turn it into sugar, and store solar energy in a form the rest of life can use.",
+  pro_neutral_tech:
+    "Modern sensors translate heat, motion, and light into data, so computers can understand the physical world.",
+  pro_warm_host:
+    "A rainbow appears when sunlight enters tiny water droplets, bends, reflects, and separates into visible color.",
+  pro_calm_teacher:
+    "Learning strengthens neural connections step by step, making future thoughts faster, smoother, and easier to recall.",
+  pro_classic_storyteller:
+    "Long before telescopes, sky watchers followed the stars, turning patterns of light into maps, calendars, and stories.",
+  pro_soft_presenter:
+    "The ocean quietly absorbs heat and carbon dioxide, softening changes in the atmosphere and shaping Earth's climate.",
+  pro_balanced_narrator:
+    "Gravity keeps planets in orbit, gathers stars into galaxies, and gives the universe its large-scale structure.",
 };
 
 function getTtsSampleCacheKey(voiceId: string) {
@@ -429,7 +445,18 @@ function getTtsSampleCacheKey(voiceId: string) {
 }
 
 function getTtsSampleAudioUrl(voiceId: string) {
-  return TTS_SAMPLE_AUDIO_BY_ID[voiceId] ?? TTS_SAMPLE_AUDIO_BY_ID[DEFAULT_EMOTION_TTS_ID];
+  const fixedSampleUrl = FREE_TTS_SAMPLE_AUDIO_BY_ID[voiceId];
+  if (fixedSampleUrl) {
+    return fixedSampleUrl;
+  }
+  const text = TTS_SAMPLE_TEXT_BY_ID[voiceId] ?? TTS_SAMPLE_TEXT_BY_ID[DEFAULT_EMOTION_TTS_ID];
+  const params = new URLSearchParams({
+    text,
+    voice: voiceId,
+    sample: "1",
+    v: TTS_SAMPLE_CACHE_VERSION,
+  });
+  return `/api/tts?${params.toString()}`;
 }
 
 function buildPrompt(title: string, visual: string) {
@@ -1592,7 +1619,24 @@ export function StoryboardCanvas({
         }),
       });
       if (!response.ok) {
-        throw new Error("Audio generation failed");
+        const detail = (await response.text().catch(() => "")).trim();
+        const message = detail || `Audio generation failed (${response.status})`;
+        const errorAudio = {
+          url: generatingAudio.url,
+          durationSec: generatingAudio.durationSec,
+          status: "error" as const,
+          voiceId: normalizedVoiceId,
+          error: message,
+        };
+        generatedAudioRef.current = {
+          ...generatedAudioRef.current,
+          [slideId]: errorAudio,
+        };
+        setGeneratedAudioBySlideId((prev) => ({
+          ...prev,
+          [slideId]: errorAudio,
+        }));
+        throw new Error(message);
       }
 
       const audioBlob = await response.blob();
@@ -1654,15 +1698,21 @@ export function StoryboardCanvas({
         if (currentVoiceId !== normalizedVoiceId) {
           return;
         }
+        const currentAudio = generatedAudioRef.current[slideId];
+        const errorAudio = {
+          url: currentAudio?.url ?? "",
+          durationSec: currentAudio?.durationSec ?? 0,
+          status: "error" as const,
+          voiceId: normalizedVoiceId,
+          error: error instanceof Error ? error.message : "Audio generation failed",
+        };
+        generatedAudioRef.current = {
+          ...generatedAudioRef.current,
+          [slideId]: errorAudio,
+        };
         setGeneratedAudioBySlideId((prev) => ({
           ...prev,
-          [slideId]: {
-            url: prev[slideId]?.url ?? "",
-            durationSec: prev[slideId]?.durationSec ?? 0,
-            status: "error",
-            voiceId: normalizedVoiceId,
-            error: error instanceof Error ? error.message : "Audio generation failed",
-          },
+          [slideId]: errorAudio,
         }));
         return;
       }
@@ -2236,15 +2286,21 @@ export function StoryboardCanvas({
       const selectedSlide = present.slides.find((slide) => slide.id === slideId);
       if (selectedSlide && !selectedSlide.isCover && selectedSlide.body.trim()) {
         void ensureAudioFileForSlide(slideId, selectedSlide.body, normalizedVoiceId).catch((error) => {
+          const currentAudio = generatedAudioRef.current[slideId];
+          const errorAudio = {
+            url: currentAudio?.url ?? "",
+            durationSec: currentAudio?.durationSec ?? 0,
+            status: "error" as const,
+            voiceId: normalizedVoiceId,
+            error: error instanceof Error ? error.message : "Audio generation failed",
+          };
+          generatedAudioRef.current = {
+            ...generatedAudioRef.current,
+            [slideId]: errorAudio,
+          };
           setGeneratedAudioBySlideId((prev) => ({
             ...prev,
-            [slideId]: {
-              url: prev[slideId]?.url ?? "",
-              durationSec: prev[slideId]?.durationSec ?? 0,
-              status: "error",
-              voiceId: normalizedVoiceId,
-              error: error instanceof Error ? error.message : "Audio generation failed",
-            },
+            [slideId]: errorAudio,
           }));
         });
       }
@@ -2364,15 +2420,21 @@ export function StoryboardCanvas({
           if (currentVoiceId !== normalizedVoiceId) {
             continue;
           }
+          const currentAudio = generatedAudioRef.current[slide.id];
+          const errorAudio = {
+            url: currentAudio?.url ?? "",
+            durationSec: currentAudio?.durationSec ?? 0,
+            status: "error" as const,
+            voiceId: normalizedVoiceId,
+            error: error instanceof Error ? error.message : "Audio generation failed",
+          };
+          generatedAudioRef.current = {
+            ...generatedAudioRef.current,
+            [slide.id]: errorAudio,
+          };
           setGeneratedAudioBySlideId((prev) => ({
             ...prev,
-            [slide.id]: {
-              url: prev[slide.id]?.url ?? "",
-              durationSec: prev[slide.id]?.durationSec ?? 0,
-              status: "error",
-              voiceId: normalizedVoiceId,
-              error: error instanceof Error ? error.message : "Audio generation failed",
-            },
+            [slide.id]: errorAudio,
           }));
           return false;
         }
@@ -3560,8 +3622,16 @@ export function StoryboardCanvas({
                             style={{ width: `${clamp(playingProgress, 0, 100)}%` }}
                           />
                         </div>
-                        <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
-                          <span>Audio preview</span>
+                        <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+                          <span
+                            className={
+                              generatedAudio?.status === "error" ? "truncate text-red-500" : "text-zinc-400"
+                            }
+                          >
+                            {generatedAudio?.status === "error"
+                              ? generatedAudio.error || "Audio generation failed"
+                              : "Audio preview"}
+                          </span>
                           {audioTimeLabel ? <span>{audioTimeLabel}</span> : null}
                         </div>
                       </div>

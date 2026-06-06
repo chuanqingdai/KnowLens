@@ -41,14 +41,14 @@ const TTS_VOICES: Record<string, TtsVoiceConfig> = {
   },
   pro_documentary_male: {
     provider: "openai",
-    voiceName: "cedar",
+    voiceName: "onyx",
     gender: "male",
     styleInstructions:
       "Speak like a calm documentary narrator for a science explainer. Use a grounded, credible tone, measured pacing, subtle emphasis on discoveries, and short pauses before important cause-and-effect ideas. Keep it authoritative but not dramatic.",
   },
   pro_documentary_female: {
     provider: "openai",
-    voiceName: "marin",
+    voiceName: "nova",
     gender: "female",
     styleInstructions:
       "Speak like a polished educational presenter. Use warm clarity, graceful intonation, confident pacing, and gentle emphasis on key facts. Make the narration feel premium, composed, and easy to follow.",
@@ -76,14 +76,14 @@ const TTS_VOICES: Record<string, TtsVoiceConfig> = {
   },
   pro_warm_host: {
     provider: "openai",
-    voiceName: "coral",
+    voiceName: "shimmer",
     gender: "female",
     styleInstructions:
       "Speak like a friendly educational host. Use warm curiosity, conversational rhythm, and inviting emphasis on surprising facts. Sound approachable and expressive without sounding theatrical.",
   },
   pro_calm_teacher: {
     provider: "openai",
-    voiceName: "sage",
+    voiceName: "alloy",
     gender: "neutral",
     styleInstructions:
       "Speak like a patient teacher explaining a concept step by step. Use calm pacing, clear pauses after each idea, and reassuring emphasis on definitions and transitions. Make it feel organized and understandable.",
@@ -382,7 +382,12 @@ async function synthesizeWithOpenAi(
   }
 
   if (!response.ok) {
-    throw new Error(`Premium TTS failed: ${response.status}`);
+    const detail = (await response.text().catch(() => "")).trim().slice(0, 240);
+    throw new Error(
+      detail
+        ? `Premium TTS failed: ${response.status} ${detail}`
+        : `Premium TTS failed: ${response.status}`,
+    );
   }
 
   return {
@@ -404,7 +409,9 @@ export async function synthesizeWorkspaceTtsAudio(input: {
       : await synthesizeWithOpenAi(text, voice);
   } catch (providerError) {
     const allowLocalFallback =
-      input.allowLocalFallback ?? process.env.TTS_ALLOW_LOCAL_FALLBACK !== "false";
+      input.allowLocalFallback ??
+      (process.env.TTS_ALLOW_LOCAL_FALLBACK === "true" ||
+        (process.env.NODE_ENV !== "production" && process.platform === "darwin"));
     if (!allowLocalFallback) {
       throw providerError;
     }

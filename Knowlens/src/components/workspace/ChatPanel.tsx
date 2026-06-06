@@ -101,6 +101,7 @@ type StyleOption = {
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 const STYLE_COVER_FRAME_CLASS = "relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none";
+const STYLE_CARD_LABEL_CLASS = "flex min-h-[3.5rem] items-start px-2.5 pb-2.5 pt-2";
 
 function styleCoverCandidates(coverImage?: string) {
   if (!coverImage) {
@@ -146,7 +147,7 @@ function StyleCover({ style }: { style: StyleOption }) {
         alt={style.name}
         loading="eager"
         decoding="async"
-        className="absolute inset-0 block h-full w-full scale-[1.01] rounded-none object-cover align-top"
+        className="absolute inset-0 block h-full w-full scale-[1.01] rounded-none object-cover object-top align-top"
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           const currentIndex = candidates.findIndex((candidate) => candidate === coverSrc);
@@ -1732,7 +1733,7 @@ export const ChatPanel = memo(function ChatPanel({
                     key={`locked-style-en-${style.id}`}
                     type="button"
                     disabled
-                    className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border p-0 text-left appearance-none ${
+                    className={`group relative flex h-full cursor-not-allowed flex-col overflow-hidden rounded-2xl border p-0 text-left appearance-none ${
                       active
                         ? selectedStyleCardClass
                         : "border-zinc-200 bg-white"
@@ -1751,7 +1752,7 @@ export const ChatPanel = memo(function ChatPanel({
                         </div>
                       ) : null}
                     </div>
-                    <div className="px-2.5 pb-2.5 pt-2">
+                    <div className={STYLE_CARD_LABEL_CLASS}>
                       <p className={`text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
                         {styleDisplayName(style)}
                       </p>
@@ -1784,7 +1785,7 @@ export const ChatPanel = memo(function ChatPanel({
                     styleButtonRefs.current[style.id] = node;
                   }}
                   onClick={() => onSelectStyle(style.id)}
-                  className={`group relative overflow-hidden rounded-2xl border p-0 text-left transition appearance-none ${
+                  className={`group relative flex h-full flex-col overflow-hidden rounded-2xl border p-0 text-left transition appearance-none ${
                     style.id === selectedStyleId
                       ? selectedStyleCardClass
                       : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
@@ -1803,7 +1804,7 @@ export const ChatPanel = memo(function ChatPanel({
                       </div>
                     ) : null}
                   </div>
-                  <div className="px-2.5 pb-2.5 pt-2">
+                  <div className={STYLE_CARD_LABEL_CLASS}>
                     <p className={`text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
                       {styleDisplayName(style)}
                     </p>
@@ -2658,7 +2659,7 @@ export const ChatPanel = memo(function ChatPanel({
                   key={`locked-style-${style.id}`}
                   type="button"
                   disabled
-                  className={`group relative cursor-not-allowed overflow-hidden rounded-2xl border p-0 text-left appearance-none ${
+                  className={`group relative flex h-full cursor-not-allowed flex-col overflow-hidden rounded-2xl border p-0 text-left appearance-none ${
                     active
                       ? selectedStyleCardClass
                       : "border-zinc-200 bg-white"
@@ -2677,7 +2678,7 @@ export const ChatPanel = memo(function ChatPanel({
                       </div>
                     ) : null}
                   </div>
-                  <div className="px-2.5 pb-2.5 pt-2">
+                  <div className={STYLE_CARD_LABEL_CLASS}>
                     <p className={`text-sm font-semibold leading-5 ${active ? "text-zinc-950" : "text-zinc-500"}`}>
                       {styleDisplayName(style)}
                     </p>
@@ -2709,7 +2710,7 @@ export const ChatPanel = memo(function ChatPanel({
                   styleButtonRefs.current[style.id] = node;
                 }}
                 onClick={() => onSelectStyle(style.id)}
-                className={`group relative overflow-hidden rounded-2xl border p-0 text-left transition appearance-none ${
+                className={`group relative flex h-full flex-col overflow-hidden rounded-2xl border p-0 text-left transition appearance-none ${
                   style.id === selectedStyleId
                     ? selectedStyleCardClass
                     : "border-zinc-200 bg-white hover:border-zinc-400 hover:shadow-[0_8px_18px_rgba(24,24,27,0.12)]"
@@ -2728,7 +2729,7 @@ export const ChatPanel = memo(function ChatPanel({
                     </div>
                   ) : null}
                 </div>
-                <div className="px-2.5 pb-2.5 pt-2">
+                <div className={STYLE_CARD_LABEL_CLASS}>
                   <p className={`text-sm font-semibold leading-5 ${style.id === selectedStyleId ? "text-zinc-950" : "text-zinc-600"}`}>
                     {styleDisplayName(style)}
                   </p>
