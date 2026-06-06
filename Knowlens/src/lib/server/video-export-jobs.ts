@@ -74,6 +74,7 @@ export type VideoExportJob = {
   contentType: string;
   size: number | null;
   error: string | null;
+  errorDebug: string | null;
   createdAt: string;
   updatedAt: string;
   timeline: {
@@ -200,7 +201,7 @@ async function updateJob(job: VideoExportJob, patch: Partial<VideoExportJob>) {
   return next;
 }
 
-function logVideoExportJobEvent(input: {
+async function logVideoExportJobEvent(input: {
   job: Pick<
     VideoExportJob,
     "id" | "userEmail" | "projectId" | "step" | "progress" | "currentScene" | "totalScenes"
@@ -212,7 +213,7 @@ function logVideoExportJobEvent(input: {
   details?: Record<string, unknown>;
 }) {
   const job = input.job;
-  void logOpsEvent({
+  await logOpsEvent({
     category: "download",
     action: input.action,
     status: input.status || "info",
@@ -461,7 +462,14 @@ async function renderSceneSegment(input: {
   }
 
   await runFfmpeg([
-    ...baseVideoArgs,
+    "-loop",
+    "1",
+    "-framerate",
+    String(input.fps),
+    "-t",
+    input.durationSec.toFixed(3),
+    "-i",
+    input.imagePath,
     "-f",
     "lavfi",
     "-t",
@@ -488,7 +496,6 @@ async function renderSceneSegment(input: {
     "aac",
     "-b:a",
     "128k",
-    "-shortest",
     "-movflags",
     "+faststart",
     input.outputPath,
@@ -552,13 +559,14 @@ export async function createVideoExportJob(input: {
     contentType: "video/mp4",
     size: null,
     error: null,
+    errorDebug: null,
     createdAt: now,
     updatedAt: now,
     timeline: normalized,
   };
   await writeBlobJson(getJobPath(job.id), job);
   const sourceSummary = getTimelineSourceSummary(normalized.scenes);
-  logVideoExportJobEvent({
+  await logVideoExportJobEvent({
     job,
     action: "video_export_job_created",
     status: "ok",
@@ -601,7 +609,7 @@ export async function runVideoExportJob(jobId: string) {
       progress: 2,
       message: `Generating 0/${job.totalScenes}`,
     });
-    logVideoExportJobEvent({
+    await logVideoExportJobEvent({
       job,
       action: "video_export_job_started",
       status: "ok",
@@ -625,7 +633,7 @@ export async function runVideoExportJob(jobId: string) {
         progress: Math.min(65, Math.round(((index + 0.15) / job.totalScenes) * 70)),
         message: `Generating ${index + 1}/${job.totalScenes}`,
       });
-      logVideoExportJobEvent({
+      await logVideoExportJobEvent({
         job,
         action: "video_export_scene_started",
         status: "ok",
@@ -640,7 +648,7 @@ export async function runVideoExportJob(jobId: string) {
         },
       });
       const imagePath = await writeSceneImage(scene, tmpDir, index, job.userEmail);
-      logVideoExportJobEvent({
+      await logVideoExportJobEvent({
         job,
         action: "video_export_scene_image_ready",
         status: "ok",
@@ -654,7 +662,7 @@ export async function runVideoExportJob(jobId: string) {
         },
       });
       const audioPath = await writeSceneAudio(scene, tmpDir, index);
-      logVideoExportJobEvent({
+      await logVideoExportJobEvent({
         job,
         action: audioPath ? "video_export_scene_audio_ready" : "video_export_scene_audio_skipped",
         status: "ok",
@@ -687,7 +695,7 @@ export async function runVideoExportJob(jobId: string) {
         durationSec: scene.isCover ? COVER_SCENE_DURATION_SEC : DEFAULT_SCENE_DURATION_SEC,
       });
       segmentPaths.push(segmentPath);
-      logVideoExportJobEvent({
+      await logVideoExportJobEvent({
         job,
         action: "video_export_scene_segment_ready",
         status: "ok",
@@ -706,7 +714,7 @@ export async function runVideoExportJob(jobId: string) {
       progress: 88,
       message: "Rendering video",
     });
-    logVideoExportJobEvent({
+    await logVideoExportJobEvent({
       job,
       action: "video_export_concat_started",
       status: "ok",
@@ -721,7 +729,7 @@ export async function runVideoExportJob(jobId: string) {
     if (data.length <= 0) {
       throw new Error("Rendered video is empty.");
     }
-    logVideoExportJobEvent({
+    await logVideoExportJobEvent({
       job,
       action: "video_export_concat_ready",
       status: "ok",
@@ -737,7 +745,7 @@ export async function runVideoExportJob(jobId: string) {
       progress: 96,
       message: "Uploading video",
     });
-    logVideoExportJobEvent({
+    await logVideoExportJobEvent({
       job,
       action: "video_export_upload_started",
       status: "ok",
@@ -761,7 +769,7 @@ export async function runVideoExportJob(jobId: string) {
       downloadUrl: blob.downloadUrl || blob.url,
       size: data.length,
     });
-    logVideoExportJobEvent({
+    await logVideoExportJobEvent({
       job: {
         ...job,
         step: "done",
@@ -779,6 +787,7 @@ export async function runVideoExportJob(jobId: string) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "MP4 export failed";
+    const errorDebug = message.trim().slice(0, 1800) || "Unknown video export error";
     if (job) {
       await updateJob(job, {
         status: "error",
@@ -786,9 +795,19 @@ export async function runVideoExportJob(jobId: string) {
         progress: 0,
         message: "MP4 export failed. Please retry.",
         error: "MP4 export failed. Please retry.",
+        errorDebug,
       }).catch(() => undefined);
     }
-    logVideoExportJobEvent({
+    console.error("[video-export-job-failed]", {
+      jobId,
+      projectId: job?.projectId || null,
+      step: job?.step || "queued",
+      currentScene: job?.currentScene || 0,
+      totalScenes: job?.totalScenes || 0,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: errorDebug,
+    });
+    await logVideoExportJobEvent({
       job: job || {
         id: jobId,
         userEmail: null,
@@ -804,7 +823,7 @@ export async function runVideoExportJob(jobId: string) {
       message,
       details: {
         errorName: error instanceof Error ? error.name : "UnknownError",
-        errorMessage: message,
+        errorMessage: errorDebug,
         durationMs: Date.now() - jobStartedAt,
       },
     });
