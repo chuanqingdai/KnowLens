@@ -1981,7 +1981,7 @@ export default function Home() {
     }
   }
 
-  function handleFeaturedDownload() {
+  async function handleFeaturedDownload() {
     if (!previewItem) {
       return;
     }
@@ -1989,9 +1989,68 @@ export default function Home() {
       setPreviewPaywallOpen(true);
       return;
     }
+    if (previewFormat === "PPT") {
+      const deckAsset = (previewItem.assets || []).find(isPptDeckPreviewAsset);
+      if (deckAsset?.downloadUrl || deckAsset?.fileUrl) {
+        const link = document.createElement("a");
+        link.href = deckAsset.downloadUrl || deckAsset.fileUrl;
+        link.download = "KnowLens.ai-visual-deck.pptx";
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return;
+      }
+      const slideAssets = previewAssets.filter(isImagePreviewAsset);
+      if (!slideAssets.length) {
+        setUploadToast("No PPT slides are available to download.");
+        return;
+      }
+      try {
+        const response = await fetch("/api/export/ppt", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: previewItem.title,
+            slides: slideAssets.map((asset, index) => ({
+              page: asset.pageIndex || index + 1,
+              title: asset.title || `Slide ${index + 1}`,
+              body: asset.description || "",
+              imageSrc: asset.fileUrl,
+            })),
+          }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error || "PPT download failed.");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "KnowLens.ai-visual-deck.pptx";
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } catch (error) {
+        setUploadToast(error instanceof Error ? error.message : "PPT download failed.");
+      }
+      return;
+    }
+    if (previewFormat === "Video" && !activePreviewIsVideo) {
+      setUploadToast("No video file is available to download.");
+      return;
+    }
     const link = document.createElement("a");
     link.href = activePreviewAsset?.downloadUrl || activePreviewAsset?.fileUrl || previewItem.cover;
-    link.download = `${toFileSlug(activePreviewAsset?.title || previewItem.title)}.png`;
+    link.download =
+      previewFormat === "Video"
+        ? `${toFileSlug(activePreviewAsset?.title || previewItem.title)}.mp4`
+        : `${toFileSlug(activePreviewAsset?.title || previewItem.title)}.png`;
     link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
@@ -2644,7 +2703,7 @@ export default function Home() {
               </div>
             </div>
             <div className="overflow-hidden rounded-xl border border-white/15 bg-black/40 shadow-[0_30px_70px_rgba(0,0,0,0.5)]">
-              {previewAssets.length > 1 ? (
+              {previewAssets.length > 1 && previewFormat !== "PPT" ? (
                 <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-xs text-white/80">
                   <button
                     type="button"
@@ -2679,7 +2738,7 @@ export default function Home() {
               ) : null}
               <div
                 ref={previewScrollRef}
-                className={`max-h-[82dvh] bg-zinc-950/45 sm:max-h-[88vh] ${
+                className={`relative max-h-[82dvh] bg-zinc-950/45 sm:max-h-[88vh] ${
                   activePreviewIsImage && previewZoom > 1
                     ? "overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                     : "overflow-hidden"
@@ -2740,6 +2799,39 @@ export default function Home() {
                     onError={() => setPreviewImageLoaded(true)}
                   />
                 )}
+                {previewAssets.length > 1 && previewFormat === "PPT" && activePreviewIsImage ? (
+                  <div className="pointer-events-none sticky bottom-4 z-20 -mt-14 flex justify-center px-4 pb-4">
+                    <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-2 py-2 text-xs text-white shadow-2xl backdrop-blur-md">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewImageLoaded(false);
+                          setPreviewZoom(1);
+                          setPreviewAssetIndex((prev) => Math.max(0, prev - 1));
+                        }}
+                        disabled={previewAssetIndex <= 0}
+                        className="rounded-full px-3 py-1.5 font-medium transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:text-white/35"
+                      >
+                        Previous
+                      </button>
+                      <span className="min-w-16 text-center font-medium text-white/85">
+                        {Math.min(previewAssetIndex + 1, previewAssets.length)} / {previewAssets.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewImageLoaded(false);
+                          setPreviewZoom(1);
+                          setPreviewAssetIndex((prev) => Math.min(previewAssets.length - 1, prev + 1));
+                        }}
+                        disabled={previewAssetIndex >= previewAssets.length - 1}
+                        className="rounded-full px-3 py-1.5 font-medium transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:text-white/35"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

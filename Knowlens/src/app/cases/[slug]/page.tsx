@@ -48,23 +48,22 @@ function getPrimaryImageAsset(assets: PublishedCaseAssetRow[], queryAsset?: stri
   );
 }
 
-function getMainDownloadAsset(input: {
-  outputType: PublishedCaseOutputType;
-  selectedImage: PublishedCaseAssetRow | null;
-  videoAsset: PublishedCaseAssetRow | null;
-  deckAsset: PublishedCaseAssetRow | null;
-}) {
-  if (input.outputType === "video") {
-    return input.videoAsset || input.selectedImage;
-  }
-  if (input.outputType === "ppt") {
-    return input.deckAsset || input.selectedImage;
-  }
-  return input.selectedImage;
-}
-
 function formatSlideLabel(index: number, total: number) {
   return `Slide ${index + 1} / ${total}`;
+}
+
+function formatScriptLabel(input: {
+  outputType: PublishedCaseOutputType;
+  asset: PublishedCaseAssetRow;
+  index: number;
+}) {
+  if (input.outputType === "video") {
+    return input.asset.pageIndex <= 1 && input.index === 0 ? "Cover Frame" : `Frame ${input.index + 1}`;
+  }
+  if (input.outputType === "ppt") {
+    return input.asset.pageIndex <= 1 && input.index === 0 ? "Cover Page" : `Slide ${input.index + 1}`;
+  }
+  return input.asset.pageIndex > 1 ? `Poster ${input.asset.pageIndex}` : "Poster";
 }
 
 export default async function PublishedCasePage({ params, searchParams }: CasePageProps) {
@@ -77,19 +76,13 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
   const assets = item.assets || [];
   const imageAssets = assets.filter(isImageAsset);
   const videoAsset = assets.find(isVideoAsset) || null;
-  const deckAsset = assets.find(isPptFileAsset) || null;
   const selectedImage = getPrimaryImageAsset(imageAssets, query.asset);
   const selectedImageIndex = selectedImage ? Math.max(0, imageAssets.findIndex((asset) => asset.id === selectedImage.id)) : -1;
   const previousImage = selectedImageIndex > 0 ? imageAssets[selectedImageIndex - 1] : null;
   const nextImage = selectedImageIndex >= 0 && selectedImageIndex < imageAssets.length - 1 ? imageAssets[selectedImageIndex + 1] : null;
-  const mainDownloadAsset = getMainDownloadAsset({
-    outputType: item.outputType,
-    selectedImage,
-    videoAsset,
-    deckAsset,
-  });
   const isPpt = item.outputType === "ppt";
   const isVideo = item.outputType === "video";
+  const scriptAssets = imageAssets.filter((asset) => asset.title.trim() || asset.description.trim());
   const mediaTitle = isVideo
     ? videoAsset
       ? item.title
@@ -119,23 +112,6 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                 ) : null}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {mainDownloadAsset ? (
-                <a
-                  href={mainDownloadAsset.downloadUrl || mainDownloadAsset.fileUrl}
-                  download
-                  className="inline-flex h-10 items-center rounded-xl border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-                >
-                  {isPpt && deckAsset ? "Download PPT" : isVideo && videoAsset ? "Download Video" : "Download"}
-                </a>
-              ) : null}
-              <Link
-                href="/app"
-                className="inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-              >
-                Create your own
-              </Link>
-            </div>
           </div>
 
           <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -146,34 +122,6 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                   <p className="mt-0.5 text-xs text-zinc-500">{formatSlideLabel(selectedImageIndex, imageAssets.length)}</p>
                 ) : null}
               </div>
-              {isPpt && imageAssets.length > 1 ? (
-                <div className="flex items-center gap-2">
-                  {previousImage ? (
-                    <Link
-                      href={caseAssetHref(item.slug, previousImage)}
-                      className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-100"
-                    >
-                      Previous
-                    </Link>
-                  ) : (
-                    <span className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-300">
-                      Previous
-                    </span>
-                  )}
-                  {nextImage ? (
-                    <Link
-                      href={caseAssetHref(item.slug, nextImage)}
-                      className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-100"
-                    >
-                      Next
-                    </Link>
-                  ) : (
-                    <span className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-300">
-                      Next
-                    </span>
-                  )}
-                </div>
-              ) : null}
             </div>
             <div className="bg-zinc-950/95 p-3 sm:p-6">
               {isVideo ? (
@@ -210,11 +158,46 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                   </div>
                 )
               ) : selectedImage ? (
-                <img
-                  src={selectedImage.fileUrl}
-                  alt={selectedImage.title || item.title}
-                  className="mx-auto max-h-[82vh] w-auto max-w-full object-contain"
-                />
+                <div className="relative mx-auto w-fit max-w-full">
+                  <img
+                    src={selectedImage.fileUrl}
+                    alt={selectedImage.title || item.title}
+                    className="mx-auto max-h-[82vh] w-auto max-w-full object-contain"
+                  />
+                  {isPpt && imageAssets.length > 1 ? (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
+                      <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-2 py-2 text-xs text-white shadow-2xl backdrop-blur-md">
+                        {previousImage ? (
+                          <Link
+                            href={caseAssetHref(item.slug, previousImage)}
+                            className="rounded-full px-3 py-1.5 font-medium transition hover:bg-white/15"
+                          >
+                            Previous
+                          </Link>
+                        ) : (
+                          <span className="cursor-not-allowed rounded-full px-3 py-1.5 font-medium text-white/35">
+                            Previous
+                          </span>
+                        )}
+                        <span className="min-w-16 text-center font-medium text-white/85">
+                          {selectedImageIndex + 1} / {imageAssets.length}
+                        </span>
+                        {nextImage ? (
+                          <Link
+                            href={caseAssetHref(item.slug, nextImage)}
+                            className="rounded-full px-3 py-1.5 font-medium transition hover:bg-white/15"
+                          >
+                            Next
+                          </Link>
+                        ) : (
+                          <span className="cursor-not-allowed rounded-full px-3 py-1.5 font-medium text-white/35">
+                            Next
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-white/20 px-4 py-16 text-center text-sm text-white/70">
                   This case has no public files yet.
@@ -299,6 +282,42 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                     </div>
                     <p className="truncate px-2 py-1.5 text-xs text-zinc-600">Frame {index + 1}</p>
                   </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {scriptAssets.length ? (
+            <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+              <div className="max-w-3xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                  KnowLens.ai · Draft Content
+                </p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-zinc-900">
+                  {isVideo ? "Storyboard Script" : isPpt ? "Presentation Script" : "Poster Copy"}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">
+                  The text below is the draft content used to generate this public case.
+                </p>
+              </div>
+              <div className="mt-5 grid gap-3">
+                {scriptAssets.map((asset, index) => (
+                  <article
+                    key={`script-${asset.id}`}
+                    className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-zinc-200">
+                        {formatScriptLabel({ outputType: item.outputType, asset, index })}
+                      </span>
+                      <h3 className="text-sm font-semibold text-zinc-900">{asset.title || item.title}</h3>
+                    </div>
+                    {asset.description ? (
+                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-zinc-700">{asset.description}</p>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-zinc-500">No additional body copy was saved for this item.</p>
+                    )}
+                  </article>
                 ))}
               </div>
             </section>

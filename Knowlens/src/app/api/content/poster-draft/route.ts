@@ -2527,7 +2527,7 @@ function normalizeSlideDrafts(
       const support = normalizeTextItem(row.supportNote);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
-      const isCover = row.isCover === true;
+      const isCover = row.isCover === true || (count > 1 && idx === 0);
       const bodyLines = isCover ? [] : [mainPoint, body, support].filter(Boolean);
       const safeBody = isCover
         ? ""
@@ -2554,15 +2554,16 @@ function normalizeSlideDrafts(
     if (existing) {
       return existing;
     }
+    const isCover = count > 1 && idx === 0;
     return {
       page: idx + 1,
       title: toConciseDraftTitle(title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`, topic, outputLanguage)
         || title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`,
-      body: fallbackSlides[idx]?.body || "",
+      body: isCover ? "" : fallbackSlides[idx]?.body || "",
       visual: fallbackSlides[idx]?.visual || "",
       imagePromptDraft: fallbackSlides[idx]?.imagePrompt || "",
       imagePrompt: fallbackSlides[idx]?.imagePrompt || "",
-      isCover: false,
+      isCover,
     };
   });
 }
@@ -2589,7 +2590,7 @@ function normalizeStoryboardDrafts(
       const narration = normalizeTextItem(row.narration);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
-      const isCover = row.isCover === true;
+      const isCover = row.isCover === true || (count > 1 && idx === 0);
       const safeVisual = visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "";
       const safeNarration = isCover
         ? ""
@@ -2628,21 +2629,24 @@ function normalizeStoryboardDrafts(
     if (existing) {
       return existing;
     }
+    const isCover = count > 1 && idx === 0;
     return {
       index: idx + 1,
       title: toConciseDraftTitle(title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`, topic, outputLanguage)
         || title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
-      narration: tuneStoryboardNarrationLength({
-        narration: "",
-        fallbackNarration: fallbackFrames[idx]?.narration || "",
-        title: title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
-        visual: fallbackFrames[idx]?.visual || "",
-        outputLanguage,
-      }),
+      narration: isCover
+        ? ""
+        : tuneStoryboardNarrationLength({
+            narration: "",
+            fallbackNarration: fallbackFrames[idx]?.narration || "",
+            title: title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
+            visual: fallbackFrames[idx]?.visual || "",
+            outputLanguage,
+          }),
       visual: fallbackFrames[idx]?.visual || "",
       imagePromptDraft: fallbackFrames[idx]?.imagePrompt || "",
       imagePrompt: fallbackFrames[idx]?.imagePrompt || "",
-      isCover: false,
+      isCover,
     };
   });
 }

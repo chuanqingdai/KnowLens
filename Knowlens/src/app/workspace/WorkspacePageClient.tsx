@@ -1858,18 +1858,26 @@ function buildGenericSlides(
 }
 
 function makePptDensitySlides(slides: SlideDraft[]) {
-  return slides.map((slide) => ({
-    ...slide,
-    body: slide.body.trim(),
-  }));
+  return slides.map((slide, idx) => {
+    const isCover = slide.isCover === true || (slides.length > 1 && idx === 0);
+    return {
+      ...slide,
+      body: isCover ? "" : slide.body.trim(),
+      isCover,
+    };
+  });
 }
 
 function makeVideoDensitySlides(slides: SlideDraft[]) {
-  return slides.map((slide) => ({
-    ...slide,
-    body: slide.body.trim(),
-    visual: slide.visual.replace(/，/g, "、"),
-  }));
+  return slides.map((slide, idx) => {
+    const isCover = slide.isCover === true || (slides.length > 1 && idx === 0);
+    return {
+      ...slide,
+      body: isCover ? "" : slide.body.trim(),
+      visual: slide.visual.replace(/，/g, "、"),
+      isCover,
+    };
+  });
 }
 
 function parseContentEditCommand(input: string, outputLanguage: OutputLanguage): ParsedContentEditCommand {
