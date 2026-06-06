@@ -170,6 +170,7 @@ type ClientVideoExportJob = {
   contentType?: string;
   size?: number;
   error?: string;
+  errorDebug?: string;
 };
 
 type ExportPhase = "prepare" | "images" | "slides" | "file" | "done";
@@ -202,9 +203,26 @@ function isUsableImageSrc(src?: string | null) {
   return Boolean(value) && value !== "undefined" && value !== "null";
 }
 
+function isServerReadableImageSrc(src?: string | null) {
+  const value = (src || "").trim();
+  return isUsableImageSrc(value) && !value.startsWith("blob:");
+}
+
 function getActiveImageSrc(history: string[] | undefined, activeIndex: number, fallback?: string) {
   const safeHistory = (history ?? []).filter(isUsableImageSrc);
   return safeHistory[activeIndex] ?? safeHistory[0] ?? (isUsableImageSrc(fallback) ? fallback : "");
+}
+
+function getActiveServerReadableImageSrc(history: string[] | undefined, activeIndex: number, fallback?: string) {
+  const safeHistory = (history ?? []).filter(isUsableImageSrc);
+  const active = safeHistory[activeIndex] ?? safeHistory[0] ?? "";
+  if (isServerReadableImageSrc(active)) {
+    return active;
+  }
+  if (isServerReadableImageSrc(fallback)) {
+    return fallback?.trim() || "";
+  }
+  return safeHistory.find(isServerReadableImageSrc) || "";
 }
 
 type TtsTier = "basic" | "pro";
@@ -1043,7 +1061,7 @@ export function StoryboardCanvas({
       }
       const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
       const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-      return Boolean(getActiveImageSrc(historyImages, activeIdx, taskState?.imageUrl));
+      return Boolean(getActiveServerReadableImageSrc(historyImages, activeIdx, taskState?.imageUrl));
     });
   }, [
     activeImageIndexBySlideId,
@@ -2462,7 +2480,7 @@ export function StoryboardCanvas({
         const generationState = generationTaskStateByIndex?.[slide.page];
         const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
         const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
-        const imageSrc = getActiveImageSrc(historyImages, activeIdx, generationState?.imageUrl);
+        const imageSrc = getActiveServerReadableImageSrc(historyImages, activeIdx, generationState?.imageUrl);
         if (!imageSrc) {
           throw new Error(`Scene ${slide.page} image is not ready. Please retry the failed scene first.`);
         }
@@ -2597,6 +2615,16 @@ export function StoryboardCanvas({
           break;
         }
         if (statusBody.job.status === "error") {
+          if (statusBody.job.errorDebug?.trim()) {
+            console.warn("[video-export] job failed", {
+              jobId,
+              projectId,
+              step: statusBody.job.step,
+              currentScene: statusBody.job.currentScene,
+              totalScenes: statusBody.job.totalScenes,
+              errorDebug: statusBody.job.errorDebug.trim(),
+            });
+          }
           throw new Error(statusBody.job.error?.trim() || "MP4 export failed. Please retry.");
         }
       }
@@ -2730,7 +2758,7 @@ export function StoryboardCanvas({
           page: slide.page,
           title: slide.title,
           body: slide.body,
-          imageSrc: getActiveImageSrc(historyImages, activeIdx, taskState?.imageUrl),
+          imageSrc: getActiveServerReadableImageSrc(historyImages, activeIdx, taskState?.imageUrl),
         };
       });
 

@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { get as getBlob, put as putBlob } from "@vercel/blob";
+import { get as getBlob, list as listBlobs, put as putBlob } from "@vercel/blob";
 import ffmpegStatic from "ffmpeg-static";
 import {
   synthesizeWorkspaceTtsAudio,
@@ -592,6 +592,50 @@ export async function getVideoExportJob(jobId: string) {
     return null;
   }
   return readBlobJson<VideoExportJob>(getJobPath(normalized));
+}
+
+export async function findLatestSuccessfulVideoExportJobForProject(input: {
+  projectId: string;
+  userEmail?: string | null;
+}) {
+  const projectId = input.projectId.trim();
+  const userEmail = input.userEmail?.trim().toLowerCase() || "";
+  if (!projectId) {
+    return null;
+  }
+
+  const jobs: VideoExportJob[] = [];
+  let cursor: string | undefined;
+  let scanned = 0;
+  try {
+    do {
+      const page = await listBlobs({
+        prefix: `${VIDEO_JOB_PREFIX}/`,
+        limit: 100,
+        cursor,
+      });
+      scanned += page.blobs.length;
+      for (const blob of page.blobs) {
+        if (!blob.pathname.endsWith(".json")) {
+          continue;
+        }
+        const job = await readBlobJson<VideoExportJob>(blob.pathname).catch(() => null);
+        if (
+          job?.status === "success" &&
+          job.projectId === projectId &&
+          (!userEmail || job.userEmail === userEmail) &&
+          (job.resultUrl || job.downloadUrl)
+        ) {
+          jobs.push(job);
+        }
+      }
+      cursor = page.cursor;
+    } while (cursor && scanned < 500);
+  } catch {
+    return null;
+  }
+
+  return jobs.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] || null;
 }
 
 export async function runVideoExportJob(jobId: string) {

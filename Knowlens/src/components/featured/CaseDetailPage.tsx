@@ -87,7 +87,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
-  const [copied, setCopied] = useState(false);
+  const [shareToastVisible, setShareToastVisible] = useState(false);
   const [downloadPaywallOpen, setDownloadPaywallOpen] = useState(false);
   const { metrics, toggleLike } = useCaseMetrics(item);
 
@@ -122,10 +122,10 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
   async function handleShare() {
     try {
       await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      setShareToastVisible(true);
+      window.setTimeout(() => setShareToastVisible(false), 1800);
     } catch {
-      setCopied(false);
+      setShareToastVisible(false);
     }
   }
 
@@ -152,7 +152,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] px-4 pb-10 pt-6 sm:px-6 lg:px-12">
+    <div className="px-4 pb-10 pt-6 sm:px-6 lg:px-12">
       <div className="mx-auto max-w-6xl">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <button
@@ -181,7 +181,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
               className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
             >
               <Link2 size={15} />
-              {copied ? "Copied" : "Copy Link"}
+              Share
             </button>
             <button
               type="button"
@@ -254,6 +254,15 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
         }}
         confirmLabel="Upgrade to Download"
       />
+      {shareToastVisible ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-20 z-[120] -translate-x-1/2 rounded-xl bg-zinc-950 px-4 py-2 text-sm font-medium text-white shadow-lg"
+        >
+          Link copied
+        </div>
+      ) : null}
     </div>
   );
 }

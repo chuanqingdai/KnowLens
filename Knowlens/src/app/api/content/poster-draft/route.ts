@@ -2647,6 +2647,72 @@ function normalizeStoryboardDrafts(
   });
 }
 
+function buildFallbackMediaDraftPayload(input: {
+  direction: "ppt" | "video";
+  outputCount: number;
+  posterSizeLabel: string;
+  topic: string;
+  outputLanguage: OutputLanguage;
+  promptBundle: ReturnType<typeof buildContentDraftPrompt>;
+  modelForLog: string;
+  generatedText?: string;
+  providerPath?: DraftProviderPath;
+}) {
+  const outlineItems = normalizeOutlineItems(
+    null,
+    input.outputCount,
+    input.topic,
+    input.direction,
+    input.outputLanguage,
+  );
+  if (input.direction === "ppt") {
+    return {
+      direction: input.direction,
+      normalizedDirection: input.direction,
+      normalizedCount: input.outputCount,
+      normalizedRatio: input.posterSizeLabel,
+      outlineItems,
+      slideDrafts: normalizeSlideDrafts(
+        null,
+        outlineItems,
+        input.outputCount,
+        input.topic,
+        input.outputLanguage,
+      ),
+      outputLanguage: input.outputLanguage,
+      source: "fallback",
+      providerPath: input.providerPath ?? "fallback",
+      llmUsage: buildEstimatedDraftLlmUsage({
+        promptBundle: input.promptBundle,
+        generatedText: input.generatedText || "",
+        model: input.modelForLog,
+      }),
+    };
+  }
+  return {
+    direction: input.direction,
+    normalizedDirection: input.direction,
+    normalizedCount: input.outputCount,
+    normalizedRatio: input.posterSizeLabel,
+    outlineItems,
+    storyboardDrafts: normalizeStoryboardDrafts(
+      null,
+      outlineItems,
+      input.outputCount,
+      input.topic,
+      input.outputLanguage,
+    ),
+    outputLanguage: input.outputLanguage,
+    source: "fallback",
+    providerPath: input.providerPath ?? "fallback",
+    llmUsage: buildEstimatedDraftLlmUsage({
+      promptBundle: input.promptBundle,
+      generatedText: input.generatedText || "",
+      model: input.modelForLog,
+    }),
+  };
+}
+
 function enforcePosterSpecificity(draft: PosterDraft, topic: string): PosterDraft {
   return enforcePosterSpecificityByLanguage(draft, topic, "zh");
 }
@@ -3047,10 +3113,20 @@ export async function POST(request: NextRequest) {
           { status: 200 },
         );
       }
-      return NextResponse.json(
-        { error: "Model response is empty.", providerPath: "fallback" as DraftProviderPath },
-        { status: 502 },
-      );
+      return NextResponse.json({
+        ...buildFallbackMediaDraftPayload({
+          direction,
+          outputCount,
+          posterSizeLabel,
+          topic,
+          outputLanguage,
+          promptBundle,
+          modelForLog,
+          generatedText: content,
+          providerPath,
+        }),
+        error: "Model response is empty.",
+      });
     }
     const parsed = parseJsonContent(content);
 
@@ -3071,10 +3147,20 @@ export async function POST(request: NextRequest) {
         },
       });
       if (direction !== "poster") {
-        return NextResponse.json(
-          { error: "Model response is not valid JSON.", providerPath: "fallback" as DraftProviderPath },
-          { status: 502 },
-        );
+        return NextResponse.json({
+          ...buildFallbackMediaDraftPayload({
+            direction,
+            outputCount,
+            posterSizeLabel,
+            topic,
+            outputLanguage,
+            promptBundle,
+            modelForLog,
+            generatedText: content,
+            providerPath,
+          }),
+          error: "Model response is not valid JSON.",
+        });
       }
       return NextResponse.json({
         posterDraft: fallbackDraft,

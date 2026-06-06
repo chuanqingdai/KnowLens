@@ -790,8 +790,8 @@ function mapPublicCaseToFeatured(item: PublicCaseApiItem, index: number): Featur
     title: item.title || "Published KnowLens Case",
     description: item.description || "",
     author: item.authorLabel || "KnowLens",
-    views: 2400 + ((index * 113) % 3600),
-    likes: 160 + ((index * 23) % 260),
+    views: 0,
+    likes: 0,
     cover,
     coverWidth: size.coverWidth,
     coverHeight: size.coverHeight,
@@ -812,6 +812,67 @@ function mapPublicCaseToFeatured(item: PublicCaseApiItem, index: number): Featur
       mimeType: asset.mimeType,
     })),
   };
+}
+
+type FeaturedPreviewAsset = NonNullable<FeaturedCaseItem["assets"]>[number];
+
+function isVideoPreviewAsset(asset: FeaturedPreviewAsset | null | undefined) {
+  const mimeType = (asset?.mimeType || "").toLowerCase();
+  const fileUrl = asset?.fileUrl || "";
+  const downloadUrl = asset?.downloadUrl || "";
+  return mimeType.startsWith("video/") || /\.mp4(?:$|\?)/i.test(fileUrl) || /\.mp4(?:$|\?)/i.test(downloadUrl);
+}
+
+function isPptDeckPreviewAsset(asset: FeaturedPreviewAsset | null | undefined) {
+  const mimeType = (asset?.mimeType || "").toLowerCase();
+  const fileUrl = asset?.fileUrl || "";
+  const downloadUrl = asset?.downloadUrl || "";
+  return (
+    mimeType.includes("presentation") ||
+    mimeType.includes("powerpoint") ||
+    /\.pptx?(?:$|\?)/i.test(fileUrl) ||
+    /\.pptx?(?:$|\?)/i.test(downloadUrl)
+  );
+}
+
+function isImagePreviewAsset(asset: FeaturedPreviewAsset | null | undefined) {
+  return Boolean(asset) && !isVideoPreviewAsset(asset) && !isPptDeckPreviewAsset(asset);
+}
+
+function getPreviewAssetsForItem(item: FeaturedCaseItem | null): FeaturedPreviewAsset[] {
+  if (!item) {
+    return [];
+  }
+  const allAssets = item.assets?.length
+    ? item.assets
+    : [
+        {
+          id: item.id,
+          slug: item.id,
+          title: item.title,
+          description: item.description || "",
+          fileUrl: item.cover,
+          viewerUrl: getFeaturedDetailPath(item),
+          downloadUrl: item.cover,
+          thumbnailUrl: item.cover,
+          mimeType: "image/png",
+        },
+      ];
+  const format = normalizeFormatLabel(item.format);
+  if (format === "Video") {
+    const videoAssets = allAssets.filter(isVideoPreviewAsset);
+    if (videoAssets.length) {
+      return videoAssets;
+    }
+    const imageAssets = allAssets.filter(isImagePreviewAsset);
+    return imageAssets.length ? imageAssets : allAssets;
+  }
+  if (format === "PPT") {
+    const imageAssets = allAssets.filter(isImagePreviewAsset);
+    return imageAssets.length ? imageAssets : allAssets;
+  }
+  const imageAssets = allAssets.filter(isImagePreviewAsset);
+  return imageAssets.length ? imageAssets : allAssets;
 }
 
 export default function Home() {
@@ -885,28 +946,6 @@ export default function Home() {
       isCancelled = true;
     };
   }, [currentEmail]);
-  useEffect(() => {
-    let isCancelled = false;
-    fetch("/api/public/cases")
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
-      .then((payload: { cases?: PublicCaseApiItem[] }) => {
-        if (isCancelled) {
-          return;
-        }
-        const nextItems = (payload.cases || [])
-          .map((item, index) => mapPublicCaseToFeatured(item, index))
-          .filter(Boolean) as FeaturedCaseItem[];
-        setPublishedFeaturedItems(nextItems);
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setPublishedFeaturedItems([]);
-        }
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [typedPlaceholder, setTypedPlaceholder] = useState("");
@@ -937,6 +976,28 @@ export default function Home() {
   const notifiedUploadFailureIdsRef = useRef<Set<string>>(new Set());
   const autoGenerateOnceRef = useRef(false);
   const hydratedHomeDraftRef = useRef(false);
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/public/cases")
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
+      .then((payload: { cases?: PublicCaseApiItem[] }) => {
+        if (isCancelled) {
+          return;
+        }
+        const nextItems = (payload.cases || [])
+          .map((item, index) => mapPublicCaseToFeatured(item, index))
+          .filter(Boolean) as FeaturedCaseItem[];
+        setPublishedFeaturedItems(nextItems);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setPublishedFeaturedItems([]);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
   const activeUploadJobIdsKey = useMemo(
     () =>
       sourceItems
@@ -978,26 +1039,23 @@ export default function Home() {
     .reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0);
   const selectedTextModel =
     textModelOptions.find((item) => item.value === resolvedTextModel) ?? textModelOptions[0];
-  const featuredItems = publishedFeaturedItems.length ? publishedFeaturedItems : fallbackFeaturedItems;
-  const previewAssets = previewItem?.assets?.length
-    ? previewItem.assets
-    : previewItem
-      ? [
-          {
-            id: previewItem.id,
-            slug: previewItem.id,
-            title: previewItem.title,
-            description: previewItem.description || "",
-            fileUrl: previewItem.cover,
-            viewerUrl: getFeaturedDetailPath(previewItem),
-            downloadUrl: previewItem.cover,
-            thumbnailUrl: previewItem.cover,
-            mimeType: "image/png",
-          },
-        ]
-      : [];
+  const featuredItems = useMemo(() => {
+    if (!publishedFeaturedItems.length) {
+      return fallbackFeaturedItems;
+    }
+    const seenKeys = new Set(publishedFeaturedItems.map((item) => item.publicCaseSlug || item.id));
+    return [
+      ...publishedFeaturedItems,
+      ...fallbackFeaturedItems.filter((item) => !seenKeys.has(item.publicCaseSlug || item.id)),
+    ];
+  }, [fallbackFeaturedItems, publishedFeaturedItems]);
+  const previewAssets = useMemo(() => getPreviewAssetsForItem(previewItem), [previewItem]);
   const activePreviewAsset =
     previewAssets[Math.min(previewAssetIndex, Math.max(0, previewAssets.length - 1))] ?? null;
+  const activePreviewIsVideo = isVideoPreviewAsset(activePreviewAsset);
+  const activePreviewIsPptDeck = isPptDeckPreviewAsset(activePreviewAsset);
+  const activePreviewIsImage = isImagePreviewAsset(activePreviewAsset);
+  const previewFormat = previewItem ? normalizeFormatLabel(previewItem.format) : "Poster";
 
   function updateComposeInput(nextRawValue: string) {
     if (nextRawValue.length <= MAX_COMPOSE_TEXT_CHARS) {
@@ -2533,28 +2591,30 @@ export default function Home() {
                     </button>
                   );
                 })()}
-                <div className="inline-flex h-9 items-center gap-1 rounded-xl border border-white/15 bg-black/45 px-1">
-                  <button
-                    type="button"
-                    onClick={() => applyPreviewZoom(previewZoom - 0.25)}
-                    disabled={previewZoom <= 1}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label="Zoom out"
-                  >
-                    <Minus size={14} />
-                  </button>
-                  <span className="min-w-[48px] text-center text-xs font-medium text-white/90">
-                    {Math.round(previewZoom * 100)}%
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => applyPreviewZoom(previewZoom + 0.25)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15"
-                    aria-label="Zoom in"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
+                {activePreviewIsImage ? (
+                  <div className="inline-flex h-9 items-center gap-1 rounded-xl border border-white/15 bg-black/45 px-1">
+                    <button
+                      type="button"
+                      onClick={() => applyPreviewZoom(previewZoom - 0.25)}
+                      disabled={previewZoom <= 1}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Zoom out"
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <span className="min-w-[48px] text-center text-xs font-medium text-white/90">
+                      {Math.round(previewZoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => applyPreviewZoom(previewZoom + 0.25)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15"
+                      aria-label="Zoom in"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={handleFeaturedDownload}
@@ -2568,7 +2628,7 @@ export default function Home() {
                     onClick={() => window.open(activePreviewAsset.viewerUrl, "_blank", "noopener,noreferrer")}
                     className="inline-flex h-9 items-center rounded-xl border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
                   >
-                    Open file
+                    Open details
                   </button>
                 ) : null}
               </div>
@@ -2590,6 +2650,7 @@ export default function Home() {
                     type="button"
                     onClick={() => {
                       setPreviewImageLoaded(false);
+                      setPreviewZoom(1);
                       setPreviewAssetIndex((prev) => Math.max(0, prev - 1));
                     }}
                     disabled={previewAssetIndex <= 0}
@@ -2598,6 +2659,7 @@ export default function Home() {
                     Previous
                   </button>
                   <span>
+                    {previewFormat === "PPT" ? "Slide " : ""}
                     {Math.min(previewAssetIndex + 1, previewAssets.length)} / {previewAssets.length}
                     {activePreviewAsset?.title ? ` · ${activePreviewAsset.title}` : ""}
                   </span>
@@ -2605,6 +2667,7 @@ export default function Home() {
                     type="button"
                     onClick={() => {
                       setPreviewImageLoaded(false);
+                      setPreviewZoom(1);
                       setPreviewAssetIndex((prev) => Math.min(previewAssets.length - 1, prev + 1));
                     }}
                     disabled={previewAssetIndex >= previewAssets.length - 1}
@@ -2617,7 +2680,7 @@ export default function Home() {
               <div
                 ref={previewScrollRef}
                 className={`max-h-[82dvh] bg-zinc-950/45 sm:max-h-[88vh] ${
-                  previewZoom > 1
+                  activePreviewIsImage && previewZoom > 1
                     ? "overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                     : "overflow-hidden"
                 }`}
@@ -2625,23 +2688,58 @@ export default function Home() {
                 {!previewImageLoaded ? (
                   <div className="skeleton-shimmer mx-auto h-[62dvh] w-full max-w-[520px] rounded-lg sm:h-[72vh]" />
                 ) : null}
-                <img
-                  src={activePreviewAsset?.fileUrl || previewItem.cover}
-                  alt={activePreviewAsset?.title || previewItem.title}
-                  className={`mx-auto h-auto rounded-lg object-contain transition-opacity duration-300 ${
-                    previewImageLoaded ? "opacity-100" : "opacity-0"
-                  }`}
-                  style={
-                    previewZoom <= 1
-                      ? { maxWidth: "100%", maxHeight: "86vh" }
-                      : { width: `${previewZoom * 100}%`, maxWidth: "none", height: "auto" }
-                  }
-                  draggable={false}
-                  onContextMenu={(event) => event.preventDefault()}
-                  onDragStart={(event) => event.preventDefault()}
-                  onLoad={() => setPreviewImageLoaded(true)}
-                  onError={() => setPreviewImageLoaded(true)}
-                />
+                {activePreviewIsVideo ? (
+                  <video
+                    src={activePreviewAsset?.fileUrl}
+                    poster={activePreviewAsset?.thumbnailUrl || previewItem.cover}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className={`mx-auto aspect-video max-h-[82dvh] w-full max-w-5xl rounded-lg bg-black transition-opacity duration-300 ${
+                      previewImageLoaded ? "opacity-100" : "opacity-0"
+                    }`}
+                    onLoadedMetadata={() => setPreviewImageLoaded(true)}
+                    onError={() => setPreviewImageLoaded(true)}
+                  />
+                ) : activePreviewIsPptDeck ? (
+                  <div
+                    className={`mx-auto flex min-h-[56dvh] max-w-3xl items-center justify-center rounded-lg border border-white/10 bg-black/60 px-6 text-center text-white transition-opacity duration-300 ${
+                      previewImageLoaded ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-base font-semibold">PPT file preview</p>
+                      <p className="mt-2 text-sm leading-6 text-white/70">
+                        This case includes a presentation file. Use Open details or Download to view the deck.
+                      </p>
+                    </div>
+                    <img
+                      src={activePreviewAsset?.thumbnailUrl || previewItem.cover}
+                      alt=""
+                      className="hidden"
+                      onLoad={() => setPreviewImageLoaded(true)}
+                      onError={() => setPreviewImageLoaded(true)}
+                    />
+                  </div>
+                ) : (
+                  <img
+                    src={activePreviewAsset?.fileUrl || previewItem.cover}
+                    alt={activePreviewAsset?.title || previewItem.title}
+                    className={`mx-auto h-auto rounded-lg object-contain transition-opacity duration-300 ${
+                      previewImageLoaded ? "opacity-100" : "opacity-0"
+                    }`}
+                    style={
+                      previewZoom <= 1
+                        ? { maxWidth: "100%", maxHeight: "86vh" }
+                        : { width: `${previewZoom * 100}%`, maxWidth: "none", height: "auto" }
+                    }
+                    draggable={false}
+                    onContextMenu={(event) => event.preventDefault()}
+                    onDragStart={(event) => event.preventDefault()}
+                    onLoad={() => setPreviewImageLoaded(true)}
+                    onError={() => setPreviewImageLoaded(true)}
+                  />
+                )}
               </div>
             </div>
           </div>

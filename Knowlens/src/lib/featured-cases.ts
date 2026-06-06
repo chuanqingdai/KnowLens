@@ -48,6 +48,7 @@ type EnPictureManifestItem = {
   cover: string;
   coverWidth: number;
   coverHeight: number;
+  title?: string;
 };
 
 const enPictureManifest: EnPictureManifestItem[] = [
@@ -105,8 +106,19 @@ const landscapeCategoryByCover: Record<string, string> = {
   "e06c70f4-5425-4c1d-a4aa-eb36bca3e504": "Geography",
 };
 
-function titleFromCoverPath(path: string) {
+function isUuidLikeTitle(value: string) {
+  return /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
+}
+
+function titleFromCoverPath(path: string, explicitTitle?: string) {
+  if (explicitTitle?.trim()) {
+    return explicitTitle.trim();
+  }
   const raw = path.split("/").pop()?.replace(".png", "") ?? "featured-case";
+  if (isUuidLikeTitle(raw)) {
+    const category = categoryFromCoverPath(path);
+    return category === "All" ? "Featured Infographic Case" : `${category} Infographic Case`;
+  }
   return raw
     .split("-")
     .filter(Boolean)
@@ -213,8 +225,11 @@ export function toSeoSlugFromTitle(title: string) {
 
 export function getFeaturedSlug(item: FeaturedCaseItem) {
   const base = toSeoSlugFromTitle(item.title);
-  const shortId = item.id.replace(/^featured-/, "").slice(-6).toLowerCase();
-  return `${base}-${shortId}`;
+  return `${base}-${getFeaturedSlugSuffix(item)}`;
+}
+
+function getFeaturedSlugSuffix(item: FeaturedCaseItem) {
+  return item.id.replace(/^featured-/, "").slice(-6).toLowerCase();
 }
 
 export function getFeaturedDetailPath(item: FeaturedCaseItem) {
@@ -235,7 +250,7 @@ export function getResolvedFeaturedCases() {
   });
 
   return deduped.map((item, index) => {
-    const title = titleFromCoverPath(item.cover);
+    const title = titleFromCoverPath(item.cover, item.title);
     const category = categoryFromCoverPath(item.cover);
     return {
       id: `en-${index + 1}`,
@@ -267,6 +282,11 @@ export function getFeaturedCaseBySlug(kind: FeaturedCaseKind, slug: string) {
   const exact = candidates.find((item) => getFeaturedSlug(item).toLowerCase() === target);
   if (exact) {
     return exact;
+  }
+
+  const suffixMatch = candidates.find((item) => target.endsWith(`-${getFeaturedSlugSuffix(item)}`));
+  if (suffixMatch) {
+    return suffixMatch;
   }
 
   // Fallback for stale links where only the suffix segment changed.

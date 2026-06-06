@@ -1,10 +1,14 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CaseDetailPage } from "@/components/featured/CaseDetailPage";
+import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import {
   type FeaturedCaseKind,
   getFeaturedCaseBySlug,
+  getFeaturedSlug,
 } from "@/lib/featured-cases";
 
 type CaseDetailRouteProps = {
@@ -13,11 +17,23 @@ type CaseDetailRouteProps = {
 };
 
 export function CaseDetailRoute({ slug, kind }: CaseDetailRouteProps) {
+  const router = useRouter();
   const item = getFeaturedCaseBySlug(kind, slug);
+
+  useEffect(() => {
+    if (!item) {
+      return;
+    }
+    const canonicalSlug = getFeaturedSlug(item);
+    if (canonicalSlug.toLowerCase() !== decodeURIComponent(slug).toLowerCase()) {
+      router.replace(`/${kind}/${encodeURIComponent(canonicalSlug)}`);
+    }
+  }, [item, kind, router, slug]);
 
   if (!item) {
     return (
-      <div className="min-h-screen bg-[#f7f7f8] px-4 py-10">
+      <MarketingChrome>
+      <div className="px-4 py-10">
         <div className="mx-auto max-w-xl rounded-2xl border border-zinc-200 bg-white p-6 text-center shadow-sm">
           <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Not Found</p>
           <h1 className="mt-2 text-xl font-semibold tracking-tight text-zinc-900">
@@ -34,8 +50,13 @@ export function CaseDetailRoute({ slug, kind }: CaseDetailRouteProps) {
           </Link>
         </div>
       </div>
+      </MarketingChrome>
     );
   }
 
-  return <CaseDetailPage item={item} />;
+  return (
+    <MarketingChrome>
+      <CaseDetailPage item={item} />
+    </MarketingChrome>
+  );
 }

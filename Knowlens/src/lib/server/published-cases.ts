@@ -6,6 +6,7 @@ import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { getDb } from "@/lib/server/db";
 import { readImageAsset } from "@/lib/server/image-generation-jobs";
 import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
+import { findLatestSuccessfulVideoExportJobForProject } from "@/lib/server/video-export-jobs";
 import {
   findWorkspaceProjectOwner,
   listWorkspaceProjectPages,
@@ -638,6 +639,69 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
     const [asset] = (await listPublishedCaseAssets(caseId)).filter((item) => item.id === assetId);
     if (asset) {
       copiedAssets.push(asset);
+    }
+  }
+
+  if (outputType === "video") {
+    const latestVideoJob = await findLatestSuccessfulVideoExportJobForProject({
+      projectId,
+      userEmail,
+    });
+    const videoSourceUrl = latestVideoJob?.downloadUrl || latestVideoJob?.resultUrl || "";
+    if (videoSourceUrl) {
+      const videoBytes = await fetchImageBytes(videoSourceUrl).catch(() => null);
+      if (videoBytes?.bytes?.length) {
+        const assetId = `pca-${randomUUID()}`;
+        const assetSlug = `${slugifyPublishedCase(title)}-video`;
+        const videoMimeType = latestVideoJob?.contentType || videoBytes.mimeType || "video/mp4";
+        const copied = await copyPublicCaseAsset({
+          caseSlug: slug,
+          assetSlug: `${assetSlug}-${stableHash(assetId).slice(0, 8)}`,
+          bytes: videoBytes.bytes,
+          mimeType: videoMimeType,
+        });
+        const fileUrl = toPublicAssetUrl(assetId);
+        const thumbnailUrl = copiedAssets.find((item) => item.isPrimary)?.fileUrl || copiedAssets[0]?.fileUrl || "";
+        const assetValues = [
+          assetId,
+          caseId,
+          assetSlug,
+          "video_file",
+          `${title} Video`,
+          description,
+          0,
+          fileUrl,
+          toCaseViewerUrl(slug, assetSlug),
+          thumbnailUrl,
+          fileUrl,
+          copied.storageKey,
+          copied.mimeType,
+          copied.fileSize,
+          null,
+          null,
+          null,
+          0,
+          pages.length,
+          now,
+          now,
+        ];
+        const insertAssetSql = `INSERT INTO published_case_assets (
+          id, case_id, slug, asset_type, title, description, page_index, file_url, viewer_url,
+          thumbnail_url, download_url, storage_key, mime_type, file_size, width, height,
+          duration_seconds, is_primary, sort_order, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        if (hasManagedDatabase()) {
+          await pgRun(insertAssetSql, assetValues);
+        } else {
+          const { db } = getDb();
+          db.prepare(insertAssetSql).run(...assetValues);
+        }
+        const [asset] = (await listPublishedCaseAssets(caseId)).filter((item) => item.id === assetId);
+        if (asset) {
+          copiedAssets.push(asset);
+        }
+      }
     }
   }
 
