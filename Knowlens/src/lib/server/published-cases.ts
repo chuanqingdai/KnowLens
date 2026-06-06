@@ -7,6 +7,7 @@ import { getDb } from "@/lib/server/db";
 import { readImageAsset } from "@/lib/server/image-generation-jobs";
 import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
 import {
+  findWorkspaceProjectOwner,
   listWorkspaceProjectPages,
   type WorkspaceProjectPageOutputType,
   type WorkspaceProjectPageRow,
@@ -496,10 +497,19 @@ export async function readPublishedCaseAsset(assetId: string) {
 
 export async function publishProjectAsCase(input: PublishProjectInput) {
   const outputType = normalizeOutputType(input.outputType);
-  const userEmail = normalizeText(input.userEmail, 240).toLowerCase();
   const projectId = normalizeText(input.projectId, 140);
-  if (!projectId || !userEmail) {
-    throw new Error("Project ID and user email are required.");
+  let userEmail = normalizeText(input.userEmail, 240).toLowerCase();
+  if (!projectId) {
+    throw new Error("Project ID is required.");
+  }
+  if (!userEmail) {
+    userEmail = await findWorkspaceProjectOwner({
+      projectId,
+      outputType: outputType as WorkspaceProjectPageOutputType,
+    });
+  }
+  if (!userEmail) {
+    throw new Error("Project owner email was not found. Search by email first, then select a project.");
   }
 
   const pages = (await listWorkspaceProjectPages({

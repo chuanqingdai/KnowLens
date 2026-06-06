@@ -63,6 +63,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  outputFileTracingIncludes: {
+    "/api/export/video": ["./node_modules/ffmpeg-static/ffmpeg"],
+    "/api/export/video/jobs": ["./node_modules/ffmpeg-static/ffmpeg"],
+  },
 };
 
 export default nextConfig;

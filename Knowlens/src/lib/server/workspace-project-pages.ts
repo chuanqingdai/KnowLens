@@ -33,6 +33,17 @@ export type WorkspaceProjectActivityRow = {
   updatedAt: string;
 };
 
+export type WorkspaceProjectSummaryRow = {
+  projectId: string;
+  userEmail: string;
+  outputType: WorkspaceProjectPageOutputType;
+  title: string;
+  pageCount: number;
+  generatedAssetCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type WorkspaceProjectPageInput = {
   index: number;
   outputType?: WorkspaceProjectPageOutputType | string;
@@ -86,6 +97,19 @@ function mapPageRow(row: Record<string, unknown>): WorkspaceProjectPageRow {
     errorCode: typeof row.error_code === "string" ? row.error_code : null,
     createdAt: String(row.created_at || ""),
     updatedAt: String(row.updated_at || ""),
+  };
+}
+
+function mapProjectSummaryRow(row: Record<string, unknown>): WorkspaceProjectSummaryRow {
+  return {
+    projectId: String(row.project_id || ""),
+    userEmail: String(row.user_email || ""),
+    outputType: normalizeOutputType(String(row.output_type || "")),
+    title: String(row.title || row.project_id || ""),
+    pageCount: Number(row.page_count || 0),
+    generatedAssetCount: Number(row.generated_asset_count || 0),
+    createdAt: String(row.created_at || ""),
+    updatedAt: String(row.updated_at || row.created_at || ""),
   };
 }
 
@@ -297,6 +321,77 @@ export async function listWorkspaceProjectPages(input: {
         )
         .all(projectId, userEmail)) as Array<Record<string, unknown>>;
   return rows.map(mapPageRow);
+}
+
+export async function searchWorkspaceProjectSummaries(input: {
+  projectId?: string | null;
+  userEmail?: string | null;
+  outputType?: WorkspaceProjectPageOutputType | string | null;
+  limit?: number | null;
+}) {
+  const projectId = normalizeText(input.projectId, 120);
+  const userEmail = normalizeText(input.userEmail, 240).toLowerCase();
+  const outputType = input.outputType ? normalizeOutputType(input.outputType) : null;
+  const limit = Math.max(1, Math.min(80, Math.round(Number(input.limit || 24))));
+  if (!projectId && !userEmail) {
+    return [] as WorkspaceProjectSummaryRow[];
+  }
+
+  const where: string[] = [];
+  const params: Array<string | number> = [];
+  if (projectId) {
+    where.push("project_id = ?");
+    params.push(projectId);
+  }
+  if (userEmail) {
+    where.push("user_email = ?");
+    params.push(userEmail);
+  }
+  if (outputType) {
+    where.push("output_type = ?");
+    params.push(outputType);
+  }
+
+  const sqlText = `SELECT
+      project_id,
+      user_email,
+      output_type,
+      COALESCE(
+        MAX(NULLIF(CASE WHEN page_role = 'cover' THEN title ELSE '' END, '')),
+        MAX(NULLIF(title, '')),
+        project_id
+      ) AS title,
+      COUNT(*) AS page_count,
+      SUM(CASE
+        WHEN COALESCE(image_url, '') != ''
+          OR COALESCE(raw_image_url, '') != ''
+          OR COALESCE(image_task_id, '') != ''
+        THEN 1 ELSE 0
+      END) AS generated_asset_count,
+      MIN(created_at) AS created_at,
+      MAX(updated_at) AS updated_at
+    FROM workspace_project_pages
+    WHERE ${where.join(" AND ")}
+    GROUP BY project_id, user_email, output_type
+    ORDER BY MAX(updated_at) DESC, MIN(created_at) DESC
+    LIMIT ?`;
+  const queryParams = [...params, limit];
+  const rows = hasManagedDatabase()
+    ? await pgAll(sqlText, queryParams)
+    : (getDb().db.prepare(sqlText).all(...queryParams) as Array<Record<string, unknown>>);
+  return rows.map(mapProjectSummaryRow);
+}
+
+export async function findWorkspaceProjectOwner(input: {
+  projectId: string;
+  outputType?: WorkspaceProjectPageOutputType | string | null;
+}) {
+  const [summary] = await searchWorkspaceProjectSummaries({
+    projectId: input.projectId,
+    outputType: input.outputType,
+    limit: 1,
+  });
+  return summary?.userEmail || "";
 }
 
 export async function getWorkspaceProjectCover(input: {

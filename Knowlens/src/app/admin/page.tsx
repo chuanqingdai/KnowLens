@@ -80,6 +80,20 @@ type PublishedCaseAdminItem = {
   assets?: Array<{ id: string; fileUrl: string; viewerUrl: string; title?: string }>;
 };
 
+type PublishableCaseProjectItem = {
+  projectId: string;
+  userEmail: string;
+  outputType: "poster" | "ppt" | "video";
+  title: string;
+  pageCount: number;
+  generatedAssetCount: number;
+  createdAt: string;
+  updatedAt: string;
+  alreadyPublished: boolean;
+  publishedStatus?: string | null;
+  publishedSlug?: string | null;
+};
+
 type OpsEventAdminLog = {
   id: string;
   category: string;
@@ -174,6 +188,11 @@ type PublishCaseFormState = {
   category: string;
   authorLabel: string;
   featured: boolean;
+};
+
+type PublishCaseProjectSearchState = {
+  projectId: string;
+  userEmail: string;
 };
 
 const MAIN_TABS: Array<{ id: AdminMainTab; label: string; icon: React.ComponentType<{ size?: number }> }> = [
@@ -451,6 +470,12 @@ function AdminDashboardPageContent() {
   const [publishedCases, setPublishedCases] = useState<PublishedCaseAdminItem[]>([]);
   const [publishedCasesLoading, setPublishedCasesLoading] = useState(false);
   const [publishingCase, setPublishingCase] = useState(false);
+  const [caseProjectSearch, setCaseProjectSearch] = useState<PublishCaseProjectSearchState>({
+    projectId: "",
+    userEmail: "",
+  });
+  const [caseProjectResults, setCaseProjectResults] = useState<PublishableCaseProjectItem[]>([]);
+  const [caseProjectSearchLoading, setCaseProjectSearchLoading] = useState(false);
   const [opsLogs, setOpsLogs] = useState<OpsEventAdminLog[]>([]);
   const [opsLogSummary, setOpsLogSummary] = useState<OpsEventAdminSummary | null>(null);
   const [opsTraceSummaries, setOpsTraceSummaries] = useState<OpsTraceSummary[]>([]);
@@ -459,7 +484,7 @@ function AdminDashboardPageContent() {
   const [showAdvancedOpsFilters, setShowAdvancedOpsFilters] = useState(false);
   const [publishCaseForm, setPublishCaseForm] = useState<PublishCaseFormState>({
     projectId: "",
-    userEmail: "local@knowlens.ai",
+    userEmail: "",
     outputType: "poster",
     title: "",
     category: "All",
@@ -524,6 +549,15 @@ function AdminDashboardPageContent() {
     loadOpsLogs(defaultOpsLogFilters);
   }
 
+  function pushToast(message: string) {
+    const id = `toast-${idCounterRef.current}`;
+    idCounterRef.current += 1;
+    setToasts((prev) => [...prev, { id, message }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 2600);
+  }
+
   function loadPublishedCases() {
     setPublishedCasesLoading(true);
     fetch("/api/admin/published-cases", { cache: "no-store" })
@@ -537,10 +571,56 @@ function AdminDashboardPageContent() {
       .finally(() => setPublishedCasesLoading(false));
   }
 
-  useEffect(() => {
-    if (activeTab === "cases") {
-      loadPublishedCases();
+  function searchPublishableCaseProjects() {
+    const projectId = caseProjectSearch.projectId.trim();
+    const userEmail = caseProjectSearch.userEmail.trim();
+    if (!projectId && !userEmail) {
+      pushToast("请输入项目 ID 或邮箱账号");
+      return;
     }
+    const params = new URLSearchParams();
+    if (projectId) {
+      params.set("projectId", projectId);
+    }
+    if (userEmail) {
+      params.set("userEmail", userEmail);
+    }
+    setCaseProjectSearchLoading(true);
+    fetch(`/api/admin/published-cases/projects?${params.toString()}`, { cache: "no-store" })
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : response.json().then((payload) => Promise.reject(new Error(payload.error || "项目搜索失败"))),
+      )
+      .then((payload: { projects?: PublishableCaseProjectItem[] }) => {
+        setCaseProjectResults(payload.projects || []);
+        if (!payload.projects?.length) {
+          pushToast("没有找到可发布项目");
+        }
+      })
+      .catch((error) => {
+        pushToast(error instanceof Error ? error.message : "项目搜索失败");
+      })
+      .finally(() => setCaseProjectSearchLoading(false));
+  }
+
+  function selectPublishableCaseProject(item: PublishableCaseProjectItem) {
+    setPublishCaseForm((prev) => ({
+      ...prev,
+      projectId: item.projectId,
+      userEmail: item.userEmail,
+      outputType: item.outputType,
+      title: prev.title || item.title,
+    }));
+    pushToast("已填入发布表单");
+  }
+
+  useEffect(() => {
+    if (activeTab !== "cases") {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => loadPublishedCases(), 0);
+    return () => window.clearTimeout(timer);
   }, [activeTab]);
 
   function loadOpsLogs(overrideFilters?: typeof opsLogFilters) {
@@ -596,8 +676,8 @@ function AdminDashboardPageContent() {
   }, [activeTab, opsLogFilters.page, opsLogFilters.limit]);
 
   function publishPublicCaseFromProject() {
-    if (!publishCaseForm.projectId.trim() || !publishCaseForm.userEmail.trim()) {
-      pushToast("请填写 projectId 和用户邮箱");
+    if (!publishCaseForm.projectId.trim()) {
+      pushToast("请填写 projectId，或先用邮箱搜索后选择项目");
       return;
     }
     setPublishingCase(true);
@@ -640,15 +720,6 @@ function AdminDashboardPageContent() {
       .catch((error) => {
         pushToast(error instanceof Error ? error.message : "公开案例更新失败");
       });
-  }
-
-  function pushToast(message: string) {
-    const id = `toast-${idCounterRef.current}`;
-    idCounterRef.current += 1;
-    setToasts((prev) => [...prev, { id, message }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, 2600);
   }
 
   function setQuery(updates: Record<string, string | null | undefined>) {
@@ -2593,16 +2664,94 @@ function AdminDashboardPageContent() {
                 </button>
               </div>
               <div className="mt-4 grid gap-2 lg:grid-cols-6">
+                <div className="lg:col-span-6">
+                  <div className="rounded-xl border border-dashed border-zinc-300 bg-white p-3">
+                    <div className="flex flex-col gap-2 lg:flex-row">
+                      <input
+                        value={caseProjectSearch.projectId}
+                        onChange={(event) => setCaseProjectSearch((prev) => ({ ...prev, projectId: event.target.value }))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            searchPublishableCaseProjects();
+                          }
+                        }}
+                        placeholder="按项目 ID 搜索，邮箱可留空"
+                        className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:flex-1"
+                      />
+                      <input
+                        value={caseProjectSearch.userEmail}
+                        onChange={(event) => setCaseProjectSearch((prev) => ({ ...prev, userEmail: event.target.value }))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            searchPublishableCaseProjects();
+                          }
+                        }}
+                        placeholder="按邮箱账号搜索，项目 ID 可留空"
+                        className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={searchPublishableCaseProjects}
+                        disabled={caseProjectSearchLoading}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-900 bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {caseProjectSearchLoading ? <LoaderCircle size={14} className="animate-spin" /> : <Search size={14} />}
+                        搜索源项目
+                      </button>
+                    </div>
+                    {caseProjectResults.length ? (
+                      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                        {caseProjectResults.map((item) => (
+                          <button
+                            key={`${item.projectId}-${item.userEmail}-${item.outputType}`}
+                            type="button"
+                            onClick={() => selectPublishableCaseProject(item)}
+                            className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-left transition hover:border-zinc-400 hover:bg-white"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="min-w-0 truncate text-sm font-semibold text-zinc-900">{item.title || item.projectId}</p>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] uppercase text-zinc-600">
+                                  {item.outputType}
+                                </span>
+                                {item.alreadyPublished ? (
+                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                                    已公开
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500">
+                                    可发布
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="mt-1 truncate text-xs text-zinc-500">
+                              {item.projectId} · {item.userEmail}
+                            </p>
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {item.generatedAssetCount}/{item.pageCount} 张已生成 · 更新于 {formatDateTime(item.updatedAt)}
+                              {item.publishedSlug ? ` · /cases/${item.publishedSlug}` : ""}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-zinc-500">
+                        管理员可只填项目 ID 或只填邮箱搜索全部历史项目；选中结果后可发布到首页案例。
+                      </p>
+                    )}
+                  </div>
+                </div>
                 <input
                   value={publishCaseForm.projectId}
                   onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, projectId: event.target.value }))}
-                  placeholder="projectId"
+                  placeholder="projectId（必填，可由搜索结果填入）"
                   className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:col-span-2"
                 />
                 <input
                   value={publishCaseForm.userEmail}
                   onChange={(event) => setPublishCaseForm((prev) => ({ ...prev, userEmail: event.target.value }))}
-                  placeholder="owner email"
+                  placeholder="owner email（可选，项目 ID 可自动反查）"
                   className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm lg:col-span-2"
                 />
                 <select
@@ -2727,7 +2876,7 @@ function AdminDashboardPageContent() {
                   ))
                 ) : (
                   <div className="col-span-full rounded-xl border border-dashed border-zinc-300 bg-white px-4 py-8 text-center text-sm text-zinc-500">
-                    还没有公开发布的 Case。输入项目 ID 后发布，系统会复制已生成图片为公开文件。
+                    还没有公开发布的 Case。管理员可以先按项目 ID 或邮箱搜索历史项目，再发布到首页。
                   </div>
                 )}
               </div>
