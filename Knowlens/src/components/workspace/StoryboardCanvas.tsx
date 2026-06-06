@@ -284,7 +284,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "middle_aged",
     description: "Grounded documentary narration with calm authority and subtle suspense.",
     notes: "Calm documentary",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "male",
   },
   {
@@ -297,7 +297,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Polished educational presenter with warm clarity and graceful emphasis.",
     notes: "Polished presenter",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "female",
   },
   {
@@ -310,7 +310,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "mature",
     description: "Deep analytical science tone with slower pacing and thoughtful pauses.",
     notes: "Deep science",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "male",
   },
   {
@@ -323,7 +323,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "young_adult",
     description: "Bright short-form explainer with lively rhythm and clear momentum.",
     notes: "Bright explainer",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "youth",
   },
   {
@@ -336,7 +336,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Crisp tech analyst voice for mechanisms, numbers, and product logic.",
     notes: "Tech analyst",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "neutral",
   },
   {
@@ -349,7 +349,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "young_adult",
     description: "Friendly host voice with curious, conversational ups and downs.",
     notes: "Warm host",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "youth",
   },
   {
@@ -362,7 +362,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "middle_aged",
     description: "Patient teacher voice that makes steps, definitions, and transitions clear.",
     notes: "Calm teacher",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "neutral",
   },
   {
@@ -375,7 +375,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "mature",
     description: "Thoughtful storyteller voice with narrative cadence and gentle suspense.",
     notes: "Storyteller",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "neutral",
   },
   {
@@ -388,7 +388,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Soft reassuring presenter with smooth phrasing and relaxed pacing.",
     notes: "Soft presenter",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "female",
   },
   {
@@ -401,7 +401,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Balanced professional narrator for clear, versatile visual explainers.",
     notes: "Balanced narrator",
-    creditPer1000Chars: 40,
+    creditPer1000Chars: 20,
     profile: "neutral",
   },
 ];
@@ -439,6 +439,17 @@ const TTS_SAMPLE_CACHE_VERSION = "expressive-v2";
 
 function getTtsSampleCacheKey(voiceId: string) {
   return `${voiceId}:${TTS_SAMPLE_CACHE_VERSION}`;
+}
+
+function getTtsSampleAudioUrl(voiceId: string) {
+  const text = TTS_SAMPLE_TEXT_BY_ID[voiceId] ?? TTS_SAMPLE_TEXT_BY_ID[DEFAULT_EMOTION_TTS_ID];
+  const params = new URLSearchParams({
+    text,
+    voice: voiceId,
+    sample: "1",
+    v: TTS_SAMPLE_CACHE_VERSION,
+  });
+  return `/api/tts?${params.toString()}`;
 }
 
 function buildPrompt(title: string, visual: string) {
@@ -918,6 +929,7 @@ export function StoryboardCanvas({
   );
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isPreviewPaused, setIsPreviewPaused] = useState(false);
+  const [isPreparingPreviewAudio, setIsPreparingPreviewAudio] = useState(false);
   const [activePreviewSlideId, setActivePreviewSlideId] = useState<string | null>(
     null,
   );
@@ -1062,6 +1074,31 @@ export function StoryboardCanvas({
       const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
       const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
       return Boolean(getActiveServerReadableImageSrc(historyImages, activeIdx, taskState?.imageUrl));
+    });
+  }, [
+    activeImageIndexBySlideId,
+    canvasMode,
+    generationTaskStateByIndex,
+    imageHistoryBySlideId,
+    slides,
+  ]);
+  const storyboardPreviewReady = useMemo(() => {
+    if (canvasMode !== "free" || !slides.length) {
+      return false;
+    }
+    return slides.every((slide) => {
+      const taskState = generationTaskStateByIndex?.[slide.page];
+      if (
+        taskState?.status === "queued" ||
+        taskState?.status === "generating" ||
+        taskState?.status === "retrying" ||
+        taskState?.status === "failed"
+      ) {
+        return false;
+      }
+      const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
+      const activeIdx = activeImageIndexBySlideId[slide.id] ?? 0;
+      return Boolean(getActiveImageSrc(historyImages, activeIdx, taskState?.imageUrl));
     });
   }, [
     activeImageIndexBySlideId,
@@ -1681,61 +1718,10 @@ export function StoryboardCanvas({
       setPlayingAudioSlideId(null);
       setPausedAudioSlideId(null);
 
-      const sampleCacheKey = getTtsSampleCacheKey(normalizedVoiceId);
-      const cached = sampleAudioByVoiceIdRef.current[sampleCacheKey];
-      let sampleUrl = cached?.status === "ready" ? cached.url : "";
-      if (!sampleUrl) {
-        setSampleAudioByVoiceId((prev) => ({
-          ...prev,
-          [sampleCacheKey]: {
-            url: prev[sampleCacheKey]?.url ?? "",
-            status: "loading",
-          },
-        }));
-        try {
-          const response = await fetch("/api/tts", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              text: TTS_SAMPLE_TEXT_BY_ID[normalizedVoiceId] ?? TTS_SAMPLE_TEXT_BY_ID[DEFAULT_EMOTION_TTS_ID],
-              voice: normalizedVoiceId,
-              sample: true,
-            }),
-          });
-          if (!response.ok) {
-            throw new Error("Voice sample failed");
-          }
-          const blob = await response.blob();
-          sampleUrl = URL.createObjectURL(blob);
-          setSampleAudioByVoiceId((prev) => {
-            const oldUrl = prev[sampleCacheKey]?.url;
-            if (oldUrl?.startsWith("blob:") && oldUrl !== sampleUrl) {
-              URL.revokeObjectURL(oldUrl);
-            }
-            return {
-              ...prev,
-              [sampleCacheKey]: {
-                url: sampleUrl,
-                status: "ready",
-              },
-            };
-          });
-        } catch {
-          setSampleAudioByVoiceId((prev) => ({
-            ...prev,
-            [sampleCacheKey]: {
-              url: prev[sampleCacheKey]?.url ?? "",
-              status: "error",
-            },
-          }));
-          return;
-        }
-      }
-
       sampleAudioPreviewRef.current?.pause();
-      const audio = new Audio(sampleUrl);
+      const audio = new Audio();
+      audio.preload = "auto";
+      audio.autoplay = true;
       sampleAudioPreviewRef.current = audio;
       setPlayingSampleVoiceId(normalizedVoiceId);
       audio.onended = () => {
@@ -1750,11 +1736,47 @@ export function StoryboardCanvas({
         }
         setPlayingSampleVoiceId(null);
       };
+
+      const sampleCacheKey = getTtsSampleCacheKey(normalizedVoiceId);
+      const cached = sampleAudioByVoiceIdRef.current[sampleCacheKey];
+      let sampleUrl = cached?.status === "ready" ? cached.url : "";
+      if (!sampleUrl) {
+        sampleUrl = getTtsSampleAudioUrl(normalizedVoiceId);
+        setSampleAudioByVoiceId((prev) => ({
+          ...prev,
+          [sampleCacheKey]: {
+            url: sampleUrl,
+            status: "loading",
+          },
+        }));
+      }
+
+      if (sampleAudioPreviewRef.current !== audio) {
+        return;
+      }
+      audio.src = sampleUrl;
+      audio.load();
+      audio.oncanplay = () => {
+        setSampleAudioByVoiceId((prev) => ({
+          ...prev,
+          [sampleCacheKey]: {
+            url: sampleUrl,
+            status: "ready",
+          },
+        }));
+      };
       void audio.play().catch(() => {
         if (sampleAudioPreviewRef.current === audio) {
           sampleAudioPreviewRef.current = null;
         }
         setPlayingSampleVoiceId(null);
+        setSampleAudioByVoiceId((prev) => ({
+          ...prev,
+          [sampleCacheKey]: {
+            url: sampleUrl,
+            status: "error",
+          },
+        }));
       });
     },
     [
@@ -2263,6 +2285,7 @@ export function StoryboardCanvas({
   const stopPreview = useCallback(() => {
     cancelPreviewRef.current = true;
     previewPauseRef.current = false;
+    setIsPreparingPreviewAudio(false);
     setIsPreviewing(false);
     setIsPreviewPaused(false);
     setActivePreviewSlideId(null);
@@ -2319,9 +2342,64 @@ export function StoryboardCanvas({
     }
   }, [isPreviewing]);
 
+  const ensurePreviewAudioFiles = useCallback(
+    async (startIndex: number) => {
+      for (let idx = startIndex; idx < slides.length; idx += 1) {
+        if (cancelPreviewRef.current) {
+          return false;
+        }
+        const slide = slides[idx];
+        const body = slide.body.trim();
+        if (!body) {
+          continue;
+        }
+        const ttsId = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
+        const normalizedVoiceId = normalizeTtsVoiceId(ttsId);
+        const selectedOption = TTS_OPTIONS.find((item) => item.id === normalizedVoiceId);
+        if (selectedOption?.provider === "openai" && !hasMembership) {
+          onRequestTtsUpgrade?.();
+          return false;
+        }
+
+        try {
+          await ensureAudioFileForSlide(slide.id, body, normalizedVoiceId);
+        } catch (error) {
+          const currentVoiceId = normalizeTtsVoiceId(ttsBySlideIdRef.current[slide.id] ?? DEFAULT_EMOTION_TTS_ID);
+          if (currentVoiceId !== normalizedVoiceId) {
+            continue;
+          }
+          setGeneratedAudioBySlideId((prev) => ({
+            ...prev,
+            [slide.id]: {
+              url: prev[slide.id]?.url ?? "",
+              durationSec: prev[slide.id]?.durationSec ?? 0,
+              status: "error",
+              voiceId: normalizedVoiceId,
+              error: error instanceof Error ? error.message : "Audio generation failed",
+            },
+          }));
+          return false;
+        }
+      }
+      return true;
+    },
+    [
+      ensureAudioFileForSlide,
+      hasMembership,
+      normalizeTtsVoiceId,
+      onRequestTtsUpgrade,
+      slides,
+      ttsBySlideId,
+    ],
+  );
+
   const runPreview = useCallback(
     async (fromSelected = false) => {
       if (!reactFlowRef.current) {
+        return;
+      }
+
+      if (isPreparingPreviewAudio) {
         return;
       }
 
@@ -2333,7 +2411,6 @@ export function StoryboardCanvas({
       cancelPreviewRef.current = false;
       previewPauseRef.current = false;
       setIsPreviewPaused(false);
-      setIsPreviewing(true);
 
       const startIndex = fromSelected
         ? Math.max(
@@ -2341,6 +2418,20 @@ export function StoryboardCanvas({
             slides.findIndex((slide) => slide.id === selectedSlideId),
           )
         : 0;
+      setIsPreparingPreviewAudio(true);
+      let audioReady = false;
+      try {
+        audioReady = await ensurePreviewAudioFiles(startIndex);
+      } finally {
+        setIsPreparingPreviewAudio(false);
+      }
+      if (!audioReady || cancelPreviewRef.current) {
+        setIsPreviewing(false);
+        setIsPreviewPaused(false);
+        return;
+      }
+
+      setIsPreviewing(true);
       const previewTransitions = buildSceneTransitions(
         slides.map((slide) => ({
           id: slide.id,
@@ -2438,7 +2529,9 @@ export function StoryboardCanvas({
     [
       activeImageIndexBySlideId,
       generationTaskStateByIndex,
+      ensurePreviewAudioFiles,
       imageHistoryBySlideId,
+      isPreparingPreviewAudio,
       isPreviewing,
       previewAudioForSlide,
       selectedSlideId,
@@ -3721,26 +3814,42 @@ export function StoryboardCanvas({
           </div>
         ) : null}
 
-        {canvasMode === "free" ? (
+        {canvasMode === "free" && (storyboardPreviewReady || isPreviewing || isPreparingPreviewAudio) ? (
           <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
-          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/95 px-2 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur">
+          <div className="pointer-events-auto inline-flex items-center rounded-full bg-white/95 px-2 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur">
             <button
               type="button"
-              onClick={() => runPreview(false)}
-              className="inline-flex h-9 items-center gap-1 rounded-full bg-zinc-900 px-4 text-xs font-medium text-white hover:bg-zinc-700"
+              onClick={() => {
+                if (isPreparingPreviewAudio) {
+                  return;
+                }
+                if (!isPreviewing) {
+                  void runPreview(false);
+                  return;
+                }
+                if (isPreviewPaused) {
+                  resumePreview();
+                  return;
+                }
+                pausePreview();
+              }}
+              disabled={isPreparingPreviewAudio}
+              className="inline-flex h-9 min-w-[154px] items-center justify-center gap-2 rounded-full bg-zinc-900 px-5 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-wait disabled:bg-zinc-800 disabled:text-white"
             >
-              <PlayCircle size={14} />
-              {isPreviewing ? "Stop Preview" : "Preview Video"}
-            </button>
-
-            <button
-              type="button"
-              onClick={isPreviewPaused ? resumePreview : pausePreview}
-              disabled={!isPreviewing}
-              className="inline-flex h-9 items-center gap-1 rounded-full border border-zinc-300 bg-white px-4 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <PauseCircle size={14} />
-              {isPreviewPaused ? "Resume" : "Pause"}
+              {isPreparingPreviewAudio ? (
+                <LoaderCircle size={14} className="animate-spin" />
+              ) : isPreviewing && !isPreviewPaused ? (
+                <PauseCircle size={14} />
+              ) : (
+                <PlayCircle size={14} />
+              )}
+              {isPreparingPreviewAudio
+                ? "Preparing audio"
+                : isPreviewing
+                  ? isPreviewPaused
+                    ? "Resume"
+                    : "Pause"
+                  : "Preview Video"}
             </button>
           </div>
         </div>

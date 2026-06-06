@@ -20,9 +20,8 @@ function toResponseBody(data: Uint8Array): ArrayBuffer {
   return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
 }
 
-export async function POST(request: Request) {
+async function synthesizeTtsResponse(payload: TtsPayload) {
   try {
-    const payload = (await request.json()) as TtsPayload;
     const text = (payload.text ?? "").trim();
     const voiceProvider = getWorkspaceTtsVoiceProvider(payload.voice);
     const isSamplePreview = payload.sample === true;
@@ -69,4 +68,18 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Unknown tts error";
     return new Response(message, { status: 500 });
   }
+}
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  return synthesizeTtsResponse({
+    text: url.searchParams.get("text") ?? "",
+    voice: url.searchParams.get("voice") ?? "",
+    sample: url.searchParams.get("sample") === "1" || url.searchParams.get("sample") === "true",
+  });
+}
+
+export async function POST(request: Request) {
+  const payload = (await request.json()) as TtsPayload;
+  return synthesizeTtsResponse(payload);
 }

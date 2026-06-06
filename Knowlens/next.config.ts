@@ -38,6 +38,7 @@ const canonicalHost = resolveCanonicalHost();
 const wwwHost = canonicalHost && !canonicalHost.startsWith("www.") ? `www.${canonicalHost}` : "";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["ffmpeg-static"],
   async redirects() {
     if (!canonicalHost || !wwwHost) {
       return [];
