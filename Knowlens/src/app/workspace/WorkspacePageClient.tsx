@@ -7025,6 +7025,8 @@ export default function WorkspacePage() {
         requestSucceeded = false;
         setEditableOutlineItems([]);
         setEditableSlideDrafts([]);
+        setConfigConfirmed(false);
+        setFlowStage("content");
         const parsed = parseStructuredError(error);
         logClientEvent({
           category: "llm",
@@ -7208,6 +7210,8 @@ export default function WorkspacePage() {
       requestSucceeded = false;
       setEditablePosterDraft(null);
       setEditablePosterPlanList([]);
+      setConfigConfirmed(false);
+      setFlowStage("content");
       const parsed = parseStructuredError(error);
       logClientEvent({
         category: "llm",

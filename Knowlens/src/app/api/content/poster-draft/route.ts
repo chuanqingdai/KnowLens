@@ -3346,7 +3346,27 @@ export async function POST(request: NextRequest) {
         error: "Model response is empty.",
       });
     }
-    const parsed = parseJsonContent(content);
+    let parsed: ReturnType<typeof parseJsonContent> = null;
+    try {
+      parsed = parseJsonContent(content);
+    } catch (error) {
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_failed",
+        status: "error",
+        source: modelForLog,
+        userEmail: email,
+        code: "DRAFT_JSON_PARSE_EXCEPTION",
+        message: error instanceof Error ? error.message : "Model response JSON parsing failed.",
+        details: {
+          stage: "draft_response_parsing_exception",
+          direction,
+          outputCount,
+          rawSnippet: content.slice(0, 1200),
+        },
+      });
+      parsed = null;
+    }
 
     if (!parsed) {
       logOpsEvent({

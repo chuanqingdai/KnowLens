@@ -18,6 +18,12 @@ import {
 } from "@/lib/server/image-generation-jobs";
 import { linkVideoExportToPublishedCases } from "@/lib/server/published-case-video-assets";
 import { logOpsEvent } from "@/lib/server/store";
+import {
+  buildSceneTransitions,
+  TRANSITION_PRESETS,
+  type SceneTransition,
+  type TransitionPresetId,
+} from "@/lib/video/transitions";
 
 const execFileAsync = promisify(execFile);
 
@@ -91,6 +97,55 @@ export type VideoExportJob = {
 };
 
 type NormalizedScene = VideoExportScene;
+
+function normalizeTransitionPresetId(value: string | null | undefined): TransitionPresetId | undefined {
+  const normalized = normalizeText(value, 120);
+  return TRANSITION_PRESETS.some((item) => item.id === normalized)
+    ? (normalized as TransitionPresetId)
+    : undefined;
+}
+
+function mapTransitionToFfmpegXfade(transition: SceneTransition) {
+  if (transition.type === "wipe") {
+    if (transition.direction === "right") return "wiperight";
+    if (transition.direction === "up") return "wipeup";
+    if (transition.direction === "down") return "wipedown";
+    return "wipeleft";
+  }
+  if (transition.type === "slide") {
+    if (transition.direction === "right") return "slideright";
+    if (transition.direction === "up") return "slideup";
+    if (transition.direction === "down") return "slidedown";
+    return "slideleft";
+  }
+  return "fade";
+}
+
+function countTransitionsByType(transitions: SceneTransition[]) {
+  return transitions.reduce<Record<string, number>>((summary, transition) => {
+    const key = transition.type;
+    summary[key] = (summary[key] || 0) + 1;
+    return summary;
+  }, {});
+}
+
+function buildExportSceneTransitions(input: {
+  scenes: VideoExportScene[];
+  fps: number;
+  transitionPresetId: string | null;
+}) {
+  return buildSceneTransitions(
+    input.scenes.map((scene) => ({
+      id: scene.id,
+      title: scene.title,
+      voiceover: scene.narrationText || "",
+    })),
+    {
+      fps: input.fps,
+      preset: normalizeTransitionPresetId(input.transitionPresetId),
+    },
+  );
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -594,6 +649,94 @@ async function concatSegments(segmentPaths: string[], outputPath: string) {
   );
 }
 
+async function concatSegmentsWithTransitions(input: {
+  segmentPaths: string[];
+  segmentDurationsSec: number[];
+  transitions: SceneTransition[];
+  outputPath: string;
+}) {
+  const { segmentPaths, segmentDurationsSec, outputPath } = input;
+  const transitions = input.transitions.slice(0, Math.max(0, segmentPaths.length - 1));
+  if (segmentPaths.length <= 1 || !transitions.length) {
+    await concatSegments(segmentPaths, outputPath);
+    return;
+  }
+  if (segmentDurationsSec.length !== segmentPaths.length) {
+    throw new Error("Video transition input durations are incomplete.");
+  }
+
+  const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const videoInputs = segmentPaths.map((_, index) => {
+    const outgoingTransitionSec = transitions[index]?.durationSeconds || 0;
+    const padFilter =
+      outgoingTransitionSec > 0
+        ? `,tpad=stop_mode=clone:stop_duration=${outgoingTransitionSec.toFixed(3)}`
+        : "";
+    return `[${index}:v]setpts=PTS-STARTPTS,format=yuv420p${padFilter}[tv${index}]`;
+  });
+  const audioInputs = segmentPaths.map((_, index) => {
+    return `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`;
+  });
+
+  const transitionFilters: string[] = [];
+  let currentVideoLabel = "tv0";
+  let offsetSec = Math.max(0.1, segmentDurationsSec[0] || DEFAULT_SCENE_DURATION_SEC);
+  transitions.forEach((transition, index) => {
+    const durationSec = Math.max(0.2, Math.min(1.4, transition.durationSeconds || 0.45));
+    const transitionName = mapTransitionToFfmpegXfade(transition);
+    const nextVideoLabel = `tv${index + 1}`;
+    const outputLabel = `xv${index}`;
+    transitionFilters.push(
+      `[${currentVideoLabel}][${nextVideoLabel}]xfade=transition=${transitionName}:duration=${durationSec.toFixed(
+        3,
+      )}:offset=${offsetSec.toFixed(3)}[${outputLabel}]`,
+    );
+    currentVideoLabel = outputLabel;
+    offsetSec += Math.max(0.1, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC);
+  });
+
+  const audioConcatInputs = segmentPaths.map((_, index) => `[a${index}]`).join("");
+  const filterComplex = [
+    ...videoInputs,
+    ...audioInputs,
+    ...transitionFilters,
+    `[${currentVideoLabel}]format=yuv420p[v]`,
+    `${audioConcatInputs}concat=n=${segmentPaths.length}:v=0:a=1[a]`,
+  ].join(";");
+
+  await runFfmpeg(
+    [
+      ...inputArgs,
+      "-filter_complex",
+      filterComplex,
+      "-map",
+      "[v]",
+      "-map",
+      "[a]",
+      "-c:v",
+      "libx264",
+      "-preset",
+      VIDEO_EXPORT_PRESET,
+      "-crf",
+      VIDEO_EXPORT_CRF,
+      "-tune",
+      "stillimage",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      VIDEO_EXPORT_AUDIO_BITRATE,
+      "-movflags",
+      "+faststart",
+      "-avoid_negative_ts",
+      "make_zero",
+      outputPath,
+    ],
+    260_000,
+  );
+}
+
 export async function createVideoExportJob(input: {
   userEmail?: string | null;
   projectId?: string | null;
@@ -788,6 +931,7 @@ export async function runVideoExportJob(jobId: string) {
     });
 
     const segmentPaths: string[] = [];
+    const segmentDurationsSec: number[] = [];
     for (let index = 0; index < job.timeline.scenes.length; index += 1) {
       const scene = job.timeline.scenes[index];
       const sceneStartedAt = Date.now();
@@ -858,7 +1002,12 @@ export async function runVideoExportJob(jobId: string) {
         fps: job.timeline.fps,
         durationSec: scene.isCover ? COVER_SCENE_DURATION_SEC : DEFAULT_SCENE_DURATION_SEC,
       });
+      const segmentDurationSec = await getMediaDurationSec(
+        segmentPath,
+        scene.isCover ? COVER_SCENE_DURATION_SEC : DEFAULT_SCENE_DURATION_SEC,
+      );
       segmentPaths.push(segmentPath);
+      segmentDurationsSec.push(segmentDurationSec);
       await logVideoExportJobEvent({
         job,
         action: "video_export_scene_segment_ready",
@@ -868,6 +1017,7 @@ export async function runVideoExportJob(jobId: string) {
           sceneIndex: index,
           scenePage: scene.page,
           sceneId: scene.id,
+          durationSec: segmentDurationSec,
           durationMs: Date.now() - sceneStartedAt,
         },
       });
@@ -878,6 +1028,11 @@ export async function runVideoExportJob(jobId: string) {
       progress: 88,
       message: "Rendering video",
     });
+    const transitions = buildExportSceneTransitions({
+      scenes: job.timeline.scenes,
+      fps: job.timeline.fps,
+      transitionPresetId: job.timeline.transitionPresetId,
+    });
     await logVideoExportJobEvent({
       job,
       action: "video_export_concat_started",
@@ -885,10 +1040,39 @@ export async function runVideoExportJob(jobId: string) {
       message: "Video concat started",
       details: {
         segmentCount: segmentPaths.length,
+        transitionPresetId: job.timeline.transitionPresetId,
+        transitionCount: transitions.length,
+        transitionTypes: countTransitionsByType(transitions),
       },
     });
     const outputPath = path.join(tmpDir, "knowlens-storyboard.mp4");
-    await concatSegments(segmentPaths, outputPath);
+    if (transitions.length) {
+      try {
+        await concatSegmentsWithTransitions({
+          segmentPaths,
+          segmentDurationsSec,
+          transitions,
+          outputPath,
+        });
+      } catch (error) {
+        await logVideoExportJobEvent({
+          job,
+          action: "video_export_transition_concat_fallback",
+          status: "error",
+          code: "VIDEO_TRANSITION_CONCAT_FAILED",
+          message: "Transition concat failed; falling back to hard cuts.",
+          details: {
+            transitionPresetId: job.timeline.transitionPresetId,
+            transitionCount: transitions.length,
+            transitionTypes: countTransitionsByType(transitions),
+            error: getProcessErrorMessage(error),
+          },
+        });
+        await concatSegments(segmentPaths, outputPath);
+      }
+    } else {
+      await concatSegments(segmentPaths, outputPath);
+    }
     const data = await fs.readFile(outputPath);
     if (data.length <= 0) {
       throw new Error("Rendered video is empty.");
@@ -900,6 +1084,9 @@ export async function runVideoExportJob(jobId: string) {
       message: "Video concat ready",
       details: {
         bytes: data.length,
+        transitionPresetId: job.timeline.transitionPresetId,
+        transitionCount: transitions.length,
+        transitionTypes: countTransitionsByType(transitions),
         durationMs: Date.now() - jobStartedAt,
       },
     });
