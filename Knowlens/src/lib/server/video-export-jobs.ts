@@ -10,6 +10,12 @@ import {
   synthesizeWorkspaceTtsAudio,
   type TtsAudioResult,
 } from "@/lib/server/tts-synthesis";
+import {
+  getImageGenerationTaskWithJob,
+  getMockGeneratedImageAsset,
+  isMockImageGenerationTaskId,
+  readImageAsset,
+} from "@/lib/server/image-generation-jobs";
 import { logOpsEvent } from "@/lib/server/store";
 
 const execFileAsync = promisify(execFile);
@@ -101,6 +107,32 @@ function getJobPath(jobId: string) {
   return `${VIDEO_JOB_PREFIX}/${jobId}.json`;
 }
 
+function getImageSourceKind(urlValue: string) {
+  if (urlValue.startsWith("data:")) {
+    return "data";
+  }
+  return getWorkspaceImageAssetTaskId(urlValue) ? "workspace_asset" : "remote_url";
+}
+
+function getTimelineSourceSummary(scenes: NormalizedScene[]) {
+  return scenes.reduce(
+    (summary, scene) => {
+      const sourceKind = getImageSourceKind(scene.imageUrl);
+      summary[sourceKind] += 1;
+      if (scene.narrationText?.trim()) {
+        summary.voiced += 1;
+      }
+      return summary;
+    },
+    {
+      data: 0,
+      remote_url: 0,
+      workspace_asset: 0,
+      voiced: 0,
+    },
+  );
+}
+
 function getBlobAccess(): "public" | "private" {
   return process.env.VIDEO_EXPORT_JOB_BLOB_ACCESS === "private" ? "private" : "public";
 }
@@ -168,6 +200,38 @@ async function updateJob(job: VideoExportJob, patch: Partial<VideoExportJob>) {
   return next;
 }
 
+function logVideoExportJobEvent(input: {
+  job: Pick<
+    VideoExportJob,
+    "id" | "userEmail" | "projectId" | "step" | "progress" | "currentScene" | "totalScenes"
+  >;
+  action: string;
+  status?: "ok" | "error" | "info";
+  code?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+}) {
+  const job = input.job;
+  void logOpsEvent({
+    category: "download",
+    action: input.action,
+    status: input.status || "info",
+    source: "video",
+    userEmail: job.userEmail || undefined,
+    projectId: job.projectId || undefined,
+    code: input.code,
+    message: input.message,
+    details: {
+      jobId: job.id,
+      step: job.step,
+      progress: job.progress,
+      currentScene: job.currentScene,
+      totalScenes: job.totalScenes,
+      ...input.details,
+    },
+  });
+}
+
 function normalizeTimeline(input: VideoExportTimelineInput) {
   const scenes = Array.isArray(input.scenes) ? input.scenes : [];
   if (!scenes.length) {
@@ -200,20 +264,20 @@ function normalizeTimeline(input: VideoExportTimelineInput) {
   };
 }
 
-async function fetchBinaryAsset(urlValue: string, accept: string) {
-  if (urlValue.startsWith("data:")) {
-    const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(urlValue);
-    if (!match) {
-      throw new Error("Invalid data URL asset.");
+function getWorkspaceImageAssetTaskId(urlValue: string) {
+  try {
+    const url = new URL(urlValue);
+    const match = /^\/api\/workspace\/image\/assets\/([^/?#]+)$/.exec(url.pathname);
+    if (!match?.[1]) {
+      return null;
     }
-    const contentType = match[1] || "application/octet-stream";
-    const payload = match[3] || "";
-    const bytes = match[2]
-      ? Buffer.from(payload, "base64")
-      : Buffer.from(decodeURIComponent(payload), "utf8");
-    return { bytes, contentType };
+    return decodeURIComponent(match[1]).trim().slice(0, 120) || null;
+  } catch {
+    return null;
   }
+}
 
+async function fetchHttpBinaryAsset(urlValue: string, accept: string) {
   const url = new URL(urlValue);
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("Unsupported asset URL.");
@@ -228,8 +292,69 @@ async function fetchBinaryAsset(urlValue: string, accept: string) {
   };
 }
 
-async function writeSceneImage(scene: NormalizedScene, tmpDir: string, index: number) {
-  const asset = await fetchBinaryAsset(scene.imageUrl, "image/*,*/*");
+async function fetchWorkspaceImageAsset(taskId: string, userEmail: string | null) {
+  if (isMockImageGenerationTaskId(taskId)) {
+    const mockAsset = getMockGeneratedImageAsset();
+    return {
+      bytes: Buffer.from(mockAsset.bytes),
+      contentType: mockAsset.mimeType,
+    };
+  }
+  if (!userEmail) {
+    throw new Error("Please sign in before exporting protected scene images.");
+  }
+  const taskWithJob = await getImageGenerationTaskWithJob(taskId);
+  if (!taskWithJob) {
+    throw new Error(`Scene image asset ${taskId} was not found.`);
+  }
+  if (taskWithJob.job.userEmail.trim().toLowerCase() !== userEmail) {
+    throw new Error("Scene image asset is not available for this user.");
+  }
+  const asset = await readImageAsset(taskId);
+  if (!asset) {
+    throw new Error(`Scene image asset ${taskId} is not available.`);
+  }
+  if (asset.redirectUrl) {
+    return fetchHttpBinaryAsset(asset.redirectUrl, "image/*,*/*");
+  }
+  if (!asset.bytes) {
+    throw new Error(`Scene image asset ${taskId} is empty.`);
+  }
+  return {
+    bytes: Buffer.from(asset.bytes),
+    contentType: asset.mimeType,
+  };
+}
+
+async function fetchBinaryAsset(urlValue: string, accept: string, userEmail: string | null) {
+  if (urlValue.startsWith("data:")) {
+    const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(urlValue);
+    if (!match) {
+      throw new Error("Invalid data URL asset.");
+    }
+    const contentType = match[1] || "application/octet-stream";
+    const payload = match[3] || "";
+    const bytes = match[2]
+      ? Buffer.from(payload, "base64")
+      : Buffer.from(decodeURIComponent(payload), "utf8");
+    return { bytes, contentType };
+  }
+
+  const workspaceTaskId = getWorkspaceImageAssetTaskId(urlValue);
+  if (workspaceTaskId) {
+    return fetchWorkspaceImageAsset(workspaceTaskId, userEmail);
+  }
+
+  return fetchHttpBinaryAsset(urlValue, accept);
+}
+
+async function writeSceneImage(
+  scene: NormalizedScene,
+  tmpDir: string,
+  index: number,
+  userEmail: string | null,
+) {
+  const asset = await fetchBinaryAsset(scene.imageUrl, "image/*,*/*", userEmail);
   if (!asset.bytes.length) {
     throw new Error(`Scene ${scene.page} image is empty.`);
   }
@@ -432,6 +557,24 @@ export async function createVideoExportJob(input: {
     timeline: normalized,
   };
   await writeBlobJson(getJobPath(job.id), job);
+  const sourceSummary = getTimelineSourceSummary(normalized.scenes);
+  logVideoExportJobEvent({
+    job,
+    action: "video_export_job_created",
+    status: "ok",
+    message: "Video export job created",
+    details: {
+      sceneCount: normalized.scenes.length,
+      voicedSceneCount: sourceSummary.voiced,
+      imageSourceDataCount: sourceSummary.data,
+      imageSourceRemoteUrlCount: sourceSummary.remote_url,
+      imageSourceWorkspaceAssetCount: sourceSummary.workspace_asset,
+      width: normalized.width,
+      height: normalized.height,
+      fps: normalized.fps,
+      transitionPresetId: normalized.transitionPresetId,
+    },
+  });
   return job;
 }
 
@@ -449,6 +592,7 @@ export async function runVideoExportJob(jobId: string) {
     return;
   }
   const tmpDir = path.join(os.tmpdir(), `knowlens-video-${job.id}`);
+  const jobStartedAt = Date.now();
   try {
     await fs.mkdir(tmpDir, { recursive: true });
     job = await updateJob(job, {
@@ -457,18 +601,76 @@ export async function runVideoExportJob(jobId: string) {
       progress: 2,
       message: `Generating 0/${job.totalScenes}`,
     });
+    logVideoExportJobEvent({
+      job,
+      action: "video_export_job_started",
+      status: "ok",
+      message: "Video export job started",
+      details: {
+        tmpDir: "$TMPDIR",
+        sceneCount: job.totalScenes,
+        width: job.timeline.width,
+        height: job.timeline.height,
+        fps: job.timeline.fps,
+      },
+    });
 
     const segmentPaths: string[] = [];
     for (let index = 0; index < job.timeline.scenes.length; index += 1) {
       const scene = job.timeline.scenes[index];
+      const sceneStartedAt = Date.now();
       job = await updateJob(job, {
         step: "tts",
         currentScene: index + 1,
         progress: Math.min(65, Math.round(((index + 0.15) / job.totalScenes) * 70)),
         message: `Generating ${index + 1}/${job.totalScenes}`,
       });
-      const imagePath = await writeSceneImage(scene, tmpDir, index);
+      logVideoExportJobEvent({
+        job,
+        action: "video_export_scene_started",
+        status: "ok",
+        message: `Scene ${index + 1}/${job.totalScenes} started`,
+        details: {
+          sceneIndex: index,
+          scenePage: scene.page,
+          sceneId: scene.id,
+          hasNarration: Boolean(scene.narrationText?.trim()),
+          narrationChars: scene.narrationText?.trim().length || 0,
+          imageSourceKind: getImageSourceKind(scene.imageUrl),
+        },
+      });
+      const imagePath = await writeSceneImage(scene, tmpDir, index, job.userEmail);
+      logVideoExportJobEvent({
+        job,
+        action: "video_export_scene_image_ready",
+        status: "ok",
+        message: `Scene ${index + 1}/${job.totalScenes} image ready`,
+        details: {
+          sceneIndex: index,
+          scenePage: scene.page,
+          sceneId: scene.id,
+          imageSourceKind: getImageSourceKind(scene.imageUrl),
+          durationMs: Date.now() - sceneStartedAt,
+        },
+      });
       const audioPath = await writeSceneAudio(scene, tmpDir, index);
+      logVideoExportJobEvent({
+        job,
+        action: audioPath ? "video_export_scene_audio_ready" : "video_export_scene_audio_skipped",
+        status: "ok",
+        message: audioPath
+          ? `Scene ${index + 1}/${job.totalScenes} audio ready`
+          : `Scene ${index + 1}/${job.totalScenes} audio skipped`,
+        details: {
+          sceneIndex: index,
+          scenePage: scene.page,
+          sceneId: scene.id,
+          hasNarration: Boolean(scene.narrationText?.trim()),
+          narrationChars: scene.narrationText?.trim().length || 0,
+          ttsId: scene.ttsId || null,
+          durationMs: Date.now() - sceneStartedAt,
+        },
+      });
       const segmentPath = path.join(tmpDir, `segment-${String(index + 1).padStart(3, "0")}.mp4`);
       job = await updateJob(job, {
         step: "render",
@@ -485,6 +687,18 @@ export async function runVideoExportJob(jobId: string) {
         durationSec: scene.isCover ? COVER_SCENE_DURATION_SEC : DEFAULT_SCENE_DURATION_SEC,
       });
       segmentPaths.push(segmentPath);
+      logVideoExportJobEvent({
+        job,
+        action: "video_export_scene_segment_ready",
+        status: "ok",
+        message: `Scene ${index + 1}/${job.totalScenes} segment ready`,
+        details: {
+          sceneIndex: index,
+          scenePage: scene.page,
+          sceneId: scene.id,
+          durationMs: Date.now() - sceneStartedAt,
+        },
+      });
     }
 
     job = await updateJob(job, {
@@ -492,17 +706,45 @@ export async function runVideoExportJob(jobId: string) {
       progress: 88,
       message: "Rendering video",
     });
+    logVideoExportJobEvent({
+      job,
+      action: "video_export_concat_started",
+      status: "ok",
+      message: "Video concat started",
+      details: {
+        segmentCount: segmentPaths.length,
+      },
+    });
     const outputPath = path.join(tmpDir, "knowlens-storyboard.mp4");
     await concatSegments(segmentPaths, outputPath);
     const data = await fs.readFile(outputPath);
     if (data.length <= 0) {
       throw new Error("Rendered video is empty.");
     }
+    logVideoExportJobEvent({
+      job,
+      action: "video_export_concat_ready",
+      status: "ok",
+      message: "Video concat ready",
+      details: {
+        bytes: data.length,
+        durationMs: Date.now() - jobStartedAt,
+      },
+    });
 
     job = await updateJob(job, {
       step: "upload",
       progress: 96,
       message: "Uploading video",
+    });
+    logVideoExportJobEvent({
+      job,
+      action: "video_export_upload_started",
+      status: "ok",
+      message: "Video upload started",
+      details: {
+        bytes: data.length,
+      },
     });
     const blob = await putBlob(`${VIDEO_OUTPUT_PREFIX}/${job.id}.mp4`, data, {
       access: "public",
@@ -519,16 +761,20 @@ export async function runVideoExportJob(jobId: string) {
       downloadUrl: blob.downloadUrl || blob.url,
       size: data.length,
     });
-    logOpsEvent({
-      category: "download",
+    logVideoExportJobEvent({
+      job: {
+        ...job,
+        step: "done",
+        progress: 100,
+      },
       action: "video_export_job_success",
       status: "ok",
-      source: "video",
-      userEmail: job.userEmail || undefined,
+      message: "Video export job completed",
       details: {
-        jobId: job.id,
         scenes: job.totalScenes,
         bytes: data.length,
+        resultUrl: blob.url,
+        durationMs: Date.now() - jobStartedAt,
       },
     });
   } catch (error) {
@@ -542,16 +788,24 @@ export async function runVideoExportJob(jobId: string) {
         error: "MP4 export failed. Please retry.",
       }).catch(() => undefined);
     }
-    logOpsEvent({
-      category: "download",
+    logVideoExportJobEvent({
+      job: job || {
+        id: jobId,
+        userEmail: null,
+        projectId: null,
+        step: "queued",
+        progress: 0,
+        currentScene: 0,
+        totalScenes: 0,
+      },
       action: "video_export_job_failed",
       status: "error",
-      source: "video",
-      userEmail: job?.userEmail || undefined,
       code: "VIDEO_EXPORT_JOB_FAILED",
       message,
       details: {
-        jobId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: message,
+        durationMs: Date.now() - jobStartedAt,
       },
     });
   } finally {
