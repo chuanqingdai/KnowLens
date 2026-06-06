@@ -100,6 +100,7 @@ type StyleOption = {
 };
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
+const STYLE_COVER_FRAME_CLASS = "relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none";
 
 function styleCoverCandidates(coverImage?: string) {
   if (!coverImage) {
@@ -120,10 +121,12 @@ function StyleCover({ style }: { style: StyleOption }) {
   const retryCountRef = useRef(0);
   const candidates = useMemo(() => styleCoverCandidates(style.coverImage), [style.coverImage]);
   useEffect(() => {
-    setImageFailed(false);
-    setImageLoaded(false);
     retryCountRef.current = 0;
-    setCoverSrc(candidates[0] ?? "");
+    queueMicrotask(() => {
+      setImageFailed(false);
+      setImageLoaded(false);
+      setCoverSrc(candidates[0] ?? "");
+    });
   }, [candidates]);
   if (!coverSrc || imageFailed) {
     return (
@@ -143,7 +146,7 @@ function StyleCover({ style }: { style: StyleOption }) {
         alt={style.name}
         loading="eager"
         decoding="async"
-        className="absolute inset-0 block h-full w-full rounded-none object-cover align-top"
+        className="absolute inset-0 block h-full w-full scale-[1.01] rounded-none object-cover align-top"
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           const currentIndex = candidates.findIndex((candidate) => candidate === coverSrc);
@@ -608,7 +611,7 @@ export const ChatPanel = memo(function ChatPanel({
   const [prompt1LoadingMessageIndex, setPrompt1LoadingMessageIndex] = useState(0);
   useEffect(() => {
     if (!(showWeakPromptSuggestions && topicSuggestionsLoading)) {
-      setPrompt1LoadingMessageIndex(0);
+      queueMicrotask(() => setPrompt1LoadingMessageIndex(0));
       return;
     }
     const timerId = window.setInterval(() => {
@@ -979,7 +982,7 @@ export const ChatPanel = memo(function ChatPanel({
   const [draftLoadingMessageIndex, setDraftLoadingMessageIndex] = useState(0);
   useEffect(() => {
     if (!shouldShowDraftLoadingCard) {
-      setDraftLoadingMessageIndex(0);
+      queueMicrotask(() => setDraftLoadingMessageIndex(0));
       return;
     }
     const interval = window.setInterval(() => {
@@ -1024,6 +1027,9 @@ export const ChatPanel = memo(function ChatPanel({
     : billingConfirmed
       ? ""
       : `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`;
+  const imageBillingModelLabel = billingSummary.imageModelLabel || "GPT image2";
+  const imageBillingDiscountText = `limited-time 30% rate, regular ${billingSummary.regularCreditsPerOutput} credits`;
+  const ttsBillingModelLabel = billingSummary.ttsModelLabel || "OpenAI TTS Pro";
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1737,7 +1743,7 @@ export const ChatPanel = memo(function ChatPanel({
                         <Check size={12} />
                       </span>
                     ) : null}
-                    <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
+                    <div className={STYLE_COVER_FRAME_CLASS}>
                       <StyleCover style={style} />
                       {supportsHoverDescription ? (
                         <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -1789,7 +1795,7 @@ export const ChatPanel = memo(function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100 leading-none">
+                  <div className={STYLE_COVER_FRAME_CLASS}>
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -1856,10 +1862,7 @@ export const ChatPanel = memo(function ChatPanel({
                 <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                   {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
                   <span className="ml-1 text-zinc-500">
-                    (<span className="line-through">{billingSummary.regularCreditsPerOutput} credits</span>)
-                  </span>
-                  <span className="ml-1 text-zinc-500">
-                    ({billingSummary.imageModelLabel || "GPT image2"})
+                    ({imageBillingModelLabel} · {imageBillingDiscountText})
                   </span>
                 </p>
                 {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
@@ -1868,7 +1871,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                       {billingSummary.ttsNarrationCredits} credits
                       <span className="ml-1 text-zinc-500">
-                        ({billingSummary.ttsModelLabel || "Pro model"}, {billingSummary.ttsNarrationCharCount ?? 0} chars)
+                        ({ttsBillingModelLabel} · {billingSummary.ttsNarrationCharCount ?? 0} chars)
                       </span>
                     </p>
                   </>
@@ -2666,7 +2669,7 @@ export const ChatPanel = memo(function ChatPanel({
                       <Check size={12} />
                     </span>
                   ) : null}
-                    <div className="relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none">
+                    <div className={STYLE_COVER_FRAME_CLASS}>
                     <StyleCover style={style} />
                     {supportsHoverDescription ? (
                       <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2717,7 +2720,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <Check size={12} />
                   </span>
                 ) : null}
-                  <div className="relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none">
+                  <div className={STYLE_COVER_FRAME_CLASS}>
                   <StyleCover style={style} />
                   {supportsHoverDescription ? (
                     <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden translate-y-1 rounded-md bg-zinc-950/72 px-2 py-1.5 text-[11px] leading-4 text-white opacity-0 transition-all duration-200 lg:block lg:group-hover:translate-y-0 lg:group-hover:opacity-100">
@@ -2786,10 +2789,7 @@ export const ChatPanel = memo(function ChatPanel({
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                 {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
                 <span className="ml-1 text-zinc-500">
-                  (<span className="line-through">{billingSummary.regularCreditsPerOutput} credits</span>)
-                </span>
-                <span className="ml-1 text-zinc-500">
-                  ({billingSummary.imageModelLabel || "GPT image2"})
+                  ({imageBillingModelLabel} · {imageBillingDiscountText})
                 </span>
               </p>
               {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
@@ -2798,7 +2798,7 @@ export const ChatPanel = memo(function ChatPanel({
                   <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
                     {billingSummary.ttsNarrationCredits} credits
                     <span className="ml-1 text-zinc-500">
-                      ({billingSummary.ttsModelLabel || "Pro model"}, {billingSummary.ttsNarrationCharCount ?? 0} chars)
+                      ({ttsBillingModelLabel} · {billingSummary.ttsNarrationCharCount ?? 0} chars)
                     </span>
                   </p>
                 </>

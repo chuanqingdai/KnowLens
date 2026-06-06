@@ -92,11 +92,11 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
       return;
     }
     if (!canUseOneTapNow()) {
-      setUseGoogleFallback(true);
+      queueMicrotask(() => setUseGoogleFallback(true));
       return;
     }
     if (window.google?.accounts?.id) {
-      setOneTapReady(true);
+      queueMicrotask(() => setOneTapReady(true));
       return;
     }
     const scriptId = "knowlens-google-onetap";
@@ -185,7 +185,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] text-zinc-900">
+    <div className="flex min-h-screen flex-col bg-[#f6f7f9] text-zinc-900">
       <div
         className="pointer-events-none fixed inset-0"
         style={{
@@ -241,7 +241,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
         </div>
       </header>
 
-      <main className="relative z-10">{children}</main>
+      <main className="relative z-10 flex-1">{children}</main>
 
       <footer className="relative z-10 border-t border-zinc-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">

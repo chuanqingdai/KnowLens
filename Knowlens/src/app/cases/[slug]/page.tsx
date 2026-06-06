@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PublishedPptViewer } from "@/components/featured/PublishedPptViewer";
+import { PublishedVideoPlayer } from "@/components/featured/PublishedVideoPlayer";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { getPublishedCaseBySlug, type PublishedCaseAssetRow, type PublishedCaseOutputType } from "@/lib/server/published-cases";
 
@@ -48,10 +50,6 @@ function getPrimaryImageAsset(assets: PublishedCaseAssetRow[], queryAsset?: stri
   );
 }
 
-function formatSlideLabel(index: number, total: number) {
-  return `Slide ${index + 1} / ${total}`;
-}
-
 function formatScriptLabel(input: {
   outputType: PublishedCaseOutputType;
   asset: PublishedCaseAssetRow;
@@ -68,7 +66,7 @@ function formatScriptLabel(input: {
 
 export default async function PublishedCasePage({ params, searchParams }: CasePageProps) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
-  const item = await getPublishedCaseBySlug(slug);
+  const item = await getPublishedCaseBySlug(slug, false, { includeLatestVideoExportAsset: true });
   if (!item) {
     notFound();
   }
@@ -78,16 +76,17 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
   const videoAsset = assets.find(isVideoAsset) || null;
   const selectedImage = getPrimaryImageAsset(imageAssets, query.asset);
   const selectedImageIndex = selectedImage ? Math.max(0, imageAssets.findIndex((asset) => asset.id === selectedImage.id)) : -1;
-  const previousImage = selectedImageIndex > 0 ? imageAssets[selectedImageIndex - 1] : null;
-  const nextImage = selectedImageIndex >= 0 && selectedImageIndex < imageAssets.length - 1 ? imageAssets[selectedImageIndex + 1] : null;
   const isPpt = item.outputType === "ppt";
   const isVideo = item.outputType === "video";
+  const hasPublishedVideo = Boolean(videoAsset);
   const scriptAssets = imageAssets.filter((asset) => asset.title.trim() || asset.description.trim());
-  const mediaTitle = isVideo
-    ? videoAsset
-      ? item.title
-      : "Video file is not available yet"
-    : selectedImage?.title || item.title;
+  const mediaTitle = hasPublishedVideo
+    ? item.title
+    : isVideo
+      ? videoAsset
+        ? item.title
+        : "Video file is not available yet"
+      : selectedImage?.title || item.title;
 
   return (
     <MarketingChrome>
@@ -96,7 +95,7 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                KnowLens.ai · {formatType(item.outputType)}
+                KnowLens.ai · {formatType(hasPublishedVideo ? "video" : item.outputType)}
               </p>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{item.title}</h1>
               {item.description ? (
@@ -105,7 +104,7 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                 <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">{item.category}</span>
                 <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">@{item.authorLabel}</span>
-                {isPpt && imageAssets.length ? (
+                {isPpt && !hasPublishedVideo && imageAssets.length ? (
                   <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
                     {imageAssets.length} slides
                   </span>
@@ -114,127 +113,70 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
             </div>
           </div>
 
-          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-zinc-900">{mediaTitle}</p>
-                {isPpt && selectedImageIndex >= 0 ? (
-                  <p className="mt-0.5 text-xs text-zinc-500">{formatSlideLabel(selectedImageIndex, imageAssets.length)}</p>
-                ) : null}
+          {isPpt && !hasPublishedVideo ? (
+            <PublishedPptViewer assets={imageAssets} initialIndex={selectedImageIndex} title={item.title} />
+          ) : (
+            <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-zinc-900">{mediaTitle}</p>
+                </div>
               </div>
-            </div>
-            <div className="bg-zinc-950/95 p-3 sm:p-6">
-              {isVideo ? (
-                videoAsset ? (
-                  <video
-                    src={videoAsset.fileUrl}
-                    poster={item.coverUrl || selectedImage?.fileUrl || videoAsset.thumbnailUrl || undefined}
-                    controls
-                    playsInline
-                    preload="metadata"
+              <div className="bg-zinc-950/95 p-3 sm:p-6">
+                {hasPublishedVideo ? (
+                  <PublishedVideoPlayer
+                    src={videoAsset?.fileUrl || ""}
+                    poster={item.coverUrl || selectedImage?.fileUrl || videoAsset?.thumbnailUrl || undefined}
+                    title={item.title}
                     className="mx-auto aspect-video max-h-[78vh] w-full max-w-5xl rounded-xl bg-black"
                   />
-                ) : (
-                  <div className="mx-auto flex min-h-[420px] max-w-5xl items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black text-center">
-                    {selectedImage ? (
-                      <div className="relative h-full w-full">
-                        <img
-                          src={selectedImage.fileUrl}
-                          alt={selectedImage.title || item.title}
-                          className="mx-auto max-h-[78vh] w-auto max-w-full opacity-60"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/35 px-6">
-                          <div className="max-w-md rounded-2xl border border-white/15 bg-black/75 p-5 text-white shadow-xl">
-                            <p className="text-sm font-semibold">Playable MP4 is not published yet</p>
-                            <p className="mt-2 text-sm leading-6 text-white/70">
-                              This public case currently contains storyboard frames only. Publish a video file to show a playable preview here.
-                            </p>
+                ) : isVideo ? (
+                  videoAsset ? (
+                    <PublishedVideoPlayer
+                      src={videoAsset.fileUrl}
+                      poster={item.coverUrl || selectedImage?.fileUrl || videoAsset.thumbnailUrl || undefined}
+                      title={item.title}
+                      className="mx-auto aspect-video max-h-[78vh] w-full max-w-5xl rounded-xl bg-black"
+                    />
+                  ) : (
+                    <div className="mx-auto flex min-h-[420px] max-w-5xl items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black text-center">
+                      {selectedImage ? (
+                        <div className="relative h-full w-full">
+                          <img
+                            src={selectedImage.fileUrl}
+                            alt={selectedImage.title || item.title}
+                            className="mx-auto max-h-[78vh] w-auto max-w-full opacity-60"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/35 px-6">
+                            <div className="max-w-md rounded-2xl border border-white/15 bg-black/75 p-5 text-white shadow-xl">
+                              <p className="text-sm font-semibold">Playable MP4 is not published yet</p>
+                              <p className="mt-2 text-sm leading-6 text-white/70">
+                                This public case currently contains storyboard frames only. Publish a video file to show a playable preview here.
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      <p className="px-6 text-sm text-white/70">This video case has no public media yet.</p>
-                    )}
-                  </div>
-                )
-              ) : selectedImage ? (
-                <div className="relative mx-auto w-fit max-w-full">
-                  <img
-                    src={selectedImage.fileUrl}
-                    alt={selectedImage.title || item.title}
-                    className="mx-auto max-h-[82vh] w-auto max-w-full object-contain"
-                  />
-                  {isPpt && imageAssets.length > 1 ? (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
-                      <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-2 py-2 text-xs text-white shadow-2xl backdrop-blur-md">
-                        {previousImage ? (
-                          <Link
-                            href={caseAssetHref(item.slug, previousImage)}
-                            className="rounded-full px-3 py-1.5 font-medium transition hover:bg-white/15"
-                          >
-                            Previous
-                          </Link>
-                        ) : (
-                          <span className="cursor-not-allowed rounded-full px-3 py-1.5 font-medium text-white/35">
-                            Previous
-                          </span>
-                        )}
-                        <span className="min-w-16 text-center font-medium text-white/85">
-                          {selectedImageIndex + 1} / {imageAssets.length}
-                        </span>
-                        {nextImage ? (
-                          <Link
-                            href={caseAssetHref(item.slug, nextImage)}
-                            className="rounded-full px-3 py-1.5 font-medium transition hover:bg-white/15"
-                          >
-                            Next
-                          </Link>
-                        ) : (
-                          <span className="cursor-not-allowed rounded-full px-3 py-1.5 font-medium text-white/35">
-                            Next
-                          </span>
-                        )}
-                      </div>
+                      ) : (
+                        <p className="px-6 text-sm text-white/70">This video case has no public media yet.</p>
+                      )}
                     </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-white/20 px-4 py-16 text-center text-sm text-white/70">
-                  This case has no public files yet.
-                </div>
-              )}
-            </div>
-          </section>
-
-          {isPpt && imageAssets.length > 1 ? (
-            <section className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-              <div className="flex gap-3 overflow-x-auto pb-1">
-                {imageAssets.map((asset, index) => {
-                  const active = selectedImage?.id === asset.id;
-                  return (
-                    <Link
-                      key={asset.id}
-                      href={caseAssetHref(item.slug, asset)}
-                      className={`w-32 shrink-0 overflow-hidden rounded-xl border transition ${
-                        active ? "border-zinc-900 shadow-sm" : "border-zinc-200 hover:border-zinc-400"
-                      }`}
-                    >
-                      <div className="aspect-video bg-zinc-100">
-                        <img
-                          src={asset.thumbnailUrl || asset.fileUrl}
-                          alt={asset.title || item.title}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <div className="px-2 py-1.5">
-                        <p className="truncate text-xs font-medium text-zinc-900">Slide {index + 1}</p>
-                      </div>
-                    </Link>
-                  );
-                })}
+                  )
+                ) : selectedImage ? (
+                  <div className="relative mx-auto w-fit max-w-full">
+                    <img
+                      src={selectedImage.fileUrl}
+                      alt={selectedImage.title || item.title}
+                      className="mx-auto max-h-[82vh] w-auto max-w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-white/20 px-4 py-16 text-center text-sm text-white/70">
+                    This case has no public files yet.
+                  </div>
+                )}
               </div>
             </section>
-          ) : null}
+          )}
 
           {!isPpt && !isVideo && imageAssets.length > 1 ? (
             <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -300,14 +242,14 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                   The text below is the draft content used to generate this public case.
                 </p>
               </div>
-              <div className="mt-5 grid gap-3">
+              <div className="mt-5 divide-y divide-zinc-200">
                 {scriptAssets.map((asset, index) => (
                   <article
                     key={`script-${asset.id}`}
-                    className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                    className="py-4 first:pt-0 last:pb-0"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-zinc-200">
+                      <span className="rounded-full px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-zinc-200">
                         {formatScriptLabel({ outputType: item.outputType, asset, index })}
                       </span>
                       <h3 className="text-sm font-semibold text-zinc-900">{asset.title || item.title}</h3>

@@ -6,7 +6,11 @@ import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { getDb } from "@/lib/server/db";
 import { readImageAsset } from "@/lib/server/image-generation-jobs";
 import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
-import { findLatestSuccessfulVideoExportJobForProject } from "@/lib/server/video-export-jobs";
+import {
+  findLatestSuccessfulVideoExportJobForProject,
+  findLatestSuccessfulVideoExportJobsForProjects,
+  type VideoExportJob,
+} from "@/lib/server/video-export-jobs";
 import {
   findWorkspaceProjectOwner,
   listWorkspaceProjectPages,
@@ -329,7 +333,86 @@ async function getUniqueCaseSlug(baseSlug: string, existingCaseId?: string) {
   }
 }
 
-export async function listPublishedCases(input?: { includeDrafts?: boolean; includeAssets?: boolean; limit?: number }) {
+function isPublishedVideoAsset(asset: PublishedCaseAssetRow) {
+  const mimeType = asset.mimeType.toLowerCase();
+  return mimeType.startsWith("video/") || /\.mp4(?:$|\?)/i.test(asset.fileUrl) || /\.mp4(?:$|\?)/i.test(asset.downloadUrl);
+}
+
+function videoExportProjectKey(projectId: string, userEmail?: string | null) {
+  return `${projectId.trim()}\u0000${userEmail?.trim().toLowerCase() || ""}`;
+}
+
+function buildLatestVideoExportAsset(item: PublishedCaseRow, job: VideoExportJob): PublishedCaseAssetRow | null {
+  const videoUrl = job.resultUrl || job.downloadUrl || "";
+  if (!videoUrl) {
+    return null;
+  }
+  const thumbnailUrl =
+    item.coverUrl || item.assets?.find((asset) => asset.isPrimary)?.fileUrl || item.assets?.find((asset) => !isPublishedVideoAsset(asset))?.fileUrl || "";
+  const now = job.updatedAt || item.updatedAt || nowIso();
+  return {
+    id: `video-export-${job.id}`,
+    caseId: item.id,
+    slug: `${slugifyPublishedCase(item.title || item.slug)}-video`,
+    assetType: "video_file",
+    title: `${item.title || "KnowLens"} Video`,
+    description: item.description,
+    pageIndex: 0,
+    fileUrl: videoUrl,
+    viewerUrl: `/cases/${encodeURIComponent(item.slug)}`,
+    thumbnailUrl,
+    downloadUrl: job.downloadUrl || videoUrl,
+    storageKey: null,
+    mimeType: job.contentType || "video/mp4",
+    fileSize: job.size,
+    width: job.timeline?.width || null,
+    height: job.timeline?.height || null,
+    durationSeconds: null,
+    isPrimary: false,
+    sortOrder: -1,
+    createdAt: job.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+async function attachLatestVideoExportAssets(items: PublishedCaseRow[]) {
+  const candidates = items.filter((item) => {
+    if (!item.sourceProjectId || item.assets?.some(isPublishedVideoAsset)) {
+      return false;
+    }
+    return true;
+  });
+  if (!candidates.length) {
+    return items;
+  }
+  const latestJobs = await findLatestSuccessfulVideoExportJobsForProjects(
+    candidates.map((item) => ({
+      projectId: item.sourceProjectId || "",
+      userEmail: item.sourceUserEmail,
+    })),
+  );
+  for (const item of candidates) {
+    const projectId = item.sourceProjectId || "";
+    const job =
+      latestJobs.get(videoExportProjectKey(projectId, item.sourceUserEmail)) ||
+      latestJobs.get(videoExportProjectKey(projectId));
+    if (!job) {
+      continue;
+    }
+    const videoAsset = buildLatestVideoExportAsset(item, job);
+    if (videoAsset) {
+      item.assets = [videoAsset, ...(item.assets || [])];
+    }
+  }
+  return items;
+}
+
+export async function listPublishedCases(input?: {
+  includeDrafts?: boolean;
+  includeAssets?: boolean;
+  includeLatestVideoExportAssets?: boolean;
+  limit?: number;
+}) {
   const includeAssets = input?.includeAssets !== false;
   if (hasManagedDatabase()) {
     const includeDrafts = Boolean(input?.includeDrafts);
@@ -353,6 +436,9 @@ export async function listPublishedCases(input?: { includeDrafts?: boolean; incl
       for (const item of items) {
         item.assets = await listPublishedCaseAssets(item.id);
       }
+      if (input?.includeLatestVideoExportAssets) {
+        await attachLatestVideoExportAssets(items);
+      }
     }
     return items;
   }
@@ -375,16 +461,24 @@ export async function listPublishedCases(input?: { includeDrafts?: boolean; incl
            LIMIT ?`,
         )
         .all(limit)) as Array<Record<string, unknown>>;
-  return rows.map((row) => {
+  const items = rows.map((row) => {
     const item = mapCaseRow(row);
     if (includeAssets) {
       item.assets = listPublishedCaseAssetsSync(item.id);
     }
     return item;
   });
+  if (includeAssets && input?.includeLatestVideoExportAssets) {
+    await attachLatestVideoExportAssets(items);
+  }
+  return items;
 }
 
-export async function getPublishedCaseBySlug(slug: string, includeDrafts = false) {
+export async function getPublishedCaseBySlug(
+  slug: string,
+  includeDrafts = false,
+  options?: { includeLatestVideoExportAsset?: boolean },
+) {
   const normalizedSlug = normalizeText(decodeURIComponent(slug), 180);
   if (!normalizedSlug) {
     return null;
@@ -400,6 +494,9 @@ export async function getPublishedCaseBySlug(slug: string, includeDrafts = false
     }
     const item = mapCaseRow(row);
     item.assets = await listPublishedCaseAssets(item.id);
+    if (options?.includeLatestVideoExportAsset) {
+      await attachLatestVideoExportAssets([item]);
+    }
     return item;
   }
   const { db } = getDb();
@@ -413,6 +510,9 @@ export async function getPublishedCaseBySlug(slug: string, includeDrafts = false
   }
   const item = mapCaseRow(row);
   item.assets = listPublishedCaseAssetsSync(item.id);
+  if (options?.includeLatestVideoExportAsset) {
+    await attachLatestVideoExportAssets([item]);
+  }
   return item;
 }
 

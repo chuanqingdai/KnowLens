@@ -406,50 +406,30 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
   },
 ];
 
-const TTS_SAMPLE_TEXT_BY_ID: Record<string, string> = {
-  basic_narrator_male:
-    "The Sun powers life on Earth by sending a steady stream of energy across space.",
-  basic_narrator_female:
-    "A single drop of water can travel through clouds, rivers, oceans, and ice.",
-  pro_documentary_male:
-    "Deep beneath our feet, tectonic plates move slowly, yet their quiet force can raise mountains and redraw continents.",
-  pro_documentary_female:
-    "With every heartbeat, oxygen travels through the body, helping each cell unlock the energy it needs to work.",
-  pro_deep_science:
-    "Inside every atom, invisible forces balance motion and attraction with a precision that shapes all matter.",
-  pro_bright_explainer:
-    "Plants capture sunlight, turn it into sugar, and store solar energy in a form the rest of life can use.",
-  pro_neutral_tech:
-    "Modern sensors translate heat, motion, and light into data, so computers can understand the physical world.",
-  pro_warm_host:
-    "A rainbow appears when sunlight enters tiny water droplets, bends, reflects, and separates into visible color.",
-  pro_calm_teacher:
-    "Learning strengthens neural connections step by step, making future thoughts faster, smoother, and easier to recall.",
-  pro_classic_storyteller:
-    "Long before telescopes, sky watchers followed the stars, turning patterns of light into maps, calendars, and stories.",
-  pro_soft_presenter:
-    "The ocean quietly absorbs heat and carbon dioxide, softening changes in the atmosphere and shaping Earth's climate.",
-  pro_balanced_narrator:
-    "Gravity keeps planets in orbit, gathers stars into galaxies, and gives the universe its large-scale structure.",
-};
-
 const TTS_OPTION_IDS = new Set(TTS_OPTIONS.map((option) => option.id));
 const DEFAULT_EMOTION_TTS_ID = "basic_narrator_female";
-const TTS_SAMPLE_CACHE_VERSION = "expressive-v2";
+const TTS_SAMPLE_CACHE_VERSION = "static-v1";
+const TTS_SAMPLE_AUDIO_BY_ID: Record<string, string> = {
+  basic_narrator_male: "/tts-samples/basic_narrator_male.wav",
+  basic_narrator_female: "/tts-samples/basic_narrator_female.wav",
+  pro_documentary_male: "/tts-samples/pro_documentary_male.wav",
+  pro_documentary_female: "/tts-samples/pro_documentary_female.wav",
+  pro_deep_science: "/tts-samples/pro_deep_science.mp3",
+  pro_bright_explainer: "/tts-samples/pro_bright_explainer.mp3",
+  pro_neutral_tech: "/tts-samples/pro_neutral_tech.mp3",
+  pro_warm_host: "/tts-samples/pro_warm_host.wav",
+  pro_calm_teacher: "/tts-samples/pro_calm_teacher.wav",
+  pro_classic_storyteller: "/tts-samples/pro_classic_storyteller.mp3",
+  pro_soft_presenter: "/tts-samples/pro_soft_presenter.mp3",
+  pro_balanced_narrator: "/tts-samples/pro_balanced_narrator.mp3",
+};
 
 function getTtsSampleCacheKey(voiceId: string) {
   return `${voiceId}:${TTS_SAMPLE_CACHE_VERSION}`;
 }
 
 function getTtsSampleAudioUrl(voiceId: string) {
-  const text = TTS_SAMPLE_TEXT_BY_ID[voiceId] ?? TTS_SAMPLE_TEXT_BY_ID[DEFAULT_EMOTION_TTS_ID];
-  const params = new URLSearchParams({
-    text,
-    voice: voiceId,
-    sample: "1",
-    v: TTS_SAMPLE_CACHE_VERSION,
-  });
-  return `/api/tts?${params.toString()}`;
+  return TTS_SAMPLE_AUDIO_BY_ID[voiceId] ?? TTS_SAMPLE_AUDIO_BY_ID[DEFAULT_EMOTION_TTS_ID];
 }
 
 function buildPrompt(title: string, visual: string) {
@@ -1704,10 +1684,24 @@ export function StoryboardCanvas({
       if (!selectedOption) {
         return;
       }
+      const sampleCacheKey = getTtsSampleCacheKey(normalizedVoiceId);
       if (playingSampleVoiceId === normalizedVoiceId) {
         sampleAudioPreviewRef.current?.pause();
         sampleAudioPreviewRef.current = null;
         setPlayingSampleVoiceId(null);
+        setSampleAudioByVoiceId((prev) => {
+          const current = prev[sampleCacheKey];
+          if (current?.status !== "loading") {
+            return prev;
+          }
+          return {
+            ...prev,
+            [sampleCacheKey]: {
+              url: current.url || getTtsSampleAudioUrl(normalizedVoiceId),
+              status: "ready",
+            },
+          };
+        });
         return;
       }
 
@@ -1718,12 +1712,34 @@ export function StoryboardCanvas({
       setPlayingAudioSlideId(null);
       setPausedAudioSlideId(null);
 
+      const cached = sampleAudioByVoiceIdRef.current[sampleCacheKey];
+      const sampleUrl =
+        cached?.status === "ready" && cached.url
+          ? cached.url
+          : getTtsSampleAudioUrl(normalizedVoiceId);
+
+      setSampleAudioByVoiceId((prev) => ({
+        ...prev,
+        [sampleCacheKey]: {
+          url: sampleUrl,
+          status: cached?.status === "ready" ? "ready" : "loading",
+        },
+      }));
+
       sampleAudioPreviewRef.current?.pause();
       const audio = new Audio();
       audio.preload = "auto";
-      audio.autoplay = true;
       sampleAudioPreviewRef.current = audio;
       setPlayingSampleVoiceId(normalizedVoiceId);
+      audio.oncanplay = () => {
+        setSampleAudioByVoiceId((prev) => ({
+          ...prev,
+          [sampleCacheKey]: {
+            url: sampleUrl,
+            status: "ready",
+          },
+        }));
+      };
       audio.onended = () => {
         if (sampleAudioPreviewRef.current === audio) {
           sampleAudioPreviewRef.current = null;
@@ -1735,36 +1751,20 @@ export function StoryboardCanvas({
           sampleAudioPreviewRef.current = null;
         }
         setPlayingSampleVoiceId(null);
-      };
-
-      const sampleCacheKey = getTtsSampleCacheKey(normalizedVoiceId);
-      const cached = sampleAudioByVoiceIdRef.current[sampleCacheKey];
-      let sampleUrl = cached?.status === "ready" ? cached.url : "";
-      if (!sampleUrl) {
-        sampleUrl = getTtsSampleAudioUrl(normalizedVoiceId);
         setSampleAudioByVoiceId((prev) => ({
           ...prev,
           [sampleCacheKey]: {
             url: sampleUrl,
-            status: "loading",
+            status: "error",
           },
         }));
-      }
+      };
 
       if (sampleAudioPreviewRef.current !== audio) {
         return;
       }
       audio.src = sampleUrl;
       audio.load();
-      audio.oncanplay = () => {
-        setSampleAudioByVoiceId((prev) => ({
-          ...prev,
-          [sampleCacheKey]: {
-            url: sampleUrl,
-            status: "ready",
-          },
-        }));
-      };
       void audio.play().catch(() => {
         if (sampleAudioPreviewRef.current === audio) {
           sampleAudioPreviewRef.current = null;
@@ -1780,11 +1780,7 @@ export function StoryboardCanvas({
       });
     },
     [
-      hasMembership,
       normalizeTtsVoiceId,
-      onRequestTtsUpgrade,
-      pausedAudioSlideId,
-      playingAudioSlideId,
       playingSampleVoiceId,
     ],
   );

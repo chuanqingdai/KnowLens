@@ -695,6 +695,68 @@ export async function findLatestSuccessfulVideoExportJobForProject(input: {
   return jobs.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] || null;
 }
 
+function videoExportProjectKey(projectId: string, userEmail?: string | null) {
+  return `${projectId.trim()}\u0000${userEmail?.trim().toLowerCase() || ""}`;
+}
+
+export async function findLatestSuccessfulVideoExportJobsForProjects(
+  inputs: Array<{
+    projectId: string;
+    userEmail?: string | null;
+  }>,
+) {
+  const targets = new Map<string, { projectId: string; userEmail: string }>();
+  for (const input of inputs) {
+    const projectId = input.projectId.trim();
+    if (!projectId) {
+      continue;
+    }
+    const userEmail = input.userEmail?.trim().toLowerCase() || "";
+    targets.set(videoExportProjectKey(projectId, userEmail), { projectId, userEmail });
+  }
+  const latestByTarget = new Map<string, VideoExportJob>();
+  if (!targets.size) {
+    return latestByTarget;
+  }
+
+  let cursor: string | undefined;
+  let scanned = 0;
+  try {
+    do {
+      const page = await listBlobs({
+        prefix: `${VIDEO_JOB_PREFIX}/`,
+        limit: 100,
+        cursor,
+      });
+      scanned += page.blobs.length;
+      for (const blob of page.blobs) {
+        if (!blob.pathname.endsWith(".json")) {
+          continue;
+        }
+        const job = await readBlobJson<VideoExportJob>(blob.pathname).catch(() => null);
+        if (job?.status !== "success" || !job.projectId || !(job.resultUrl || job.downloadUrl)) {
+          continue;
+        }
+        const directKey = videoExportProjectKey(job.projectId, job.userEmail);
+        const projectOnlyKey = videoExportProjectKey(job.projectId);
+        const targetKey = targets.has(directKey) ? directKey : targets.has(projectOnlyKey) ? projectOnlyKey : "";
+        if (!targetKey) {
+          continue;
+        }
+        const current = latestByTarget.get(targetKey);
+        if (!current || job.updatedAt.localeCompare(current.updatedAt) > 0) {
+          latestByTarget.set(targetKey, job);
+        }
+      }
+      cursor = page.cursor;
+    } while (cursor && scanned < 500);
+  } catch {
+    return latestByTarget;
+  }
+
+  return latestByTarget;
+}
+
 export async function runVideoExportJob(jobId: string) {
   let job = await getVideoExportJob(jobId);
   if (!job || job.status !== "queued") {

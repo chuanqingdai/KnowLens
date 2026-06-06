@@ -56,6 +56,7 @@ import {
   toggleCaseLike,
 } from "@/lib/featured-cases";
 import { PaywallDialog } from "@/components/billing/PaywallDialog";
+import { PublishedVideoPlayer } from "@/components/featured/PublishedVideoPlayer";
 import { readAttributionPayload } from "@/lib/attribution";
 
 const navItems = [
@@ -2748,17 +2749,14 @@ export default function Home() {
                   <div className="skeleton-shimmer mx-auto h-[62dvh] w-full max-w-[520px] rounded-lg sm:h-[72vh]" />
                 ) : null}
                 {activePreviewIsVideo ? (
-                  <video
-                    src={activePreviewAsset?.fileUrl}
+                  <PublishedVideoPlayer
+                    src={activePreviewAsset?.fileUrl || ""}
                     poster={activePreviewAsset?.thumbnailUrl || previewItem.cover}
-                    controls
-                    playsInline
-                    preload="metadata"
+                    title={activePreviewAsset?.title || previewItem.title}
                     className={`mx-auto aspect-video max-h-[82dvh] w-full max-w-5xl rounded-lg bg-black transition-opacity duration-300 ${
                       previewImageLoaded ? "opacity-100" : "opacity-0"
                     }`}
-                    onLoadedMetadata={() => setPreviewImageLoaded(true)}
-                    onError={() => setPreviewImageLoaded(true)}
+                    onReady={() => setPreviewImageLoaded(true)}
                   />
                 ) : activePreviewIsPptDeck ? (
                   <div
