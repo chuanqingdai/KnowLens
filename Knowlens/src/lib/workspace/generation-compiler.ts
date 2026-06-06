@@ -242,23 +242,37 @@ function stripVisibleAspectRatioText(text: string) {
 
 function buildVideoScenePromptDraft(input: {
   title: string;
+  sceneText: string;
   visual: string;
   promptDraft: string;
   isCover: boolean;
 }) {
-  const sceneText = stripVisibleAspectRatioText(sanitizePromptLine(input.visual));
+  const sceneCopy = stripVisibleAspectRatioText(sanitizePromptLine(input.sceneText));
+  const visualDirection = stripVisibleAspectRatioText(sanitizePromptLine(input.visual));
   const fallbackPrompt = stripVisibleAspectRatioText(input.promptDraft);
+  const sceneBasis = cleanText([sceneCopy, visualDirection, fallbackPrompt].filter(Boolean).join(" | "));
   if (input.isCover) {
     return cleanText(
       [
         input.title ? `Cover title: ${input.title}` : "",
-        sceneText || fallbackPrompt,
+        sceneBasis,
+        "one dominant hero subject, clean background, title-only cover, no small labels",
       ]
         .filter(Boolean)
         .join("\n"),
     );
   }
-  return sceneText || fallbackPrompt;
+  return cleanText(
+    [
+      input.title ? `Scene title: ${input.title}` : "",
+      sceneBasis ? `Scene basis: ${sceneBasis}` : "",
+      "Use this scene's copy as the source of truth.",
+      "Create one clear focal subject with one visible action or change.",
+      "Simple composition, 1-3 visual elements maximum, no subtitles, no bullet lists, no tiny labels, no UI text, no dense annotations.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
 }
 
 function splitLabels(value: string, maxCount = 4) {
@@ -710,12 +724,13 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       normalizedDirection === "video"
         ? buildVideoScenePromptDraft({
             title: contentTitle,
+            sceneText: contentBody,
             visual: rawSlideVisual,
             promptDraft: sourceImagePromptDraft,
             isCover: isIndependentCover,
           })
         : sourceImagePromptDraft;
-    const videoImageSignal = cleanText([contentTitle, rawSlideVisual, imagePromptDraft].join("\n"));
+    const videoImageSignal = cleanText([contentTitle, contentBody, rawSlideVisual, imagePromptDraft].join("\n"));
     const visibleLabelSource =
       normalizedDirection === "video"
         ? ""
@@ -818,7 +833,10 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
       : normalizedDirection === "video"
       ? [
           ...negativeRules,
-          "Body storyboard frames should use little to no visible text; avoid subtitles, bullet lists, tiny callouts, dense labels, and small UI text.",
+          "Body storyboard frames must be based on that scene's own copy and visual direction.",
+          "Use one clear main subject and one visible action or change; avoid multi-panel layouts unless the scene explicitly asks for contrast.",
+          "Use little to no visible text; avoid subtitles, bullet lists, tiny callouts, dense labels, UI text, and small annotations.",
+          "Keep the frame simple: 1-3 visual elements maximum and a clean background.",
         ]
       : negativeRules;
     const visualHint = cleanText([sanitizePromptLine(rawSlideVisual), imagePromptDraft].join(" | "));

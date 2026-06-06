@@ -2706,6 +2706,7 @@ export default function WorkspacePage() {
   const [workspaceToast, setWorkspaceToast] = useState<{ id: string; message: string } | null>(null);
   const [draftLlmUsage, setDraftLlmUsage] = useState<DraftLlmUsage | null>(null);
   const [isDraftGenerationPending, setIsDraftGenerationPending] = useState(false);
+  const [, setCurrentDraftJobId] = useState<string | null>(null);
   const [isPlanningNextStep, setIsPlanningNextStep] = useState(false);
   const [isPlanningStyleStep, setIsPlanningStyleStep] = useState(false);
   const [isPlanningBillingStep, setIsPlanningBillingStep] = useState(false);
@@ -2753,6 +2754,7 @@ export default function WorkspacePage() {
   const generationRequestInFlightRef = useRef(false);
   const currentGenerationRunIdRef = useRef<string | null>(null);
   const currentGenerationJobIdRef = useRef<string | null>(null);
+  const currentDraftJobIdRef = useRef<string | null>(null);
   const currentGenerationIdempotencyKeyRef = useRef<string | null>(null);
   const previousFlowStageRef = useRef<FlowStage>("intent");
   const flowStageHistoryRef = useRef<FlowStage>("intent");
@@ -5694,6 +5696,58 @@ export default function WorkspacePage() {
           isRetry,
         },
       });
+      const prepareAndActivateSingleTask = async (task: ImageGenerationTask) => {
+        const idempotencyKey = buildStableGenerationIdempotencyKey({
+          userEmail: currentEmail || "guest",
+          projectId: projectIdRef.current,
+          projectTraceId: projectTraceIdRef.current,
+          runId,
+          tasks: [task],
+        });
+        const prepareResponse = await fetch("/api/workspace/image/generate-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            ...buildGenerationRequestPayload([task]),
+            action: "prepare",
+            idempotencyKey,
+            runId,
+          }),
+        });
+        const preparePayload = (await prepareResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        if (!prepareResponse.ok || !preparePayload?.ok || !preparePayload.job?.id) {
+          throw new Error(
+            preparePayload?.error ||
+              preparePayload?.code ||
+              tr("Generation job preparation failed. Please retry.", "准备生成任务失败，请重试。"),
+          );
+        }
+        const jobId = (preparePayload.job.id || "").trim();
+        setGenerationRunContext(runId, jobId);
+        currentGenerationIdempotencyKeyRef.current =
+          (preparePayload.job.idempotencyKey || idempotencyKey || "").trim() || null;
+
+        const activateResponse = await fetch("/api/workspace/image/generate-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            action: "activate",
+            jobId,
+            runId,
+          }),
+        });
+        const activatedPayload = (await activateResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+        if (!activateResponse.ok || !activatedPayload?.ok || !activatedPayload.job?.id) {
+          throw new Error(
+            activatedPayload?.error ||
+              activatedPayload?.code ||
+              tr("Generation job activation failed. Please retry.", "启动生成任务失败，请重试。"),
+          );
+        }
+        return activatedPayload;
+      };
       let cursor = 0;
       const workers = Array.from({ length: Math.min(maxParallel, tasks.length) }, () => (async () => {
         while (true) {
@@ -5704,13 +5758,13 @@ export default function WorkspacePage() {
           }
           // Ordered dispatch starts jobs in index order, but does not wait for previous job completion.
           // Multiple single-task jobs can run concurrently under the same run id.
-          setGenerationRunContext(runId, null);
-          await runGenerationBatch([task], isRetry, runId);
+          const preparedPayload = await prepareAndActivateSingleTask(task);
+          await runGenerationBatch([task], isRetry, runId, preparedPayload);
         }
       })());
       await Promise.all(workers);
     },
-    [emitFlowAudit, runGenerationBatch, setGenerationRunContext],
+    [buildGenerationRequestPayload, currentEmail, emitFlowAudit, runGenerationBatch, setGenerationRunContext, tr],
   );
   const handleRetryGenerationTask = useCallback(
     (index: number) => {
@@ -6828,6 +6882,304 @@ export default function WorkspacePage() {
     setConfigConfirmed(false);
   }
 
+  type DraftJobResultData = {
+    posterDraft?: PosterDraft;
+    planList?: PosterPlanItem[];
+    outlineItems?: string[];
+    slideDrafts?: Array<SlideDraft & { imagePromptDraft?: string }>;
+    storyboardDrafts?: Array<{
+      index: number;
+      title: string;
+      narration?: string;
+      visual?: string;
+      imagePrompt?: string;
+      imagePromptDraft?: string;
+      isCover?: boolean;
+    }>;
+    llmUsage?: DraftLlmUsage;
+  };
+
+  type DraftJobResponse = {
+    job?: {
+      id: string;
+      status: "queued" | "running" | "success" | "error";
+      progress?: number;
+      message?: string;
+      error?: string | null;
+      result?: DraftJobResultData | null;
+      request?: {
+        normalizedDirection?: WorkspaceIntent;
+        direction?: WorkspaceIntent;
+      };
+    };
+    error?: string;
+  };
+
+  const getDraftJobStorageKey = useCallback((projectId?: string | null) => {
+    const projectKey = projectId?.trim() || projectIdRef.current?.trim() || routeProjectId || "workspace";
+    const userKey = currentEmail || "anonymous";
+    return `knowlens:draft-job:${userKey}:${projectKey}`;
+  }, [currentEmail, routeProjectId]);
+
+  const clearStoredDraftJob = useCallback((projectId?: string | null) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.removeItem(getDraftJobStorageKey(projectId));
+  }, [getDraftJobStorageKey]);
+
+  const getDraftJobFingerprint = useCallback((input: {
+    direction?: unknown;
+    count?: unknown;
+    ratio?: unknown;
+    prompt?: unknown;
+    topic?: unknown;
+    outputLanguage?: unknown;
+  }) => {
+    const direction = String(input.direction || "").trim();
+    const count = Math.max(0, Math.round(Number(input.count) || 0));
+    const ratio = String(input.ratio || "").trim();
+    const language = String(input.outputLanguage || "").trim();
+    const promptHash = hashWorkspaceTelemetryText(String(input.prompt || ""));
+    const topicHash = hashWorkspaceTelemetryText(String(input.topic || ""));
+    return `${direction}|${count}|${ratio}|${language}|${topicHash}|${promptHash}`;
+  }, []);
+
+  const runDraftJobRequest = useCallback(async (body: Record<string, unknown>): Promise<DraftJobResultData> => {
+    const projectId = (body.projectId as string | undefined) || projectIdRef.current || routeProjectId || null;
+    const fingerprint = getDraftJobFingerprint({
+      direction: body.normalizedDirection || body.direction,
+      count: body.normalizedCount || body.posterCount,
+      ratio: body.normalizedRatio || body.posterSizeLabel,
+      prompt: body.prompt,
+      topic: body.topic,
+      outputLanguage: body.outputLanguage,
+    });
+    const startResponse = await fetch("/api/content/draft-jobs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...body,
+        projectId,
+      }),
+    });
+    const startData = (await startResponse.json().catch(() => ({}))) as DraftJobResponse;
+    if (!startResponse.ok || !startData.job?.id) {
+      throw new Error(startData.error || `draft job start failed: ${startResponse.status}`);
+    }
+    const jobId = startData.job.id;
+    currentDraftJobIdRef.current = jobId;
+    setCurrentDraftJobId(jobId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        getDraftJobStorageKey(projectId),
+        JSON.stringify({
+          jobId,
+          projectId,
+          fingerprint,
+          savedAt: Date.now(),
+        }),
+      );
+    }
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 12 * 60 * 1000) {
+      const statusResponse = await fetch(`/api/content/draft-jobs/${encodeURIComponent(jobId)}`);
+      const statusData = (await statusResponse.json().catch(() => ({}))) as DraftJobResponse;
+      if (!statusResponse.ok || !statusData.job) {
+        throw new Error(statusData.error || `draft job status failed: ${statusResponse.status}`);
+      }
+      if (statusData.job.status === "success") {
+        clearStoredDraftJob(projectId);
+        currentDraftJobIdRef.current = null;
+        setCurrentDraftJobId(null);
+        return statusData.job.result || {};
+      }
+      if (statusData.job.status === "error") {
+        clearStoredDraftJob(projectId);
+        currentDraftJobIdRef.current = null;
+        setCurrentDraftJobId(null);
+        throw new Error(statusData.job.error || statusData.job.message || "Draft job failed.");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    }
+    throw new Error("Draft job timed out. Please retry.");
+  }, [clearStoredDraftJob, getDraftJobFingerprint, getDraftJobStorageKey, routeProjectId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isDraftGenerationPending || configConfirmed) {
+      return;
+    }
+    const projectId = projectIdRef.current || routeProjectId || initialEntry.project?.projectId || null;
+    const raw = window.localStorage.getItem(getDraftJobStorageKey(projectId));
+    if (!raw) {
+      return;
+    }
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        const saved = JSON.parse(raw) as { fingerprint?: string; jobId?: string };
+        const jobId = saved.jobId?.trim();
+        if (!jobId) {
+          clearStoredDraftJob(projectId);
+          return;
+        }
+        const currentCount =
+          effectiveIntent === "ppt"
+            ? pptPageCount + 1
+            : effectiveIntent === "video"
+              ? videoStoryboardCount + 1
+              : posterCount;
+        const currentRatio =
+          effectiveIntent === "ppt"
+            ? pptRatio
+            : effectiveIntent === "video"
+              ? videoRatio
+              : posterSizeLabel;
+        const currentFingerprint = getDraftJobFingerprint({
+          direction: effectiveIntent,
+          count: currentCount,
+          ratio: currentRatio,
+          prompt: draftPrompt,
+          topic,
+          outputLanguage,
+        });
+        if (!saved.fingerprint || saved.fingerprint !== currentFingerprint) {
+          clearStoredDraftJob(projectId);
+          return;
+        }
+        setIsDraftGenerationPending(true);
+        currentDraftJobIdRef.current = jobId;
+        setCurrentDraftJobId(jobId);
+        startThinking(
+          tr("Draft", "文稿草稿"),
+          tr("Restoring draft generation progress...", "正在恢复文稿生成进度..."),
+        );
+        const startedAt = Date.now();
+        while (!cancelled && Date.now() - startedAt < 12 * 60 * 1000) {
+          const response = await fetch(`/api/content/draft-jobs/${encodeURIComponent(jobId)}`);
+          const data = (await response.json().catch(() => ({}))) as DraftJobResponse;
+          if (!response.ok || !data.job) {
+            throw new Error(data.error || `draft job status failed: ${response.status}`);
+          }
+          if (data.job.status === "success") {
+            const result = data.job.result || {};
+            const restoredIntent =
+              data.job.request?.normalizedDirection === "ppt" ||
+              data.job.request?.normalizedDirection === "video" ||
+              data.job.request?.normalizedDirection === "poster"
+                ? data.job.request.normalizedDirection
+                : effectiveIntent;
+            if (cancelled) {
+              return;
+            }
+            setConfigConfirmed(true);
+            setFlowStage("content");
+            if (restoredIntent === "poster") {
+              setEditablePosterDraft(result.posterDraft ?? null);
+              setEditablePosterPlanList(Array.isArray(result.planList) ? result.planList : []);
+            } else {
+              const nextOutline = Array.isArray(result.outlineItems)
+                ? result.outlineItems.map((item) => String(item || "").trim()).filter(Boolean)
+                : [];
+              const nextSlides = restoredIntent === "ppt" && Array.isArray(result.slideDrafts)
+                ? result.slideDrafts.map((item, idx) => ({
+                    page: Number.isFinite(item.page) ? item.page : idx + 1,
+                    title: item.title?.trim() || nextOutline[idx] || `Slide ${idx + 1}`,
+                    body: item.body?.trim() || "",
+                    visual: item.visual?.trim() || "",
+                    imagePromptDraft: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+                    imagePrompt: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+                    isCover: item.isCover === true,
+                  }))
+                : restoredIntent === "video" && Array.isArray(result.storyboardDrafts)
+                  ? result.storyboardDrafts.map((item, idx) => ({
+                      page: Number.isFinite(item.index) ? item.index : idx + 1,
+                      title: item.title?.trim() || nextOutline[idx] || `Frame ${idx + 1}`,
+                      body: item.narration?.trim() || "",
+                      visual: item.visual?.trim() || "",
+                      imagePromptDraft: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+                      imagePrompt: item.imagePromptDraft?.trim() || item.imagePrompt?.trim() || "",
+                      isCover: item.isCover === true,
+                    }))
+                  : [];
+              setEditableOutlineItems(nextOutline.length ? nextOutline : baseOutlineItems);
+              setEditableSlideDrafts(nextSlides.length ? nextSlides : baseSlideDrafts);
+            }
+            if (result.llmUsage && Number.isFinite(result.llmUsage.totalTokens) && Number(result.llmUsage.totalTokens) > 0) {
+              setDraftLlmUsage({
+                inputTokens: Math.max(0, Math.round(result.llmUsage.inputTokens || 0)),
+                outputTokens: Math.max(0, Math.round(result.llmUsage.outputTokens || 0)),
+                totalTokens: Math.max(1, Math.round(result.llmUsage.totalTokens)),
+                source: result.llmUsage.source,
+                model: result.llmUsage.model,
+              });
+            }
+            clearStoredDraftJob(projectId);
+            currentDraftJobIdRef.current = null;
+            setCurrentDraftJobId(null);
+            return;
+          }
+          if (data.job.status === "error") {
+            throw new Error(data.job.error || data.job.message || "Draft job failed.");
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          clearStoredDraftJob(projectId);
+          const parsed = parseStructuredError(error);
+          upsertAssistantErrorMessage(
+            null,
+            `Language model draft generation failed. ${parsed.userMessage}`,
+            "Language Model Error",
+            {
+              kind: "llm_error",
+              source: "draft_generation",
+              code: parsed.code,
+              retryable: true,
+            },
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsDraftGenerationPending(false);
+          stopThinking();
+        }
+      }
+    };
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    baseOutlineItems,
+    baseSlideDrafts,
+    clearStoredDraftJob,
+    configConfirmed,
+    draftPrompt,
+    effectiveIntent,
+    getDraftJobFingerprint,
+    getDraftJobStorageKey,
+    initialEntry.project?.projectId,
+    isDraftGenerationPending,
+    outputLanguage,
+    parseStructuredError,
+    posterCount,
+    posterSizeLabel,
+    pptPageCount,
+    pptRatio,
+    routeProjectId,
+    stopThinking,
+    topic,
+    tr,
+    upsertAssistantErrorMessage,
+    videoRatio,
+    videoStoryboardCount,
+  ]);
+
   const handleConfirmConfig = useCallback(async (existingErrorTurnId?: string | null): Promise<boolean> => {
     logClientEvent({
       category: "llm",
@@ -6893,51 +7245,19 @@ export default function WorkspacePage() {
         const bodyCount = effectiveIntent === "ppt" ? pptPageCount : videoStoryboardCount;
         const count = bodyCount + 1;
         const ratioOrSize = effectiveIntent === "ppt" ? pptRatio : videoRatio;
-        const response = await fetch("/api/content/poster-draft", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            topic,
-            prompt: draftPrompt,
-            textModel: initialEntry.models?.textModel || "gemini-2.5",
-            posterCount: count,
-            posterSizeLabel: ratioOrSize,
-            direction: effectiveIntent,
-            normalizedDirection: effectiveIntent,
-            normalizedCount: count,
-            normalizedRatio: ratioOrSize,
-            outputLanguage,
-            draftMode: "auto",
-          }),
+        const data = await runDraftJobRequest({
+          topic,
+          prompt: draftPrompt,
+          textModel: initialEntry.models?.textModel || "gemini-2.5",
+          posterCount: count,
+          posterSizeLabel: ratioOrSize,
+          direction: effectiveIntent,
+          normalizedDirection: effectiveIntent,
+          normalizedCount: count,
+          normalizedRatio: ratioOrSize,
+          outputLanguage,
+          draftMode: "auto",
         });
-        if (!response.ok) {
-          let errorMessage = `content draft request failed: ${response.status}`;
-          try {
-            const errData = (await response.json()) as { error?: string };
-            if (errData?.error) {
-              errorMessage = errData.error;
-            }
-          } catch {
-            // ignore json parse error
-          }
-          throw new Error(errorMessage);
-        }
-        const data = (await response.json()) as {
-          outlineItems?: string[];
-          slideDrafts?: Array<SlideDraft & { imagePromptDraft?: string }>;
-          storyboardDrafts?: Array<{
-            index: number;
-            title: string;
-            narration?: string;
-            visual?: string;
-            imagePrompt?: string;
-            imagePromptDraft?: string;
-            isCover?: boolean;
-          }>;
-          llmUsage?: DraftLlmUsage;
-        };
         if (
           data.llmUsage &&
           Number.isFinite(data.llmUsage.totalTokens) &&
@@ -7082,47 +7402,19 @@ export default function WorkspacePage() {
     );
 
     try {
-      const response = await fetch("/api/content/poster-draft", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          topic,
-          prompt: draftPrompt,
-          textModel: initialEntry.models?.textModel || "gemini-2.5",
-          posterCount,
-          posterSizeLabel,
-          direction: effectiveIntent,
-          normalizedDirection: effectiveIntent,
-          normalizedCount: posterCount,
-          normalizedRatio: posterSizeLabel,
-          outputLanguage,
-          draftMode: "auto",
-        }),
+      const data = await runDraftJobRequest({
+        topic,
+        prompt: draftPrompt,
+        textModel: initialEntry.models?.textModel || "gemini-2.5",
+        posterCount,
+        posterSizeLabel,
+        direction: effectiveIntent,
+        normalizedDirection: effectiveIntent,
+        normalizedCount: posterCount,
+        normalizedRatio: posterSizeLabel,
+        outputLanguage,
+        draftMode: "auto",
       });
-      if (!response.ok) {
-        let errorMessage = `poster draft request failed: ${response.status}`;
-        try {
-          const errData = (await response.json()) as { error?: string };
-          if (errData?.error) {
-            errorMessage = errData.error;
-          }
-        } catch {
-          // ignore json parse error
-        }
-        throw new Error(errorMessage);
-      }
-      const data = (await response.json()) as {
-        posterDraft?: PosterDraft;
-        planList?: PosterPlanItem[];
-        source?: "llm" | "fallback";
-        llmUsage?: DraftLlmUsage;
-        _internal?: {
-          renderSpec?: unknown;
-          modelPrompt?: string;
-        };
-      };
       if (posterDraftRequestRef.current !== requestId) {
         return false;
       }
@@ -7266,6 +7558,7 @@ export default function WorkspacePage() {
     outputLanguage,
     parseStructuredError,
     removeErrorTurn,
+    runDraftJobRequest,
     posterCount,
     posterSizeId,
     posterSizeLabel,

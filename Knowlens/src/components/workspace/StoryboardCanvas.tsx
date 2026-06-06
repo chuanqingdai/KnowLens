@@ -4215,7 +4215,7 @@ export function StoryboardCanvas({
                 <h3 className="text-sm font-semibold text-zinc-900">Download Video</h3>
                 <p className="mt-1 text-xs text-zinc-500">
                   {composeStatus === "success"
-                    ? "Download started. If not, use the button below."
+                    ? "Your download has started. If it doesn't, you can download it manually below."
                     : composeStatus === "error"
                       ? "Please fix the issue below and retry."
                       : "Preparing your video file."}
@@ -4245,7 +4245,6 @@ export function StoryboardCanvas({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-zinc-900">{composedVideoFilename}</p>
-                    <p className="mt-0.5 text-xs text-zinc-500">Download started. If not, click again.</p>
                   </div>
                   <button
                     type="button"
@@ -4323,7 +4322,7 @@ export function StoryboardCanvas({
                 <h3 className="text-sm font-semibold text-zinc-900">Download PPT</h3>
                 <p className="mt-1 text-xs text-zinc-500">
                   {pptExportStatus === "success"
-                    ? "Download started. If not, use the button below."
+                    ? "Your download has started. If it doesn't, you can download it manually below."
                     : pptExportStatus === "error"
                       ? "Please fix the issue below and retry."
                       : "Preparing your PPT file."}
@@ -4353,7 +4352,6 @@ export function StoryboardCanvas({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-zinc-900">{PPT_DOWNLOAD_FILENAME}</p>
-                    <p className="mt-0.5 text-xs text-zinc-500">Download started. If not, click again.</p>
                   </div>
                   <button
                     type="button"

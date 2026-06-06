@@ -61,6 +61,12 @@ type PosterDraftRequest = {
   normalizedRatio?: string;
   draftMode?: "mock" | "auto";
   outputLanguage?: OutputLanguage;
+  draftBatch?: {
+    enabled?: boolean;
+    startIndex?: number;
+    totalCount?: number;
+    includeCover?: boolean;
+  };
 };
 
 type PptSlideDraft = {
@@ -134,6 +140,19 @@ type DraftLlmUsage = {
   model?: string;
 };
 type DraftProviderPath = "gptsapi" | "openai-compat" | "fallback";
+type DraftModelResult =
+  | {
+      ok: true;
+      text: string;
+      modelVersion?: string;
+      usage?: DraftLlmUsage;
+    }
+  | {
+      ok: false;
+      error: string;
+      status?: number;
+      retryable?: boolean;
+    };
 
 const FREE_MODEL_IDS = new Set(["gemini-2.5", "deepseek-v4"]);
 const PAID_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.4", "gemini-3.1-pro", "claude-sonnet-4.6"]);
@@ -167,6 +186,17 @@ async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: num
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function isRetryableDraftStatus(status?: number) {
+  if (!status) {
+    return false;
+  }
+  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function shouldRetryDraftModelResult(result: DraftModelResult) {
+  return !result.ok && (result.retryable === true || isRetryableDraftStatus(result.status));
 }
 
 function isFreeTextModel(textModel?: string) {
@@ -284,7 +314,7 @@ function buildEstimatedDraftLlmUsage(input: {
 async function requestDraftFromGptsApi(input: {
   textModel: string;
   promptBundle: { systemPrompt: string; userPrompt: string };
-}) {
+}): Promise<DraftModelResult> {
   const providerModel = GPTSAPI_MODEL_MAP[input.textModel] || input.textModel;
   const apiKey = getGptsApiKeyForModel(input.textModel);
   if (!apiKey) {
@@ -320,6 +350,7 @@ async function requestDraftFromGptsApi(input: {
       error: isTimeout
         ? `Model request timed out after ${DRAFT_MODEL_TIMEOUT_MS}ms.`
         : `Model request failed: ${error instanceof Error ? error.message : "unknown network error"}`,
+      retryable: true,
     };
   }
 
@@ -328,6 +359,8 @@ async function requestDraftFromGptsApi(input: {
     return {
       ok: false as const,
       error: `Model request failed (${response.status}): ${errText.slice(0, 220)}`,
+      status: response.status,
+      retryable: isRetryableDraftStatus(response.status),
     };
   }
 
@@ -351,7 +384,7 @@ async function requestDraftFromGptsApi(input: {
 async function requestDraftFromPaidModels(input: {
   textModel?: string;
   promptBundle: { systemPrompt: string; userPrompt: string };
-}) {
+}): Promise<DraftModelResult> {
   const apiKey = getPaidChatCompletionsApiKey();
   if (!apiKey) {
     return { ok: false as const, error: "Missing paid model API key." };
@@ -391,6 +424,7 @@ async function requestDraftFromPaidModels(input: {
       error: isTimeout
         ? `Paid model request timed out after ${DRAFT_MODEL_TIMEOUT_MS}ms.`
         : `Paid model request failed: ${error instanceof Error ? error.message : "unknown network error"}`,
+      retryable: true,
     };
   }
 
@@ -399,6 +433,8 @@ async function requestDraftFromPaidModels(input: {
     return {
       ok: false as const,
       error: `Paid model request failed (${response.status}): ${errText.slice(0, 220)}`,
+      status: response.status,
+      retryable: isRetryableDraftStatus(response.status),
     };
   }
 
@@ -417,6 +453,120 @@ async function requestDraftFromPaidModels(input: {
   });
 
   return { ok: true as const, text, modelVersion: data.model ?? model, usage };
+}
+
+async function requestDraftFromGptsApiWithRetry(input: {
+  textModel: string;
+  promptBundle: { systemPrompt: string; userPrompt: string };
+  onRetry?: (firstError: string) => void;
+}) {
+  const first = await requestDraftFromGptsApi(input);
+  if (first.ok || !shouldRetryDraftModelResult(first)) {
+    return first;
+  }
+  input.onRetry?.(first.error);
+  return requestDraftFromGptsApi(input);
+}
+
+async function requestDraftFromPaidModelsWithRetry(input: {
+  textModel?: string;
+  promptBundle: { systemPrompt: string; userPrompt: string };
+  onRetry?: (firstError: string) => void;
+}) {
+  const first = await requestDraftFromPaidModels(input);
+  if (first.ok || !shouldRetryDraftModelResult(first)) {
+    return first;
+  }
+  input.onRetry?.(first.error);
+  return requestDraftFromPaidModels(input);
+}
+
+async function requestDraftFromResolvedProvider(input: {
+  providerPath: DraftProviderPath;
+  textModel: string;
+  promptBundle: { systemPrompt: string; userPrompt: string };
+  onRetry?: (firstError: string) => void;
+}) {
+  if (input.providerPath === "gptsapi") {
+    return requestDraftFromGptsApiWithRetry({
+      textModel: input.textModel,
+      promptBundle: input.promptBundle,
+      onRetry: input.onRetry,
+    });
+  }
+  return requestDraftFromPaidModelsWithRetry({
+    textModel: input.textModel,
+    promptBundle: input.promptBundle,
+    onRetry: input.onRetry,
+  });
+}
+
+function buildSmallSchemaDraftPrompt(input: {
+  direction: "poster" | "ppt" | "video";
+  topic: string;
+  userPrompt: string;
+  count: number;
+  ratioOrSize: string;
+  outputLanguage: OutputLanguage;
+  draftBatch?: NonNullable<PosterDraftRequest["draftBatch"]> | null;
+}) {
+  const sourceText = (input.userPrompt || input.topic).replace(/\s+/g, " ").trim().slice(0, 6000);
+  const languageName = isChineseLanguage(input.outputLanguage) ? "Chinese" : "English";
+  const baseSystem = [
+    "You are KnowLens.ai Prompt2 retry mode.",
+    "Return ONLY strict valid JSON. No markdown. No comments. No trailing commas.",
+    "Use short strings to avoid truncation. Preserve the user's source meaning.",
+    `All user-facing text must be in ${languageName}, except proper nouns.`,
+  ].join("\n");
+
+  if (input.direction === "ppt") {
+    const coverRule = input.draftBatch?.enabled && input.draftBatch.includeCover === false
+      ? "This is a continuation batch. Do not create a cover. Every slide must have isCover=false."
+      : "Slide 1 is a cover.";
+    return {
+      systemPrompt: baseSystem,
+      userPrompt: [
+        `Task: Generate a PPT draft with exactly ${input.count} slides.`,
+        `Topic: ${input.topic}`,
+        `Aspect ratio: ${input.ratioOrSize}`,
+        `Source: ${sourceText}`,
+        "Schema:",
+        '{"outlineItems":["slide title"],"slideDrafts":[{"page":1,"title":"cover title","mainPoint":"","body":"","supportNote":"","visual":"one clear visual direction","imagePrompt":"concise image prompt","isCover":true}]}',
+        `Rules: outlineItems length and slideDrafts length must equal the requested count. ${coverRule} Other slides need concise body text and visual direction.`,
+      ].join("\n"),
+    };
+  }
+
+  if (input.direction === "video") {
+    const coverRule = input.draftBatch?.enabled && input.draftBatch.includeCover === false
+      ? "This is a continuation batch. Do not create a cover. Every frame must have isCover=false and non-empty narration."
+      : "Frame 1 is a cover with empty narration.";
+    return {
+      systemPrompt: baseSystem,
+      userPrompt: [
+        `Task: Generate a video storyboard draft with exactly ${input.count} frames.`,
+        `Topic: ${input.topic}`,
+        `Aspect ratio: ${input.ratioOrSize}`,
+        `Source: ${sourceText}`,
+        "Schema:",
+        '{"outlineItems":["frame title"],"storyboardDrafts":[{"index":1,"title":"cover title","durationSec":6,"narration":"","visual":"one dominant subject and one action","onScreenText":"","isCover":true}]}',
+        `Rules: outlineItems length and storyboardDrafts length must equal the requested count. ${coverRule} Body frames must use concise narration from the source. Visuals must have one dominant subject, one action/change, 1-3 elements, and no small text. Do not output imagePrompt or imagePromptDraft for video.`,
+      ].join("\n"),
+    };
+  }
+
+  return {
+    systemPrompt: baseSystem,
+    userPrompt: [
+      `Task: Generate a poster draft with exactly ${input.count} plan items.`,
+      `Topic: ${input.topic}`,
+      `Size: ${input.ratioOrSize}`,
+      `Source: ${sourceText}`,
+      "Schema:",
+      '{"posterDraft":{"headline":"title","subtitle":"subtitle","body":"short body","points":["point"],"visualType":"visual type","layoutSuggestion":"layout","visualElements":["element"],"cta":"takeaway"},"planList":[{"index":1,"role":"cover","title":"page title","focus":"one concrete focus","keyFacts":["fact"],"visualType":"visual type","visualElements":["element"],"layoutHint":"layout","imagePrompt":"concise image prompt"}]}',
+      "Rules: planList length must equal the requested count. Keep every field concise and concrete.",
+    ].join("\n"),
+  };
 }
 
 type PosterRenderSpec = {
@@ -466,13 +616,14 @@ function clamp(value: number, min: number, max: number) {
 
 function normalizeDraftConfig(payload: PosterDraftRequest) {
   const normalizedDirection = payload.normalizedDirection || payload.direction || "poster";
+  const isBatchMode = payload.draftBatch?.enabled === true;
   const normalizedCountRaw =
     Number.isFinite(payload.normalizedCount) && Number(payload.normalizedCount) > 0
       ? Number(payload.normalizedCount)
       : Number(payload.posterCount || (normalizedDirection === "poster" ? 1 : 6));
   const normalizedCount = clamp(
     Math.round(normalizedCountRaw),
-    normalizedDirection === "poster" ? 1 : 6,
+    normalizedDirection === "poster" || isBatchMode ? 1 : 6,
     normalizedDirection === "poster" ? 10 : 24,
   );
   const normalizedRatio =
@@ -483,6 +634,19 @@ function normalizeDraftConfig(payload: PosterDraftRequest) {
     normalizedCount,
     normalizedRatio,
   } as const;
+}
+
+function normalizeDraftBatch(input: PosterDraftRequest["draftBatch"], totalCount: number) {
+  if (input?.enabled !== true) {
+    return null;
+  }
+  const startIndex = Math.max(1, Math.round(Number(input.startIndex) || 1));
+  return {
+    enabled: true,
+    startIndex,
+    totalCount: Math.max(totalCount, Math.round(Number(input.totalCount) || totalCount)),
+    includeCover: input.includeCover !== false,
+  };
 }
 
 function cleanSentence(input: string) {
@@ -2686,6 +2850,7 @@ function normalizeSlideDrafts(
   count: number,
   topic = "Knowledge Topic",
   outputLanguage: OutputLanguage = "zh",
+  forceFirstCover = true,
 ) {
   const fallbackSlides = buildGenericMediaSeed(topic, count, "ppt", outputLanguage);
   const list = Array.isArray(raw) ? raw : [];
@@ -2704,7 +2869,7 @@ function normalizeSlideDrafts(
       const support = normalizeTextItem(row.supportNote);
       const visual = normalizeTextItem(row.visual);
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
-      const isCover = row.isCover === true || (count > 1 && idx === 0);
+      const isCover = row.isCover === true || (forceFirstCover && count > 1 && idx === 0);
       const bodyLines = isCover ? [] : [mainPoint, body, support].filter(Boolean);
       const safeBody = isCover
         ? ""
@@ -2731,7 +2896,7 @@ function normalizeSlideDrafts(
     if (existing) {
       return existing;
     }
-    const isCover = count > 1 && idx === 0;
+    const isCover = forceFirstCover && count > 1 && idx === 0;
     return {
       page: idx + 1,
       title: toConciseDraftTitle(title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`, topic, outputLanguage)
@@ -2751,6 +2916,7 @@ function normalizeStoryboardDrafts(
   count: number,
   topic = "Knowledge Topic",
   outputLanguage: OutputLanguage = "zh",
+  forceFirstCover = true,
 ) {
   const fallbackFrames = buildGenericMediaSeed(topic, count, "video", outputLanguage);
   const list = Array.isArray(raw) ? raw : [];
@@ -2766,8 +2932,7 @@ function normalizeStoryboardDrafts(
       const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage) || titleCandidate;
       const narration = normalizeTextItem(row.narration);
       const visual = normalizeTextItem(row.visual);
-      const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
-      const isCover = row.isCover === true || (count > 1 && idx === 0);
+      const isCover = row.isCover === true || (forceFirstCover && count > 1 && idx === 0);
       const safeVisual = visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "";
       const safeNarration = isCover
         ? ""
@@ -2791,8 +2956,8 @@ function normalizeStoryboardDrafts(
         title,
         narration: safeNarration,
         visual: safeVisual,
-        imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
-        imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
+        imagePromptDraft: "",
+        imagePrompt: "",
         isCover,
       };
     })
@@ -2806,7 +2971,7 @@ function normalizeStoryboardDrafts(
     if (existing) {
       return existing;
     }
-    const isCover = count > 1 && idx === 0;
+    const isCover = forceFirstCover && count > 1 && idx === 0;
     return {
       index: idx + 1,
       title: toConciseDraftTitle(title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`, topic, outputLanguage)
@@ -2821,113 +2986,11 @@ function normalizeStoryboardDrafts(
             outputLanguage,
           }),
       visual: fallbackFrames[idx]?.visual || "",
-      imagePromptDraft: fallbackFrames[idx]?.imagePrompt || "",
-      imagePrompt: fallbackFrames[idx]?.imagePrompt || "",
+      imagePromptDraft: "",
+      imagePrompt: "",
       isCover,
     };
   });
-}
-
-function buildFallbackMediaDraftPayload(input: {
-  direction: "ppt" | "video";
-  outputCount: number;
-  posterSizeLabel: string;
-  topic: string;
-  sourceText?: string;
-  outputLanguage: OutputLanguage;
-  promptBundle: ReturnType<typeof buildContentDraftPrompt>;
-  modelForLog: string;
-  generatedText?: string;
-  providerPath?: DraftProviderPath;
-}) {
-  const sourceSeed = buildSourceAwareMediaSeed(
-    input.sourceText || "",
-    input.topic,
-    input.outputCount,
-    input.direction,
-    input.outputLanguage,
-  );
-  const outlineItems = sourceSeed?.length
-    ? sourceSeed.map((item) => item.title)
-    : normalizeOutlineItems(
-        null,
-        input.outputCount,
-        input.topic,
-        input.direction,
-        input.outputLanguage,
-      );
-  if (input.direction === "ppt") {
-    return {
-      direction: input.direction,
-      normalizedDirection: input.direction,
-      normalizedCount: input.outputCount,
-      normalizedRatio: input.posterSizeLabel,
-      outlineItems,
-      slideDrafts: sourceSeed?.length
-        ? sourceSeed.map((item, idx) => ({
-            page: idx + 1,
-            title: item.title,
-            body: item.isCover ? "" : item.body || item.mainPoint,
-            visual: item.visual,
-            imagePromptDraft: item.imagePrompt,
-            imagePrompt: item.imagePrompt,
-            isCover: item.isCover === true,
-          }))
-        : normalizeSlideDrafts(
-            null,
-            outlineItems,
-            input.outputCount,
-            input.topic,
-            input.outputLanguage,
-          ),
-      outputLanguage: input.outputLanguage,
-      source: "fallback",
-      providerPath: input.providerPath ?? "fallback",
-      llmUsage: buildEstimatedDraftLlmUsage({
-        promptBundle: input.promptBundle,
-        generatedText: input.generatedText || "",
-        model: input.modelForLog,
-      }),
-    };
-  }
-  return {
-    direction: input.direction,
-    normalizedDirection: input.direction,
-    normalizedCount: input.outputCount,
-    normalizedRatio: input.posterSizeLabel,
-    outlineItems,
-    storyboardDrafts: sourceSeed?.length
-      ? sourceSeed.map((item, idx) => ({
-          index: idx + 1,
-          title: item.title,
-          narration: item.isCover ? "" : tuneStoryboardNarrationLength({
-            narration: item.narration || item.body || item.mainPoint,
-            fallbackNarration: item.body || item.mainPoint,
-            title: item.title,
-            visual: item.visual,
-            outputLanguage: input.outputLanguage,
-          }),
-          visual: item.visual,
-          imagePromptDraft: item.imagePrompt,
-          imagePrompt: item.imagePrompt,
-          isCover: item.isCover === true,
-        }))
-      : normalizeStoryboardDrafts(
-          null,
-          outlineItems,
-          input.outputCount,
-          input.topic,
-          input.outputLanguage,
-        ),
-    outputLanguage: input.outputLanguage,
-    source: "fallback",
-    providerPath: input.providerPath ?? "fallback",
-    llmUsage: buildEstimatedDraftLlmUsage({
-      promptBundle: input.promptBundle,
-      generatedText: input.generatedText || "",
-      model: input.modelForLog,
-    }),
-  };
 }
 
 function enforcePosterSpecificity(draft: PosterDraft, topic: string): PosterDraft {
@@ -3172,6 +3235,7 @@ export async function POST(request: NextRequest) {
     const direction = normalized.normalizedDirection;
     const outputCount = normalized.normalizedCount;
     const posterSizeLabel = normalized.normalizedRatio;
+    const draftBatch = normalizeDraftBatch(payload.draftBatch, outputCount);
     const outputLanguage = resolveOutputLanguage({
       userPrompt: prompt,
       sourceText: rawTopic || prompt,
@@ -3211,6 +3275,7 @@ export async function POST(request: NextRequest) {
       count: outputCount,
       ratioOrSize: posterSizeLabel,
       outputLanguage,
+      draftBatch: draftBatch ?? undefined,
     });
 
     let content = "";
@@ -3218,14 +3283,44 @@ export async function POST(request: NextRequest) {
     let providerPath: DraftProviderPath = "fallback";
     const modelForLog = textModel || "paid-default";
     if (isFreeTextModel(textModel)) {
-      const freeResult = await requestDraftFromGptsApi({ textModel, promptBundle });
+      const freeResult = await requestDraftFromGptsApiWithRetry({
+        textModel,
+        promptBundle,
+        onRetry: (firstError) => {
+          logOpsEvent({
+            category: "llm",
+            action: "draft_generation_retry",
+            status: "ok",
+            source: modelForLog,
+            userEmail: email,
+            code: "FREE_MODEL_REQUEST_RETRY",
+            message: firstError,
+            details: { stage: "draft_model_request_free_retry", direction, outputCount },
+          });
+        },
+      });
       if (freeResult.ok) {
         content = freeResult.text;
         llmUsage = freeResult.usage ?? null;
         providerPath = "gptsapi";
       } else {
         const compatResult = hasOpenAICompatDraftProvider()
-          ? await requestDraftFromPaidModels({ textModel, promptBundle })
+          ? await requestDraftFromPaidModelsWithRetry({
+              textModel,
+              promptBundle,
+              onRetry: (firstError) => {
+                logOpsEvent({
+                  category: "llm",
+                  action: "draft_generation_retry",
+                  status: "ok",
+                  source: modelForLog,
+                  userEmail: email,
+                  code: "OPENAI_COMPAT_MODEL_REQUEST_RETRY",
+                  message: firstError,
+                  details: { stage: "draft_model_request_openai_compat_retry", direction, outputCount },
+                });
+              },
+            })
           : null;
         if (compatResult?.ok) {
           content = compatResult.text;
@@ -3254,18 +3349,6 @@ export async function POST(request: NextRequest) {
             message: freeResult.error,
             details: { stage: "draft_model_request_free", direction, outputCount },
           });
-          if (direction === "poster") {
-            return NextResponse.json(
-              {
-                posterDraft: fallbackDraft,
-                planList: fallbackPlan,
-                source: "fallback",
-                providerPath: "fallback" as DraftProviderPath,
-                error: freeResult.error,
-              },
-              { status: 200 },
-            );
-          }
           return NextResponse.json(
             { error: freeResult.error, providerPath: "fallback" as DraftProviderPath },
             { status: 502 },
@@ -3273,7 +3356,22 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      const paidResult = await requestDraftFromPaidModels({ textModel, promptBundle });
+      const paidResult = await requestDraftFromPaidModelsWithRetry({
+        textModel,
+        promptBundle,
+        onRetry: (firstError) => {
+          logOpsEvent({
+            category: "llm",
+            action: "draft_generation_retry",
+            status: "ok",
+            source: modelForLog,
+            userEmail: email,
+            code: "PAID_MODEL_REQUEST_RETRY",
+            message: firstError,
+            details: { stage: "draft_model_request_paid_retry", direction, outputCount },
+          });
+        },
+      });
       if (!paidResult.ok) {
         logOpsEvent({
           category: "llm",
@@ -3285,18 +3383,6 @@ export async function POST(request: NextRequest) {
           message: paidResult.error,
           details: { stage: "draft_model_request_paid", direction, outputCount },
         });
-        if (direction === "poster") {
-          return NextResponse.json(
-            {
-              posterDraft: fallbackDraft,
-              planList: fallbackPlan,
-              source: "fallback",
-              providerPath: "fallback" as DraftProviderPath,
-              error: paidResult.error,
-            },
-            { status: 200 },
-          );
-        }
         return NextResponse.json(
           { error: paidResult.error, providerPath: "fallback" as DraftProviderPath },
           { status: 502 },
@@ -3318,33 +3404,10 @@ export async function POST(request: NextRequest) {
         message: "Model response is empty.",
         details: { stage: "draft_response_empty", direction, outputCount },
       });
-      if (direction === "poster") {
-        return NextResponse.json(
-          {
-            posterDraft: fallbackDraft,
-            planList: fallbackPlan,
-            source: "fallback",
-            providerPath: "fallback" as DraftProviderPath,
-            error: "Model response is empty.",
-          },
-          { status: 200 },
-        );
-      }
-      return NextResponse.json({
-        ...buildFallbackMediaDraftPayload({
-          direction,
-          outputCount,
-          posterSizeLabel,
-          topic,
-          sourceText: prompt,
-          outputLanguage,
-          promptBundle,
-          modelForLog,
-          generatedText: content,
-          providerPath,
-        }),
-        error: "Model response is empty.",
-      });
+      return NextResponse.json(
+        { error: "Model response is empty.", providerPath },
+        { status: 502 },
+      );
     }
     let parsed: ReturnType<typeof parseJsonContent> = null;
     try {
@@ -3384,30 +3447,105 @@ export async function POST(request: NextRequest) {
           rawSnippet: content.slice(0, 1200),
         },
       });
-      if (direction !== "poster") {
-        return NextResponse.json({
-          ...buildFallbackMediaDraftPayload({
+      const smallSchemaPromptBundle = buildSmallSchemaDraftPrompt({
+        direction,
+        topic,
+        userPrompt: prompt,
+        count: outputCount,
+        ratioOrSize: posterSizeLabel,
+        outputLanguage,
+      });
+      logOpsEvent({
+        category: "llm",
+        action: "draft_generation_retry",
+        status: "ok",
+        source: modelForLog,
+        userEmail: email,
+        code: "DRAFT_JSON_SMALL_SCHEMA_RETRY",
+        message: "Retrying draft generation with a smaller JSON schema.",
+        details: { stage: "draft_response_json_retry", direction, outputCount, providerPath },
+      });
+      const retryResult = await requestDraftFromResolvedProvider({
+        providerPath,
+        textModel,
+        promptBundle: smallSchemaPromptBundle,
+        onRetry: (firstError) => {
+          logOpsEvent({
+            category: "llm",
+            action: "draft_generation_retry",
+            status: "ok",
+            source: modelForLog,
+            userEmail: email,
+            code: "DRAFT_JSON_SMALL_SCHEMA_REQUEST_RETRY",
+            message: firstError,
+            details: { stage: "draft_response_json_retry_request_retry", direction, outputCount, providerPath },
+          });
+        },
+      });
+      if (!retryResult.ok) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_failed",
+          status: "error",
+          source: modelForLog,
+          userEmail: email,
+          code: "DRAFT_JSON_SMALL_SCHEMA_REQUEST_FAILED",
+          message: retryResult.error,
+          details: { stage: "draft_response_json_retry_request", direction, outputCount, providerPath },
+        });
+        return NextResponse.json(
+          {
+            error: `Model response is not valid JSON; small-schema retry failed: ${retryResult.error}`,
+            providerPath,
+          },
+          { status: 502 },
+        );
+      }
+      content = retryResult.text;
+      llmUsage = retryResult.usage ?? llmUsage;
+      try {
+        parsed = parseJsonContent(content);
+      } catch (error) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_failed",
+          status: "error",
+          source: modelForLog,
+          userEmail: email,
+          code: "DRAFT_JSON_SMALL_SCHEMA_PARSE_EXCEPTION",
+          message: error instanceof Error ? error.message : "Small-schema retry JSON parsing failed.",
+          details: {
+            stage: "draft_response_json_retry_parsing_exception",
             direction,
             outputCount,
-            posterSizeLabel,
-            topic,
-            sourceText: prompt,
-            outputLanguage,
-            promptBundle,
-            modelForLog,
-            generatedText: content,
             providerPath,
-          }),
-          error: "Model response is not valid JSON.",
+            rawSnippet: content.slice(0, 1200),
+          },
         });
+        parsed = null;
       }
-      return NextResponse.json({
-        posterDraft: fallbackDraft,
-        planList: fallbackPlan,
-        outputLanguage,
-        source: "fallback",
-        providerPath: "fallback" as DraftProviderPath,
-      });
+      if (!parsed) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_failed",
+          status: "error",
+          source: modelForLog,
+          userEmail: email,
+          code: "DRAFT_JSON_SMALL_SCHEMA_INVALID_JSON",
+          message: "Small-schema retry response is not valid JSON.",
+          details: {
+            stage: "draft_response_json_retry_parsing",
+            direction,
+            outputCount,
+            providerPath,
+            rawSnippet: content.slice(0, 1200),
+          },
+        });
+        return NextResponse.json(
+          { error: "Model response is not valid JSON after small-schema retry.", providerPath },
+          { status: 502 },
+        );
+      }
     }
 
     if (direction !== "poster") {
@@ -3420,9 +3558,18 @@ export async function POST(request: NextRequest) {
         details: { direction, outputCount, providerPath },
       });
       const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic, direction, outputLanguage);
-      const sourceAwareSeed = buildSourceAwareMediaSeed(prompt, topic, outputCount, direction, outputLanguage);
+      const sourceAwareSeed = draftBatch?.includeCover === false
+        ? null
+        : buildSourceAwareMediaSeed(prompt, topic, outputCount, direction, outputLanguage);
       if (direction === "ppt") {
-        const slideDrafts = normalizeSlideDrafts(parsed.slideDrafts, outlineItems, outputCount, topic, outputLanguage);
+        const slideDrafts = normalizeSlideDrafts(
+          parsed.slideDrafts,
+          outlineItems,
+          outputCount,
+          topic,
+          outputLanguage,
+          draftBatch?.includeCover !== false,
+        );
         if (
           sourceAwareSeed?.length &&
           shouldPreferSourceAwareMediaSeed({
@@ -3481,7 +3628,14 @@ export async function POST(request: NextRequest) {
             }),
         });
       }
-      const storyboardDrafts = normalizeStoryboardDrafts(parsed.storyboardDrafts, outlineItems, outputCount, topic, outputLanguage);
+      const storyboardDrafts = normalizeStoryboardDrafts(
+        parsed.storyboardDrafts,
+        outlineItems,
+        outputCount,
+        topic,
+        outputLanguage,
+        draftBatch?.includeCover !== false,
+      );
       if (
         sourceAwareSeed?.length &&
         shouldPreferSourceAwareMediaSeed({
@@ -3503,8 +3657,8 @@ export async function POST(request: NextRequest) {
             outputLanguage,
           }),
           visual: item.visual,
-          imagePromptDraft: item.imagePrompt,
-          imagePrompt: item.imagePrompt,
+          imagePromptDraft: "",
+          imagePrompt: "",
           isCover: item.isCover === true,
         }));
         return NextResponse.json({

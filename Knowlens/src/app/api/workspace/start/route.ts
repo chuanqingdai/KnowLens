@@ -77,12 +77,70 @@ function getScopeFromRequest(req: NextRequest, email: string) {
   return email ? `user:${email}` : `ip:${ip}`;
 }
 
+function normalizeOriginCandidate(value?: string | null) {
+  const raw = (value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  try {
+    return new URL(raw.startsWith("http") ? raw : `https://${raw}`).origin;
+  } catch {
+    return "";
+  }
+}
+
+function isLocalhostHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+}
+
 function ensureSafeOrigin(req: NextRequest) {
   const origin = req.headers.get("origin");
   if (!origin) {
     return true;
   }
-  return origin === req.nextUrl.origin;
+  const requestOrigin = normalizeOriginCandidate(origin);
+  if (!requestOrigin) {
+    return false;
+  }
+
+  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.nextUrl.protocol.replace(":", "");
+  const hostCandidates = [
+    req.headers.get("host"),
+    req.headers.get("x-forwarded-host")?.split(",")[0]?.trim(),
+    req.nextUrl.host,
+  ].filter(Boolean) as string[];
+  const allowedOrigins = new Set(
+    [
+      req.nextUrl.origin,
+      req.url,
+      ...hostCandidates.map((host) => `${forwardedProto}://${host}`),
+      process.env.NEXTAUTH_URL,
+      process.env.AUTH_URL,
+      process.env.NEXT_PUBLIC_APP_URL,
+      process.env.NEXT_PUBLIC_SITE_URL,
+      process.env.NEXT_PUBLIC_BASE_URL,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+    ]
+      .map(normalizeOriginCandidate)
+      .filter(Boolean),
+  );
+  if (allowedOrigins.has(requestOrigin)) {
+    return true;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    const parsedOrigin = new URL(requestOrigin);
+    return Array.from(allowedOrigins).some((allowedOrigin) => {
+      const parsedAllowed = new URL(allowedOrigin);
+      return (
+        isLocalhostHost(parsedOrigin.hostname) &&
+        isLocalhostHost(parsedAllowed.hostname) &&
+        parsedOrigin.port === parsedAllowed.port
+      );
+    });
+  }
+
+  return false;
 }
 
 export async function POST(request: NextRequest) {
