@@ -416,6 +416,60 @@ export async function getPublishedCaseBySlug(slug: string, includeDrafts = false
   return item;
 }
 
+export async function getPublishedCaseByDisplaySlug(slug: string, outputType?: PublishedCaseOutputType) {
+  const normalizedSlug = normalizeText(decodeURIComponent(slug), 180);
+  if (!normalizedSlug) {
+    return null;
+  }
+
+  const exact = await getPublishedCaseBySlug(normalizedSlug);
+  if (exact && (!outputType || exact.outputType === outputType)) {
+    return exact;
+  }
+
+  const suffix = normalizedSlug.match(/-([a-z0-9]{6})$/i)?.[1]?.toLowerCase();
+  if (!suffix) {
+    return null;
+  }
+
+  if (hasManagedDatabase()) {
+    const row = (await pgGet(
+      `SELECT * FROM published_cases
+       WHERE status = 'published'
+         AND output_type = ?
+         AND RIGHT(LOWER(id), 6) = ?
+       ORDER BY featured DESC, sort_order ASC, COALESCE(published_at, updated_at) DESC
+       LIMIT 1`,
+      outputType || "poster",
+      suffix,
+    )) as Record<string, unknown> | undefined;
+    if (!row) {
+      return null;
+    }
+    const item = mapCaseRow(row);
+    item.assets = await listPublishedCaseAssets(item.id);
+    return item;
+  }
+
+  const { db } = getDb();
+  const row = db
+    .prepare(
+      `SELECT * FROM published_cases
+       WHERE status = 'published'
+         AND output_type = ?
+         AND LOWER(substr(id, -6)) = ?
+       ORDER BY featured DESC, sort_order ASC, COALESCE(published_at, updated_at) DESC
+       LIMIT ?`,
+    )
+    .get(outputType || "poster", suffix, 1) as Record<string, unknown> | undefined;
+  if (!row) {
+    return null;
+  }
+  const item = mapCaseRow(row);
+  item.assets = listPublishedCaseAssetsSync(item.id);
+  return item;
+}
+
 export async function getPublishedCaseAssetById(assetId: string) {
   const id = normalizeText(assetId, 160);
   if (!id) {

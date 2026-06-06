@@ -1,6 +1,6 @@
-"use client";
-
 import { CaseDetailRoute } from "@/components/featured/CaseDetailRoute";
+import { getPublishedCaseByDisplaySlug } from "@/lib/server/published-cases";
+import { redirect } from "next/navigation";
 
 type VideoDetailPageProps = {
   params: Promise<{
@@ -10,5 +10,9 @@ type VideoDetailPageProps = {
 
 export default async function VideoDetailPage({ params }: VideoDetailPageProps) {
   const resolved = await params;
+  const publicCase = await getPublishedCaseByDisplaySlug(resolved.id, "video");
+  if (publicCase) {
+    redirect(`/cases/${encodeURIComponent(publicCase.slug)}`);
+  }
   return <CaseDetailRoute slug={resolved.id} kind="video" />;
 }

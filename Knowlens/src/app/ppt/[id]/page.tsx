@@ -1,6 +1,6 @@
-"use client";
-
 import { CaseDetailRoute } from "@/components/featured/CaseDetailRoute";
+import { getPublishedCaseByDisplaySlug } from "@/lib/server/published-cases";
+import { redirect } from "next/navigation";
 
 type PptDetailPageProps = {
   params: Promise<{
@@ -10,5 +10,9 @@ type PptDetailPageProps = {
 
 export default async function PptDetailPage({ params }: PptDetailPageProps) {
   const resolved = await params;
+  const publicCase = await getPublishedCaseByDisplaySlug(resolved.id, "ppt");
+  if (publicCase) {
+    redirect(`/cases/${encodeURIComponent(publicCase.slug)}`);
+  }
   return <CaseDetailRoute slug={resolved.id} kind="ppt" />;
 }
