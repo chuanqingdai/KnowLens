@@ -765,7 +765,12 @@ function normalizeTasksFromPayload(payload: GenerateBatchPayload) {
   const normalized = tasks
     .map((task, idx) => {
       const index = Number.isFinite(task.index) ? Math.max(1, Math.round(Number(task.index))) : idx + 1;
-      const prompt = clampPromptForImage(task.prompt || task.composedPrompt || buildPromptFromPayloadTask(task));
+      const outputType = (task.outputType || "poster").trim() || "poster";
+      const promptSource =
+        outputType === "video"
+          ? buildPromptFromPayloadTask(task)
+          : task.prompt || task.composedPrompt || buildPromptFromPayloadTask(task);
+      const prompt = clampPromptForImage(promptSource);
       if (!prompt) {
         return null;
       }
@@ -777,7 +782,7 @@ function normalizeTasksFromPayload(payload: GenerateBatchPayload) {
       }
       return {
         index,
-        outputType: (task.outputType || "poster").trim() || "poster",
+        outputType,
         aspectRatio: normalizedRatio,
         size: resolvedSize,
         prompt,

@@ -26,7 +26,7 @@ export async function POST(
     if (!reply) {
       return NextResponse.json({ error: "reply is required" }, { status: 400 });
     }
-    replyFeedbackDb({
+    await replyFeedbackDb({
       recordId,
       reply,
       repliedBy: (body.repliedBy ?? "Admin").trim() || "Admin",

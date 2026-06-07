@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const scope = normalizeScope(request.nextUrl.searchParams.get("email"));
-  const items = listFeedbackDb();
+  const items = await listFeedbackDb();
   const filtered = scope === "guest" ? items : items;
   return NextResponse.json({ records: filtered });
 }
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required feedback fields" }, { status: 400 });
     }
 
-    const id = insertFeedbackDb({
+    const id = await insertFeedbackDb({
       type,
       detail,
       contact,

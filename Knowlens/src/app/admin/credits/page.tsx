@@ -1,9 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Minus, Plus, RotateCcw, Search } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { getCreditRecords, type CreditRecord } from "@/lib/billing";
+
+type AdminCreditRecord = {
+  id: string;
+  createdAt: string;
+  type: "topup" | "consume" | "refund" | "adjustment";
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  userId?: string;
+  projectId?: string;
+};
 
 function formatDate(input: string) {
   return new Date(input).toLocaleString("zh-CN", {
@@ -16,7 +26,42 @@ function formatDate(input: string) {
 
 export default function AdminCreditsPage() {
   const [keyword, setKeyword] = useState("");
-  const [records] = useState<CreditRecord[]>(() => getCreditRecords());
+  const [records, setRecords] = useState<AdminCreditRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/console-data", {
+      cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          data?: { creditRecords?: AdminCreditRecord[] };
+        };
+        if (!response.ok || !payload.ok) {
+          throw new Error("Admin credits request failed");
+        }
+        if (!cancelled) {
+          setRecords(payload.data?.creditRecords || []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRecords([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const summary = useMemo(() => {
     const income = records.filter((record) => record.delta > 0).reduce((sum, item) => sum + item.delta, 0);
@@ -24,7 +69,7 @@ export default function AdminCreditsPage() {
     return {
       income,
       cost,
-      balance: records[0]?.balance ?? 0,
+      balance: records[0]?.balanceAfter ?? 0,
     };
   }, [records]);
 
@@ -33,14 +78,16 @@ export default function AdminCreditsPage() {
     if (!key) {
       return records;
     }
-    return records.filter((record) => record.description.toLowerCase().includes(key));
+    return records.filter((record) =>
+      `${record.reason} ${record.userId || ""} ${record.projectId || ""}`.toLowerCase().includes(key),
+    );
   }, [keyword, records]);
 
   return (
     <AdminShell title="积分流水" description="查看积分变化明细，支持运营审计。">
       <div className="grid gap-3 sm:grid-cols-3">
         <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-zinc-500">当前余额</p>
+          <p className="text-xs text-zinc-500">{loading ? "加载中" : "当前余额"}</p>
           <p className="mt-1 text-2xl font-semibold text-zinc-900">{summary.balance}</p>
         </article>
         <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -97,7 +144,7 @@ export default function AdminCreditsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-zinc-700">{record.description}</td>
+                  <td className="px-3 py-2 text-zinc-700">{record.reason}</td>
                   <td
                     className={`px-3 py-2 font-medium ${
                       record.delta > 0 ? "text-emerald-700" : "text-red-700"
@@ -105,7 +152,7 @@ export default function AdminCreditsPage() {
                   >
                     {record.delta > 0 ? `+${record.delta}` : record.delta}
                   </td>
-                  <td className="px-3 py-2 text-zinc-700">{record.balance}</td>
+                  <td className="px-3 py-2 text-zinc-700">{record.balanceAfter}</td>
                 </tr>
               ))}
             </tbody>

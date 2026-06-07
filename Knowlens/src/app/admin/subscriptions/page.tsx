@@ -1,44 +1,83 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { getAdminUsers, grantMembership, type AdminUser } from "@/lib/admin";
-import { getSubscription } from "@/lib/billing";
 
-const planOptions: AdminUser["plan"][] = ["starter", "pro", "studio"];
+type AdminUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  subscriptionStatus: string;
+  creditBalance: number;
+  projectCount: number;
+};
+
+type AdminSubscriptionRow = {
+  id: string;
+  userId: string;
+  plan: string;
+  status: string;
+  renewAt: string;
+};
 
 export default function AdminSubscriptionsPage() {
-  const [users, setUsers] = useState(() => getAdminUsers());
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [subscriptions, setSubscriptions] = useState<AdminSubscriptionRow[]>([]);
   const [keyword, setKeyword] = useState("");
-  const [planByUserId, setPlanByUserId] = useState<Record<string, AdminUser["plan"]>>({});
-  const [toast, setToast] = useState<string | null>(null);
-  const [subscription] = useState(() => getSubscription());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/console-data", {
+      cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          data?: { users?: AdminUserRow[]; subscriptions?: AdminSubscriptionRow[] };
+        };
+        if (!response.ok || !payload.ok) {
+          throw new Error("Admin subscriptions request failed");
+        }
+        if (!cancelled) {
+          setUsers(payload.data?.users || []);
+          setSubscriptions(payload.data?.subscriptions || []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUsers([]);
+          setSubscriptions([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredUsers = useMemo(() => {
     const key = keyword.trim().toLowerCase();
     if (!key) {
       return users;
     }
-    return users.filter((user) => `${user.name} ${user.email} ${user.plan}`.toLowerCase().includes(key));
+    return users.filter((user) => `${user.name} ${user.email} ${user.subscriptionStatus}`.toLowerCase().includes(key));
   }, [keyword, users]);
 
-  function handleGrant(userId: string) {
-    const plan = planByUserId[userId] ?? "pro";
-    const creditMap: Record<AdminUser["plan"], number> = {
-      free: 0,
-      starter: 800,
-      pro: 2400,
-      studio: 6500,
-    };
-    const next = grantMembership(userId, plan, creditMap[plan]);
-    setUsers(next);
-    setToast(`已为该用户开通 ${plan.toUpperCase()} 套餐`);
-    window.setTimeout(() => setToast(null), 2200);
-  }
+  const subscriptionByUserId = useMemo(
+    () => new Map(subscriptions.map((subscription) => [subscription.userId, subscription])),
+    [subscriptions],
+  );
 
   return (
-    <AdminShell title="订阅列表" description="查询用户订阅状态并执行开通/升级操作。">
+    <AdminShell title="订阅列表" description="查询真实用户订阅状态和积分余额。">
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-3 flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3">
           <Search size={15} className="text-zinc-500" />
@@ -50,11 +89,9 @@ export default function AdminSubscriptionsPage() {
           />
         </div>
 
-        {subscription ? (
+        {loading ? (
           <div className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-            当前登录用户订阅：{subscription.planName} ·
-            {subscription.cycle === "yearly" ? "包年" : "包月"} ·
-            {subscription.status}
+            正在加载真实订阅数据...
           </div>
         ) : null}
 
@@ -64,58 +101,30 @@ export default function AdminSubscriptionsPage() {
               <tr>
                 <th className="px-3 py-2 font-medium">用户</th>
                 <th className="px-3 py-2 font-medium">邮箱</th>
-                <th className="px-3 py-2 font-medium">当前会员</th>
+                <th className="px-3 py-2 font-medium">当前订阅</th>
+                <th className="px-3 py-2 font-medium">状态</th>
                 <th className="px-3 py-2 font-medium">积分</th>
-                <th className="px-3 py-2 font-medium">操作</th>
+                <th className="px-3 py-2 font-medium">项目数</th>
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="border-t border-zinc-200">
-                  <td className="px-3 py-2 text-zinc-800">{user.name}</td>
-                  <td className="px-3 py-2 text-zinc-600">{user.email}</td>
-                  <td className="px-3 py-2 uppercase text-zinc-700">{user.plan}</td>
-                  <td className="px-3 py-2 text-zinc-700">{user.credits}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={planByUserId[user.id] ?? "pro"}
-                        onChange={(event) =>
-                          setPlanByUserId((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value as AdminUser["plan"],
-                          }))
-                        }
-                        className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
-                      >
-                        {planOptions.map((plan) => (
-                          <option key={plan} value={plan}>
-                            {plan.toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => handleGrant(user.id)}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
-                      >
-                        <Zap size={12} />
-                        开通会员
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredUsers.map((user) => {
+                const subscription = subscriptionByUserId.get(user.id);
+                return (
+                  <tr key={user.id} className="border-t border-zinc-200">
+                    <td className="px-3 py-2 text-zinc-800">{user.name}</td>
+                    <td className="px-3 py-2 text-zinc-600">{user.email}</td>
+                    <td className="px-3 py-2 text-zinc-700">{subscription?.plan || "Free"}</td>
+                    <td className="px-3 py-2 uppercase text-zinc-700">{subscription?.status || user.subscriptionStatus}</td>
+                    <td className="px-3 py-2 text-zinc-700">{user.creditBalance}</td>
+                    <td className="px-3 py-2 text-zinc-700">{user.projectCount}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </section>
-
-      {toast ? (
-        <div className="fixed left-1/2 top-6 z-50 -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-          {toast}
-        </div>
-      ) : null}
     </AdminShell>
   );
 }

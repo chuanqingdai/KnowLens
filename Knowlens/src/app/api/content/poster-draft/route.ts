@@ -532,7 +532,7 @@ function buildSmallSchemaDraftPrompt(input: {
         `Source: ${sourceText}`,
         "Schema:",
         '{"outlineItems":["slide title"],"slideDrafts":[{"page":1,"title":"cover title","mainPoint":"","body":"","supportNote":"","visual":"one clear visual direction","imagePrompt":"concise image prompt","isCover":true}]}',
-        `Rules: outlineItems length and slideDrafts length must equal the requested count. ${coverRule} Other slides need concise body text and visual direction.`,
+        `Rules: outlineItems length and slideDrafts length must equal the requested count. ${coverRule} Other slides need concise body text and visual direction. Titles should be attractive educational headlines, concrete and credible, not clickbait; target Chinese 10-24 chars or English 4-12 words.`,
       ].join("\n"),
     };
   }
@@ -550,7 +550,7 @@ function buildSmallSchemaDraftPrompt(input: {
         `Source: ${sourceText}`,
         "Schema:",
         '{"outlineItems":["frame title"],"storyboardDrafts":[{"index":1,"title":"cover title","durationSec":6,"narration":"","visual":"one dominant subject and one action","onScreenText":"","isCover":true}]}',
-        `Rules: outlineItems length and storyboardDrafts length must equal the requested count. ${coverRule} Body frames must use concise narration from the source. Visuals must have one dominant subject, one action/change, 1-3 elements, and no small text. Do not output imagePrompt or imagePromptDraft for video.`,
+        `Rules: outlineItems length and storyboardDrafts length must equal the requested count. ${coverRule} Body frames must use concise narration from the source. Titles should be attractive educational video chapter headlines, concrete and credible, not clickbait; target Chinese 10-24 chars or English 4-12 words. Visuals must have one dominant subject, one action/change, 1-3 elements, and no small text. Do not output imagePrompt or imagePromptDraft for video.`,
       ].join("\n"),
     };
   }
@@ -1519,13 +1519,15 @@ function escapeRegExp(value: string) {
 }
 
 function toConciseDraftTitle(value: string, topic: string, outputLanguage: OutputLanguage) {
-  const maxZhChars = 18;
-  const maxEnWords = 8;
+  const maxZhChars = 24;
+  const maxEnWords = 12;
   let candidate = normalizeWhitespace(
     stripPromptCommandPrefix(stripListPrefix(value), outputLanguage),
   )
     .replace(/^[“”"'`]+|[“”"'`]+$/g, "")
     .replace(/^(?:本页重点|页面内容|讲解文稿|画面文字|画面设计|画面结构|main\s*point|core\s*message|mechanism|memory\s*hook|narration|visual)\s*[：:]\s*/i, "")
+    .replace(/[!?！？]{2,}/g, (match) => match[0])
+    .replace(/\s+(explained|overview|introduction)$/i, "")
     .split(/\n+/)[0]
     ?.trim();
 
@@ -1535,7 +1537,7 @@ function toConciseDraftTitle(value: string, topic: string, outputLanguage: Outpu
 
   if (topic) {
     const topicPrefix = new RegExp(`^${escapeRegExp(topic)}\\s*[：:·\\-–—|｜]?\\s*`, "i");
-    if (candidate.length > (isChineseLanguage(outputLanguage) ? maxZhChars : 48) && topicPrefix.test(candidate)) {
+    if (candidate.length > (isChineseLanguage(outputLanguage) ? maxZhChars : 72) && topicPrefix.test(candidate)) {
       const withoutTopic = candidate.replace(topicPrefix, "").trim();
       if (withoutTopic.length >= 2) {
         candidate = withoutTopic;
@@ -1544,7 +1546,7 @@ function toConciseDraftTitle(value: string, topic: string, outputLanguage: Outpu
   }
 
   const conciseSegment = candidate
-    .split(/[：:|｜，,；;。.!?！？]/)
+    .split(/[：:|｜；;]/)
     .map((item) => item.trim())
     .find((item) => item.length >= 2);
   if (conciseSegment && conciseSegment.length < candidate.length) {
@@ -1562,8 +1564,8 @@ function toConciseDraftTitle(value: string, topic: string, outputLanguage: Outpu
   if (words.length > maxEnWords) {
     candidate = words.slice(0, maxEnWords).join(" ");
   }
-  if (candidate.length > 72) {
-    candidate = candidate.slice(0, 72).replace(/[.,;:!?-\s]+$/g, "").trim();
+  if (candidate.length > 88) {
+    candidate = candidate.slice(0, 88).replace(/[.,;:!?-\s]+$/g, "").trim();
   }
   return candidate || topic;
 }

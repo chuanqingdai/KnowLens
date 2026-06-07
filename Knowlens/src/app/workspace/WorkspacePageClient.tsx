@@ -4024,6 +4024,20 @@ export default function WorkspacePage() {
   const imageGenerationTaskByIndex = useMemo(() => {
     return new Map(imageGenerationTasks.map((task) => [task.index, task] as const));
   }, [imageGenerationTasks]);
+  const resolveImageGenerationTaskForIndex = useCallback(
+    (index: number) => {
+      const directTask = imageGenerationTaskByIndex.get(index);
+      if (directTask) {
+        return directTask;
+      }
+      try {
+        return buildFreshImageGenerationTasks().find((task) => task.index === index) || null;
+      } catch {
+        return null;
+      }
+    },
+    [buildFreshImageGenerationTasks, imageGenerationTaskByIndex],
+  );
   useEffect(() => {
     const scopeAlreadyInitialized = initializedWorkspaceScopeKeys.has(sessionPrefsScopeKey);
     if (scopeAlreadyInitialized) {
@@ -5768,11 +5782,53 @@ export default function WorkspacePage() {
   );
   const handleRetryGenerationTask = useCallback(
     (index: number) => {
-      const task = imageGenerationTaskByIndex.get(index);
+      const task = resolveImageGenerationTaskForIndex(index);
       if (!task) {
+        const message = tr(
+          "This historical card is missing generation details. Please refresh the project and retry.",
+          "这个历史卡片缺少生成参数，请刷新项目后重试。",
+        );
+        setGenerationTaskStateByIndex((prev) => ({
+          ...prev,
+          [index]: {
+            ...(prev[index] ?? {
+              index,
+              attempts: 1,
+              maxAttempts: 1,
+              startedAt: Date.now(),
+            }),
+            status: "failed",
+            error: message,
+            errorCode: "IMAGE_TASK_RESTORE_MISSING",
+            lastUpdatedAt: Date.now(),
+          },
+        }));
+        setGenerationConfirmError(message);
+        pushWorkspaceToast(message);
         return;
       }
       if (generationRequestInFlightRef.current) {
+        const message = tr(
+          "Another image is still generating. Please retry after it finishes.",
+          "还有图片正在生成，请稍后再重试。",
+        );
+        setGenerationTaskStateByIndex((prev) => ({
+          ...prev,
+          [index]: {
+            ...(prev[index] ?? {
+              index,
+              attempts: 1,
+              maxAttempts: 1,
+              startedAt: Date.now(),
+            }),
+            status: "failed",
+            error: message,
+            errorCode: "IMAGE_RETRY_BUSY",
+            lastUpdatedAt: Date.now(),
+          },
+        }));
+        setGenerationConfirmError(message);
+        pushWorkspaceToast(message);
         return;
       }
       const nextRunId = createGenerationRunId();
@@ -5785,15 +5841,27 @@ export default function WorkspacePage() {
         generationRequestInFlightRef.current = false;
       });
     },
-    [chargeImageTaskCredits, imageGenerationTaskByIndex, runGenerationTasksOrdered, setGenerationRunContext],
+    [chargeImageTaskCredits, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
   );
   const handleRedrawGenerationTask = useCallback(
     (index: number, copy: string) => {
-      const baseTask = imageGenerationTaskByIndex.get(index);
+      const baseTask = resolveImageGenerationTaskForIndex(index);
       if (!baseTask) {
+        const message = tr(
+          "This historical card is missing generation details. Please refresh the project and retry.",
+          "这个历史卡片缺少生成参数，请刷新项目后重试。",
+        );
+        setGenerationConfirmError(message);
+        pushWorkspaceToast(message);
         return;
       }
       if (generationRequestInFlightRef.current) {
+        const message = tr(
+          "Another image is still generating. Please retry after it finishes.",
+          "还有图片正在生成，请稍后再重试。",
+        );
+        setGenerationConfirmError(message);
+        pushWorkspaceToast(message);
         return;
       }
 
@@ -5865,9 +5933,10 @@ export default function WorkspacePage() {
     },
     [
       chargeImageTaskCredits,
-      imageGenerationTaskByIndex,
       normalizedGenerationConfig.normalizedCount,
       outputLanguage,
+      pushWorkspaceToast,
+      resolveImageGenerationTaskForIndex,
       runGenerationTasksOrdered,
       setGenerationRunContext,
       topic,
@@ -6671,7 +6740,7 @@ export default function WorkspacePage() {
             error: tr("Generation timed out. Please retry this card.", "生成超时，请重试该卡片。"),
             lastUpdatedAt: now,
           };
-          const task = imageGenerationTaskByIndex.get(index);
+          const task = resolveImageGenerationTaskForIndex(index);
           if (task) {
             upsertImageErrorCard(
               task,
@@ -6683,7 +6752,7 @@ export default function WorkspacePage() {
       });
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [flowStage, generationTaskStateByIndex, imageGenerationTaskByIndex, tr, upsertImageErrorCard]);
+  }, [flowStage, generationTaskStateByIndex, resolveImageGenerationTaskForIndex, tr, upsertImageErrorCard]);
 
   useEffect(() => {
     const entries = Object.entries(generationTaskStateByIndex).map(([index, state]) => ({

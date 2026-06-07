@@ -476,6 +476,7 @@ function AdminDashboardPageContent() {
   });
   const [caseProjectResults, setCaseProjectResults] = useState<PublishableCaseProjectItem[]>([]);
   const [caseProjectSearchLoading, setCaseProjectSearchLoading] = useState(false);
+  const [adminDataLoading, setAdminDataLoading] = useState(true);
   const [opsLogs, setOpsLogs] = useState<OpsEventAdminLog[]>([]);
   const [opsLogSummary, setOpsLogSummary] = useState<OpsEventAdminSummary | null>(null);
   const [opsTraceSummaries, setOpsTraceSummaries] = useState<OpsTraceSummary[]>([]);
@@ -501,6 +502,48 @@ function AdminDashboardPageContent() {
   const globalQ = searchParams.get("globalQ") || "";
   const globalResults = useMemo(() => searchAdminGlobal(data, globalQ), [data, globalQ]);
   const userMap = useMemo(() => new Map(data.users.map((item) => [item.id, item])), [data.users]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/console-data", {
+      cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          data?: AdminConsoleData;
+          error?: string;
+        };
+        if (!response.ok || !payload.ok || !payload.data) {
+          throw new Error(payload.error || `Admin data request failed (${response.status})`);
+        }
+        if (!cancelled) {
+          setData(payload.data);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        const id = `toast-${idCounterRef.current}`;
+        idCounterRef.current += 1;
+        const message = error instanceof Error ? error.message : "管理员真实数据加载失败";
+        setToasts((prev) => [...prev, { id, message }]);
+        window.setTimeout(() => {
+          setToasts((prev) => prev.filter((item) => item.id !== id));
+        }, 3200);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAdminDataLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectedLog = selectedLogId ? getLogById(data, selectedLogId) : null;
   const selectedOrder = selectedOrderId ? getOrderById(data, selectedOrderId) : null;
@@ -1227,7 +1270,7 @@ function AdminDashboardPageContent() {
   return (
     <AdminShell
       title="运营后台"
-      description="单层主 Tab 架构，支持故障排查、对象定位和运营处理。当前数据为前端 mock，可直接替换 service 层接真实接口。"
+      description={adminDataLoading ? "正在加载真实运营数据..." : "真实数据后台，支持故障排查、对象定位和运营处理。"}
     >
       <div className="space-y-4">
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">

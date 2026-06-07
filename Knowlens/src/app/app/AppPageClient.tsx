@@ -30,6 +30,8 @@ import {
   Minus,
   Plus,
   SendHorizontal,
+  ExternalLink,
+  Share2,
   UserCircle2,
   Upload,
   X,
@@ -1112,6 +1114,38 @@ export default function Home() {
   const activePreviewIsImage = isImagePreviewAsset(activePreviewAsset);
   const previewFormat = previewItem ? normalizeFormatLabel(previewItem.format) : "Poster";
 
+  useEffect(() => {
+    if (!previewItem || previewFormat !== "PPT" || !previewAssets.length || typeof window === "undefined") {
+      return undefined;
+    }
+    const urls = previewAssets
+      .filter(isImagePreviewAsset)
+      .map((asset) => asset.fileUrl)
+      .filter(Boolean);
+    if (!urls.length) {
+      return undefined;
+    }
+    const preloadImages = () => {
+      urls.forEach((url) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = url;
+      });
+    };
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const requestIdle = idleWindow.requestIdleCallback?.bind(window);
+    const cancelIdle = idleWindow.cancelIdleCallback?.bind(window);
+    if (requestIdle && cancelIdle) {
+      const idleId = requestIdle(preloadImages, { timeout: 800 });
+      return () => cancelIdle(idleId);
+    }
+    const timer = globalThis.setTimeout(preloadImages, 120);
+    return () => globalThis.clearTimeout(timer);
+  }, [previewAssets, previewFormat, previewItem]);
+
   function updateComposeInput(nextRawValue: string) {
     if (nextRawValue.length <= MAX_COMPOSE_TEXT_CHARS) {
       composeLimitToastShownRef.current = false;
@@ -2058,7 +2092,7 @@ export default function Home() {
       document.execCommand("copy");
       textarea.remove();
     }
-    setUploadToast("Link copied");
+    setUploadToast("Share link copied to clipboard.");
   }
 
   function openFeaturedPreview(item: FeaturedCaseItem) {
@@ -2587,7 +2621,7 @@ export default function Home() {
         </div>
       </main>
       {uploadToast ? (
-        <div className="fixed left-1/2 top-3 z-[90] w-[calc(100%-1.5rem)] max-w-[560px] -translate-x-1/2 rounded-xl bg-zinc-900 px-3 py-2 text-sm text-white shadow-lg sm:top-6 sm:w-auto sm:px-4">
+        <div className="fixed left-1/2 top-3 z-[200] w-[calc(100%-1.5rem)] max-w-[560px] -translate-x-1/2 rounded-xl bg-zinc-900 px-3 py-2 text-sm text-white shadow-lg sm:top-6 sm:w-auto sm:px-4">
           {uploadToast}
         </div>
       ) : null}
@@ -2681,16 +2715,18 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => void handleFeaturedShare()}
-                  className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
+                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
                 >
+                  <Share2 size={16} />
                   Share
                 </button>
                 {activePreviewAsset?.viewerUrl ? (
                   <button
                     type="button"
                     onClick={() => window.open(activePreviewAsset.viewerUrl, "_blank", "noopener,noreferrer")}
-                    className="inline-flex h-9 items-center rounded-xl border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
                   >
+                    <ExternalLink size={16} />
                     Open details
                   </button>
                 ) : null}

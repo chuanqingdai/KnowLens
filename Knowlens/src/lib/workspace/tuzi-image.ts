@@ -20,6 +20,8 @@ export type TuziImagePayload = {
 const MAX_FINAL_IMAGE_PROMPT_CHARS = 1500;
 const IMAGE_PROMPT_POLISH_SUFFIX =
   "Make the image feel like a refined, professional, and aesthetically polished educational infographic with one dominant hero visual, integrated poster-like composition, soft visual transitions, natural embedded callouts, clear diagrammatic storytelling, elegant spacing, balanced information density, and cohesive premium design.";
+const VIDEO_IMAGE_PROMPT_POLISH_SUFFIX =
+  "Make the frame feel like a polished educational video still with one dominant subject, clear action, cinematic composition, generous negative space, minimal or no on-screen text, and strong readability at a glance.";
 const IMAGE_PROMPT_NOISE_PATTERNS = [
   /本页重点|画面结构|讲解文稿|输出格式|写作结构|版式建议|讲解目标|机制说明|应用收束/i,
   /核心结论|机制解释|记忆点|关键发现|事实证据|结论启发|page role|information structure|visualization structure/i,
@@ -513,7 +515,9 @@ export function buildTuziImagePrompt(input: {
     seriesPageModule ? `Series visual consistency: callout/module style ${seriesPageModule}` : "",
     seriesLanguageRule ? `Language rule: ${seriesLanguageRule}` : "",
   ].filter(Boolean);
-  const polishedSuffix = IMAGE_PROMPT_POLISH_SUFFIX.trim();
+  const polishedSuffix = (
+    outputType === "video" ? VIDEO_IMAGE_PROMPT_POLISH_SUFFIX : IMAGE_PROMPT_POLISH_SUFFIX
+  ).trim();
   const reservedLength = polishedSuffix ? polishedSuffix.length + 2 : 0;
   const maxBodyLength = Math.max(80, MAX_FINAL_IMAGE_PROMPT_CHARS - reservedLength);
   const bodyPrompt = joinPromptSectionsWithBudget(

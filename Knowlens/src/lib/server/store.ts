@@ -1077,27 +1077,42 @@ export async function ensureSubscriptionCreditsCurrent(email: string) {
   return latest;
 }
 
-export function replyFeedbackDb(input: {
+export async function replyFeedbackDb(input: {
   recordId: string;
   reply: string;
   repliedBy: string;
 }) {
+  if (hasManagedDatabase()) {
+    await pgRun(
+      `UPDATE feedback_tickets
+       SET admin_reply = ?, replied_at = ?, replied_by = ?, status = 'replied'
+       WHERE id = ?`,
+      input.reply.trim(),
+      nowIso(),
+      input.repliedBy,
+      input.recordId,
+    );
+    return;
+  }
   const { db } = getDb();
   db.prepare(
     `UPDATE feedback_tickets
-     SET admin_reply = ?, replied_at = ?, replied_by = ?, status = 'replied', updated_at = ?
+     SET admin_reply = ?, replied_at = ?, replied_by = ?, status = 'replied'
      WHERE id = ?`,
-  ).run(input.reply.trim(), nowIso(), input.repliedBy, nowIso(), input.recordId);
+  ).run(input.reply.trim(), nowIso(), input.repliedBy, input.recordId);
 }
 
-export function listFeedbackDb() {
+export async function listFeedbackDb() {
+  if (hasManagedDatabase()) {
+    return pgAll("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC");
+  }
   const { db } = getDb();
   return db
     .prepare("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC")
     .all();
 }
 
-export function insertFeedbackDb(input: {
+export async function insertFeedbackDb(input: {
   type: string;
   detail: string;
   contact: string;
@@ -1105,6 +1120,22 @@ export function insertFeedbackDb(input: {
   submitterEmail?: string;
   submitterName?: string;
 }) {
+  if (hasManagedDatabase()) {
+    const id = `fb-${randomUUID()}`;
+    await pgRun(
+      `INSERT INTO feedback_tickets (id, type, detail, contact, attachments_json, submitter_email, submitter_name, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+      id,
+      input.type,
+      input.detail,
+      input.contact,
+      JSON.stringify(input.attachments),
+      input.submitterEmail ?? null,
+      input.submitterName ?? null,
+      nowIso(),
+    );
+    return id;
+  }
   const { db } = getDb();
   const id = `fb-${randomUUID()}`;
   db.prepare(
