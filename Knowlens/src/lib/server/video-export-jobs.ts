@@ -653,9 +653,11 @@ async function concatSegmentsWithTransitions(input: {
   segmentPaths: string[];
   segmentDurationsSec: number[];
   transitions: SceneTransition[];
+  fps: number;
   outputPath: string;
 }) {
   const { segmentPaths, segmentDurationsSec, outputPath } = input;
+  const fps = Math.max(1, Math.round(input.fps || DEFAULT_FPS));
   const transitions = input.transitions.slice(0, Math.max(0, segmentPaths.length - 1));
   if (segmentPaths.length <= 1 || !transitions.length) {
     await concatSegments(segmentPaths, outputPath);
@@ -666,13 +668,20 @@ async function concatSegmentsWithTransitions(input: {
   }
 
   const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const transitionDurations = transitions.map((transition, index) => {
+    const requested = Math.max(0.2, Math.min(1.4, transition.durationSeconds || 0.45));
+    const currentDuration = Math.max(0.25, segmentDurationsSec[index] || DEFAULT_SCENE_DURATION_SEC);
+    const nextDuration = Math.max(0.25, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC);
+    const maxSafeDuration = Math.max(0.2, Math.min(currentDuration, nextDuration) - 0.05);
+    return Math.min(requested, maxSafeDuration);
+  });
   const videoInputs = segmentPaths.map((_, index) => {
-    const outgoingTransitionSec = transitions[index]?.durationSeconds || 0;
+    const outgoingTransitionSec = transitionDurations[index] || 0;
     const padFilter =
       outgoingTransitionSec > 0
         ? `,tpad=stop_mode=clone:stop_duration=${outgoingTransitionSec.toFixed(3)}`
         : "";
-    return `[${index}:v]setpts=PTS-STARTPTS,format=yuv420p${padFilter}[tv${index}]`;
+    return `[${index}:v]fps=${fps},settb=AVTB,setpts=PTS-STARTPTS,setsar=1,format=yuv420p${padFilter}[tv${index}]`;
   });
   const audioInputs = segmentPaths.map((_, index) => {
     return `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`;
@@ -682,7 +691,7 @@ async function concatSegmentsWithTransitions(input: {
   let currentVideoLabel = "tv0";
   let offsetSec = Math.max(0.1, segmentDurationsSec[0] || DEFAULT_SCENE_DURATION_SEC);
   transitions.forEach((transition, index) => {
-    const durationSec = Math.max(0.2, Math.min(1.4, transition.durationSeconds || 0.45));
+    const durationSec = transitionDurations[index] || 0.45;
     const transitionName = mapTransitionToFfmpegXfade(transition);
     const nextVideoLabel = `tv${index + 1}`;
     const outputLabel = `xv${index}`;
@@ -1052,6 +1061,7 @@ export async function runVideoExportJob(jobId: string) {
           segmentPaths,
           segmentDurationsSec,
           transitions,
+          fps: job.timeline.fps,
           outputPath,
         });
       } catch (error) {

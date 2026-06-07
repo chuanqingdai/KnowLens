@@ -87,6 +87,16 @@ export default function AdminProjectDetailPage() {
     );
   }
 
+  const originalInput = project.originalInput?.trim() || project.topic;
+  const generationConfig = {
+    normalizedConfig: {
+      normalizedDirection: project.type,
+      normalizedCount: project.type === "poster" ? 1 : project.type === "ppt" ? 8 : 10,
+      normalizedRatio: project.type === "video" ? "16:9" : "9:16",
+    },
+    modelConfig: { textModel: project.textModel, imageModel: project.imageModel },
+  };
+
   return (
     <AdminShell title={`项目详情 · ${project.id}`} description="长期对象详情页：输入、配置、生成内容、执行日志和积分记录。">
       <div className="space-y-4">
@@ -131,15 +141,16 @@ export default function AdminProjectDetailPage() {
 
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-zinc-900">原始输入 / 生成配置</p>
-            <pre className="mt-3 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">{JSON.stringify({
-              input: `请生成 ${project.type} 内容：${project.topic}`,
-              normalizedConfig: {
-                normalizedDirection: project.type,
-                normalizedCount: project.type === "poster" ? 1 : project.type === "ppt" ? 8 : 10,
-                normalizedRatio: project.type === "video" ? "16:9" : "9:16",
-              },
-              modelConfig: { textModel: project.textModel, imageModel: project.imageModel },
-            }, null, 2)}</pre>
+            <div className="mt-3 rounded-lg bg-zinc-950 p-3">
+              <p className="text-xs font-medium text-zinc-400">完整原始输入</p>
+              <pre className="mt-2 max-h-[360px] overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-zinc-100">
+                {originalInput}
+              </pre>
+            </div>
+            <div className="mt-3 rounded-lg bg-zinc-950 p-3">
+              <p className="text-xs font-medium text-zinc-400">生成配置</p>
+              <pre className="mt-2 overflow-x-auto text-xs text-zinc-100">{JSON.stringify(generationConfig, null, 2)}</pre>
+            </div>
           </article>
         </section>
 

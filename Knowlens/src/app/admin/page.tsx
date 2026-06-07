@@ -53,6 +53,12 @@ type ConfirmDialogState = {
   onConfirm: null | (() => void);
 };
 
+type ProjectInputPreviewState = {
+  projectId: string;
+  title: string;
+  input: string;
+};
+
 type AdjustCreditState = {
   open: boolean;
   userId: string;
@@ -343,6 +349,15 @@ function sortBy<T>(items: T[], key: keyof T, order: SortOrder) {
   return next;
 }
 
+function getProjectInputText(project: MockProject) {
+  return project.originalInput?.trim() || project.topic;
+}
+
+function shouldShowProjectInputButton(project: MockProject) {
+  const input = getProjectInputText(project);
+  return Boolean(project.originalInput?.trim()) && (input.length > 120 || input.includes("\n"));
+}
+
 function Drawer(props: {
   open: boolean;
   title: string;
@@ -450,6 +465,7 @@ function AdminDashboardPageContent() {
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [selectedTicketId, setSelectedTicketId] = useState<string>("");
   const [selectedOpsEventId, setSelectedOpsEventId] = useState<string>("");
+  const [selectedProjectInput, setSelectedProjectInput] = useState<ProjectInputPreviewState | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
     open: false,
@@ -2074,7 +2090,26 @@ function AdminDashboardPageContent() {
                           </button>
                         </td>
                         <td className="px-3 py-2">{item.type}</td>
-                        <td className="px-3 py-2 text-zinc-700">{item.topic}</td>
+                        <td className="max-w-[260px] px-3 py-2 text-zinc-700">
+                          <p className="overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+                            {getProjectInputText(item)}
+                          </p>
+                          {shouldShowProjectInputButton(item) ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedProjectInput({
+                                  projectId: item.id,
+                                  title: item.topic,
+                                  input: getProjectInputText(item),
+                                })
+                              }
+                              className="mt-1 text-xs font-medium text-zinc-900 underline underline-offset-2"
+                            >
+                              查看原文
+                            </button>
+                          ) : null}
+                        </td>
                         <td className="px-3 py-2">
                           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>{item.status}</span>
                         </td>
@@ -3112,6 +3147,36 @@ function AdminDashboardPageContent() {
               >
                 复制详情
               </button>
+            </div>
+          </div>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        open={Boolean(selectedProjectInput)}
+        title={`原始输入 ${selectedProjectInput?.projectId ?? ""}`}
+        onClose={() => setSelectedProjectInput(null)}
+      >
+        {selectedProjectInput ? (
+          <div className="space-y-3 text-sm text-zinc-700">
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <p className="font-medium text-zinc-900">{selectedProjectInput.title}</p>
+              <p className="mt-1 text-xs text-zinc-500">{selectedProjectInput.projectId}</p>
+            </div>
+            <div className="rounded-xl border border-zinc-200 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-zinc-900">完整原始输入</p>
+                <button
+                  type="button"
+                  onClick={() => copyText(selectedProjectInput.input, "原始输入")}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-100"
+                >
+                  复制
+                </button>
+              </div>
+              <pre className="mt-2 max-h-[65vh] whitespace-pre-wrap break-words rounded-lg bg-zinc-950 p-3 text-xs leading-5 text-zinc-100">
+                {selectedProjectInput.input}
+              </pre>
             </div>
           </div>
         ) : null}

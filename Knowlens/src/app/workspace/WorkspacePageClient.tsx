@@ -2222,9 +2222,8 @@ function readHomeDraftPayload() {
     return empty;
   }
 
-  const raw =
-    window.sessionStorage.getItem(HOME_DRAFT_KEY) ||
-    window.localStorage.getItem(WORKSPACE_DRAFT_CACHE_KEY);
+  const sessionDraft = window.sessionStorage.getItem(HOME_DRAFT_KEY);
+  const raw = sessionDraft || window.localStorage.getItem(WORKSPACE_DRAFT_CACHE_KEY);
   if (!raw) {
     return empty;
   }
@@ -2292,6 +2291,9 @@ function readHomeDraftPayload() {
       }
     }
     window.localStorage.setItem(WORKSPACE_DRAFT_CACHE_KEY, JSON.stringify(payload));
+    if (sessionDraft) {
+      window.sessionStorage.removeItem(HOME_DRAFT_KEY);
+    }
     return next;
   } catch {
     return empty;

@@ -1551,7 +1551,7 @@ function stringifyDetails(details: unknown) {
     return null;
   }
   try {
-    return JSON.stringify(details).slice(0, 4000);
+    return JSON.stringify(details).slice(0, 12000);
   } catch {
     return null;
   }

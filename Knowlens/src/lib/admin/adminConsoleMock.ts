@@ -48,6 +48,7 @@ export type MockProject = {
   userId: string;
   type: MockDirection;
   topic: string;
+  originalInput?: string;
   status: MockProjectStatus;
   stage: MockProjectStage;
   textModel: MockTextModel;
@@ -884,4 +885,3 @@ export function getLogById(data: AdminConsoleData, logId: string) {
 export function getOrderById(data: AdminConsoleData, orderId: string) {
   return data.orders.find((item) => item.id === orderId) || null;
 }
-

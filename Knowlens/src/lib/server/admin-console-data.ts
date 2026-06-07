@@ -24,6 +24,38 @@ function normalizeEmail(value: unknown) {
   return text(value).toLowerCase();
 }
 
+function parseDetailsJson(value: unknown) {
+  const raw = text(value);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractOriginalInputFromDetails(details: Record<string, unknown> | null) {
+  if (!details) {
+    return "";
+  }
+  const candidates = [
+    details.originalInput,
+    details.rawInput,
+    details.prompt,
+    details.input,
+  ];
+  for (const candidate of candidates) {
+    const value = text(candidate);
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
 function normalizeOutputType(value: unknown): "poster" | "ppt" | "video" {
   const normalized = text(value).toLowerCase();
   if (normalized === "ppt" || normalized === "presentation" || normalized === "slides") {
@@ -147,7 +179,7 @@ async function readAdminRows() {
       ) as Promise<Row[]>,
       pgAll("SELECT * FROM billing_fulfillments ORDER BY created_at DESC LIMIT 500") as Promise<Row[]>,
       pgAll("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC LIMIT 500") as Promise<Row[]>,
-      pgAll("SELECT * FROM ops_events ORDER BY created_at DESC LIMIT 300") as Promise<Row[]>,
+      pgAll("SELECT * FROM ops_events ORDER BY created_at DESC LIMIT 1000") as Promise<Row[]>,
     ]);
     return { users, projects, credits, subscriptions, fulfillments, feedback, opsEvents };
   }
@@ -178,7 +210,7 @@ async function readAdminRows() {
       .all() as Row[],
     fulfillments: db.prepare("SELECT * FROM billing_fulfillments ORDER BY created_at DESC LIMIT 500").all() as Row[],
     feedback: db.prepare("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC LIMIT 500").all() as Row[],
-    opsEvents: db.prepare("SELECT * FROM ops_events ORDER BY created_at DESC LIMIT 300").all() as Row[],
+    opsEvents: db.prepare("SELECT * FROM ops_events ORDER BY created_at DESC LIMIT 1000").all() as Row[],
   };
 }
 
@@ -189,6 +221,15 @@ export async function getAdminConsoleData(): Promise<AdminConsoleData> {
   const latestCreditsByEmail = latestBy(rows.credits, (row) => normalizeEmail(row.user_email), (row) => iso(row.created_at));
   const latestSubscriptionsByUserId = latestBy(rows.subscriptions, (row) => text(row.user_id), (row) =>
     iso(row.updated_at ?? row.created_at),
+  );
+  const projectStartedEventsByProjectId = latestBy(
+    rows.opsEvents.filter(
+      (event) =>
+        text(event.category).toLowerCase() === "project" &&
+        text(event.action).toLowerCase() === "workspace_project_started",
+    ),
+    (event) => text(event.project_id),
+    (event) => iso(event.created_at),
   );
 
   const users: AdminConsoleData["users"] = rows.users.map((user) => {
@@ -228,6 +269,9 @@ export async function getAdminConsoleData(): Promise<AdminConsoleData> {
     userId: text(project.user_id),
     type: normalizeOutputType(project.format),
     topic: text(project.title, "Untitled project"),
+    originalInput: extractOriginalInputFromDetails(
+      parseDetailsJson(projectStartedEventsByProjectId.get(text(project.id))?.details_json),
+    ) || undefined,
     status: normalizeProjectStatus(project.status),
     stage: normalizeProjectStatus(project.status) === "completed" ? "done" : "image_generation",
     textModel: "Gemini 2.5",
