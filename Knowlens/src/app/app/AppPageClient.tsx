@@ -174,10 +174,7 @@ function writeStoredHomeTextModel(modelValue: string | null, email?: string) {
   }
 }
 
-const inputPlaceholders = [
-  'Describe what you want to explain, for example: "Why do tides happen?"',
-  "Upload a PDF, PPT, or document to generate visual learning content quickly",
-];
+const creationInputPlaceholder = "Enter a science idea or paste your learning text.";
 
 type SourceKind = "file" | "web" | "youtube" | "podcast";
 
@@ -995,9 +992,6 @@ export default function Home() {
     };
   }, [currentEmail]);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const [typedPlaceholder, setTypedPlaceholder] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
   const [activeCategory, setActiveCategory] = useState(feedCategories[0]);
   const [fallbackFeaturedItems] = useState<FeaturedCaseItem[]>(() => getResolvedFeaturedCases());
   const [publishedFeaturedItems, setPublishedFeaturedItems] = useState<FeaturedCaseItem[]>([]);
@@ -1218,45 +1212,6 @@ export default function Home() {
       // ignore broken cached payload
     }
   }, [composeInput, sourceItems.length]);
-
-  useEffect(() => {
-    if (!inputPlaceholders.length || composeInput.trim().length > 0) {
-      return;
-    }
-    const currentText = inputPlaceholders[placeholderIndex];
-    if (!currentText) {
-      return;
-    }
-    const typedDone = typedPlaceholder === currentText;
-    const deletedDone = typedPlaceholder.length === 0;
-
-    let delay = isDeleting ? 25 : 45;
-    if (!isDeleting && typedDone) {
-      delay = 2000;
-    } else if (isDeleting && deletedDone) {
-      delay = 180;
-    }
-
-    const timer = window.setTimeout(() => {
-      if (!isDeleting) {
-        if (typedDone) {
-          setIsDeleting(true);
-          return;
-        }
-        setTypedPlaceholder(currentText.slice(0, typedPlaceholder.length + 1));
-        return;
-      }
-
-      if (deletedDone) {
-        setIsDeleting(false);
-        setPlaceholderIndex((prev) => (prev + 1) % inputPlaceholders.length);
-        return;
-      }
-      setTypedPlaceholder(currentText.slice(0, typedPlaceholder.length - 1));
-    }, delay);
-
-    return () => window.clearTimeout(timer);
-  }, [composeInput, typedPlaceholder, isDeleting, placeholderIndex]);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -2326,7 +2281,7 @@ export default function Home() {
                       void handleComposerPaste(event);
                     }}
                     className="block min-h-[168px] max-h-[320px] w-full resize-none overflow-y-auto rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300"
-                    placeholder={typedPlaceholder}
+                    placeholder={creationInputPlaceholder}
                   />
                 </label>
 

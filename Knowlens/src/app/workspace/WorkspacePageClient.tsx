@@ -2752,6 +2752,7 @@ export default function WorkspacePage() {
   const projectIdRef = useRef<string | null>(null);
   const projectTraceIdRef = useRef<string | null>(null);
   const generationRequestInFlightRef = useRef(false);
+  const retryingGenerationTaskIndexesRef = useRef<Record<number, boolean>>({});
   const currentGenerationRunIdRef = useRef<string | null>(null);
   const currentGenerationJobIdRef = useRef<string | null>(null);
   const currentDraftJobIdRef = useRef<string | null>(null);
@@ -5782,6 +5783,7 @@ export default function WorkspacePage() {
   );
   const handleRetryGenerationTask = useCallback(
     (index: number) => {
+      const normalizedIndex = Math.max(1, Math.round(Number(index) || 0));
       const task = resolveImageGenerationTaskForIndex(index);
       if (!task) {
         const message = tr(
@@ -5805,6 +5807,10 @@ export default function WorkspacePage() {
         }));
         setGenerationConfirmError(message);
         pushWorkspaceToast(message);
+        return;
+      }
+      if (retryingGenerationTaskIndexesRef.current[normalizedIndex]) {
+        pushWorkspaceToast(tr("This image is already retrying.", "这张图片正在重试。"));
         return;
       }
       if (generationRequestInFlightRef.current) {
@@ -5832,13 +5838,14 @@ export default function WorkspacePage() {
         return;
       }
       const nextRunId = createGenerationRunId();
+      retryingGenerationTaskIndexesRef.current[normalizedIndex] = true;
       if (!chargeImageTaskCredits({ runId: nextRunId, taskIndex: index, action: "retry" })) {
+        delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
         return;
       }
       setGenerationRunContext(nextRunId, null);
-      generationRequestInFlightRef.current = true;
       void runGenerationTasksOrdered([task], nextRunId, true).finally(() => {
-        generationRequestInFlightRef.current = false;
+        delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
       });
     },
     [chargeImageTaskCredits, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
