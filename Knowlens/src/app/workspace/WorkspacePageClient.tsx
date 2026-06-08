@@ -307,6 +307,16 @@ type IntentAnalysis = {
   assistantHint: string;
 };
 
+type PromptChangeAnalysis = {
+  classification: "continue_current_poster" | "new_poster_topic" | "switch_complex_flow";
+  direction: WorkspaceIntent;
+  requestedCount: number;
+  inheritPreviousPrompt: boolean;
+  nextTopic: string;
+  draftPrompt: string;
+  reason: string;
+};
+
 type WorkspaceSessionPrefs = {
   intent: Exclude<WorkspaceIntent, "unknown">;
   posterCount: number;
@@ -1604,6 +1614,26 @@ function extractPosterSize(prompt: string) {
   return null;
 }
 
+function findStyleOptionByPrompt(prompt: string) {
+  const normalized = normalizeText(prompt);
+  if (!normalized) {
+    return null;
+  }
+  return (
+    styleOptions.find((style) => {
+      const candidates = [
+        style.id,
+        style.name,
+        style.englishName,
+        ...style.topicKeywords,
+      ]
+        .map((item) => normalizeText(item))
+        .filter(Boolean);
+      return candidates.some((item) => item.length >= 3 && normalized.includes(item));
+    }) || null
+  );
+}
+
 function buildMissingHints(
   intent: WorkspaceIntent,
   prompt: string,
@@ -2210,6 +2240,7 @@ function readHomeDraftPayload() {
     prompt: "",
     sources: [] as HomeSourceItem[],
     models: null as { textModel: string; imageModel: string } | null,
+    freshSessionDraft: false,
     project: null as {
       projectId: string;
       projectTraceId: string;
@@ -2275,6 +2306,7 @@ function readHomeDraftPayload() {
               projectTitle: (payload.project.projectTitle || "").trim(),
             }
           : null,
+      freshSessionDraft: Boolean(sessionDraft),
     };
     const queryProjectId = new URL(window.location.href).searchParams.get("projectId")?.trim() || "";
     if (queryProjectId) {
@@ -2567,7 +2599,7 @@ export default function WorkspacePage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const routeProjectId = searchParams.get("projectId")?.trim() || "";
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [initialEntry] = useState(() => readHomeDraftPayload());
   const [sessionPrefsScopeKey] = useState(() => buildWorkspaceSessionScopeKey(initialEntry));
@@ -2739,6 +2771,8 @@ export default function WorkspacePage() {
   const intentAnalyzeAbortRef = useRef<AbortController | null>(null);
   const intentAnalyzeRequestSeqRef = useRef(0);
   const lastIntentAnalyzeSignatureRef = useRef<string | null>(null);
+  const quickPosterDirectStartedRef = useRef(false);
+  const quickPosterDirectDraftReadyRef = useRef(false);
 
   const modeActionsRef = useRef<{
     exportPpt: () => void;
@@ -3428,7 +3462,11 @@ export default function WorkspacePage() {
   const hasCanvasPanel = showStoryboard || showPosterCanvas;
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
   const showCanvasPanelInLayout = hasCanvasPanel && (isMobileViewport ? mobileWorkspaceView === "canvas" : !desktopCanvasCollapsed);
-  const showChatComposer = flowStage === "intent" || flowStage === "config" || flowStage === "content";
+  const showChatComposer =
+    flowStage === "intent" ||
+    flowStage === "config" ||
+    flowStage === "content" ||
+    (flowStage === "generate" && effectiveIntent === "poster" && standardOutputCount === 1);
   const generationInProgress = Object.values(generationTaskStateByIndex).some(
     (item) => item.status === "queued" || item.status === "generating" || item.status === "retrying",
   );
@@ -3765,6 +3803,212 @@ export default function WorkspacePage() {
     visualizationTypeHint,
   ]);
   const imageGenerationTasks = useMemo(() => buildFreshImageGenerationTasks(), [buildFreshImageGenerationTasks]);
+  const requestPromptChangeAnalysis = useCallback(
+    async (userInput: string): Promise<PromptChangeAnalysis> => {
+      const payload = {
+        userInput,
+        currentPrompt: contextPrompt,
+        currentTopic: topic,
+        currentDirection: effectiveIntent,
+        currentPosterDraft: posterDraft
+          ? {
+              headline: posterDraft.headline,
+              subtitle: posterDraft.subtitle,
+              body: posterDraft.body,
+            }
+          : null,
+        currentPlanList: editablePosterPlanList.map((item) => ({
+          title: item.title,
+          focus: item.focus,
+          keyFacts: Array.isArray(item.keyFacts) ? item.keyFacts : [],
+        })),
+        outputLanguage,
+        textModel: initialEntry.models?.textModel || "gemini-2.5",
+      };
+      const response = await fetch("/api/workspace/prompt-change", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { analysis?: PromptChangeAnalysis; error?: string }
+        | null;
+      if (!response.ok || !data?.analysis) {
+        throw new Error(
+          data?.error ||
+            tr(
+              "Poster follow-up understanding failed. Please retry.",
+              "海报补充需求理解失败，请重试。",
+            ),
+        );
+      }
+      return data.analysis;
+    },
+    [
+      contextPrompt,
+      editablePosterPlanList,
+      effectiveIntent,
+      initialEntry.models?.textModel,
+      outputLanguage,
+      posterDraft,
+      topic,
+      tr,
+    ],
+  );
+  const applyPosterDraftData = useCallback(
+    (
+      data: DraftJobResultData,
+      options?: {
+        topicOverride?: string;
+      },
+    ) => {
+      if (
+        data.llmUsage &&
+        Number.isFinite(data.llmUsage.totalTokens) &&
+        Number(data.llmUsage.totalTokens) > 0
+      ) {
+        setDraftLlmUsage({
+          inputTokens: Math.max(0, Math.round(data.llmUsage.inputTokens || 0)),
+          outputTokens: Math.max(0, Math.round(data.llmUsage.outputTokens || 0)),
+          totalTokens: Math.max(1, Math.round(data.llmUsage.totalTokens)),
+          source: data.llmUsage.source,
+          model: data.llmUsage.model,
+        });
+      } else {
+        setDraftLlmUsage(null);
+      }
+      setEditablePosterDraft(data.posterDraft ?? null);
+      setEditablePosterPlanList(Array.isArray(data.planList) ? data.planList : []);
+      const restoredPosterPlanList = Array.isArray(data.planList) ? data.planList : [];
+      if (projectIdRef.current && restoredPosterPlanList.length > 0) {
+        persistWorkspaceProjectPages({
+          projectId: projectIdRef.current,
+          outputType: "poster",
+          pages: restoredPosterPlanList.map((item, idx) => ({
+            index: Number.isFinite(item.index) ? item.index : idx + 1,
+            pageRole: item.role || "content",
+            title: item.title,
+            body: [item.focus, ...(Array.isArray(item.keyFacts) ? item.keyFacts : [])]
+              .filter((value) => typeof value === "string" && value.trim())
+              .join("\n"),
+            visual: item.visualType || item.layoutHint || "",
+            imagePromptDraft: item.imagePromptDraft || item.imagePrompt || "",
+          })),
+        });
+      } else if (projectIdRef.current && data.posterDraft) {
+        persistWorkspaceProjectPages({
+          projectId: projectIdRef.current,
+          outputType: "poster",
+          pages: [
+            {
+              index: 1,
+              pageRole: "content",
+              title: data.posterDraft.headline,
+              subtitle: data.posterDraft.subtitle,
+              body: [data.posterDraft.body, ...(Array.isArray(data.posterDraft.points) ? data.posterDraft.points : [])]
+                .filter((value) => typeof value === "string" && value.trim())
+                .join("\n"),
+              visual: data.posterDraft.visualType || data.posterDraft.layoutSuggestion || "",
+              imagePromptDraft: "",
+            },
+          ],
+        });
+      }
+      const nextProjectTitle = deriveWorkspaceProjectTitle({
+        outputLanguage,
+        topic: options?.topicOverride ?? topic,
+        intent: "poster",
+        posterDraft: data.posterDraft ?? null,
+        planList: Array.isArray(data.planList) ? data.planList : [],
+      });
+      setWorkspaceProjectTitle(nextProjectTitle);
+      updateUserProjectMetadata({
+        email: currentEmail,
+        projectId: projectIdRef.current,
+        title: nextProjectTitle,
+        format: "海报",
+      });
+    },
+    [currentEmail, outputLanguage, persistWorkspaceProjectPages, topic],
+  );
+  const requestPosterDraftData = useCallback(
+    async (input: {
+      prompt: string;
+      topic: string;
+      posterCount: number;
+      posterSizeLabel: string;
+    }) => {
+      setDraftLlmUsage(null);
+      return await runDraftJobRequest({
+        topic: input.topic,
+        prompt: input.prompt,
+        textModel: initialEntry.models?.textModel || "gemini-2.5",
+        posterCount: input.posterCount,
+        posterSizeLabel: input.posterSizeLabel,
+        direction: "poster",
+        normalizedDirection: "poster",
+        normalizedCount: input.posterCount,
+        normalizedRatio: input.posterSizeLabel,
+        outputLanguage,
+        draftMode: "auto",
+      });
+    },
+    [initialEntry.models?.textModel, outputLanguage, runDraftJobRequest],
+  );
+  const buildPosterTasksFromDraftData = useCallback(
+    (input: {
+      draft: DraftJobResultData;
+      styleId: string;
+      posterSizeLabelOverride: string;
+      topicOverride: string;
+    }) => {
+      const style = styleOptions.find((item) => item.id === input.styleId) ?? selectedStyle;
+      const compiled = buildGenerationTasksFromDraft({
+        topic: input.topicOverride,
+        outputLanguage,
+        config: normalizeGenerationConfig({
+          direction: "poster",
+          posterCount: 1,
+          posterSizeLabel: input.posterSizeLabelOverride,
+          pptPageCount,
+          pptRatio,
+          videoStoryboardCount,
+          videoRatio,
+        }),
+        style: {
+          id: style.id,
+          name: style.englishName ?? style.name,
+          prompt: style.prompt.trim(),
+        },
+        visualizationTypeHint: input.draft.posterDraft?.visualType || visualizationTypeHint,
+        posterDraft: input.draft.posterDraft ?? null,
+        posterPlanList: Array.isArray(input.draft.planList) ? input.draft.planList : [],
+        outlineItems: [],
+        slideDrafts: [],
+      });
+      return compiled.map((task) => ({
+        ...task,
+        styleId: style.id,
+        styleName: style.englishName ?? style.name,
+        stylePrompt: style.prompt.trim(),
+        model: "gpt-image-2",
+        provider: "tuzi" as const,
+        quality: "standard" as const,
+        response_format: "url" as const,
+      })) as ImageGenerationTask[];
+    },
+    [
+      outputLanguage,
+      pptPageCount,
+      pptRatio,
+      selectedStyle,
+      videoRatio,
+      videoStoryboardCount,
+      visualizationTypeHint,
+    ],
+  );
   const buildWorkspaceTelemetryContext = useCallback((extra?: Record<string, unknown>) => {
     const { entrySource, sourceConfidence } = resolveEntrySource(
       typeof extra?.entrySource === "string" ? extra.entrySource : null,
@@ -6465,7 +6709,7 @@ export default function WorkspacePage() {
   const outputSummaryStatusLabel = allGenerationReady
     ? "Generation complete"
     : generationInProgress
-      ? "Estimated 3-5 min"
+      ? "About 3-5 min"
       : "Preparing generation";
   const handleOutputSummaryDownload = useCallback(() => {
     if (effectiveIntent === "ppt") {
@@ -7497,88 +7741,16 @@ export default function WorkspacePage() {
     );
 
     try {
-      const data = await runDraftJobRequest({
+      const data = await requestPosterDraftData({
         topic,
         prompt: draftPrompt,
-        textModel: initialEntry.models?.textModel || "gemini-2.5",
         posterCount,
         posterSizeLabel,
-        direction: effectiveIntent,
-        normalizedDirection: effectiveIntent,
-        normalizedCount: posterCount,
-        normalizedRatio: posterSizeLabel,
-        outputLanguage,
-        draftMode: "auto",
       });
       if (posterDraftRequestRef.current !== requestId) {
         return false;
       }
-      if (
-        data.llmUsage &&
-        Number.isFinite(data.llmUsage.totalTokens) &&
-        Number(data.llmUsage.totalTokens) > 0
-      ) {
-        setDraftLlmUsage({
-          inputTokens: Math.max(0, Math.round(data.llmUsage.inputTokens || 0)),
-          outputTokens: Math.max(0, Math.round(data.llmUsage.outputTokens || 0)),
-          totalTokens: Math.max(1, Math.round(data.llmUsage.totalTokens)),
-          source: data.llmUsage.source,
-          model: data.llmUsage.model,
-        });
-      } else {
-        setDraftLlmUsage(null);
-      }
-      setEditablePosterDraft(data.posterDraft ?? null);
-      setEditablePosterPlanList(Array.isArray(data.planList) ? data.planList : []);
-      const restoredPosterPlanList = Array.isArray(data.planList) ? data.planList : [];
-      if (projectIdRef.current && restoredPosterPlanList.length > 0) {
-        persistWorkspaceProjectPages({
-          projectId: projectIdRef.current,
-          outputType: "poster",
-          pages: restoredPosterPlanList.map((item, idx) => ({
-            index: Number.isFinite(item.index) ? item.index : idx + 1,
-            pageRole: item.role || "content",
-            title: item.title,
-            body: [item.focus, ...(Array.isArray(item.keyFacts) ? item.keyFacts : [])]
-              .filter((value) => typeof value === "string" && value.trim())
-              .join("\n"),
-            visual: item.visualType || item.layoutHint || "",
-            imagePromptDraft: item.imagePromptDraft || item.imagePrompt || "",
-          })),
-        });
-      } else if (projectIdRef.current && data.posterDraft) {
-        persistWorkspaceProjectPages({
-          projectId: projectIdRef.current,
-          outputType: "poster",
-          pages: [
-            {
-              index: 1,
-              pageRole: "content",
-              title: data.posterDraft.headline,
-              subtitle: data.posterDraft.subtitle,
-              body: [data.posterDraft.body, ...(Array.isArray(data.posterDraft.points) ? data.posterDraft.points : [])]
-                .filter((value) => typeof value === "string" && value.trim())
-                .join("\n"),
-              visual: data.posterDraft.visualType || data.posterDraft.layoutSuggestion || "",
-              imagePromptDraft: "",
-            },
-          ],
-        });
-      }
-      const nextProjectTitle = deriveWorkspaceProjectTitle({
-        outputLanguage,
-        topic,
-        intent: effectiveIntent,
-        posterDraft: data.posterDraft ?? null,
-        planList: Array.isArray(data.planList) ? data.planList : [],
-      });
-      setWorkspaceProjectTitle(nextProjectTitle);
-      updateUserProjectMetadata({
-        email: currentEmail,
-        projectId: projectIdRef.current,
-        title: nextProjectTitle,
-        format: "海报",
-      });
+      applyPosterDraftData(data);
       logClientEvent({
         category: "llm",
         action: "draft_generation_success",
@@ -7645,6 +7817,7 @@ export default function WorkspacePage() {
     basePosterDraft,
     basePosterPlanList,
     baseSlideDrafts,
+    applyPosterDraftData,
     currentEmail,
     draftPrompt,
     effectiveIntent,
@@ -7653,7 +7826,7 @@ export default function WorkspacePage() {
     outputLanguage,
     parseStructuredError,
     removeErrorTurn,
-    runDraftJobRequest,
+    requestPosterDraftData,
     posterCount,
     posterSizeId,
     posterSizeLabel,
@@ -8611,6 +8784,101 @@ export default function WorkspacePage() {
     }
   }
 
+  useEffect(() => {
+    if (
+      quickPosterDirectStartedRef.current ||
+      !initialEntry.freshSessionDraft ||
+      !initialEntry.prompt.trim() ||
+      prompt1Pending ||
+      sessionStatus === "loading" ||
+      intentAnalysis?.classification !== "ready" ||
+      intentAnalysis?.direction !== "poster" ||
+      intentAnalysis?.clarifyMode !== "none" ||
+      intentAnalysis?.needsFreshSources === true ||
+      effectiveIntent !== "poster" ||
+      posterCount !== 1 ||
+      showPosterSizeSelector ||
+      configConfirmed ||
+      flowStage !== "intent" ||
+      generationRequestInFlightRef.current ||
+      Object.keys(generationTaskStateByIndex).length > 0
+    ) {
+      return;
+    }
+
+    quickPosterDirectStartedRef.current = true;
+
+    if (sessionStatus !== "authenticated" || !currentEmail) {
+      pushAssistantMessage(
+        tr("Please sign in to generate your poster.", "请先登录后生成海报。"),
+        tr("Request Guard", "请求保护"),
+      );
+      if (typeof window !== "undefined") {
+        const callbackUrl = `${window.location.pathname}${window.location.search || ""}`;
+        router.push(`/auth?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
+      return;
+    }
+
+    setManualIntent("poster");
+    setPosterCount(1);
+    setPosterSizeId((prev) => prev || "poster-9-16");
+    setBillingConfirmed(false);
+    clearCurrentGenerationState("quick-poster-direct-start");
+    pushAssistantMessage(
+      tr("I will generate a poster from your idea now.", "我会直接根据你的想法生成一张海报。"),
+      tr("Poster Generation", "海报生成"),
+    );
+
+    void (async () => {
+      const draftReady = await handleConfirmConfig();
+      if (!draftReady) {
+        quickPosterDirectDraftReadyRef.current = false;
+        return;
+      }
+      quickPosterDirectDraftReadyRef.current = true;
+    })();
+  }, [
+    clearCurrentGenerationState,
+    configConfirmed,
+    currentEmail,
+    effectiveIntent,
+    flowStage,
+    generationTaskStateByIndex,
+    handleConfirmConfig,
+    initialEntry.freshSessionDraft,
+    initialEntry.prompt,
+    intentAnalysis?.classification,
+    intentAnalysis?.direction,
+    intentAnalysis?.clarifyMode,
+    intentAnalysis?.needsFreshSources,
+    posterCount,
+    prompt1Pending,
+    pushAssistantMessage,
+    router,
+    sessionStatus,
+    showPosterSizeSelector,
+    tr,
+  ]);
+
+  useEffect(() => {
+    if (
+      !quickPosterDirectDraftReadyRef.current ||
+      generationRequestInFlightRef.current ||
+      effectiveIntent !== "poster" ||
+      !posterDraft
+    ) {
+      return;
+    }
+
+    quickPosterDirectDraftReadyRef.current = false;
+    setFlowStage("billing");
+    setBillingConfirmed(false);
+    window.setTimeout(() => {
+      void handleConfirmBilling();
+    }, 0);
+  }, [effectiveIntent, handleConfirmBilling, posterDraft]);
+
   async function handleSendInput(
     raw?: string,
     options?: {
@@ -9471,7 +9739,6 @@ export default function WorkspacePage() {
                     statusLabel: outputSummaryStatusLabel,
                     statusTone:
                       generationInProgress && !allGenerationReady ? "warning" : "default",
-                    progressLabel: generationProgressLabel,
                     isCanvasExpanded: showCanvasPanelInLayout,
                     canToggleCanvas: hasCanvasPanel,
                     canDownload: outputSummaryCanDownload,
@@ -9601,6 +9868,7 @@ export default function WorkspacePage() {
                 posterCount={posterCount}
                 posterDraft={posterDraft}
                 posterPlanList={editablePosterPlanList.length ? editablePosterPlanList : basePosterPlanList}
+                outputLanguage={outputLanguage}
                 posterAspectRatio={posterCanvasAspectRatio}
                 generationSessionSeed={generationSessionSeed}
                 generationTaskStateByIndex={generationTaskStateByIndex}

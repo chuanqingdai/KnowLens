@@ -50,6 +50,7 @@ type PosterCanvasProps = {
   posterCount: number;
   posterDraft: PosterDraft | null;
   posterPlanList: PosterPlanItem[];
+  outputLanguage?: "en" | "zh";
   posterAspectRatio?: string;
   generationSessionSeed?: number;
   generationTaskStateByIndex?: Record<
@@ -105,8 +106,6 @@ type PosterNodeData = {
   onUpdate: (id: string, patch: Partial<PosterCard>) => void;
   onRetry: (id: string) => void;
   onRedraw: (id: string) => void;
-  onUndoCopy: (id: string) => void;
-  onRestoreCopy: (id: string) => void;
   onDownload: (card: PosterCard) => void;
 };
 
@@ -247,13 +246,18 @@ function buildPosterCardCopy(
   plan: PosterPlanItem | undefined,
   index: number,
   posterCount: number,
+  outputLanguage: "en" | "zh",
 ) {
+  const isZh = outputLanguage === "zh";
   const singlePoster = posterCount === 1;
   const titleLine =
     plan?.title?.trim() ||
     posterDraft?.headline?.trim() ||
     (posterCount > 1 ? `Poster ${index}` : "Poster");
-  const pageFocus = plan?.focus?.trim() || posterDraft?.subtitle?.trim() || "Define one clear page focus.";
+  const pageFocus =
+    plan?.focus?.trim() ||
+    posterDraft?.subtitle?.trim() ||
+    (isZh ? "请定义这一页的核心重点。" : "Define one clear page focus.");
   const keyFacts = (plan?.keyFacts ?? posterDraft?.points ?? [])
     .map((item) => item.trim())
     .filter(Boolean)
@@ -263,16 +267,16 @@ function buildPosterCardCopy(
     plan?.visualType?.trim() ||
     plan?.layoutHint?.trim() ||
     posterDraft?.visualType?.trim() ||
-    "Single clean infographic structure";
+    (isZh ? "单页信息图结构" : "Single clean infographic structure");
   return [
     titleLine,
     "",
-    `本页重点: ${pageFocus}`,
+    `${isZh ? "本页重点" : "Page Focus"}: ${pageFocus}`,
     "",
-    "内容:",
-    ...(numberedFacts.length ? numberedFacts : ["1. 补充该页核心内容"]),
+    `${isZh ? "内容" : "Content"}:`,
+    ...(numberedFacts.length ? numberedFacts : [isZh ? "1. 补充该页核心内容" : "1. Add the core content for this poster."]),
     "",
-    `画面结构: ${visualStructure}`,
+    `${isZh ? "画面结构" : "Visual Structure"}: ${visualStructure}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -425,8 +429,6 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
     onUpdate,
     onRetry,
     onRedraw,
-    onUndoCopy,
-    onRestoreCopy,
     onDownload,
   } = data;
   const canEdit = card.status === "ready" && !card.imageLoading;
@@ -462,23 +464,6 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
           <p className="text-xs text-zinc-500">Poster {card.index}</p>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            disabled={!canEdit || card.history.length === 0}
-            onClick={() => onUndoCopy(card.id)}
-            className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 text-[11px] text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RotateCcw size={11} />
-            Undo
-          </button>
-          <button
-            type="button"
-            disabled={!canEdit || card.copy === card.initialCopy}
-            onClick={() => onRestoreCopy(card.id)}
-            className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 text-[11px] text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Draft
-          </button>
           <button
             type="button"
             disabled={!canEdit}
@@ -689,6 +674,7 @@ export function PosterCanvas({
   posterCount,
   posterDraft,
   posterPlanList,
+  outputLanguage = "en",
   posterAspectRatio,
   generationSessionSeed = 0,
   generationTaskStateByIndex,
@@ -745,7 +731,7 @@ export function PosterCanvas({
     () =>
       Array.from({ length: count }, (_, idx) => {
         const plan = posterPlanList[idx];
-        const copy = buildPosterCardCopy(posterDraft, plan, idx + 1, count);
+        const copy = buildPosterCardCopy(posterDraft, plan, idx + 1, count, outputLanguage);
         return {
           id: `poster-card-${idx + 1}`,
           index: idx + 1,
@@ -760,7 +746,7 @@ export function PosterCanvas({
           archives: [],
         };
       }),
-    [count, posterDraft, posterPlanList],
+    [count, outputLanguage, posterDraft, posterPlanList],
   );
   const [cards, setCards] = useState<PosterCard[]>(() => initialCards);
   const initKeyRef = useRef<string | null>(null);
@@ -1012,25 +998,6 @@ export function PosterCanvas({
     setHasPendingSave(true);
   }, []);
 
-  const handleRestoreCopy = useCallback((id: string) => {
-    setCards((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) {
-          return item;
-        }
-        if (item.copy === item.initialCopy) {
-          return item;
-        }
-        return {
-          ...item,
-          history: [...item.history, item.copy].slice(-20),
-          copy: item.initialCopy,
-        };
-      }),
-    );
-    setHasPendingSave(true);
-  }, []);
-
   const handleRetryCard = useCallback((id: string) => {
     const index = Number(id.replace("poster-card-", ""));
     if (!Number.isFinite(index)) {
@@ -1158,8 +1125,6 @@ export function PosterCanvas({
           onUpdate: handleUpdateCard,
           onRetry: handleRetryCard,
           onRedraw: handleRedrawCard,
-          onUndoCopy: handleUndoCopy,
-          onRestoreCopy: handleRestoreCopy,
           onDownload: handleDownloadCard,
         } as PosterNodeData,
       })),
@@ -1169,9 +1134,7 @@ export function PosterCanvas({
       selectedCardId,
       handleDownloadCard,
       handleRedrawCard,
-      handleRestoreCopy,
       handleRetryCard,
-      handleUndoCopy,
       handleUpdateCard,
     ],
   );

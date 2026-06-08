@@ -158,9 +158,21 @@ function latestBy<T>(rows: T[], getKey: (row: T) => string, getTime: (row: T) =>
   return map;
 }
 
+function normalizeImageModelName(value: unknown) {
+  const raw = text(value);
+  if (!raw) {
+    return "";
+  }
+  const first = raw
+    .split(/\s*(?:,|>|\\|\/{2}|\|)\s*/)
+    .map((item) => item.trim())
+    .find(Boolean);
+  return first || raw;
+}
+
 async function readAdminRows() {
   if (hasManagedDatabase()) {
-    const [users, projects, credits, subscriptions, fulfillments, feedback, opsEvents] = await Promise.all([
+    const [users, projects, credits, subscriptions, fulfillments, feedback, opsEvents, imageJobs, imageTasks] = await Promise.all([
       pgAll("SELECT * FROM users ORDER BY created_at DESC LIMIT 500") as Promise<Row[]>,
       pgAll(
         `SELECT p.*, u.email AS user_email
@@ -180,8 +192,10 @@ async function readAdminRows() {
       pgAll("SELECT * FROM billing_fulfillments ORDER BY created_at DESC LIMIT 500") as Promise<Row[]>,
       pgAll("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC LIMIT 500") as Promise<Row[]>,
       pgAll("SELECT * FROM ops_events ORDER BY created_at DESC LIMIT 1000") as Promise<Row[]>,
+      pgAll("SELECT * FROM image_generation_jobs ORDER BY updated_at DESC, created_at DESC LIMIT 4000") as Promise<Row[]>,
+      pgAll("SELECT * FROM image_generation_tasks ORDER BY updated_at DESC, created_at DESC LIMIT 8000") as Promise<Row[]>,
     ]);
-    return { users, projects, credits, subscriptions, fulfillments, feedback, opsEvents };
+    return { users, projects, credits, subscriptions, fulfillments, feedback, opsEvents, imageJobs, imageTasks };
   }
 
   const { db } = getDb();
@@ -211,6 +225,12 @@ async function readAdminRows() {
     fulfillments: db.prepare("SELECT * FROM billing_fulfillments ORDER BY created_at DESC LIMIT 500").all() as Row[],
     feedback: db.prepare("SELECT * FROM feedback_tickets ORDER BY created_at DESC, id DESC LIMIT 500").all() as Row[],
     opsEvents: db.prepare("SELECT * FROM ops_events ORDER BY created_at DESC LIMIT 1000").all() as Row[],
+    imageJobs: db
+      .prepare("SELECT * FROM image_generation_jobs ORDER BY updated_at DESC, created_at DESC LIMIT 4000")
+      .all() as Row[],
+    imageTasks: db
+      .prepare("SELECT * FROM image_generation_tasks ORDER BY updated_at DESC, created_at DESC LIMIT 8000")
+      .all() as Row[],
   };
 }
 
@@ -221,6 +241,16 @@ export async function getAdminConsoleData(): Promise<AdminConsoleData> {
   const latestCreditsByEmail = latestBy(rows.credits, (row) => normalizeEmail(row.user_email), (row) => iso(row.created_at));
   const latestSubscriptionsByUserId = latestBy(rows.subscriptions, (row) => text(row.user_id), (row) =>
     iso(row.updated_at ?? row.created_at),
+  );
+  const latestImageJobByProjectId = latestBy(
+    rows.imageJobs.filter((row) => text(row.project_id)),
+    (row) => text(row.project_id),
+    (row) => iso(row.updated_at ?? row.created_at),
+  );
+  const latestImageTaskByJobId = latestBy(
+    rows.imageTasks.filter((row) => text(row.job_id)),
+    (row) => text(row.job_id),
+    (row) => iso(row.updated_at ?? row.created_at),
   );
   const projectStartedEventsByProjectId = latestBy(
     rows.opsEvents.filter(
@@ -264,25 +294,38 @@ export async function getAdminConsoleData(): Promise<AdminConsoleData> {
     };
   });
 
-  const projects: AdminConsoleData["projects"] = rows.projects.map((project) => ({
-    id: text(project.id),
-    userId: text(project.user_id),
-    type: normalizeOutputType(project.format),
-    topic: text(project.title, "Untitled project"),
-    originalInput: extractOriginalInputFromDetails(
-      parseDetailsJson(projectStartedEventsByProjectId.get(text(project.id))?.details_json),
-    ) || undefined,
-    status: normalizeProjectStatus(project.status),
-    stage: normalizeProjectStatus(project.status) === "completed" ? "done" : "image_generation",
-    textModel: "Gemini 2.5",
-    imageModel: "gptsapi",
-    consumedCredits: rows.credits
-      .filter((credit) => text(credit.project_id) === text(project.id) && numberValue(credit.delta) < 0)
-      .reduce((sum, credit) => sum + Math.abs(numberValue(credit.delta)), 0),
-    createdAt: iso(project.created_at ?? project.updated_at),
-    updatedAt: iso(project.updated_at ?? project.created_at),
-    requestId: text(project.id),
-  }));
+  const projects: AdminConsoleData["projects"] = rows.projects.map((project) => {
+    const projectId = text(project.id);
+    const latestImageJob = latestImageJobByProjectId.get(projectId);
+    const latestImageTask = latestImageTaskByJobId.get(text(latestImageJob?.id));
+    const realImageModel =
+      normalizeImageModelName(latestImageTask?.provider_used) ||
+      normalizeImageModelName(latestImageTask?.providerUsed) ||
+      normalizeImageModelName(latestImageTask?.provider_order) ||
+      normalizeImageModelName(latestImageTask?.providerOrder) ||
+      normalizeImageModelName(latestImageJob?.image_model_policy) ||
+      normalizeImageModelName(latestImageJob?.imageModelPolicy) ||
+      "unknown";
+    return {
+      id: text(project.id),
+      userId: text(project.user_id),
+      type: normalizeOutputType(project.format),
+      topic: text(project.title, "Untitled project"),
+      originalInput: extractOriginalInputFromDetails(
+        parseDetailsJson(projectStartedEventsByProjectId.get(text(project.id))?.details_json),
+      ) || undefined,
+      status: normalizeProjectStatus(project.status),
+      stage: normalizeProjectStatus(project.status) === "completed" ? "done" : "image_generation",
+      textModel: "Gemini 2.5",
+      imageModel: realImageModel,
+      consumedCredits: rows.credits
+        .filter((credit) => text(credit.project_id) === text(project.id) && numberValue(credit.delta) < 0)
+        .reduce((sum, credit) => sum + Math.abs(numberValue(credit.delta)), 0),
+      createdAt: iso(project.created_at ?? project.updated_at),
+      updatedAt: iso(project.updated_at ?? project.created_at),
+      requestId: text(project.id),
+    };
+  });
 
   const creditRecords: AdminConsoleData["creditRecords"] = rows.credits.map((credit) => {
     const email = normalizeEmail(credit.user_email);

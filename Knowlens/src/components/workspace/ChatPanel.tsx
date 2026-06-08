@@ -758,16 +758,14 @@ export const ChatPanel = memo(function ChatPanel({
           <p
             className={`text-sm ${
               statusIsWarning
-                ? "inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-700"
+                ? "font-medium text-amber-700"
                 : "text-zinc-600"
             }`}
           >
             {outputSummaryCard.statusLabel}
             {outputSummaryCard.progressLabel ? (
               <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  statusIsWarning ? "bg-amber-100 text-amber-800" : "ml-2 bg-zinc-100 text-zinc-700"
-                }`}
+                className={`ml-1 text-xs font-medium ${statusIsWarning ? "text-amber-700" : "text-zinc-500"}`}
               >
                 {outputSummaryCard.progressLabel}
               </span>

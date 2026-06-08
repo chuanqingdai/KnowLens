@@ -22,7 +22,7 @@ export type MockProjectStage =
   | "done";
 export type MockDirection = "poster" | "ppt" | "video";
 export type MockTextModel = "GPT-5.5" | "GPT-5.4" | "Gemini 3.1 Pro" | "Claude Sonnet 4.6" | "Gemini 2.5" | "DeepSeek V4";
-export type MockImageModel = "image2-tuzi" | "duomi" | "gptsapi";
+export type MockImageModel = string;
 export type MockLogStatus = "ok" | "failed" | "processing" | "handled";
 export type MockLogType = "LLM" | "Image" | "Export" | "Billing" | "Auth" | "System";
 export type MockTicketStatus = "pending" | "in_progress" | "resolved" | "closed" | "no_action";

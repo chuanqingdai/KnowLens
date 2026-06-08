@@ -14,12 +14,9 @@ import {
 import { useRouter } from "next/navigation";
 import {
   saveCheckoutReturnNotice,
-  getSubscriptionByUser,
   syncCreditRecordsFromServer,
   type BillingCycle,
-  type SubscriptionSnapshot,
 } from "@/lib/billing";
-import { STANDARD_OUTPUT_PROMO_CREDITS, STANDARD_OUTPUT_REGULAR_CREDITS } from "@/lib/credit-pricing";
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 import { useSession } from "next-auth/react";
 import { findBillingPlan, type BillingPlanId } from "@/lib/billing-plans";
@@ -231,21 +228,21 @@ function clearPendingCheckout() {
 export default function MembershipPage() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [toast, setToast] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState(0);
   const [payingPlanId, setPayingPlanId] = useState<BillingPlanId | null>(null);
   const [finalizing, setFinalizing] = useState(false);
-  const [pendingFinalizeSessionId, setPendingFinalizeSessionId] = useState<string | null>(null);
-  const [pendingCheckoutMeta, setPendingCheckoutMeta] = useState<PendingCheckout | null>(null);
-  const [membershipSource, setMembershipSource] = useState("unknown");
+  const [pendingFinalizeSessionId, setPendingFinalizeSessionId] = useState<string | null>(() => {
+    const pending = readPendingCheckout();
+    return pending?.sessionId ?? null;
+  });
+  const [pendingCheckoutMeta, setPendingCheckoutMeta] = useState<PendingCheckout | null>(() => readPendingCheckout());
   const processedSessionRef = useRef<string | null>(null);
+  const membershipExposureLoggedRef = useRef(false);
   const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const subscription = useMemo<SubscriptionSnapshot | null>(() => {
-    void refreshVersion;
-    return getSubscriptionByUser(currentEmail);
-  }, [currentEmail, refreshVersion]);
+  const membershipSource = readMembershipSource();
+  const [, setRefreshVersion] = useState(0);
   const [returnPath] = useState(() => {
     if (typeof window === "undefined") {
       return "/";
@@ -261,9 +258,9 @@ export default function MembershipPage() {
     return "/";
   });
 
-  useEffect(() => {
-    setMembershipSource(readMembershipSource());
-  }, []);
+  const resolveMembershipSource = useCallback(() => {
+    return membershipSource || "unknown";
+  }, [membershipSource]);
 
   const trackTelemetry = useCallback(async (event: TelemetryEventInput) => {
     try {
@@ -278,19 +275,25 @@ export default function MembershipPage() {
   }, []);
 
   useEffect(() => {
-    if (!currentEmail) {
+    if (membershipExposureLoggedRef.current || typeof window === "undefined" || sessionStatus === "loading") {
       return;
     }
+    membershipExposureLoggedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
     void trackTelemetry({
       category: "billing",
-      action: "paywall_exposed",
+      action: "membership_page_exposed",
       status: "info",
-      source: membershipSource || "unknown",
+      source: resolveMembershipSource(),
       details: {
-        path: "/membership",
+        path: window.location.pathname,
+        checkoutStatus: params.get("checkout"),
+        hasSessionId: Boolean(params.get("session_id")),
+        authenticated: sessionStatus === "authenticated",
+        returnPath,
       },
     });
-  }, [currentEmail, membershipSource, trackTelemetry]);
+  }, [resolveMembershipSource, returnPath, sessionStatus, trackTelemetry]);
 
   const finalizeCheckoutSession = useCallback(
     async (sessionId: string) => {
@@ -307,9 +310,37 @@ export default function MembershipPage() {
           reason?: string;
           error?: string;
           message?: string;
+          cycle?: BillingCycle;
+          checkoutMode?: string;
+          checkoutSource?: string;
+          credited?: boolean;
+          plan?: {
+            id?: string;
+            name?: string;
+          };
         };
 
         if (response.ok && data.ok) {
+          const eventSource = data.checkoutSource || resolveMembershipSource();
+          void trackTelemetry({
+            category: "billing",
+            action: "checkout_return_success",
+            status: "ok",
+            source: eventSource,
+            message: data.duplicate
+              ? "Checkout return verified as duplicate."
+              : "Checkout return verified successfully.",
+            details: {
+              sessionId,
+              duplicate: Boolean(data.duplicate),
+              credited: Boolean(data.credited),
+              cycle: data.cycle,
+              checkoutMode: data.checkoutMode,
+              planId: data.plan?.id ?? null,
+              planName: data.plan?.name ?? null,
+              returnPath,
+            },
+          });
           if (currentEmail) {
             await syncCreditRecordsFromServer(currentEmail).catch(() => undefined);
           }
@@ -323,7 +354,7 @@ export default function MembershipPage() {
               ? "Membership is active and your credits are ready to use."
               : "Membership activated successfully. Your credits are ready to use.",
             returnPath,
-            source: membershipSource,
+            source: eventSource,
             createdAt: new Date().toISOString(),
           });
           setToast(
@@ -336,6 +367,18 @@ export default function MembershipPage() {
         }
 
         if (data.reason === "canceled_or_incomplete") {
+          void trackTelemetry({
+            category: "billing",
+            action: "checkout_return_canceled",
+            status: "info",
+            source: data.checkoutSource || resolveMembershipSource(),
+            message: "Checkout was canceled or left incomplete.",
+            details: {
+              sessionId,
+              reason: data.reason,
+              returnPath,
+            },
+          });
           clearPendingCheckout();
           setPendingCheckoutMeta(null);
           setPendingFinalizeSessionId(null);
@@ -345,6 +388,19 @@ export default function MembershipPage() {
         }
 
         if (data.reason === "payment_failed_or_unpaid") {
+          void trackTelemetry({
+            category: "billing",
+            action: "checkout_return_failed",
+            status: "error",
+            source: data.checkoutSource || resolveMembershipSource(),
+            code: data.reason,
+            message: "Checkout returned without a paid payment status.",
+            details: {
+              sessionId,
+              reason: data.reason,
+              returnPath,
+            },
+          });
           clearPendingCheckout();
           setPendingCheckoutMeta(null);
           setPendingFinalizeSessionId(null);
@@ -360,37 +416,58 @@ export default function MembershipPage() {
             ? error.message
             : "Network interrupted while verifying payment. No credits were added.";
         setPendingFinalizeSessionId(sessionId);
+        void trackTelemetry({
+          category: "billing",
+          action: "checkout_return_verification_failed",
+          status: "error",
+          source: resolveMembershipSource(),
+          message,
+          details: {
+            sessionId,
+            returnPath,
+          },
+        });
         setToast(`${message} You can retry verification.`);
       } finally {
         setFinalizing(false);
       }
     },
-    [currentEmail, membershipSource, returnPath, router],
+    [currentEmail, resolveMembershipSource, returnPath, router, trackTelemetry],
   );
 
   useEffect(() => {
     if (typeof window === "undefined" || finalizing) {
       return;
     }
-    setPendingCheckoutMeta(readPendingCheckout());
     const params = new URLSearchParams(window.location.search);
     const checkoutStatus = params.get("checkout");
     const sessionId = params.get("session_id");
 
     if (checkoutStatus === "cancel") {
+      const pendingSource = readPendingCheckout()?.source;
+      void trackTelemetry({
+        category: "billing",
+        action: "checkout_return_canceled",
+        status: "info",
+        source: pendingSource || resolveMembershipSource(),
+        message: "Checkout returned with cancel status from Stripe.",
+        details: {
+          returnPath,
+        },
+      });
       clearPendingCheckout();
-      setPendingCheckoutMeta(null);
-      setPendingFinalizeSessionId(null);
-      setToast("Checkout was canceled. No charge and no credits were added.");
+      saveCheckoutReturnNotice({
+        status: "error",
+        message: "Checkout was canceled. No charge and no credits were added.",
+        returnPath,
+        source: pendingSource || resolveMembershipSource(),
+        createdAt: new Date().toISOString(),
+      });
       router.replace(returnPath);
       return;
     }
 
     if (checkoutStatus !== "success" || !sessionId) {
-      const pending = readPendingCheckout();
-      if (pending?.sessionId) {
-        setPendingFinalizeSessionId(pending.sessionId);
-      }
       return;
     }
 
@@ -405,13 +482,9 @@ export default function MembershipPage() {
         ...pending,
         sessionId,
       });
-      setPendingCheckoutMeta({
-        ...pending,
-        sessionId,
-      });
     }
     void finalizeCheckoutSession(sessionId);
-  }, [finalizeCheckoutSession, finalizing, returnPath, router]);
+  }, [finalizeCheckoutSession, finalizing, resolveMembershipSource, returnPath, router, trackTelemetry]);
 
   const plansWithCyclePrice = useMemo(() => {
     return plans.map((plan) => {
@@ -441,15 +514,39 @@ export default function MembershipPage() {
       setPayingPlanId(null);
       return;
     }
+    const eventSource = resolveMembershipSource();
+    void trackTelemetry({
+      category: "billing",
+      action: "pay_button_clicked",
+      status: "info",
+      source: eventSource,
+      details: {
+        planId: plan.id,
+        cycle: billingCycle,
+        authenticated: Boolean(currentEmail),
+        path: "/membership",
+      },
+    });
     if (!currentEmail) {
       const pendingCheckout = {
         planId: plan.id,
         cycle: billingCycle,
         startedAt: new Date().toISOString(),
-        source: membershipSource,
+        source: eventSource,
       };
       savePendingCheckout(pendingCheckout);
       setPendingCheckoutMeta(pendingCheckout);
+      void trackTelemetry({
+        category: "billing",
+        action: "membership_auth_redirect_started",
+        status: "info",
+        source: eventSource,
+        details: {
+          planId: plan.id,
+          cycle: billingCycle,
+          callbackUrl: "/membership",
+        },
+      });
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem("membership:return-path", "/membership");
       }
@@ -464,28 +561,18 @@ export default function MembershipPage() {
       return;
     }
     router.prefetch(returnPath);
-    void trackTelemetry({
-      category: "billing",
-      action: "pay_button_clicked",
-      status: "info",
-      source: membershipSource,
-      details: {
-        planId: plan.id,
-        cycle: billingCycle,
-      },
-    });
     try {
       savePendingCheckout({
         planId: plan.id,
         cycle: billingCycle,
         startedAt: new Date().toISOString(),
-        source: membershipSource,
+        source: eventSource,
       });
       setPendingCheckoutMeta({
         planId: plan.id,
         cycle: billingCycle,
         startedAt: new Date().toISOString(),
-        source: membershipSource,
+        source: eventSource,
       });
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), CHECKOUT_REQUEST_TIMEOUT_MS);
@@ -507,9 +594,21 @@ export default function MembershipPage() {
         directCheckoutUrl?: string;
         fallback?: boolean;
         error?: string;
+        sessionId?: string | null;
       };
       if (!response.ok || !data.ok || !data.checkoutUrl) {
         throw new Error(data.error || "Unable to create checkout session.");
+      }
+      if (data.sessionId) {
+        const nextPendingCheckout = {
+          planId: plan.id,
+          cycle: billingCycle,
+          startedAt: new Date().toISOString(),
+          sessionId: data.sessionId,
+          source: eventSource,
+        } satisfies PendingCheckout;
+        savePendingCheckout(nextPendingCheckout);
+        setPendingCheckoutMeta(nextPendingCheckout);
       }
       if (data.fallback) {
         setToast("Using one-time checkout fallback to maximize payment success.");
@@ -518,11 +617,13 @@ export default function MembershipPage() {
         category: "billing",
         action: "checkout_redirect_started",
         status: "ok",
-        source: membershipSource,
+        source: eventSource,
         details: {
           planId: plan.id,
           cycle: billingCycle,
           fallback: Boolean(data.fallback),
+          sessionId: data.sessionId ?? null,
+          path: "/membership",
         },
       });
       const directCheckoutUrl = (data.directCheckoutUrl || "").trim();
@@ -533,7 +634,7 @@ export default function MembershipPage() {
           window.location.replace(redirectCheckoutUrl);
         }
       }, 2500);
-      window.location.href = preferredCheckoutUrl;
+      window.location.assign(preferredCheckoutUrl);
       return;
     } catch (error) {
       clearPendingCheckout();
@@ -557,11 +658,12 @@ export default function MembershipPage() {
         category: "billing",
         action: "checkout_redirect_failed",
         status: "error",
-        source: membershipSource,
+        source: eventSource,
         message,
         details: {
           planId: plan.id,
           cycle: billingCycle,
+          path: "/membership",
         },
       });
       setPayingPlanId(null);
