@@ -166,15 +166,6 @@ export default function ProjectsPage() {
           </header>
 
           <section>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Recent Projects</h2>
-              <button
-                type="button"
-                className="text-sm text-zinc-500 transition hover:text-zinc-800"
-              >
-                View all
-              </button>
-            </div>
             {isLoadingProjects ? (
               <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-10 text-sm text-zinc-500 shadow-[0_10px_25px_rgba(15,23,42,0.04)]">
                 Loading your projects...

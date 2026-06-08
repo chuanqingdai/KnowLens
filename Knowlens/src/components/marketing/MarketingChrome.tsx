@@ -180,10 +180,6 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
     return () => window.removeEventListener("scroll", onScroll);
   }, [isLanding, oneTapClientId, oneTapReady, oneTapTriggered, status, useGoogleFallback]);
 
-  async function handleGoogleFallback() {
-    await signIn("google", { callbackUrl: "/app" });
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-[#f6f7f9] text-zinc-900">
       <div
@@ -222,15 +218,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
             <button
               type="button"
               onClick={() => {
-                if (status === "authenticated" || status === "loading") {
-                  router.push("/app");
-                  return;
-                }
-                if (useGoogleFallback) {
-                  void handleGoogleFallback();
-                  return;
-                }
-                router.push("/auth?callbackUrl=%2Fapp");
+                router.push("/app");
               }}
               className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
             >

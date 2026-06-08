@@ -67,31 +67,6 @@ const navItems = [
   { key: "profile", label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
-const recentProjects = [
-  {
-    id: "p1",
-    title: "Black Hole Truth",
-    updatedAt: "Updated on 2026-04-11",
-    cover: "/picture/f49e94e8-81c8-4982-830c-a5f87128eae5.png",
-    format: "Poster",
-  },
-  {
-    id: "p2",
-    title: "Electrolysis Reaction",
-    updatedAt: "Updated on 2026-02-26",
-    cover: "/picture/8755ea1a-c5cc-4644-a505-553ec5905d71.png",
-    format: "PPT",
-  },
-  {
-    id: "p3",
-    title: "Immune Mechanism",
-    updatedAt: "Updated on 2026-02-26",
-    cover: "/picture/e32aee6b-1845-409c-b91a-d7667e2f4381.png",
-    format: "Video",
-    duration: "01:42",
-  },
-];
-
 
 const textModelOptions = [
   {
@@ -2096,9 +2071,6 @@ export default function Home() {
   }));
 
   const resolvedRecentProjects = useMemo(() => {
-    if (!currentEmail) {
-      return recentProjects;
-    }
     return serverRecentProjects.slice(0, 4).map((project, index) => ({
       id: project.id,
       title: formatRecentProjectTitle(project.title, locale, index),
@@ -2107,7 +2079,10 @@ export default function Home() {
       format: normalizeFormatLabel(project.format || "海报"),
       duration: project.duration,
     }));
-  }, [currentEmail, locale, serverRecentProjects]);
+  }, [locale, serverRecentProjects]);
+
+  const shouldShowRecentProjects =
+    sessionStatus === "authenticated" && currentEmail.length > 0 && resolvedRecentProjects.length > 0;
 
   const featuredFilteredItems = useMemo(
     () =>
@@ -2424,7 +2399,7 @@ export default function Home() {
               </div>
             </section>
 
-            {resolvedRecentProjects.length ? (
+            {shouldShowRecentProjects ? (
             <section className="mx-auto w-full max-w-6xl">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold tracking-tight text-zinc-900">
