@@ -96,6 +96,9 @@ export function assertProductionAuthConfigLock(snapshot: AuthEnvSnapshot) {
   if (process.env.NODE_ENV !== "production") {
     return;
   }
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return;
+  }
 
   const issues: string[] = [];
   if (!snapshot.nextAuthUrl) {
@@ -140,4 +143,3 @@ export function assertProductionAuthConfigLock(snapshot: AuthEnvSnapshot) {
     throw new Error(`Auth production config lock failed: ${issues.join(" ")}`);
   }
 }
-

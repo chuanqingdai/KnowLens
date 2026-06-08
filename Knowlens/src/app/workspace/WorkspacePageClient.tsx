@@ -3452,6 +3452,25 @@ export default function WorkspacePage() {
     shouldClarifyIntent && !needsFreshSourcesClarify && topicSuggestions.length > 0 && !topicSuggestionLocked;
   const showPosterSizeSelector = effectiveIntent === "poster" && !posterSizeId;
   const canProceed = configConfirmed && !showPosterSizeSelector;
+  const normalizedGenerationConfig = useMemo(
+    () =>
+      normalizeGenerationConfig({
+        direction: effectiveIntent === "unknown" ? "poster" : effectiveIntent,
+        posterCount,
+        posterSizeLabel: posterSizeLabel || "9:16",
+        pptPageCount,
+        pptRatio,
+        videoStoryboardCount,
+        videoRatio,
+      }),
+    [effectiveIntent, posterCount, posterSizeLabel, pptPageCount, pptRatio, videoStoryboardCount, videoRatio],
+  );
+  const standardOutputCount =
+    effectiveIntent === "unknown"
+      ? 0
+      : effectiveIntent === "ppt" || effectiveIntent === "video"
+        ? normalizedGenerationConfig.normalizedCount + 1
+        : normalizedGenerationConfig.normalizedCount;
   const showDirectionGuide = flowStage === "intent" || flowStage === "config";
   const topicSuggestionsLoading = showDirectionGuide && !topicSuggestionLocked && prompt1Pending;
   const showStyleStage = flowStage === "style";
@@ -3677,26 +3696,6 @@ export default function WorkspacePage() {
     });
   }, [configConfirmed, contextPrompt, effectiveIntent, topic]);
   const visualizationTypeHint = posterDraft?.visualType || visualizationRecommendation?.label || null;
-  const normalizedGenerationConfig = useMemo(
-    () =>
-      normalizeGenerationConfig({
-        direction: effectiveIntent === "unknown" ? "poster" : effectiveIntent,
-        posterCount,
-        posterSizeLabel: posterSizeLabel || "9:16",
-        pptPageCount,
-        pptRatio,
-        videoStoryboardCount,
-        videoRatio,
-      }),
-    [effectiveIntent, posterCount, posterSizeLabel, pptPageCount, pptRatio, videoStoryboardCount, videoRatio],
-  );
-
-  const standardOutputCount =
-    effectiveIntent === "unknown"
-      ? 0
-      : effectiveIntent === "ppt" || effectiveIntent === "video"
-        ? normalizedGenerationConfig.normalizedCount + 1
-        : normalizedGenerationConfig.normalizedCount;
   const draftOutputCharCount = useMemo(() => {
     if (effectiveIntent === "poster" && posterDraft) {
       const posterText = [
@@ -3933,30 +3932,27 @@ export default function WorkspacePage() {
     },
     [currentEmail, outputLanguage, persistWorkspaceProjectPages, topic],
   );
-  const requestPosterDraftData = useCallback(
-    async (input: {
-      prompt: string;
-      topic: string;
-      posterCount: number;
-      posterSizeLabel: string;
-    }) => {
-      setDraftLlmUsage(null);
-      return await runDraftJobRequest({
-        topic: input.topic,
-        prompt: input.prompt,
-        textModel: initialEntry.models?.textModel || "gemini-2.5",
-        posterCount: input.posterCount,
-        posterSizeLabel: input.posterSizeLabel,
-        direction: "poster",
-        normalizedDirection: "poster",
-        normalizedCount: input.posterCount,
-        normalizedRatio: input.posterSizeLabel,
-        outputLanguage,
-        draftMode: "auto",
-      });
-    },
-    [initialEntry.models?.textModel, outputLanguage, runDraftJobRequest],
-  );
+  async function requestPosterDraftData(input: {
+    prompt: string;
+    topic: string;
+    posterCount: number;
+    posterSizeLabel: string;
+  }) {
+    setDraftLlmUsage(null);
+    return await runDraftJobRequest({
+      topic: input.topic,
+      prompt: input.prompt,
+      textModel: initialEntry.models?.textModel || "gemini-2.5",
+      posterCount: input.posterCount,
+      posterSizeLabel: input.posterSizeLabel,
+      direction: "poster",
+      normalizedDirection: "poster",
+      normalizedCount: input.posterCount,
+      normalizedRatio: input.posterSizeLabel,
+      outputLanguage,
+      draftMode: "auto",
+    });
+  }
   const buildPosterTasksFromDraftData = useCallback(
     (input: {
       draft: DraftJobResultData;
@@ -7745,7 +7741,7 @@ export default function WorkspacePage() {
         topic,
         prompt: draftPrompt,
         posterCount,
-        posterSizeLabel,
+        posterSizeLabel: posterSizeLabel || "9:16",
       });
       if (posterDraftRequestRef.current !== requestId) {
         return false;

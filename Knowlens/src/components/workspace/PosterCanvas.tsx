@@ -50,7 +50,7 @@ type PosterCanvasProps = {
   posterCount: number;
   posterDraft: PosterDraft | null;
   posterPlanList: PosterPlanItem[];
-  outputLanguage?: "en" | "zh";
+  outputLanguage?: string;
   posterAspectRatio?: string;
   generationSessionSeed?: number;
   generationTaskStateByIndex?: Record<
@@ -123,6 +123,78 @@ const PENDING_POSTER_COLOR = "#e5e7eb";
 const IMAGE_RENDER_DEBUG = process.env.NODE_ENV === "development";
 const WORKSPACE_FLOW_AUDIT = process.env.NODE_ENV === "development";
 const IMAGE_REVEAL_DELAY_MS = 420;
+const DEFAULT_POSTER_COPY_LOCALE = {
+  pageFocusLabel: "Page Focus",
+  contentLabel: "Content",
+  visualStructureLabel: "Visual Structure",
+  pageFocusFallback: "Define one clear page focus.",
+  contentFallback: "1. Add the core content for this poster.",
+  visualStructureFallback: "Single clean infographic structure",
+};
+const POSTER_COPY_LOCALES: Record<string, typeof DEFAULT_POSTER_COPY_LOCALE> = {
+  en: DEFAULT_POSTER_COPY_LOCALE,
+  zh: {
+    pageFocusLabel: "本页重点",
+    contentLabel: "内容",
+    visualStructureLabel: "画面结构",
+    pageFocusFallback: "请定义这一页的核心重点。",
+    contentFallback: "1. 补充该页核心内容",
+    visualStructureFallback: "单页信息图结构",
+  },
+  es: {
+    pageFocusLabel: "Enfoque de la página",
+    contentLabel: "Contenido",
+    visualStructureLabel: "Estructura visual",
+    pageFocusFallback: "Define un enfoque claro para esta página.",
+    contentFallback: "1. Añade el contenido central de este póster.",
+    visualStructureFallback: "Estructura limpia de infografía de una sola página",
+  },
+  fr: {
+    pageFocusLabel: "Point clé de la page",
+    contentLabel: "Contenu",
+    visualStructureLabel: "Structure visuelle",
+    pageFocusFallback: "Définissez un point clé clair pour cette page.",
+    contentFallback: "1. Ajoutez le contenu principal de cette affiche.",
+    visualStructureFallback: "Structure d'infographie claire sur une seule page",
+  },
+  de: {
+    pageFocusLabel: "Seitenschwerpunkt",
+    contentLabel: "Inhalt",
+    visualStructureLabel: "Visuelle Struktur",
+    pageFocusFallback: "Definieren Sie einen klaren Schwerpunkt für diese Seite.",
+    contentFallback: "1. Fügen Sie den Kerninhalt dieses Posters hinzu.",
+    visualStructureFallback: "Klare einseitige Infografik-Struktur",
+  },
+  ja: {
+    pageFocusLabel: "このページの重点",
+    contentLabel: "内容",
+    visualStructureLabel: "ビジュアル構成",
+    pageFocusFallback: "このページの核となるポイントを明確にしてください。",
+    contentFallback: "1. このポスターの中心内容を追加してください。",
+    visualStructureFallback: "1ページの分かりやすいインフォグラフィック構成",
+  },
+  ko: {
+    pageFocusLabel: "페이지 핵심",
+    contentLabel: "내용",
+    visualStructureLabel: "시각 구조",
+    pageFocusFallback: "이 페이지의 핵심 포인트를 하나로 정리하세요.",
+    contentFallback: "1. 이 포스터의 핵심 내용을 추가하세요.",
+    visualStructureFallback: "한 페이지용 깔끔한 인포그래픽 구조",
+  },
+  pt: {
+    pageFocusLabel: "Foco da página",
+    contentLabel: "Conteúdo",
+    visualStructureLabel: "Estrutura visual",
+    pageFocusFallback: "Defina um foco claro para esta página.",
+    contentFallback: "1. Adicione o conteúdo principal deste pôster.",
+    visualStructureFallback: "Estrutura limpa de infográfico em uma única página",
+  },
+};
+
+function getPosterCopyLocale(outputLanguage?: string) {
+  const normalizedLanguage = (outputLanguage || "").trim().toLowerCase();
+  return POSTER_COPY_LOCALES[normalizedLanguage] || DEFAULT_POSTER_COPY_LOCALE;
+}
 
 function logImageRenderDebug(message: string, payload: Record<string, unknown>) {
   if (!IMAGE_RENDER_DEBUG) {
@@ -246,9 +318,9 @@ function buildPosterCardCopy(
   plan: PosterPlanItem | undefined,
   index: number,
   posterCount: number,
-  outputLanguage: "en" | "zh",
+  outputLanguage: string,
 ) {
-  const isZh = outputLanguage === "zh";
+  const copyLocale = getPosterCopyLocale(outputLanguage);
   const singlePoster = posterCount === 1;
   const titleLine =
     plan?.title?.trim() ||
@@ -257,7 +329,7 @@ function buildPosterCardCopy(
   const pageFocus =
     plan?.focus?.trim() ||
     posterDraft?.subtitle?.trim() ||
-    (isZh ? "请定义这一页的核心重点。" : "Define one clear page focus.");
+    copyLocale.pageFocusFallback;
   const keyFacts = (plan?.keyFacts ?? posterDraft?.points ?? [])
     .map((item) => item.trim())
     .filter(Boolean)
@@ -267,16 +339,16 @@ function buildPosterCardCopy(
     plan?.visualType?.trim() ||
     plan?.layoutHint?.trim() ||
     posterDraft?.visualType?.trim() ||
-    (isZh ? "单页信息图结构" : "Single clean infographic structure");
+    copyLocale.visualStructureFallback;
   return [
     titleLine,
     "",
-    `${isZh ? "本页重点" : "Page Focus"}: ${pageFocus}`,
+    `${copyLocale.pageFocusLabel}: ${pageFocus}`,
     "",
-    `${isZh ? "内容" : "Content"}:`,
-    ...(numberedFacts.length ? numberedFacts : [isZh ? "1. 补充该页核心内容" : "1. Add the core content for this poster."]),
+    `${copyLocale.contentLabel}:`,
+    ...(numberedFacts.length ? numberedFacts : [copyLocale.contentFallback]),
     "",
-    `${isZh ? "画面结构" : "Visual Structure"}: ${visualStructure}`,
+    `${copyLocale.visualStructureLabel}: ${visualStructure}`,
   ]
     .filter(Boolean)
     .join("\n");
