@@ -25,7 +25,7 @@ export type CreditRecord = {
 };
 
 export type CheckoutReturnNotice = {
-  status: "success";
+  status: "success" | "error";
   message: string;
   returnPath?: string;
   source?: string;
