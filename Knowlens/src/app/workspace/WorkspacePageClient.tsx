@@ -4022,6 +4022,23 @@ export default function WorkspacePage() {
     }
     return "9:16";
   }, [effectiveIntent, imageGenerationTasks, normalizedGenerationConfig.normalizedRatio, posterSizeId, posterSizeLabel]);
+  const storyboardCanvasAspectRatio = useMemo(() => {
+    const candidates =
+      effectiveIntent === "video"
+        ? [
+            imageGenerationTasks.find((task) => task.aspectRatio?.trim())?.aspectRatio,
+            normalizedGenerationConfig.normalizedRatio,
+            videoRatio,
+          ]
+        : [normalizedGenerationConfig.normalizedRatio];
+    for (const candidate of candidates) {
+      const match = String(candidate || "").match(/(\d+)\s*[:/]\s*(\d+)/);
+      if (match) {
+        return `${Number(match[1])}:${Number(match[2])}`;
+      }
+    }
+    return effectiveIntent === "video" ? videoRatio : normalizedGenerationConfig.normalizedRatio;
+  }, [effectiveIntent, imageGenerationTasks, normalizedGenerationConfig.normalizedRatio, videoRatio]);
   const canConfirmBilling = getAvailableCredits() >= billingCost;
   const lockedCanvasMode: "free" | "ppt" = effectiveIntent === "ppt" ? "ppt" : "free";
   const imageGenerationTaskByIndex = useMemo(() => {
@@ -6448,7 +6465,7 @@ export default function WorkspacePage() {
   const outputSummaryStatusLabel = allGenerationReady
     ? "Generation complete"
     : generationInProgress
-      ? "Generating visual pages"
+      ? "Estimated 3-5 min"
       : "Preparing generation";
   const handleOutputSummaryDownload = useCallback(() => {
     if (effectiveIntent === "ppt") {
@@ -9452,6 +9469,8 @@ export default function WorkspacePage() {
                     title: outputSummaryTitle,
                     angle: outputSummaryAngle,
                     statusLabel: outputSummaryStatusLabel,
+                    statusTone:
+                      generationInProgress && !allGenerationReady ? "warning" : "default",
                     progressLabel: generationProgressLabel,
                     isCanvasExpanded: showCanvasPanelInLayout,
                     canToggleCanvas: hasCanvasPanel,
@@ -9550,7 +9569,7 @@ export default function WorkspacePage() {
                 onTtsVoiceApplied={(voiceName) => {
                   pushWorkspaceToast(`All scenes use ${voiceName}.`);
                 }}
-                imageAspectRatio={normalizedGenerationConfig.normalizedRatio}
+                imageAspectRatio={storyboardCanvasAspectRatio}
                 onModeActionRegister={(actions) => {
                   modeActionsRef.current = {
                     ...modeActionsRef.current,

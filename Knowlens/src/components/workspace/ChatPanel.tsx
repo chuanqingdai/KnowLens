@@ -506,6 +506,7 @@ type ChatPanelProps = {
     title: string;
     angle: string;
     statusLabel: string;
+    statusTone?: "default" | "warning";
     progressLabel?: string;
     isCanvasExpanded: boolean;
     canToggleCanvas: boolean;
@@ -729,6 +730,7 @@ export const ChatPanel = memo(function ChatPanel({
         outputSummaryCard.onToggleCanvas();
       }
     };
+    const statusIsWarning = outputSummaryCard.statusTone === "warning";
     return (
       <article
         role={outputSummaryCard.canToggleCanvas ? "button" : undefined}
@@ -753,10 +755,20 @@ export const ChatPanel = memo(function ChatPanel({
           </div>
         </div>
         <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-zinc-600">
+          <p
+            className={`text-sm ${
+              statusIsWarning
+                ? "inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-700"
+                : "text-zinc-600"
+            }`}
+          >
             {outputSummaryCard.statusLabel}
             {outputSummaryCard.progressLabel ? (
-              <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  statusIsWarning ? "bg-amber-100 text-amber-800" : "ml-2 bg-zinc-100 text-zinc-700"
+                }`}
+              >
                 {outputSummaryCard.progressLabel}
               </span>
             ) : null}

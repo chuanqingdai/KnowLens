@@ -230,7 +230,7 @@ function clearPendingCheckout() {
 
 export default function MembershipPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
   const [toast, setToast] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState(0);
@@ -436,9 +436,26 @@ export default function MembershipPage() {
       return;
     }
     setPayingPlanId(plan.id);
-    if (!currentEmail) {
-      setToast("Please sign in first to continue checkout.");
+    if (sessionStatus === "loading") {
+      setToast("Checking your account. Please try again in a second.");
       setPayingPlanId(null);
+      return;
+    }
+    if (!currentEmail) {
+      const pendingCheckout = {
+        planId: plan.id,
+        cycle: billingCycle,
+        startedAt: new Date().toISOString(),
+        source: membershipSource,
+      };
+      savePendingCheckout(pendingCheckout);
+      setPendingCheckoutMeta(pendingCheckout);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("membership:return-path", "/membership");
+      }
+      setToast("Sign in to continue checkout.");
+      setPayingPlanId(null);
+      router.push(`/auth?callbackUrl=${encodeURIComponent("/membership")}`);
       return;
     }
     if (!findBillingPlan(plan.id)) {

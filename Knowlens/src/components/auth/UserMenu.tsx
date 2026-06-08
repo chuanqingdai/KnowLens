@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { CreditCard, LogOut, UserCircle2 } from "lucide-react";
+import { CreditCard, LogIn, LogOut, UserCircle2 } from "lucide-react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 
 function getAvatarFallback(nameOrEmail: string) {
@@ -20,7 +20,7 @@ type UserMenuProps = {
 
 export function UserMenu({ buttonClassName }: UserMenuProps) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -56,6 +56,29 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
+
+  if (status !== "authenticated") {
+    return (
+      <button
+        type="button"
+        disabled={status === "loading"}
+        onClick={() => {
+          const loginCallbackUrl =
+            typeof window !== "undefined"
+              ? `${window.location.pathname || "/app"}${window.location.search || ""}`
+              : "/app";
+          router.push(`/auth?callbackUrl=${encodeURIComponent(loginCallbackUrl || "/app")}`);
+        }}
+        className={
+          buttonClassName ??
+          "inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-70"
+        }
+      >
+        <LogIn size={15} />
+        {status === "loading" ? t("Checking...", "检查中...") : t("Sign in", "登录")}
+      </button>
+    );
+  }
 
   return (
     <div ref={menuRef} className="relative">

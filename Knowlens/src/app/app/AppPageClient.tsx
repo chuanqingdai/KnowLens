@@ -1887,7 +1887,6 @@ export default function Home() {
       });
       router.prefetch("/workspace");
       router.push(`/auth?callbackUrl=${encodeURIComponent("/app?intent=generate")}`);
-      setIsStartingWorkspace(false);
       return;
     }
     const hasPremiumRequiredSource = sourceItems.some((item) => sourceItemNeedsPremium(item));
@@ -1953,6 +1952,7 @@ export default function Home() {
             data?.error || "Unable to start a new project right now. Please try again later.",
           ),
         );
+        setIsStartingWorkspace(false);
         return;
       }
       if (typeof window !== "undefined") {
@@ -1984,8 +1984,6 @@ export default function Home() {
         nextProjectId ? `/workspace?projectId=${encodeURIComponent(nextProjectId)}` : "/workspace";
       router.prefetch(workspaceUrl);
       router.push(workspaceUrl);
-    } finally {
-      setIsStartingWorkspace(false);
     }
   }
 
@@ -2410,11 +2408,16 @@ export default function Home() {
                       type="button"
                       onClick={handleGoGenerate}
                       title="Generate (Enter / Ctrl+Enter)"
+                      aria-busy={isStartingWorkspace}
                       disabled={isStartingWorkspace}
-                      className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:mt-0 sm:w-auto"
+                      className={`mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-white transition sm:ml-auto sm:mt-0 sm:w-auto ${
+                        isStartingWorkspace
+                          ? "cursor-wait bg-zinc-950 shadow-[0_8px_24px_rgba(24,24,27,0.22)] ring-2 ring-zinc-300"
+                          : "bg-zinc-900 hover:bg-zinc-700"
+                      } disabled:cursor-wait`}
                     >
-                      <SendHorizontal size={15} />
-                      {isStartingWorkspace ? "Starting..." : "Generate"}
+                      {isStartingWorkspace ? <LoaderCircle size={15} className="animate-spin" /> : <SendHorizontal size={15} />}
+                      {isStartingWorkspace ? "Starting workspace..." : "Generate"}
                     </button>
                   </div>
                 </div>

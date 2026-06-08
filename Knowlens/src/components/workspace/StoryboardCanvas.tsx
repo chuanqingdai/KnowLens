@@ -847,6 +847,27 @@ function parseAspectRatioValue(value?: string | null) {
   return `${width} / ${height}`;
 }
 
+function resolveVideoExportSize(value?: string | null) {
+  const match = (value || "").match(/(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)/);
+  if (!match) {
+    return { width: 1920, height: 1080 };
+  }
+  const widthRatio = Number(match[1]);
+  const heightRatio = Number(match[2]);
+  if (
+    !Number.isFinite(widthRatio) ||
+    !Number.isFinite(heightRatio) ||
+    widthRatio <= 0 ||
+    heightRatio <= 0
+  ) {
+    return { width: 1920, height: 1080 };
+  }
+  if (heightRatio > widthRatio) {
+    return { width: 1080, height: 1920 };
+  }
+  return { width: 1920, height: 1080 };
+}
+
 function estimateNarrationDurationSec(text: string) {
   const compactLength = text.trim().replace(/\s+/g, "").length;
   if (!compactLength) {
@@ -2625,7 +2646,7 @@ export function StoryboardCanvas({
       setComposeSteps((prev) => ({ ...prev, prepare: "running" }));
       setComposeServerMessage("Preparing scene timeline...");
 
-      const size = { width: 1920, height: 1080 };
+      const size = resolveVideoExportSize(imageAspectRatio);
       const scenes = slides.map((slide) => {
         const generationState = generationTaskStateByIndex?.[slide.page];
         const historyImages = (imageHistoryBySlideId[slide.id] ?? []).filter(isUsableImageSrc);
@@ -2844,6 +2865,7 @@ export function StoryboardCanvas({
     composeStatus,
     generationTaskStateByIndex,
     imageHistoryBySlideId,
+    imageAspectRatio,
     sleep,
     slides,
     triggerVideoDownload,
