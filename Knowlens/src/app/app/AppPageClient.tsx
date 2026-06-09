@@ -67,6 +67,11 @@ const navItems = [
   { key: "profile", label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
+const HOME_GENERATE_CTA_BASE_CLASS =
+  "mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border-0 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-wait disabled:text-white disabled:active:translate-y-0 sm:ml-auto sm:mt-0 sm:w-auto";
+const HOME_GENERATE_CTA_READY_CLASS = "bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)]";
+const HOME_GENERATE_CTA_BUSY_CLASS = "cursor-wait bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)]";
+
 
 const textModelOptions = [
   {
@@ -452,6 +457,35 @@ function trackAppEvent(eventName: string, params: Record<string, unknown> = {}) 
     if (typeof gtag === "function") {
       gtag("event", eventName, params);
     }
+  } catch {
+    // analytics should never interrupt product flow
+  }
+}
+
+function trackAppTelemetryEvent(input: {
+  category: string;
+  action: string;
+  source?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+}) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    void fetch("/api/telemetry/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: input.category,
+        action: input.action,
+        status: "info",
+        source: input.source ?? "home",
+        message: input.message,
+        details: input.details,
+      }),
+      keepalive: true,
+    });
   } catch {
     // analytics should never interrupt product flow
   }
@@ -921,6 +955,24 @@ export default function Home() {
     void creditVersion;
     return getCreditRecords(currentEmail)[0]?.balance ?? 80;
   }, [currentEmail, creditVersion]);
+  useEffect(() => {
+    trackAppEvent("home_step1_view", {
+      from: "home",
+      step_number: 1,
+      locale,
+    });
+    trackAppTelemetryEvent({
+      category: "image",
+      action: "ui.step1.view",
+      source: "home",
+      message: "Home creation input step viewed.",
+      details: {
+        stepNumber: 1,
+        flowStage: "home_input",
+        locale,
+      },
+    });
+  }, [locale]);
   useEffect(() => {
     if (!currentEmail) {
       setServerRecentProjects([]);
@@ -1843,6 +1895,27 @@ export default function Home() {
       has_prompt: composeInput.trim().length > 0,
       source_count: sourceItems.length,
     });
+    trackAppEvent("home_generate_button_click", {
+      from: "home",
+      button_id: "home_generate",
+      step_number: 1,
+      model: resolvedTextModel,
+      has_prompt: composeInput.trim().length > 0,
+      source_count: sourceItems.length,
+    });
+    trackAppTelemetryEvent({
+      category: "button",
+      action: "home_generate_button_click",
+      source: "home",
+      message: "Home Generate button clicked.",
+      details: {
+        buttonId: "home_generate",
+        stepNumber: 1,
+        model: resolvedTextModel,
+        hasPrompt: composeInput.trim().length > 0,
+        sourceCount: sourceItems.length,
+      },
+    });
     if (sessionStatus === "loading") {
       setUploadToast("Checking your account. Please try again in a second.");
       setIsStartingWorkspace(false);
@@ -2385,11 +2458,9 @@ export default function Home() {
                       title="Generate (Enter / Ctrl+Enter)"
                       aria-busy={isStartingWorkspace}
                       disabled={isStartingWorkspace}
-                      className={`mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-white transition sm:ml-auto sm:mt-0 sm:w-auto ${
-                        isStartingWorkspace
-                          ? "cursor-wait bg-zinc-950 shadow-[0_8px_24px_rgba(24,24,27,0.22)] ring-2 ring-zinc-300"
-                          : "bg-zinc-900 hover:bg-zinc-700"
-                      } disabled:cursor-wait`}
+                      className={`${HOME_GENERATE_CTA_BASE_CLASS} ${
+                        isStartingWorkspace ? HOME_GENERATE_CTA_BUSY_CLASS : HOME_GENERATE_CTA_READY_CLASS
+                      }`}
                     >
                       {isStartingWorkspace ? <LoaderCircle size={15} className="animate-spin" /> : <SendHorizontal size={15} />}
                       {isStartingWorkspace ? "Starting workspace..." : "Generate"}

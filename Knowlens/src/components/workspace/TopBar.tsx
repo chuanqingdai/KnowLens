@@ -6,6 +6,9 @@ import { UserMenu } from "@/components/auth/UserMenu";
 
 type SaveState = "saved" | "saving" | "error";
 
+const PRIMARY_CTA_CLASS =
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-200 disabled:text-zinc-600 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-200 disabled:hover:shadow-none disabled:active:translate-y-0";
+
 type TopBarProps = {
   credits: number;
   title?: string;
@@ -15,6 +18,7 @@ type TopBarProps = {
   canvasMode?: "free" | "ppt";
   onDownloadPpt?: () => void;
   onDownloadVideo?: () => void;
+  onDownloadPoster?: () => void;
   actionsDisabled?: boolean;
   disabledPrimaryActionLabel?: string;
   isExportingPpt?: boolean;
@@ -42,6 +46,7 @@ export function TopBar({
   canvasMode = "free",
   onDownloadPpt,
   onDownloadVideo,
+  onDownloadPoster,
   actionsDisabled = false,
   disabledPrimaryActionLabel,
   isExportingPpt = false,
@@ -50,11 +55,16 @@ export function TopBar({
   onOpenCanvas,
 }: TopBarProps) {
   const router = useRouter();
-  const showWorkspaceActions = Boolean(onDownloadPpt || onDownloadVideo);
-  const showPptAction = canvasMode === "ppt";
-  const isPrimaryBusy = showPptAction ? isExportingPpt : isComposingVideo;
+  const showWorkspaceActions = Boolean(onDownloadPpt || onDownloadVideo || onDownloadPoster);
+  const showPosterAction = Boolean(onDownloadPoster);
+  const showPptAction = !showPosterAction && canvasMode === "ppt";
+  const isPrimaryBusy = showPosterAction ? false : showPptAction ? isExportingPpt : isComposingVideo;
   const isPrimaryUnavailable = actionsDisabled || isPrimaryBusy;
-  const primaryActionLabel = showPptAction
+  const primaryActionLabel = showPosterAction
+    ? actionsDisabled && disabledPrimaryActionLabel
+      ? disabledPrimaryActionLabel
+      : "Download All"
+    : showPptAction
     ? actionsDisabled && disabledPrimaryActionLabel
       ? disabledPrimaryActionLabel
       : isExportingPpt
@@ -112,8 +122,8 @@ export function TopBar({
             <button
               type="button"
               disabled={isPrimaryUnavailable}
-              onClick={showPptAction ? onDownloadPpt : onDownloadVideo}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
+              onClick={showPosterAction ? onDownloadPoster : showPptAction ? onDownloadPpt : onDownloadVideo}
+              className={PRIMARY_CTA_CLASS}
             >
               {isPrimaryUnavailable ? (
                 <LoaderCircle size={15} className="shrink-0 animate-spin" aria-hidden="true" />

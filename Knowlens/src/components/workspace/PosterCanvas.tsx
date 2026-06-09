@@ -27,6 +27,9 @@ import {
 
 type SaveState = "saved" | "saving" | "error";
 
+const POSTER_CTA_CLASS =
+  "inline-flex h-8 items-center gap-1 rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
+
 type PosterDraft = {
   headline: string;
   subtitle: string;
@@ -73,6 +76,7 @@ type PosterCanvasProps = {
   onModeActionRegister?: (actions: {
     downloadAll: () => void;
   }) => void;
+  showDownloadAllButton?: boolean;
 };
 
 type PosterCard = {
@@ -540,7 +544,7 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
             type="button"
             disabled={!canEdit}
             onClick={() => onDownload(card)}
-            className="inline-flex h-8 items-center gap-1 rounded-md bg-blue-600 px-3.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            className={`${POSTER_CTA_CLASS} px-3.5 text-[11px] font-medium`}
           >
             <Download size={12} />
             Download
@@ -755,6 +759,7 @@ export function PosterCanvas({
   onRedrawGenerationTask,
   onSaveStateChange,
   onModeActionRegister,
+  showDownloadAllButton = true,
 }: PosterCanvasProps) {
   const count = Math.max(1, Math.min(10, posterCount));
   const resolvedAspectRatio = useMemo(
@@ -1311,15 +1316,17 @@ export function PosterCanvas({
           >
             <RotateCcw size={13} />
           </button>
-          <button
-            type="button"
-            onClick={handleDownloadAll}
-            disabled={isBulkDownloading || readyCount === 0}
-            className="inline-flex h-8 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-300"
-          >
-            {isBulkDownloading ? <LoaderCircle size={12} className="animate-spin" /> : <Download size={12} />}
-            Download All
-          </button>
+          {showDownloadAllButton ? (
+            <button
+              type="button"
+              onClick={handleDownloadAll}
+              disabled={isBulkDownloading || readyCount === 0}
+              className={`${POSTER_CTA_CLASS} px-2.5 text-xs font-medium`}
+            >
+              {isBulkDownloading ? <LoaderCircle size={12} className="animate-spin" /> : <Download size={12} />}
+              Download All
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="min-h-0 flex-1">

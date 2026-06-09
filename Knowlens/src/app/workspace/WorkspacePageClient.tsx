@@ -285,6 +285,8 @@ function getLanguageModelCreditTokenUnit(model?: string) {
 }
 
 type FlowStage = "intent" | "config" | "content" | "style" | "billing" | "generate";
+type AutoFlowMode = "idle" | "running" | "manual";
+type AutoGenerationPreference = "auto" | "manual";
 
 type ParsedContentEditCommand = {
   target:
@@ -551,6 +553,7 @@ const HOME_DRAFT_KEY = "knowlens-home-draft";
 const WORKSPACE_DRAFT_CACHE_KEY = "knowlens-workspace-draft-v1";
 const WORKSPACE_SESSION_PREFS_KEY = "knowlens-workspace-session-prefs-v1";
 const WORKSPACE_CHAT_HISTORY_KEY = "knowlens-workspace-chat-history-v1";
+const AUTO_GENERATION_PREFERENCE_KEY = "knowlens-auto-generation-preference-v1";
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const GENERATION_CONFIRM_PREPARE_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_CREDITS_TIMEOUT_MS = 30000;
@@ -717,7 +720,7 @@ function enqueueWorkspaceClientLog(input: WorkspaceClientLogInput) {
 }
 
 function isCriticalWorkspaceClientInfoAction(action: string) {
-  return action === "ui.step6.enter" || action.startsWith("ui.step5.");
+  return action === "ui.step6.enter" || action.startsWith("ui.step") || action.startsWith("ui.auto_flow.");
 }
 const AUTH_REQUIRED_PATTERNS = [
   /please sign in/i,
@@ -2385,6 +2388,28 @@ function readWorkspaceSessionPrefs(scopeKey: string) {
   }
 }
 
+function readAutoGenerationPreference(): AutoGenerationPreference {
+  if (typeof window === "undefined") {
+    return "auto";
+  }
+  try {
+    return window.localStorage.getItem(AUTO_GENERATION_PREFERENCE_KEY) === "manual" ? "manual" : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+function writeAutoGenerationPreference(value: AutoGenerationPreference) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(AUTO_GENERATION_PREFERENCE_KEY, value);
+  } catch {
+    // Ignore storage failures; the current React state still reflects the user's choice.
+  }
+}
+
 function buildWorkspaceChatHistoryStorageKey(scopeKey: string) {
   return `${WORKSPACE_CHAT_HISTORY_KEY}:${scopeKey}`;
 }
@@ -2670,6 +2695,7 @@ export default function WorkspacePage() {
   const [selectedTopicSuggestion, setSelectedTopicSuggestion] = useState<string | null>(null);
   const [topicSuggestionLocked, setTopicSuggestionLocked] = useState(false);
   const [lockedTopicSuggestion, setLockedTopicSuggestion] = useState<string | null>(null);
+  const [lockedTopicSuggestions, setLockedTopicSuggestions] = useState<string[]>([]);
   const [topicSuggestionLockReason, setTopicSuggestionLockReason] = useState<"selected" | "manual_retry" | null>(null);
   const [intentAnalysis, setIntentAnalysis] = useState<IntentAnalysis | null>(null);
   const [intentAnalysisLoading, setIntentAnalysisLoading] = useState(false);
@@ -2729,6 +2755,10 @@ export default function WorkspacePage() {
   });
 
   const [flowStage, setFlowStage] = useState<FlowStage>("intent");
+  const [autoFlowMode, setAutoFlowMode] = useState<AutoFlowMode>("idle");
+  const [autoGenerationPreference, setAutoGenerationPreferenceState] = useState<AutoGenerationPreference>(() =>
+    readAutoGenerationPreference(),
+  );
   const [selectedStyleId, setSelectedStyleId] = useState(() => {
     const preferredId = sessionPrefs?.styleId;
     if (preferredId && styleOptions.some((item) => item.id === preferredId)) {
@@ -2765,9 +2795,16 @@ export default function WorkspacePage() {
   const [isPptExportReady, setIsPptExportReady] = useState(false);
   const [isComposingVideo, setIsComposingVideo] = useState(false);
   const posterDraftRequestRef = useRef(0);
+  const autoFlowModeRef = useRef<AutoFlowMode>("idle");
+  const autoGenerationPreferenceRef = useRef<AutoGenerationPreference>(autoGenerationPreference);
+  const autoFlowActionKeyRef = useRef<string | null>(null);
+  const autoFlowNextStepRef = useRef<(() => Promise<void>) | null>(null);
+  const autoFlowStyleNextRef = useRef<(() => Promise<void>) | null>(null);
+  const autoFlowConfirmBillingRef = useRef<(() => Promise<void>) | null>(null);
   const chatHistoryWriteTimerRef = useRef<number | null>(null);
   const workspaceToastTimerRef = useRef<number | null>(null);
   const lastGenerationToastRef = useRef<string | null>(null);
+  const step6WaitToastKeyRef = useRef<string | null>(null);
   const intentAnalyzeAbortRef = useRef<AbortController | null>(null);
   const intentAnalyzeRequestSeqRef = useRef(0);
   const lastIntentAnalyzeSignatureRef = useRef<string | null>(null);
@@ -2783,6 +2820,22 @@ export default function WorkspacePage() {
     downloadVideo: () => {},
     downloadPoster: () => {},
   });
+
+  useEffect(() => {
+    autoFlowModeRef.current = autoFlowMode;
+  }, [autoFlowMode]);
+  useEffect(() => {
+    autoGenerationPreferenceRef.current = autoGenerationPreference;
+  }, [autoGenerationPreference]);
+  const setAutoGenerationPreference = useCallback((value: AutoGenerationPreference) => {
+    autoGenerationPreferenceRef.current = value;
+    setAutoGenerationPreferenceState(value);
+    writeAutoGenerationPreference(value);
+    if (value === "manual" && autoFlowModeRef.current === "running") {
+      autoFlowActionKeyRef.current = null;
+      setAutoFlowMode("manual");
+    }
+  }, []);
   const storyboardPanelRef = useRef<HTMLElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const projectIdRef = useRef<string | null>(null);
@@ -2912,6 +2965,16 @@ export default function WorkspacePage() {
       workspaceToastTimerRef.current = null;
     }, 3200);
   }, []);
+  const switchAutoFlowToManual = useCallback((message?: string, options?: { persistPreference?: boolean }) => {
+    autoFlowActionKeyRef.current = null;
+    setAutoFlowMode("manual");
+    if (options?.persistPreference) {
+      setAutoGenerationPreference("manual");
+    }
+    if (message) {
+      pushWorkspaceToast(message);
+    }
+  }, [pushWorkspaceToast, setAutoGenerationPreference]);
   const clearCurrentGenerationState = useCallback(
     (reason: string) => {
       generationRequestInFlightRef.current = false;
@@ -3448,8 +3511,29 @@ export default function WorkspacePage() {
     intentAnalysis?.classification,
     intentAnalysis?.suggestions,
   ]);
+  const buildLockedTopicSuggestionSnapshot = useCallback(
+    (selected: string | null) => {
+      const snapshot = (topicSuggestions.length ? topicSuggestions : lockedTopicSuggestions)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const normalizedSelected = selected?.trim();
+      const next = normalizedSelected && !snapshot.includes(normalizedSelected)
+        ? [normalizedSelected, ...snapshot]
+        : snapshot;
+      return next.filter((item, index) => next.indexOf(item) === index).slice(0, 4);
+    },
+    [lockedTopicSuggestions, topicSuggestions],
+  );
   const waitingTopicSuggestionConfirm =
     shouldClarifyIntent && !needsFreshSourcesClarify && topicSuggestions.length > 0 && !topicSuggestionLocked;
+  const visibleTopicSuggestions =
+    topicSuggestionLocked
+      ? lockedTopicSuggestions.length
+        ? lockedTopicSuggestions
+        : lockedTopicSuggestion
+          ? [lockedTopicSuggestion]
+          : topicSuggestions
+      : topicSuggestions;
   const showPosterSizeSelector = effectiveIntent === "poster" && !posterSizeId;
   const canProceed = configConfirmed && !showPosterSizeSelector;
   const normalizedGenerationConfig = useMemo(
@@ -3482,10 +3566,10 @@ export default function WorkspacePage() {
   const showChatPanelInLayout = !isMobileViewport || !hasCanvasPanel || mobileWorkspaceView === "chat";
   const showCanvasPanelInLayout = hasCanvasPanel && (isMobileViewport ? mobileWorkspaceView === "canvas" : !desktopCanvasCollapsed);
   const showChatComposer =
-    flowStage === "intent" ||
-    flowStage === "config" ||
-    flowStage === "content" ||
-    (flowStage === "generate" && effectiveIntent === "poster" && standardOutputCount === 1);
+    autoFlowMode !== "running" &&
+    (flowStage === "intent" ||
+      flowStage === "config" ||
+      flowStage === "content");
   const generationInProgress = Object.values(generationTaskStateByIndex).some(
     (item) => item.status === "queued" || item.status === "generating" || item.status === "retrying",
   );
@@ -6330,6 +6414,47 @@ export default function WorkspacePage() {
     return tr("Step 1/7 · Input", "第 1/7 步 · 输入");
   }, [flowStage, tr]);
   useEffect(() => {
+    const stepNumber =
+      flowStage === "content"
+        ? 3
+        : flowStage === "style"
+          ? 4
+          : flowStage === "billing"
+            ? 5
+            : flowStage === "generate"
+              ? 6
+              : 2;
+    emitUiEvent({
+      action: `ui.step${stepNumber}.view`,
+      status: "info",
+      message: `Workspace step ${stepNumber} viewed.`,
+      details: {
+        stepNumber,
+        flowStage,
+        stageLabel,
+        autoFlowMode,
+      },
+    });
+  }, [autoFlowMode, emitUiEvent, flowStage, stageLabel]);
+  useEffect(() => {
+    if (flowStage !== "generate") {
+      return;
+    }
+    const toastKey =
+      currentGenerationRunIdRef.current ||
+      currentGenerationJobIdRef.current ||
+      projectIdRef.current ||
+      routeProjectId ||
+      "step6";
+    if (step6WaitToastKeyRef.current === toastKey) {
+      return;
+    }
+    step6WaitToastKeyRef.current = toastKey;
+    pushWorkspaceToast(
+      "Image generation may take 3-5 minutes. You can keep this page open while we prepare your results.",
+    );
+  }, [flowStage, pushWorkspaceToast, routeProjectId]);
+  useEffect(() => {
     if (debugGoGenerateStepEnabled || debugImageBridgeEnabled) {
       emitFlowAudit({
         stage: "6.auto-trigger-check",
@@ -6707,7 +6832,39 @@ export default function WorkspacePage() {
     : generationInProgress
       ? "About 3-5 min"
       : "Preparing generation";
+  const showAutoFlowBar =
+    autoFlowMode === "running" &&
+    flowStage !== "intent" &&
+    flowStage !== "config" &&
+    flowStage !== "generate";
+  const autoFlowStatusText =
+    flowStage === "content"
+      ? tr("Preparing draft content...", "正在整理文稿内容...")
+      : flowStage === "style"
+        ? tr("Selecting a visual style...", "正在匹配视觉风格...")
+        : flowStage === "billing"
+          ? tr("Checking credits and starting generation...", "正在确认积分并启动生成...")
+          : flowStage === "generate"
+            ? tr("Generating images...", "正在生成图片...")
+            : tr("Continuing automatically...", "正在自动继续...");
   const handleOutputSummaryDownload = useCallback(() => {
+    emitUiEvent({
+      action: "ui.step6.download.click",
+      status: "info",
+      message: "Step 6 download button clicked.",
+      details: {
+        stepNumber: 6,
+        buttonId:
+          effectiveIntent === "ppt"
+            ? "step6_download_ppt"
+            : effectiveIntent === "video"
+              ? "step6_download_video"
+              : "step6_download_poster",
+        outputType: effectiveIntent,
+        generationReadyCount,
+        generationTotalCount,
+      },
+    });
     if (effectiveIntent === "ppt") {
       modeActionsRef.current.exportPpt();
       return;
@@ -6717,17 +6874,40 @@ export default function WorkspacePage() {
       return;
     }
     modeActionsRef.current.downloadPoster();
-  }, [effectiveIntent]);
+  }, [effectiveIntent, emitUiEvent, generationReadyCount, generationTotalCount]);
+  const handleAutoGenerationPreferenceChange = useCallback(
+    (value: AutoGenerationPreference) => {
+      if (autoGenerationPreferenceRef.current === value) {
+        return;
+      }
+      setAutoGenerationPreference(value);
+      emitUiEvent({
+        action: "ui.step2.auto_generation_mode.toggle",
+        status: "info",
+        message: `Generation mode switched to ${value}.`,
+        details: {
+          stepNumber: 2,
+          selectedMode: value,
+          flowStage,
+          autoFlowMode: autoFlowModeRef.current,
+        },
+      });
+    },
+    [emitUiEvent, flowStage, setAutoGenerationPreference],
+  );
   const topBarGenerationLabel = generationProgressLabel
     ? `Generating ${generationProgressLabel}`
     : "Generating";
   const isTopBarPptActionDisabled = lockedCanvasMode === "ppt" && !isPptExportReady;
   const isTopBarVideoActionDisabled =
     lockedCanvasMode === "free" && effectiveIntent === "video" && !allGenerationReady;
+  const isTopBarPosterActionDisabled = showPosterCanvas && !outputSummaryCanDownload;
   const topBarActionsDisabled =
-    !showStoryboard || isTopBarPptActionDisabled || isTopBarVideoActionDisabled;
+    showPosterCanvas
+      ? isTopBarPosterActionDisabled
+      : !showStoryboard || isTopBarPptActionDisabled || isTopBarVideoActionDisabled;
   const topBarDisabledPrimaryActionLabel =
-    isTopBarPptActionDisabled || isTopBarVideoActionDisabled
+    isTopBarPptActionDisabled || isTopBarVideoActionDisabled || isTopBarPosterActionDisabled
       ? topBarGenerationLabel
       : undefined;
 
@@ -7116,6 +7296,7 @@ export default function WorkspacePage() {
   }
 
   function resetToConfigStage(_reason: "direction-change" | "config-change") {
+    setAutoFlowMode("idle");
     setConfigConfirmed(false);
     setFlowStage("config");
     setBillingConfirmed(false);
@@ -7150,6 +7331,7 @@ export default function WorkspacePage() {
     setTopicSuggestionLocked(true);
     setTopicSuggestionLockReason("selected");
     setLockedTopicSuggestion(text);
+    setLockedTopicSuggestions(buildLockedTopicSuggestionSnapshot(text));
     setSelectedTopicSuggestion(null);
     setTopicContextPrompt(text);
     setFlowStage("intent");
@@ -7516,6 +7698,13 @@ export default function WorkspacePage() {
   ]);
 
   const handleConfirmConfig = useCallback(async (existingErrorTurnId?: string | null): Promise<boolean> => {
+    if (
+      !existingErrorTurnId &&
+      autoGenerationPreferenceRef.current === "auto" &&
+      autoFlowModeRef.current !== "manual"
+    ) {
+      setAutoFlowMode("running");
+    }
     logClientEvent({
       category: "llm",
       action: "draft_generation_started",
@@ -7838,7 +8027,37 @@ export default function WorkspacePage() {
     setIsDraftGenerationPending,
   ]);
 
+  const handleConfirmConfigAndStartAuto = useCallback(async () => {
+    const shouldStartAutoFlow = autoGenerationPreferenceRef.current === "auto";
+    emitUiEvent({
+      action: "ui.step2.confirm.click",
+      status: "info",
+      message: "Step 2 configuration confirm button clicked.",
+      details: {
+        stepNumber: 2,
+        buttonId: "step2_confirm_config",
+        controlMode: shouldStartAutoFlow ? "auto" : "manual",
+        startsAutoFlow: shouldStartAutoFlow,
+      },
+    });
+    setAutoFlowMode(shouldStartAutoFlow ? "running" : "manual");
+    const confirmed = await handleConfirmConfig();
+    if (shouldStartAutoFlow && !confirmed && autoFlowModeRef.current === "running") {
+      switchAutoFlowToManual();
+    }
+  }, [emitUiEvent, handleConfirmConfig, switchAutoFlowToManual]);
+
   async function handleNextStep() {
+    emitUiEvent({
+      action: "ui.step3.confirm_draft.click",
+      status: "info",
+      message: "Step 3 draft confirm button invoked.",
+      details: {
+        stepNumber: 3,
+        buttonId: "step3_confirm_draft_next",
+        controlMode: autoFlowModeRef.current === "running" ? "auto" : "manual",
+      },
+    });
     if (isPlanningNextStep) {
       return;
     }
@@ -7890,6 +8109,17 @@ export default function WorkspacePage() {
   }
 
   async function handleStyleNext() {
+    emitUiEvent({
+      action: "ui.step4.style_next.click",
+      status: "info",
+      message: "Step 4 style next button invoked.",
+      details: {
+        stepNumber: 4,
+        buttonId: "step4_style_next",
+        controlMode: autoFlowModeRef.current === "running" ? "auto" : "manual",
+        selectedStyleId,
+      },
+    });
     if (isPlanningStyleStep) {
       return;
     }
@@ -7919,6 +8149,9 @@ export default function WorkspacePage() {
     if (!styleId || styleId === selectedStyleId) {
       return;
     }
+    if (autoFlowModeRef.current === "running") {
+      switchAutoFlowToManual();
+    }
     setSelectedStyleId(styleId);
     const hasExistingGenerationState = Object.keys(generationTaskStateByIndex).length > 0;
     if (!hasExistingGenerationState && !billingConfirmed && flowStage !== "generate") {
@@ -7935,14 +8168,18 @@ export default function WorkspacePage() {
     flowStage,
     generationTaskStateByIndex,
     selectedStyleId,
+    switchAutoFlowToManual,
   ]);
 
   async function handleConfirmBilling() {
     emitUiEvent({
       action: "ui.step5.confirm.click",
       status: "info",
-      message: "User clicked confirm generation billing.",
+      message: "Step 5 generation billing confirm button invoked.",
       details: {
+        stepNumber: 5,
+        buttonId: "step5_confirm_generate",
+        controlMode: autoFlowModeRef.current === "running" ? "auto" : "manual",
         requiredCredits: billingCost,
         estimatedCreditsCost: billingCost,
       },
@@ -8665,6 +8902,37 @@ export default function WorkspacePage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : tr("Generation failed.", "生成失败。");
       const errorStack = error instanceof Error ? error.stack : null;
+      const autoFlowInsufficientCredits =
+        autoFlowModeRef.current === "running" &&
+        /not enough credits|insufficient[_\s-]?credits/i.test(message);
+      if (autoFlowInsufficientCredits) {
+        if (preparedJobId && !step6Entered) {
+          await markPreparedJobBillingFailed(message);
+        }
+        setBillingConfirmed(false);
+        setGenerationConfirmError(null);
+        setFlowStage("billing");
+        setGenerationTaskStateByIndex({});
+        setCreditVersion((prev) => prev + 1);
+        switchAutoFlowToManual(
+          "Not enough credits. Automatic generation has stopped. Please continue manually.",
+        );
+        logClientEvent({
+          category: "billing",
+          action: "auto_generation_stopped_insufficient_credits",
+          status: "error",
+          source: effectiveIntent,
+          message,
+          projectId: projectIdRef.current ?? null,
+          details: {
+            runId: nextRunId,
+            jobId: preparedJobId,
+            billingCost,
+            taskCount: tasksToGenerate.length,
+          },
+        });
+        return;
+      }
       const confirmStepTimedOut = isConfirmStepTimeout(message);
       if (confirmStepTimedOut) {
         if (currentConfirmStep === "consume credits") {
@@ -8781,6 +9049,117 @@ export default function WorkspacePage() {
   }
 
   useEffect(() => {
+    autoFlowNextStepRef.current = handleNextStep;
+    autoFlowStyleNextRef.current = handleStyleNext;
+    autoFlowConfirmBillingRef.current = handleConfirmBilling;
+  });
+
+  useEffect(() => {
+    if (autoFlowMode !== "running") {
+      return;
+    }
+    if (flowStage === "generate" && allGenerationReady) {
+      setAutoFlowMode("idle");
+      return;
+    }
+
+    let timeoutId: number | null = null;
+    let scheduledKey: string | null = null;
+    const scheduleAutoAction = (key: string, action: () => Promise<void> | void) => {
+      if (autoFlowActionKeyRef.current === key) {
+        return;
+      }
+      autoFlowActionKeyRef.current = key;
+      scheduledKey = key;
+      timeoutId = window.setTimeout(async () => {
+        if (autoFlowModeRef.current !== "running") {
+          if (autoFlowActionKeyRef.current === key) {
+            autoFlowActionKeyRef.current = null;
+          }
+          return;
+        }
+        try {
+          await action();
+        } finally {
+          if (autoFlowActionKeyRef.current === key) {
+            autoFlowActionKeyRef.current = null;
+          }
+        }
+      }, 700);
+    };
+
+    if (flowStage === "content") {
+      const hasDraftReady =
+        effectiveIntent === "poster"
+          ? Boolean(posterDraft)
+          : outlineItems.length > 0 || slideDrafts.length > 0;
+      if (
+        configConfirmed &&
+        canProceed &&
+        hasDraftReady &&
+        !isDraftGenerationPending &&
+        !isPlanningNextStep
+      ) {
+        scheduleAutoAction(
+          `content:${effectiveIntent}:${posterDraft ? "poster" : outlineItems.length}:${slideDrafts.length}`,
+          () => autoFlowNextStepRef.current?.(),
+        );
+      }
+    } else if (flowStage === "style") {
+      if (!isPlanningStyleStep) {
+        scheduleAutoAction(`style:${selectedStyleId}`, () => autoFlowStyleNextRef.current?.());
+      }
+    } else if (flowStage === "billing") {
+      const availableCredits = getAvailableCredits();
+      if (availableCredits < billingCost) {
+        setBillingConfirmed(false);
+        setFlowStage("billing");
+        setCreditVersion((prev) => prev + 1);
+        switchAutoFlowToManual(
+          "Not enough credits. Automatic generation has stopped. Please continue manually.",
+        );
+        return;
+      }
+      if (!isPlanningBillingStep && !generationRequestInFlightRef.current && canConfirmBilling) {
+        scheduleAutoAction(
+          `billing:${effectiveIntent}:${billingCost}:${standardOutputCount}:${imageGenerationTasks.length}`,
+          () => autoFlowConfirmBillingRef.current?.(),
+        );
+      }
+    }
+
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      if (scheduledKey && autoFlowActionKeyRef.current === scheduledKey) {
+        autoFlowActionKeyRef.current = null;
+      }
+    };
+  }, [
+    allGenerationReady,
+    autoFlowMode,
+    billingCost,
+    canConfirmBilling,
+    canProceed,
+    configConfirmed,
+    effectiveIntent,
+    flowStage,
+    getAvailableCredits,
+    imageGenerationTasks.length,
+    isDraftGenerationPending,
+    isPlanningBillingStep,
+    isPlanningNextStep,
+    isPlanningStyleStep,
+    outlineItems.length,
+    posterDraft,
+    selectedStyleId,
+    slideDrafts.length,
+    standardOutputCount,
+    switchAutoFlowToManual,
+  ]);
+
+  useEffect(() => {
     if (
       quickPosterDirectStartedRef.current ||
       !initialEntry.freshSessionDraft ||
@@ -8796,6 +9175,7 @@ export default function WorkspacePage() {
       showPosterSizeSelector ||
       configConfirmed ||
       flowStage !== "intent" ||
+      autoGenerationPreference !== "auto" ||
       generationRequestInFlightRef.current ||
       Object.keys(generationTaskStateByIndex).length > 0
     ) {
@@ -8827,6 +9207,7 @@ export default function WorkspacePage() {
     );
 
     void (async () => {
+      setAutoFlowMode("running");
       const draftReady = await handleConfirmConfig();
       if (!draftReady) {
         quickPosterDirectDraftReadyRef.current = false;
@@ -8835,6 +9216,7 @@ export default function WorkspacePage() {
       quickPosterDirectDraftReadyRef.current = true;
     })();
   }, [
+    autoGenerationPreference,
     clearCurrentGenerationState,
     configConfirmed,
     currentEmail,
@@ -8940,6 +9322,7 @@ export default function WorkspacePage() {
       setTopicSuggestionLocked(true);
       setTopicSuggestionLockReason("manual_retry");
       setLockedTopicSuggestion(null);
+      setLockedTopicSuggestions(buildLockedTopicSuggestionSnapshot(null));
       setSelectedTopicSuggestion(null);
     }
     setIsSending(true);
@@ -9094,11 +9477,13 @@ export default function WorkspacePage() {
     }
 
     if (manualInputShouldRestartEarlyFlow) {
+      setAutoFlowMode("idle");
       setTopicContextPrompt(value);
       setManualIntent(null);
       setSelectedTopicSuggestion(null);
       setTopicSuggestionLocked(false);
       setLockedTopicSuggestion(null);
+      setLockedTopicSuggestions([]);
       setTopicSuggestionLockReason(null);
       setConfigConfirmed(false);
       setBillingConfirmed(false);
@@ -9604,6 +9989,13 @@ export default function WorkspacePage() {
               }
             : undefined
         }
+        onDownloadPoster={
+          showPosterCanvas
+            ? () => {
+                modeActionsRef.current.downloadPoster();
+              }
+            : undefined
+        }
         actionsDisabled={topBarActionsDisabled}
         disabledPrimaryActionLabel={topBarDisabledPrimaryActionLabel}
         isExportingPpt={isExportingPpt}
@@ -9614,7 +10006,7 @@ export default function WorkspacePage() {
 
       {workspaceToast ? (
         <div className="pointer-events-none fixed left-1/2 top-20 z-50 w-[min(92vw,520px)] -translate-x-1/2">
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 shadow-lg shadow-zinc-900/10">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-zinc-950/25">
             {workspaceToast.message}
           </div>
         </div>
@@ -9652,7 +10044,7 @@ export default function WorkspacePage() {
                     showDirectionGuide && !topicSuggestionLocked && (topicSuggestionsLoading || waitingTopicSuggestionConfirm)
                   }
                   topicSuggestionsLoading={topicSuggestionsLoading}
-                  topicSuggestions={topicSuggestions}
+                  topicSuggestions={visibleTopicSuggestions}
                   selectedTopicSuggestion={selectedTopicSuggestion}
                   topicSuggestionLocked={topicSuggestionLocked}
                   lockedTopicSuggestion={lockedTopicSuggestion}
@@ -9681,7 +10073,9 @@ export default function WorkspacePage() {
                   videoRatio={videoRatio}
                   onVideoRatioChange={handleVideoRatioChange}
                   configConfirmed={configConfirmed}
-                  onConfirmConfig={handleConfirmConfig}
+                  onConfirmConfig={handleConfirmConfigAndStartAuto}
+                  autoGenerationPreference={autoGenerationPreference}
+                  onAutoGenerationPreferenceChange={handleAutoGenerationPreferenceChange}
                   outlineItems={outlineItems}
                   slideDrafts={effectiveIntent === "ppt" || effectiveIntent === "video" ? displaySlideDrafts : densityAdjustedSlideDrafts}
                   posterDraft={posterDraft}
@@ -9752,6 +10146,52 @@ export default function WorkspacePage() {
                   }}
                 />
               </div>
+
+              {showAutoFlowBar ? (
+                <div className="z-20 pt-2">
+                  <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]">
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 shadow-lg shadow-zinc-950/20">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white">
+                            {tr("Automatic generation is running...", "正在自动生成中...")}
+                          </p>
+                          <p className="mt-0.5 text-xs leading-5 text-zinc-300">
+                            {autoFlowStatusText}{" "}
+                            {tr(
+                              "Switch to manual to stop auto-advance and control the current step.",
+                              "切换手动后会停止自动推进，你可以控制当前步骤。",
+                            )}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center justify-end gap-2">
+                          <LoaderCircle size={16} className="animate-spin text-white" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              emitUiEvent({
+                                action: "ui.auto_flow.switch_manual.click",
+                                status: "info",
+                                message: "Auto flow switch to manual button clicked.",
+                                details: {
+                                  buttonId: "auto_flow_switch_manual",
+                                  flowStage,
+                                  autoFlowMode,
+                                  selectedMode: "manual",
+                                },
+                              });
+                              switchAutoFlowToManual(undefined, { persistPreference: true });
+                            }}
+                            className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/25 bg-white px-3 text-sm font-medium text-zinc-950 hover:bg-zinc-100"
+                          >
+                            {tr("Switch to manual", "切换手动")}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {showChatComposer ? (
                 <div className="z-20 pt-2">
@@ -9881,6 +10321,7 @@ export default function WorkspacePage() {
                     downloadPoster: actions.downloadAll,
                   };
                 }}
+                showDownloadAllButton={false}
               />
             </section>
           ) : null}

@@ -13,6 +13,50 @@ const heroImage = "/picture/hero picture.jpg";
 const LANDING_ASSET_VERSION = "20260528c";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 const MEMBERSHIP_SOURCE = "landing-page";
+const LANDING_CTA_CLASS =
+  "inline-flex items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+
+function trackLandingGenerateClick(placement: "hero" | "footer_cta") {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const details = {
+    placement,
+    buttonId: `landing_generate_${placement}`,
+    destination: "/app",
+    stepNumber: 1,
+  };
+  try {
+    const gtag = (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;
+    if (typeof gtag === "function") {
+      gtag("event", "landing_generate_button_click", details);
+    }
+  } catch {
+    // Analytics should never interrupt navigation.
+  }
+  const payload = JSON.stringify({
+    category: "button",
+    action: "landing_generate_button_click",
+    status: "info",
+    source: "landing",
+    message: "Landing page Generate Free button clicked.",
+    details,
+  });
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/telemetry/event", new Blob([payload], { type: "application/json" }));
+      return;
+    }
+    void fetch("/api/telemetry/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    });
+  } catch {
+    // Analytics should never interrupt navigation.
+  }
+}
 
 const previewWideCases = [
   {
@@ -660,7 +704,8 @@ export default function LandingPage() {
             <div className="mt-5 flex items-center justify-center sm:mt-6 lg:justify-start">
               <Link
                 href="/app"
-                className="inline-flex h-12 min-w-[176px] items-center justify-center gap-2 rounded-xl bg-zinc-900 px-8 text-[15px] font-medium text-white transition hover:bg-zinc-700 sm:h-[52px]"
+                onClick={() => trackLandingGenerateClick("hero")}
+                className={`${LANDING_CTA_CLASS} h-12 min-w-[176px] gap-2 px-8 text-[15px] sm:h-[52px]`}
               >
                 Generate Free
                 <ArrowRight size={15} />
@@ -1050,7 +1095,8 @@ export default function LandingPage() {
             <div className="mt-5">
               <Link
                 href="/app"
-                className="inline-flex h-11 min-w-[164px] items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-700"
+                onClick={() => trackLandingGenerateClick("footer_cta")}
+                className={`${LANDING_CTA_CLASS} h-11 min-w-[164px] px-6 text-sm`}
               >
                 Generate Free
               </Link>

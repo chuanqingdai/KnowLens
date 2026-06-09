@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import Link from "next/link";
@@ -6,6 +7,39 @@ import { useEffect, useMemo, useState } from "react";
 import { Copy, ExternalLink, RefreshCw } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
 import type { AdminConsoleData } from "@/lib/admin/adminConsoleMock";
+
+type ProjectDetailPayload = {
+  ok: boolean;
+  owner?: {
+    id: string;
+    email: string;
+  };
+  detail?: {
+    pages: Array<{
+      id: string;
+      pageIndex: number;
+      pageRole: string | null;
+      title: string;
+      subtitle: string;
+      body: string;
+      visual: string;
+      imagePromptDraft: string;
+      imageUrl: string | null;
+      status: string | null;
+      imageHistory?: Array<{
+        taskId: string;
+        renderUrl: string;
+        status: string;
+      }>;
+    }>;
+    tasks: Array<{
+      taskId: string;
+      imageUrl: string;
+      renderUrl: string;
+      status: string;
+    }>;
+  };
+};
 
 function formatDateTime(input: string) {
   const date = new Date(input);
@@ -24,6 +58,8 @@ export default function AdminProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params?.projectId || "";
   const [data, setData] = useState<AdminConsoleData | null>(null);
+  const [detail, setDetail] = useState<ProjectDetailPayload["detail"] | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
 
@@ -61,10 +97,87 @@ export default function AdminProjectDetailPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!projectId) {
+      setDetail(null);
+      setDetailLoading(false);
+      return;
+    }
+    setDetailLoading(true);
+    fetch(`/api/admin/projects/${encodeURIComponent(projectId)}`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({}))) as ProjectDetailPayload;
+        if (!response.ok || !payload.ok || !payload.detail) {
+          throw new Error("Admin project detail request failed");
+        }
+        if (!cancelled) {
+          setDetail(payload.detail);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDetail(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
   const project = data?.projects.find((item) => item.id === projectId) || null;
   const owner = project ? data?.users.find((item) => item.id === project.userId) || null : null;
   const logs = useMemo(() => data?.logs.filter((item) => item.projectId === projectId) || [], [data?.logs, projectId]);
   const credits = useMemo(() => data?.creditRecords.filter((item) => item.projectId === projectId) || [], [data?.creditRecords, projectId]);
+  const contentPages = detail?.pages || [];
+  const generatedAssets = useMemo(() => {
+    const seen = new Set<string>();
+    const items: Array<{
+      id: string;
+      title: string;
+      imageUrl: string;
+      status: string;
+    }> = [];
+    contentPages.forEach((page) => {
+      const currentImage =
+        (page.imageUrl || "").trim() ||
+        page.imageHistory?.find((item) => item.renderUrl)?.renderUrl ||
+        "";
+      if (!currentImage || seen.has(currentImage)) {
+        return;
+      }
+      seen.add(currentImage);
+      items.push({
+        id: page.id,
+        title: page.title || `Page ${page.pageIndex}`,
+        imageUrl: currentImage,
+        status: page.status || "ready",
+      });
+    });
+    (detail?.tasks || []).forEach((task, idx) => {
+      const currentImage = (task.renderUrl || task.imageUrl || "").trim();
+      if (!currentImage || seen.has(currentImage)) {
+        return;
+      }
+      seen.add(currentImage);
+      items.push({
+        id: task.taskId,
+        title: `Asset ${idx + 1}`,
+        imageUrl: currentImage,
+        status: task.status || "ready",
+      });
+    });
+    return items;
+  }, [contentPages, detail?.tasks]);
 
   function copyText(value: string, label: string) {
     void navigator.clipboard
@@ -157,18 +270,84 @@ export default function AdminProjectDetailPage() {
         <section className="grid gap-4 lg:grid-cols-2">
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-zinc-900">生成内容</p>
-            <div className="mt-3 space-y-2 text-sm text-zinc-700">
-              <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">Outline: 10 个关键点，每页一个重点。</p>
-              <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">Generation Layer: visibleText / visualDesign / factualRules / negativeRules。</p>
-              <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">composedPrompt 每页单独编译，避免上下文污染。</p>
-            </div>
+            {detailLoading ? (
+              <div className="mt-3 rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500">
+                正在加载 step3 文稿内容...
+              </div>
+            ) : contentPages.length ? (
+              <div className="mt-3 space-y-3">
+                {contentPages.map((page) => (
+                  <div key={page.id} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600">
+                        第 {page.pageIndex} 页
+                      </span>
+                      {page.pageRole ? (
+                        <span className="inline-flex rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-600">
+                          {page.pageRole}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 font-medium text-zinc-900">{page.title || `Page ${page.pageIndex}`}</p>
+                    {page.subtitle ? <p className="mt-1 text-xs text-zinc-500">{page.subtitle}</p> : null}
+                    {page.body ? (
+                      <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-zinc-700">{page.body}</pre>
+                    ) : null}
+                    {page.visual ? (
+                      <p className="mt-2 text-xs leading-5 text-zinc-600">
+                        <span className="font-medium text-zinc-800">Visual:</span> {page.visual}
+                      </p>
+                    ) : null}
+                    {page.imagePromptDraft ? (
+                      <p className="mt-2 text-xs leading-5 text-zinc-600">
+                        <span className="font-medium text-zinc-800">Image Prompt:</span> {page.imagePromptDraft}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500">
+                暂无已持久化的 step3 文稿内容。
+              </div>
+            )}
           </article>
 
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-zinc-900">生成结果</p>
-            <div className="mt-3 rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500">
-              这里展示最终 N 张图片 / PPT 页 / 视频分镜缩略图。资产预览可继续接 workspace project pages。
-            </div>
+            {detailLoading ? (
+              <div className="mt-3 rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500">
+                正在加载生成结果...
+              </div>
+            ) : generatedAssets.length ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {generatedAssets.map((item) => (
+                  <a
+                    key={item.id}
+                    href={item.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50"
+                  >
+                    <div className="aspect-[3/4] w-full bg-zinc-100">
+                      <img
+                        src={item.imageUrl}
+                        alt={item.title}
+                        className="h-full w-full object-cover transition group-hover:scale-[1.01]"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      <p className="min-w-0 truncate text-xs font-medium text-zinc-800">{item.title}</p>
+                      <span className="shrink-0 text-[11px] text-zinc-500">{item.status}</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500">
+                暂无已生成图片或缩略图。
+              </div>
+            )}
           </article>
         </section>
 

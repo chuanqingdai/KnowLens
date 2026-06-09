@@ -42,6 +42,9 @@ import {
 
 type SaveState = "saved" | "saving" | "error";
 
+const STORYBOARD_CTA_CLASS =
+  "inline-flex items-center rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-3 py-2 text-xs text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+
 type StoryboardCanvasProps = {
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
   canvasModeExternal?: CanvasMode;
@@ -4273,7 +4276,7 @@ export function StoryboardCanvas({
                     onClick={() => {
                       triggerVideoDownload();
                     }}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
+                    className={`${STORYBOARD_CTA_CLASS} shrink-0 gap-1 font-medium`}
                   >
                     <Download size={13} />
                     Download Video
@@ -4325,7 +4328,7 @@ export function StoryboardCanvas({
                   <button
                     type="button"
                     onClick={runComposeVideo}
-                    className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+                    className={STORYBOARD_CTA_CLASS}
                   >
                     Retry Download
                   </button>
@@ -4380,7 +4383,7 @@ export function StoryboardCanvas({
                     onClick={() => {
                       triggerPptDownload();
                     }}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500"
+                    className={`${STORYBOARD_CTA_CLASS} shrink-0 gap-1 font-medium`}
                   >
                     <Download size={13} />
                     Download PPT
@@ -4432,7 +4435,7 @@ export function StoryboardCanvas({
                     onClick={() => {
                       void exportPptx();
                     }}
-                    className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+                    className={STORYBOARD_CTA_CLASS}
                   >
                     Retry Download
                   </button>

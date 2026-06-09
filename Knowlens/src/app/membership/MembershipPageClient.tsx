@@ -165,6 +165,8 @@ function formatUsd(value: number) {
 const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
 const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
+const PAYMENT_CTA_CLASS =
+  "border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
 
 type PendingCheckout = {
   planId: string;
@@ -760,11 +762,9 @@ export default function MembershipPage() {
                 type="button"
                 onClick={() => handlePay(plan)}
                 disabled={Boolean(payingPlanId) || finalizing}
-                className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition ${
-                  plan.recommended
-                    ? "bg-zinc-900 text-white hover:bg-zinc-700"
-                    : "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
-                } ${payingPlanId || finalizing ? "cursor-not-allowed opacity-70" : ""}`}
+                className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition ${PAYMENT_CTA_CLASS} ${
+                  payingPlanId || finalizing ? "cursor-not-allowed opacity-70" : ""
+                }`}
               >
                 {payingPlanId === plan.id ? <LoaderCircle size={15} className="animate-spin" /> : <Zap size={15} />}
                 {payingPlanId === plan.id
@@ -782,29 +782,18 @@ export default function MembershipPage() {
                     Model Access
                   </p>
                   <div className="mt-2 space-y-1">
-                    {plan.supportedTextModels.map((model) => (
-                      <p
-                        key={`${plan.id}-text-model-${model}`}
-                        className="flex items-center gap-2 text-[12px] leading-5 text-zinc-700"
-                      >
-                        <Check size={12} className="shrink-0 text-zinc-900" />
-                        <span>{model}</span>
-                      </p>
-                    ))}
-                  </div>
-                  <div className="mt-2 space-y-1">
-                    {plan.supportedImageModels.map((model) => {
+                    {plan.supportedTextModels.map((model) => {
                       const hasPromo = model.toLowerCase().includes("gpt-image2");
                       return (
                         <p
-                          key={`${plan.id}-image-model-${model}`}
+                          key={`${plan.id}-text-model-${model}`}
                           className="flex items-center gap-2 text-[12px] leading-5 text-zinc-700"
                         >
                           <Check size={12} className="shrink-0 text-zinc-900" />
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex flex-wrap items-center gap-1.5">
                             <span>{model}</span>
                             {hasPromo ? (
-                              <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                              <span className="inline-flex items-center rounded-full border border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 shadow-sm shadow-amber-100/80">
                                 Limited-time 70% off
                               </span>
                             ) : null}
@@ -813,6 +802,19 @@ export default function MembershipPage() {
                       );
                     })}
                   </div>
+                  {plan.supportedImageModels.length ? (
+                    <div className="mt-2 space-y-1">
+                      {plan.supportedImageModels.map((model) => (
+                        <p
+                          key={`${plan.id}-image-model-${model}`}
+                          className="flex items-center gap-2 text-[12px] leading-5 text-zinc-700"
+                        >
+                          <Check size={12} className="shrink-0 text-zinc-900" />
+                          <span>{model}</span>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                 </li>
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
@@ -921,7 +923,7 @@ export default function MembershipPage() {
               type="button"
               onClick={() => void finalizeCheckoutSession(pendingFinalizeSessionId)}
               disabled={finalizing}
-              className="inline-flex h-8 items-center rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${PAYMENT_CTA_CLASS}`}
             >
               {finalizing ? "Verifying..." : "Retry verification"}
             </button>

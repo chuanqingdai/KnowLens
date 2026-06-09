@@ -18,6 +18,9 @@ type PaywallDialogProps = {
   onConfirm: () => void;
 };
 
+const PAYWALL_CTA_CLASS =
+  "border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:opacity-70 disabled:shadow-none disabled:active:translate-y-0";
+
 export function PaywallDialog({
   open,
   title,
@@ -121,7 +124,7 @@ export function PaywallDialog({
                 window.location.href = confirmHref;
               }
             }}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-70"
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium ${PAYWALL_CTA_CLASS}`}
           >
             {confirming ? <LoaderCircle size={14} className="animate-spin" /> : null}
             {confirmLabel}

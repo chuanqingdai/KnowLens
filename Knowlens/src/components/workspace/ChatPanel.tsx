@@ -1,5 +1,5 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Check, ChevronLeft, ChevronRight, Download, LoaderCircle, Lock } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Download, LoaderCircle, Lock } from "lucide-react";
 
 export type ChatTurn = {
   id: string;
@@ -102,6 +102,20 @@ type StyleOption = {
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 const STYLE_COVER_FRAME_CLASS = "relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none";
 const STYLE_CARD_LABEL_CLASS = "flex min-h-[3.5rem] items-start px-2.5 pb-2.5 pt-2";
+const PRIMARY_CARD_ACTION_CLASS =
+  "inline-flex items-center justify-center gap-2 rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-sm font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:text-white disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
+const GENERATION_MODE_OPTIONS = [
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Continue through the next steps automatically.",
+  },
+  {
+    value: "manual",
+    label: "Manual",
+    description: "Pause after each step for your confirmation.",
+  },
+] as const;
 
 function styleCoverCandidates(coverImage?: string) {
   if (!coverImage) {
@@ -447,6 +461,8 @@ type ChatPanelProps = {
   onVideoRatioChange: (ratio: "16:9" | "9:16") => void;
   configConfirmed: boolean;
   onConfirmConfig: () => void;
+  autoGenerationPreference: "auto" | "manual";
+  onAutoGenerationPreferenceChange: (value: "auto" | "manual") => void;
   outlineItems: string[];
   slideDrafts: SlideDraft[];
   posterDraft: PosterDraft | null;
@@ -556,6 +572,8 @@ export const ChatPanel = memo(function ChatPanel({
   onVideoRatioChange,
   configConfirmed,
   onConfirmConfig,
+  autoGenerationPreference,
+  onAutoGenerationPreferenceChange,
   outlineItems,
   slideDrafts,
   posterDraft,
@@ -701,10 +719,17 @@ export const ChatPanel = memo(function ChatPanel({
   const selectedStyleBadgeClass =
     "absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-zinc-900 text-white shadow-sm";
   const [supportsHoverDescription, setSupportsHoverDescription] = useState(false);
+  const [generationModeMenuOpen, setGenerationModeMenuOpen] = useState(false);
   const [introPhase, setIntroPhase] = useState<"analyzing" | "planning" | "ask">("analyzing");
   const styleButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const deferredUpdates = useDeferredValue(updates);
   const displayedUpdates = useMemo(() => compactChatTurnsForDisplay(deferredUpdates), [deferredUpdates]);
+  const lockedTopicSuggestionsForDisplay = useMemo(() => {
+    const snapshot = topicSuggestions.map((item) => item.trim()).filter(Boolean);
+    const selected = lockedTopicSuggestion?.trim();
+    const next = selected && !snapshot.includes(selected) ? [selected, ...snapshot] : snapshot;
+    return next.filter((item, index) => next.indexOf(item) === index).slice(0, 4);
+  }, [lockedTopicSuggestion, topicSuggestions]);
 
   const renderOutputSummaryCard = useCallback(() => {
     if (!outputSummaryCard?.visible) {
@@ -778,7 +803,7 @@ export const ChatPanel = memo(function ChatPanel({
               event.stopPropagation();
               outputSummaryCard.onDownload();
             }}
-            className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-200 disabled:text-zinc-600 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-200 disabled:hover:shadow-none disabled:active:translate-y-0 sm:w-auto"
           >
             {outputSummaryCard.canDownload ? (
               <Download size={15} className="shrink-0" aria-hidden="true" />
@@ -842,6 +867,73 @@ export const ChatPanel = memo(function ChatPanel({
     onConfirmBilling();
     scrollToLatestCard();
   };
+  const selectedGenerationMode =
+    GENERATION_MODE_OPTIONS.find((option) => option.value === autoGenerationPreference) ??
+    GENERATION_MODE_OPTIONS[0];
+  const renderGenerationModeSelect = () => (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={generationModeMenuOpen}
+        onClick={() => setGenerationModeMenuOpen((prev) => !prev)}
+        className="inline-flex h-9 min-w-[104px] items-center justify-between gap-2 rounded-xl border border-transparent bg-white px-3 text-left text-xs font-medium text-zinc-600 outline-none transition hover:bg-zinc-50 focus:bg-zinc-50"
+      >
+        <span className="truncate">{selectedGenerationMode.label}</span>
+        <ChevronDown
+          size={14}
+          className={`shrink-0 text-zinc-500 transition ${generationModeMenuOpen ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      {generationModeMenuOpen ? (
+        <div className="absolute right-0 top-10 z-50 w-72 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)]">
+          <div role="listbox" aria-label="Generation mode">
+            {GENERATION_MODE_OPTIONS.map((option) => {
+              const active = option.value === autoGenerationPreference;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onAutoGenerationPreferenceChange(option.value);
+                    setGenerationModeMenuOpen(false);
+                  }}
+                  className="flex w-full items-start justify-between gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-xs font-medium text-zinc-900">{option.label}</span>
+                    <span className="mt-1 block text-[11px] leading-4 text-zinc-500">
+                      {option.description}
+                    </span>
+                  </span>
+                  {active ? <Check size={14} className="mt-0.5 shrink-0 text-blue-600" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+  const renderConfirmConfigFooter = () => (
+    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
+      <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+        {renderGenerationModeSelect()}
+        <button
+          type="button"
+          onClick={onConfirmConfig}
+          className={`${PRIMARY_CARD_ACTION_CLASS} relative z-10 h-9 shrink-0 cursor-pointer whitespace-nowrap px-4`}
+        >
+          <span>Confirm & Start</span>
+          <ArrowRight size={14} className="shrink-0" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -975,6 +1067,7 @@ export const ChatPanel = memo(function ChatPanel({
   const shouldShowDraftLoadingCard =
     configConfirmed &&
     (isDraftGenerationPending || (draftGenerationLoadingActive && !hasDraftContentCard));
+  const draftReviewLocked = !shouldShowDraftConfirmAction;
   const draftLoadingTitle = "KnowLens.ai · Draft Content";
   const rotatingDraftLoadingMessages = [
     "Reading the confirmed direction and output count...",
@@ -1247,7 +1340,7 @@ export const ChatPanel = memo(function ChatPanel({
               type="button"
               disabled={isPlanningNextStep || !canProceed}
               onClick={handleDraftNext}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
             >
               {isPlanningNextStep ? (
                 <>
@@ -1345,7 +1438,7 @@ export const ChatPanel = memo(function ChatPanel({
               type="button"
               disabled={isPlanningNextStep || !canProceed}
               onClick={onConfirm}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+              className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
             >
               {isPlanningNextStep ? (
                 <>
@@ -1382,7 +1475,7 @@ export const ChatPanel = memo(function ChatPanel({
                 : "You continued with manual input. The previous options are now locked and kept for reference."}
             </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {topicSuggestions.map((item) => {
+              {lockedTopicSuggestionsForDisplay.map((item) => {
                 const active = item === lockedTopicSuggestion;
                 return (
                   <button
@@ -1455,7 +1548,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <button
                       type="button"
                       onClick={handleTopicSuggestionNext}
-                      className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                     >
                       Next
                     </button>
@@ -1546,18 +1639,7 @@ export const ChatPanel = memo(function ChatPanel({
                     );
                   })}
                 </div>
-                {!isDirectionLocked ? (
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                    <button
-                      type="button"
-                      onClick={onConfirmConfig}
-                      className="relative z-10 inline-flex h-9 cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
+                {!isDirectionLocked ? renderConfirmConfigFooter() : null}
               </div>
                   ) : null}
 
@@ -1618,18 +1700,7 @@ export const ChatPanel = memo(function ChatPanel({
                     );
                   })}
                 </div>
-                {!isDirectionLocked ? (
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                    <button
-                      type="button"
-                      onClick={onConfirmConfig}
-                      className="relative z-10 inline-flex h-9 cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
+                {!isDirectionLocked ? renderConfirmConfigFooter() : null}
               </div>
                   ) : null}
 
@@ -1691,18 +1762,7 @@ export const ChatPanel = memo(function ChatPanel({
                     );
                   })}
                 </div>
-                {!isDirectionLocked ? (
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                    <button
-                      type="button"
-                      onClick={onConfirmConfig}
-                      className="relative z-10 inline-flex h-9 cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
+                {!isDirectionLocked ? renderConfirmConfigFooter() : null}
               </div>
                   ) : null}
                 </div>
@@ -1713,10 +1773,12 @@ export const ChatPanel = memo(function ChatPanel({
 
         {!showDirectionGuide ? (
           <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
-            {!shouldShowDraftLoadingCard && intent === "poster" && posterDraft ? renderPosterDraftReview({ locked: false }) : null}
+            {!shouldShowDraftLoadingCard && intent === "poster" && posterDraft
+              ? renderPosterDraftReview({ locked: draftReviewLocked })
+              : null}
 
             {!shouldShowDraftLoadingCard && (intent === "ppt" || intent === "video") && (outlineItems.length || slideDrafts.length)
-              ? renderSlideDraftReview({ locked: false })
+              ? renderSlideDraftReview({ locked: draftReviewLocked })
               : null}
 
             {!configConfirmed ? (
@@ -1834,7 +1896,7 @@ export const ChatPanel = memo(function ChatPanel({
                   type="button"
                   disabled={isPlanningStyleStep}
                   onClick={handleStyleNext}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                  className={`${PRIMARY_CARD_ACTION_CLASS} w-full px-4 py-2 sm:w-auto`}
                 >
                   {isPlanningStyleStep ? (
                     <>
@@ -1899,7 +1961,7 @@ export const ChatPanel = memo(function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                  className={`${PRIMARY_CARD_ACTION_CLASS} w-full px-4 py-2 sm:w-auto`}
                 >
                   {isPlanningBillingStep ? (
                     <>
@@ -2205,7 +2267,7 @@ export const ChatPanel = memo(function ChatPanel({
                       <button
                         type="button"
                       onClick={handleTopicSuggestionNext}
-                        className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                        className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                       >
                         Next
                       </button>
@@ -2271,7 +2333,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <button
                       type="button"
                       onClick={onConfirmConfig}
-                      className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                     >
                       Next
                     </button>
@@ -2339,7 +2401,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <button
                       type="button"
                       onClick={onConfirmConfig}
-                      className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                     >
                       Next
                     </button>
@@ -2400,7 +2462,7 @@ export const ChatPanel = memo(function ChatPanel({
                     <button
                       type="button"
                       onClick={onConfirmConfig}
-                      className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                     >
                       Next
                     </button>
@@ -2476,7 +2538,7 @@ export const ChatPanel = memo(function ChatPanel({
                 <button
                   type="button"
                   onClick={onConfirmConfig}
-                  className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                  className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                 >
                   Next
                 </button>
@@ -2544,7 +2606,7 @@ export const ChatPanel = memo(function ChatPanel({
                 <button
                   type="button"
                   onClick={onConfirmConfig}
-                  className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                  className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                 >
                   Next
                 </button>
@@ -2616,7 +2678,7 @@ export const ChatPanel = memo(function ChatPanel({
                 <button
                   type="button"
                   onClick={onConfirmConfig}
-                  className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                  className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
                 >
                   Next
                 </button>
@@ -2760,7 +2822,7 @@ export const ChatPanel = memo(function ChatPanel({
                 type="button"
                 disabled={isPlanningStyleStep}
                 onClick={handleStyleNext}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                className={`${PRIMARY_CARD_ACTION_CLASS} w-full px-4 py-2 sm:w-auto`}
               >
                 {isPlanningStyleStep ? (
                   <>
@@ -2827,7 +2889,7 @@ export const ChatPanel = memo(function ChatPanel({
                   type="button"
                   disabled={isPlanningBillingStep}
                   onClick={handleBillingConfirm}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400 sm:w-auto"
+                  className={`${PRIMARY_CARD_ACTION_CLASS} w-full px-4 py-2 sm:w-auto`}
                 >
                 {isPlanningBillingStep ? (
                   <>
