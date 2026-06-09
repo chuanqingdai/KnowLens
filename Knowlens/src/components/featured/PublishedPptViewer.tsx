@@ -15,6 +15,7 @@ type PublishedPptViewerProps = {
   assets: PublishedPptAsset[];
   initialIndex: number;
   title: string;
+  itemLabel?: string;
 };
 
 function clampIndex(index: number, total: number) {
@@ -33,7 +34,12 @@ function updateAssetQuery(asset: PublishedPptAsset) {
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
-export function PublishedPptViewer({ assets, initialIndex, title }: PublishedPptViewerProps) {
+export function PublishedPptViewer({
+  assets,
+  initialIndex,
+  title,
+  itemLabel = "Slide",
+}: PublishedPptViewerProps) {
   const [selectedIndex, setSelectedIndex] = useState(() => clampIndex(initialIndex, assets.length));
   const selectedAsset = assets[selectedIndex] || null;
   const canGoPrevious = selectedIndex > 0;
@@ -55,8 +61,8 @@ export function PublishedPptViewer({ assets, initialIndex, title }: PublishedPpt
     if (!selectedAsset) {
       return "";
     }
-    return `Slide ${selectedIndex + 1} / ${assets.length}`;
-  }, [assets.length, selectedAsset, selectedIndex]);
+    return `${itemLabel} ${selectedIndex + 1} / ${assets.length}`;
+  }, [assets.length, itemLabel, selectedAsset, selectedIndex]);
 
   return (
     <>
@@ -67,13 +73,13 @@ export function PublishedPptViewer({ assets, initialIndex, title }: PublishedPpt
             {slideLabel ? <p className="mt-0.5 text-xs text-zinc-500">{slideLabel}</p> : null}
           </div>
         </div>
-        <div className="bg-zinc-950/95 p-3 sm:p-6">
+        <div className="bg-zinc-950/95 p-2 sm:p-4">
           {selectedAsset ? (
-            <div className="relative mx-auto w-fit max-w-full">
+            <div className="relative mx-auto w-full max-w-[min(1200px,100%)]">
               <img
                 src={selectedAsset.fileUrl}
                 alt={selectedAsset.title || title}
-                className="mx-auto max-h-[82vh] w-auto max-w-full object-contain"
+                className="mx-auto max-h-[86vh] w-auto max-w-full object-contain"
               />
               {assets.length > 1 ? (
                 <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
@@ -112,14 +118,14 @@ export function PublishedPptViewer({ assets, initialIndex, title }: PublishedPpt
       {assets.length > 1 ? (
         <section className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
           <div className="flex gap-3 overflow-x-auto pb-1">
-            {assets.map((asset, index) => {
+                {assets.map((asset, index) => {
               const active = selectedIndex === index;
               return (
                 <button
                   key={asset.id}
                   type="button"
                   onClick={() => selectIndex(index)}
-                  className={`w-32 shrink-0 overflow-hidden rounded-xl border text-left transition ${
+                  className={`w-24 shrink-0 overflow-hidden rounded-xl border text-left transition sm:w-28 ${
                     active ? "border-zinc-900 shadow-sm" : "border-zinc-200 hover:border-zinc-400"
                   }`}
                 >
@@ -131,7 +137,9 @@ export function PublishedPptViewer({ assets, initialIndex, title }: PublishedPpt
                     />
                   </div>
                   <div className="px-2 py-1.5">
-                    <p className="truncate text-xs font-medium text-zinc-900">Slide {index + 1}</p>
+                    <p className="truncate text-xs font-medium text-zinc-900">
+                      {itemLabel} {index + 1}
+                    </p>
                   </div>
                 </button>
               );

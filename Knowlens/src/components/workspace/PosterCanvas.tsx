@@ -29,6 +29,7 @@ type SaveState = "saved" | "saving" | "error";
 
 const POSTER_CTA_CLASS =
   "inline-flex h-8 items-center gap-1 rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
+const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
 
 type PosterDraft = {
   headline: string;
@@ -1218,6 +1219,23 @@ export function PosterCanvas({
 
   const edges = useMemo<Edge[]>(() => [], []);
   const nodeTypes = useMemo(() => ({ poster: PosterNode }), []);
+  const getMiniMapNodeColor = useCallback((node: Node) => {
+    const nodeData = node.data as PosterNodeData | undefined;
+    const card = nodeData?.card;
+    if (nodeData?.isSelected) {
+      return MINIMAP_VIEWPORT_COLOR;
+    }
+    if (card?.status === "failed" || card?.imageLoadError) {
+      return "#ef4444";
+    }
+    if (card?.status === "queued" || card?.status === "generating" || card?.status === "retrying") {
+      return "#8B5CF6";
+    }
+    if (card?.status === "ready") {
+      return "#18181b";
+    }
+    return "#a1a1aa";
+  }, []);
   const readyCount = cards.filter(
     (item) => item.status === "ready" && !item.imageLoading && !item.imageLoadError,
   ).length;
@@ -1368,9 +1386,13 @@ export function PosterCanvas({
           <MiniMap
             pannable
             zoomable
-            nodeColor={() => "#111827"}
-            maskColor="rgba(15,23,42,0.14)"
-            className="!bottom-3 !right-3 !hidden !h-[96px] !w-[72px] !border !border-zinc-200 !bg-white md:!block"
+            nodeColor={getMiniMapNodeColor}
+            nodeStrokeColor={() => "#ffffff"}
+            nodeBorderRadius={10}
+            maskColor="rgba(17,24,39,0.10)"
+            maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
+            maskStrokeWidth={2}
+            className="!bottom-3 !right-3 !hidden !h-[120px] !w-[180px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)] md:!block"
           />
           <Controls showInteractive={false} className="!bottom-3 !left-3" />
           <Background color="#e5e7eb" gap={26} />

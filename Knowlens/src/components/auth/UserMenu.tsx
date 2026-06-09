@@ -89,7 +89,7 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
         title={t("User menu", "用户中心")}
         className={
           buttonClassName ??
-          "flex h-10 w-10 items-center justify-center rounded-full bg-[#2d8cff] text-white transition hover:brightness-95"
+          "flex h-10 w-10 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-800 shadow-sm transition hover:bg-zinc-100"
         }
       >
         {displayName ? (

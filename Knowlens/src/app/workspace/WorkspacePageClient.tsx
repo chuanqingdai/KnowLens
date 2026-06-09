@@ -8582,9 +8582,52 @@ export default function WorkspacePage() {
     const recoverConfirmJob = async (reason: string, options?: { restoreFailed?: boolean }) => {
       const recoveryStartedAt = Date.now();
       const recoveryJobId = preparedJobId || previousRecoverableJobId || undefined;
+      if (!recoveryJobId) {
+        emitUiEvent({
+          action: "ui.step5.recovery.skipped",
+          status: "info",
+          message: "Skipped recovery because no previous image generation job exists.",
+          details: {
+            runId: nextRunId,
+            reason,
+            previousRecoverableJobId: previousRecoverableJobId || null,
+            preparedJobId: preparedJobId || null,
+          },
+        });
+        logClientEvent({
+          category: "image",
+          action: "image_generation_confirm_recovery_skipped",
+          status: "info",
+          source: imageModel,
+          message: reason,
+          projectId: projectIdRef.current || selectedProjectIdForRecovery || null,
+          details: {
+            reason,
+            startedAt: new Date(recoveryStartedAt).toISOString(),
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - recoveryStartedAt,
+            runId: nextRunId,
+            projectId: selectedProjectIdForRecovery || projectIdRef.current || null,
+            previousRecoverableJobId: previousRecoverableJobId || null,
+            preparedJobId: preparedJobId || null,
+          },
+        });
+        return false;
+      }
       const recoveryRunId = recoveryJobId ? (preparedJobId ? nextRunId : previousRecoverableRunId) : previousRecoverableRunId;
       const recoveryIdempotencyKey =
-        (confirmIdempotencyKey || previousRecoverableIdempotencyKey || "").trim() || undefined;
+        (preparedJobId ? confirmIdempotencyKey : previousRecoverableIdempotencyKey || "").trim() || undefined;
+      emitUiEvent({
+        action: "ui.step5.recovery.attempted",
+        status: "info",
+        message: "Attempting to recover an existing image generation job.",
+        details: {
+          runId: nextRunId,
+          reason,
+          recoveryJobId,
+          recoveryRunId: recoveryRunId || null,
+        },
+      });
       setConfirmStep(
         "recover previous request",
         tr("Recovering previous request...", "正在恢复上一次请求..."),
@@ -8704,6 +8747,17 @@ export default function WorkspacePage() {
         return;
       }
       setConfirmStep("prepare job", tr("Preparing generation...", "正在准备生成..."));
+      emitUiEvent({
+        action: "ui.step5.prepare.sent",
+        status: "info",
+        message: "Sending prepare request for a new image generation job.",
+        details: {
+          runId: nextRunId,
+          idempotencyKey,
+          taskCount: tasksToGenerate.length,
+          taskIndexes: tasksToGenerate.map((task) => task.index),
+        },
+      });
       const preparePayload = await postGenerationBatchAction({
         ...buildGenerationRequestPayload(tasksToGenerate),
         action: "prepare",
@@ -10153,7 +10207,8 @@ export default function WorkspacePage() {
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 shadow-lg shadow-zinc-950/20">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-white">
+                          <p className="flex items-center gap-2 text-sm font-medium text-white">
+                            <LoaderCircle size={16} className="shrink-0 animate-spin text-white" />
                             {tr("Automatic generation is running...", "正在自动生成中...")}
                           </p>
                           <p className="mt-0.5 text-xs leading-5 text-zinc-300">
@@ -10164,8 +10219,7 @@ export default function WorkspacePage() {
                             )}
                           </p>
                         </div>
-                        <div className="flex shrink-0 items-center justify-end gap-2">
-                          <LoaderCircle size={16} className="animate-spin text-white" />
+                        <div className="flex shrink-0 items-center justify-end">
                           <button
                             type="button"
                             onClick={() => {

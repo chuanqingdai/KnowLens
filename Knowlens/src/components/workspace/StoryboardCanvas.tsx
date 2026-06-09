@@ -44,6 +44,7 @@ type SaveState = "saved" | "saving" | "error";
 
 const STORYBOARD_CTA_CLASS =
   "inline-flex items-center rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-3 py-2 text-xs text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
 
 type StoryboardCanvasProps = {
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
@@ -3706,6 +3707,27 @@ export function StoryboardCanvas({
       validationMap,
     ],
   );
+  const getMiniMapNodeColor = useCallback((node: Node) => {
+    const slideId = getSlideIdFromNodeId(node.id);
+    const generationState = generationTaskStateByIndex?.[slides.find((slide) => slide.id === slideId)?.page ?? -1];
+    if (slideId && selectedSlideId === slideId) {
+      return MINIMAP_VIEWPORT_COLOR;
+    }
+    if (node.id.startsWith("story-")) {
+      return "#71717a";
+    }
+    if (generationState?.status === "failed") {
+      return "#ef4444";
+    }
+    if (
+      generationState?.status === "queued" ||
+      generationState?.status === "generating" ||
+      generationState?.status === "retrying"
+    ) {
+      return "#8B5CF6";
+    }
+    return "#18181b";
+  }, [generationTaskStateByIndex, selectedSlideId, slides]);
 
   useEffect(() => {
     onSaveStateChange?.(saveState, hasUnsavedChanges);
@@ -3974,16 +3996,15 @@ export function StoryboardCanvas({
         >
           {canvasMode === "free" ? (
             <MiniMap
-            pannable
-            zoomable
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              width: 170,
-              height: 102,
-            }}
-            nodeColor="#a1a1aa"
-            maskColor="rgba(228, 228, 231, 0.42)"
+              pannable
+              zoomable
+              nodeColor={getMiniMapNodeColor}
+              nodeStrokeColor={() => "#ffffff"}
+              nodeBorderRadius={8}
+              maskColor="rgba(17,24,39,0.10)"
+              maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
+              maskStrokeWidth={2}
+              className="!bottom-3 !right-3 !h-[118px] !w-[188px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
             />
           ) : null}
           {canvasMode === "free" ? (

@@ -167,6 +167,8 @@ const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const PAYMENT_CTA_CLASS =
   "border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+const SECONDARY_PAYMENT_CTA_CLASS =
+  "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100";
 
 type PendingCheckout = {
   planId: string;
@@ -762,7 +764,9 @@ export default function MembershipPage() {
                 type="button"
                 onClick={() => handlePay(plan)}
                 disabled={Boolean(payingPlanId) || finalizing}
-                className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition ${PAYMENT_CTA_CLASS} ${
+                className={`mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition ${
+                  plan.recommended ? PAYMENT_CTA_CLASS : SECONDARY_PAYMENT_CTA_CLASS
+                } ${
                   payingPlanId || finalizing ? "cursor-not-allowed opacity-70" : ""
                 }`}
               >

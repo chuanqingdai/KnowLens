@@ -1,6 +1,4 @@
 /* eslint-disable @next/next/no-img-element */
-
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PublishedPptViewer } from "@/components/featured/PublishedPptViewer";
 import { PublishedVideoPlayer } from "@/components/featured/PublishedVideoPlayer";
@@ -35,10 +33,6 @@ function isPptFileAsset(asset: PublishedCaseAssetRow) {
 
 function isImageAsset(asset: PublishedCaseAssetRow) {
   return !isVideoAsset(asset) && !isPptFileAsset(asset);
-}
-
-function caseAssetHref(caseSlug: string, asset: PublishedCaseAssetRow) {
-  return `/cases/${encodeURIComponent(caseSlug)}?asset=${encodeURIComponent(asset.slug)}`;
 }
 
 function getPrimaryImageAsset(assets: PublishedCaseAssetRow[], queryAsset?: string) {
@@ -114,7 +108,19 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
           </div>
 
           {isPpt && !hasPublishedVideo ? (
-            <PublishedPptViewer assets={imageAssets} initialIndex={selectedImageIndex} title={item.title} />
+            <PublishedPptViewer
+              assets={imageAssets}
+              initialIndex={selectedImageIndex}
+              title={item.title}
+              itemLabel="Slide"
+            />
+          ) : !isVideo && imageAssets.length ? (
+            <PublishedPptViewer
+              assets={imageAssets}
+              initialIndex={selectedImageIndex}
+              title={item.title}
+              itemLabel="Poster"
+            />
           ) : (
             <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
@@ -161,14 +167,6 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                       )}
                     </div>
                   )
-                ) : selectedImage ? (
-                  <div className="relative mx-auto w-fit max-w-full">
-                    <img
-                      src={selectedImage.fileUrl}
-                      alt={selectedImage.title || item.title}
-                      className="mx-auto max-h-[82vh] w-auto max-w-full object-contain"
-                    />
-                  </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-white/20 px-4 py-16 text-center text-sm text-white/70">
                     This case has no public files yet.
@@ -177,37 +175,6 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
               </div>
             </section>
           )}
-
-          {!isPpt && !isVideo && imageAssets.length > 1 ? (
-            <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {imageAssets.map((asset) => {
-                const active = selectedImage?.id === asset.id;
-                return (
-                  <Link
-                    key={asset.id}
-                    href={caseAssetHref(item.slug, asset)}
-                    className={`overflow-hidden rounded-xl border bg-white transition ${
-                      active ? "border-zinc-900 shadow-sm" : "border-zinc-200 hover:border-zinc-400"
-                    }`}
-                  >
-                    <div className="aspect-video bg-zinc-100">
-                      <img
-                        src={asset.thumbnailUrl || asset.fileUrl}
-                        alt={asset.title || item.title}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="px-3 py-2">
-                      <p className="truncate text-sm font-medium text-zinc-900">
-                        {asset.title || `File ${asset.pageIndex}`}
-                      </p>
-                      <p className="mt-0.5 text-xs text-zinc-500">Independent file URL</p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </section>
-          ) : null}
 
           {isVideo && imageAssets.length > 1 && !videoAsset ? (
             <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
