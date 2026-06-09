@@ -2298,8 +2298,8 @@ export default function Home() {
             <div className="mb-6 flex flex-col items-center text-center">
               <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
               <h1 className="mt-1 max-w-[14ch] text-center text-[clamp(1.55rem,4.15vw,2.45rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900 sm:max-w-none sm:text-[clamp(1.65rem,4.15vw,2.55rem)]">
-                <span className="block sm:inline">AI Infographic</span>{" "}
-                <span className="block sm:inline">Generator for Learning</span>
+                <span className="block sm:inline">Turn Text into Visual</span>{" "}
+                <span className="block sm:inline">Learning Content</span>
               </h1>
             </div>
 

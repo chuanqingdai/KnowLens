@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Check } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
@@ -692,8 +692,13 @@ export default function LandingPage() {
 
         <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
           <div className="mx-auto max-w-[620px] text-center lg:mx-0 lg:text-left">
-            <div className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-[11px] text-zinc-600">
-              Best Visual Quality
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/80 bg-white px-3.5 py-1.5 text-[11px] text-zinc-700 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+              <span className="inline-flex items-center gap-0.5 text-amber-400">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Star key={index} size={11} fill="currentColor" strokeWidth={1.8} />
+                ))}
+              </span>
+              <span className="font-medium">Best Visual Quality</span>
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
               <span className="block">Turn Text into Infographics,</span>
