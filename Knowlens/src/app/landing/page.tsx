@@ -153,76 +153,76 @@ const capabilityFlows = [
 const DEFAULT_CAPABILITY_FLOW_ID = "infographic-poster";
 
 const howItWorksTags = [
-  "Science",
-  "Education",
-  "Business",
-  "Health",
-  "Technology",
-  "Research",
+  "YouTube",
+  "TikTok",
+  "Instagram",
+  "LinkedIn",
+  "X",
+  "Slides",
 ];
 
 const howItWorksCards = [
   {
     id: "understand",
-    title: "Understand Your Text",
+    title: "1.Add Your Source",
     description:
-      "KnowLens identifies the topic, audience, key points, definitions, timelines, data, relationships, and explanation flow in your text.",
+      "Paste a topic, script, article, lesson note, research summary, or rough idea. Start with the material you already have, whether it is a YouTube script, a social post idea, a classroom topic, or a business explanation.",
   },
   {
     id: "organize",
-    title: "Organize the Key Ideas",
+    title: "2.Shape the Visual Story",
     description:
-      "It turns notes, lessons, research summaries, investor updates, product ideas, and business analysis into a clear structure with hierarchy, sections, comparisons, and visual emphasis.",
+      "KnowLens organizes the main points into a clearer structure, highlights the key ideas, and turns scattered text into a visual flow that is easier to explain, teach, and share.",
   },
   {
     id: "generate",
-    title: "Generate the Right Format",
+    title: "3.Generate for Your Platform",
     description:
-      "Choose the format you need: infographic poster, presentation slides, or explainer video storyboards for learning, teaching, reporting, training, and content creation.",
+      "Choose the output that fits your goal: explainer videos for YouTube or TikTok, carousel-style visuals for Instagram or LinkedIn, quick posts for X, or slide decks for teaching and presentations.",
   },
 ];
 
-const userVoices = [
+const personaUseCases = [
   {
-    id: "science-teacher",
-    role: "Science Teacher",
+    id: "youtube-educator",
+    role: "YouTube Educator",
     quote:
-      "KnowLens helps me turn lesson notes into visual posters that make abstract science topics easier to explain.",
+      "Turn a rough script or topic into visual explainer scenes that make educational videos easier to plan, structure, and publish.",
+    tags: "Explainer Video · Slides",
+  },
+  {
+    id: "shorts-creator",
+    role: "TikTok / Shorts Creator",
+    quote:
+      "Quickly turn one idea into short-form visual content for TikTok, Reels, and YouTube Shorts without starting from a blank canvas.",
+    tags: "Explainer Video · Poster",
+  },
+  {
+    id: "ai-content-creator",
+    role: "AI Content Creator",
+    quote:
+      "Complex topics like AI agents, LLMs, and workflows become clearer when they are turned into visual explainers and infographic-style content.",
+    tags: "Poster · Explainer Video",
+  },
+  {
+    id: "business-writer",
+    role: "Business / Newsletter Writer",
+    quote:
+      "Transform strategy notes, trend breakdowns, and business ideas into visuals that are easier to share in posts, decks, and newsletters.",
+    tags: "Slides · Poster",
+  },
+  {
+    id: "educator",
+    role: "Educator",
+    quote:
+      "Lesson notes and learning topics become clearer when they are turned into posters, slide decks, and structured classroom visuals.",
     tags: "Poster · Slides",
   },
   {
-    id: "medical-student",
-    role: "Medical Student",
+    id: "product-strategy-team",
+    role: "Product or Strategy Team",
     quote:
-      "Dense anatomy and treatment pathways become easier to review when they are organized into structured visual summaries.",
-    tags: "Poster",
-  },
-  {
-    id: "content-creator",
-    role: "Content Creator",
-    quote:
-      "A rough explanation can quickly become a storyboard, helping me plan educational videos with clearer scenes and pacing.",
-    tags: "Explainer Video",
-  },
-  {
-    id: "business-analyst",
-    role: "Business Analyst",
-    quote:
-      "Market trends and strategy notes become slide-ready visuals that help teams understand the key points faster.",
-    tags: "Slides",
-  },
-  {
-    id: "university-student",
-    role: "University Student",
-    quote:
-      "My study notes become memorable one-page summaries, which makes review sessions feel less scattered.",
-    tags: "Poster",
-  },
-  {
-    id: "product-manager",
-    role: "Product Manager",
-    quote:
-      "Complex product ideas are easier to communicate when they are turned into structured visual narratives.",
+      "Use visuals to explain product ideas, workflows, and internal concepts more clearly across presentations, docs, and team discussions.",
     tags: "Slides · Poster",
   },
 ];
@@ -792,12 +792,12 @@ export default function LandingPage() {
         <section id="pricing" className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="text-center">
             <h2 className="text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
-              {t("Featured Case Gallery", "精选案例画廊")}
+              {t("See What You Can Create with KnowLens", "See What You Can Create with KnowLens")}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
               {t(
-                "Explore curated visual cases shown in their original aspect ratios for true, distortion-free preview.",
-                "浏览精选可视化案例，按原始比例真实呈现，预览不裁切不变形。",
+                "Explore real examples of explainer videos, infographics, social posts, and slides created with KnowLens.",
+                "Explore real examples of explainer videos, infographics, social posts, and slides created with KnowLens.",
               )}
             </p>
           </div>
@@ -855,18 +855,18 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+        <section className="mx-auto mt-8 w-full max-w-6xl px-4 py-6 sm:mt-10 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
               HOW IT WORKS
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("How KnowLens Turns Text into Visual Content", "How KnowLens Turns Text into Visual Content")}
+              {t("Create Visual Content in 3 Simple Steps", "Create Visual Content in 3 Simple Steps")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "KnowLens reads your text, organizes key ideas, finds relationships, timelines, data points, processes, and summaries, then turns them into clear posters, slides, or explainer video drafts.",
-                "KnowLens reads your text, organizes key ideas, finds relationships, timelines, data points, processes, and summaries, then turns them into clear posters, slides, or explainer video drafts.",
+                "Start with a topic, script, article, or notes. KnowLens helps turn your ideas into videos, infographics, social posts, and slides in minutes.",
+                "Start with a topic, script, article, or notes. KnowLens helps turn your ideas into videos, infographics, social posts, and slides in minutes.",
               )}
             </p>
 
@@ -890,33 +890,26 @@ export default function LandingPage() {
                 </article>
               ))}
             </div>
-
-            <div className="mt-8 border-t border-zinc-200 pt-5 text-center">
-              <p className="text-sm font-medium text-zinc-700">Text Input → Knowledge Structure → Visual Draft</p>
-              <p className="mx-auto mt-2 max-w-3xl text-xs leading-6 text-zinc-500">
-                Built for study notes, lesson plans, research summaries, financial reports, market analysis, product explainers, medical education, employee training, AI learning, and business communication.
-              </p>
-            </div>
           </div>
         </section>
 
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto mt-12 max-w-5xl sm:mt-14">
             <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
-              USER VOICES
+              USE CASES
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("What Users Say About KnowLens", "What Users Say About KnowLens")}
+              {t("Built for Creators, Educators, and Teams", "Built for Creators, Educators, and Teams")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "Educators, students, creators, and teams use KnowLens to turn text and ideas into clearer visual content.",
-                "Educators, students, creators, and teams use KnowLens to turn text and ideas into clearer visual content.",
+                "From YouTube explainers to social posts and teaching materials, KnowLens helps turn ideas, scripts, and notes into visual content people can publish, present, and share.",
+                "From YouTube explainers to social posts and teaching materials, KnowLens helps turn ideas, scripts, and notes into visual content people can publish, present, and share.",
               )}
             </p>
 
             <div className="mt-7 grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {userVoices.map((voice) => (
+              {personaUseCases.map((voice) => (
                 <article key={voice.id} className="rounded-xl border border-zinc-200 bg-white/90 p-3.5 sm:p-4">
                   <h3 className="text-[15px] font-semibold text-zinc-900 sm:text-base">{voice.role}</h3>
                   <p className="mt-2 text-sm leading-7 text-zinc-700">{voice.quote}</p>
