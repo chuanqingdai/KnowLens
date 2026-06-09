@@ -652,7 +652,7 @@ export default function LandingPage() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description: t(
-      "Paste your content, choose a format, and KnowLens turns it into visual learning materials in minutes.",
+      "Paste your content, choose a format, and KnowLens turns it into visual explainer videos, infographics, and slides in minutes.",
       "粘贴文本或描述一个主题，KnowLens 会将其转换为信息图海报、演示幻灯片和讲解视频。",
     ),
     offers: {
@@ -701,11 +701,11 @@ export default function LandingPage() {
               <span className="font-medium">Best Visual Quality</span>
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
-              <span className="block">Turn Text into Infographics,</span>
-              <span className="block">Slides, and Explainer Videos</span>
+              <span className="block">Turn Text into Explainer Videos,</span>
+              <span className="block">Infographics, and Slides</span>
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base lg:mx-0">
-              Paste your content, choose a format, and KnowLens turns it into visual learning materials in minutes.
+              Paste your content, choose a format, and KnowLens turns it into visual explainer videos, infographics, and slides in minutes.
             </p>
             <div className="mt-5 flex items-center justify-center sm:mt-6 lg:justify-start">
               <Link

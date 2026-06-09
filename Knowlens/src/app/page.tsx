@@ -4,9 +4,9 @@ import LandingPage from "./landing/page";
 const siteUrl = "https://knowlens.ai";
 
 export const metadata: Metadata = {
-  title: "KnowLens.ai | AI Infographic Generator for Posters, Slides & Videos",
+  title: "KnowLens | AI Explainer Video, Infographic & Slide Generator",
   description:
-    "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
+    "KnowLens is an AI explainer video generator that turns text, scripts, articles, and ideas into visual learning videos, infographics, and slides in minutes.",
   alternates: {
     canonical: siteUrl,
   },
@@ -14,9 +14,9 @@ export const metadata: Metadata = {
     type: "website",
     url: siteUrl,
     siteName: "KnowLens.ai",
-    title: "KnowLens.ai | AI Infographic Generator for Posters, Slides & Videos",
+    title: "KnowLens | AI Explainer Video, Infographic & Slide Generator",
     description:
-      "Turn text, documents, videos, and podcasts into infographic posters, slides, and explainer videos — making knowledge easier to understand and share.",
+      "Turn text into visual explainer videos, infographics, and slides with KnowLens. Paste your content, choose a format, and create visual learning content in minutes.",
     images: [
       {
         url: `${siteUrl}/picture/knowlens-hero.png`,
