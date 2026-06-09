@@ -736,10 +736,16 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <h2 className="mt-2 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
-              {t("From Text to Visual Learning Content", "From Text to Visual Learning Content")}
+              {t(
+                "Choose the Visual Format That Fits Your Content",
+                "Choose the Visual Format That Fits Your Content",
+              )}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-7 text-zinc-600">
-              {t("Start with text, then choose the format you want to generate.", "Start with text, then choose the format you want to generate.")}
+              {t(
+                "Whether you are making a YouTube explainer, a social post, or a teaching slide deck, KnowLens helps turn your source material into the right visual format.",
+                "Whether you are making a YouTube explainer, a social post, or a teaching slide deck, KnowLens helps turn your source material into the right visual format.",
+              )}
             </p>
 
             <div className="mt-5">
