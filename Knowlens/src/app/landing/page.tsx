@@ -652,7 +652,7 @@ export default function LandingPage() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description: t(
-      "Paste your text or describe a topic. KnowLens turns it into infographic posters, presentation slides, and explainer videos.",
+      "Paste your content, choose a format, and KnowLens turns it into visual learning materials in minutes.",
       "粘贴文本或描述一个主题，KnowLens 会将其转换为信息图海报、演示幻灯片和讲解视频。",
     ),
     offers: {
@@ -693,13 +693,14 @@ export default function LandingPage() {
         <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
           <div className="mx-auto max-w-[620px] text-center lg:mx-0 lg:text-left">
             <div className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-[11px] text-zinc-600">
-              Powered by GPT-image2
+              Best Visual Quality
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
-              AI Infographic Generator for Learning
+              <span className="block">Turn Text into Infographics,</span>
+              <span className="block">Slides, and Explainer Videos</span>
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base lg:mx-0">
-              Paste your text or describe a topic. KnowLens turns it into infographic posters, presentation slides, and explainer videos in minutes.
+              Paste your content, choose a format, and KnowLens turns it into visual learning materials in minutes.
             </p>
             <div className="mt-5 flex items-center justify-center sm:mt-6 lg:justify-start">
               <Link
@@ -744,7 +745,7 @@ export default function LandingPage() {
                     key={flow.id}
                     type="button"
                     onClick={() => setActiveFlowId(flow.id)}
-                    className={`shrink-0 rounded-lg border px-3 py-1.5 text-center text-[10px] leading-4 transition sm:px-4 lg:whitespace-nowrap ${
+                    className={`shrink-0 rounded-xl border px-4 py-2 text-center text-xs leading-5 transition sm:px-5 sm:py-2.5 sm:text-sm lg:whitespace-nowrap ${
                       activeFlowId === flow.id
                         ? "border-zinc-900 bg-zinc-900 text-white"
                         : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"

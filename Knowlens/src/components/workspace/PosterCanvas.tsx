@@ -18,7 +18,9 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
+  type MiniMapNodeProps,
   type ReactFlowInstance,
   type NodeProps,
   type Edge,
@@ -30,6 +32,7 @@ type SaveState = "saved" | "saving" | "error";
 const POSTER_CTA_CLASS =
   "inline-flex h-8 items-center gap-1 rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
 const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
+const POSTER_NODE_WIDTH = 420;
 
 type PosterDraft = {
   headline: string;
@@ -199,6 +202,105 @@ const POSTER_COPY_LOCALES: Record<string, typeof DEFAULT_POSTER_COPY_LOCALE> = {
 function getPosterCopyLocale(outputLanguage?: string) {
   const normalizedLanguage = (outputLanguage || "").trim().toLowerCase();
   return POSTER_COPY_LOCALES[normalizedLanguage] || DEFAULT_POSTER_COPY_LOCALE;
+}
+
+function extractPosterIndexFromNodeId(id: string) {
+  const match = id.match(/poster-card-(\d+)/i);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function formatPosterViewportRange(indices: number[]) {
+  if (!indices.length) {
+    return "View outside posters";
+  }
+
+  const sorted = [...indices].sort((a, b) => a - b);
+  const contiguous = sorted.every((value, index) => index === 0 || value === sorted[index - 1] + 1);
+
+  if (sorted.length === 1) {
+    return `View ${sorted[0]}`;
+  }
+
+  if (contiguous) {
+    return `View ${sorted[0]}-${sorted[sorted.length - 1]}`;
+  }
+
+  return `View ${sorted.join(", ")}`;
+}
+
+function areNumberArraysEqual(a: number[], b: number[]) {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((value, index) => value === b[index]);
+}
+
+function PosterMiniMapNode({
+  id,
+  x,
+  y,
+  width,
+  height,
+  borderRadius,
+  color,
+  shapeRendering,
+  selected,
+  strokeColor,
+  strokeWidth,
+  onClick,
+}: MiniMapNodeProps) {
+  const posterIndex = extractPosterIndexFromNodeId(id);
+  const safeWidth = Math.max(24, width);
+  const safeHeight = Math.max(24, height);
+  const headerHeight = Math.max(10, Math.min(18, safeHeight * 0.08));
+  const labelFontSize = Math.max(10, Math.min(18, safeWidth * 0.16));
+  const showLabel = safeWidth >= 28 && safeHeight >= 40 && posterIndex != null;
+
+  return (
+    <g
+      transform={`translate(${x}, ${y})`}
+      onClick={onClick ? (event) => onClick(event, id) : undefined}
+      className={onClick ? "cursor-pointer" : undefined}
+    >
+      <rect
+        x={0}
+        y={0}
+        width={safeWidth}
+        height={safeHeight}
+        rx={borderRadius}
+        ry={borderRadius}
+        fill={color || "#18181b"}
+        stroke={selected ? MINIMAP_VIEWPORT_COLOR : strokeColor || "rgba(255,255,255,0.95)"}
+        strokeWidth={selected ? Math.max(2, strokeWidth || 1) : strokeWidth || 1}
+        shapeRendering={shapeRendering}
+      />
+      <rect
+        x={0}
+        y={0}
+        width={safeWidth}
+        height={headerHeight}
+        rx={borderRadius}
+        ry={borderRadius}
+        fill={selected ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.14)"}
+        shapeRendering={shapeRendering}
+      />
+      {showLabel ? (
+        <text
+          x={safeWidth / 2}
+          y={Math.max(headerHeight + labelFontSize, safeHeight / 2 + labelFontSize * 0.18)}
+          fill="rgba(255,255,255,0.92)"
+          fontSize={labelFontSize}
+          fontWeight={700}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          pointerEvents="none"
+        >
+          {posterIndex}
+        </text>
+      ) : null}
+    </g>
+  );
 }
 
 function logImageRenderDebug(message: string, payload: Record<string, unknown>) {
@@ -778,9 +880,11 @@ export function PosterCanvas({
   );
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [zoomLabel, setZoomLabel] = useState("100%");
+  const [visiblePosterIndices, setVisiblePosterIndices] = useState<number[]>([]);
   const [hasPendingSave, setHasPendingSave] = useState(false);
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const flowRef = useRef<ReactFlowInstance | null>(null);
+  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const hasAutoFocusedFirstCardRef = useRef(false);
   const initKey = useMemo(() => {
@@ -849,7 +953,7 @@ export function PosterCanvas({
     hasAutoFocusedFirstCardRef.current = true;
     setSelectedCardId(firstCard.id);
     window.requestAnimationFrame(() => {
-      flowRef.current?.setCenter(firstCard.x + 210, firstCard.y + focusCenterYOffset, {
+      flowRef.current?.setCenter(firstCard.x + POSTER_NODE_WIDTH / 2, firstCard.y + focusCenterYOffset, {
         zoom: 0.86,
         duration: 220,
       });
@@ -1186,8 +1290,42 @@ export function PosterCanvas({
     if (!target) {
       return;
     }
-    flowRef.current.setCenter(target.x + 210, target.y + focusCenterYOffset, { zoom: 0.86, duration: 240 });
+    flowRef.current.setCenter(target.x + POSTER_NODE_WIDTH / 2, target.y + focusCenterYOffset, { zoom: 0.86, duration: 240 });
   }, [cards, focusCenterYOffset, selectedCardId]);
+
+  const updateViewportSummary = useCallback(() => {
+    const instance = flowRef.current;
+    const viewportElement = canvasViewportRef.current;
+    if (!instance || !viewportElement) {
+      return;
+    }
+
+    const bounds = viewportElement.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return;
+    }
+
+    const topLeft = instance.screenToFlowPosition({ x: bounds.left, y: bounds.top });
+    const bottomRight = instance.screenToFlowPosition({ x: bounds.right, y: bounds.bottom });
+    const left = Math.min(topLeft.x, bottomRight.x);
+    const right = Math.max(topLeft.x, bottomRight.x);
+    const top = Math.min(topLeft.y, bottomRight.y);
+    const bottom = Math.max(topLeft.y, bottomRight.y);
+    const nextVisibleIndices = cards
+      .filter(
+        (card) =>
+          card.x < right &&
+          card.x + POSTER_NODE_WIDTH > left &&
+          card.y < bottom &&
+          card.y + estimatedCardHeight > top,
+      )
+      .map((card) => card.index)
+      .sort((a, b) => a - b);
+
+    setVisiblePosterIndices((previous) =>
+      areNumberArraysEqual(previous, nextVisibleIndices) ? previous : nextVisibleIndices,
+    );
+  }, [cards, estimatedCardHeight]);
 
   const nodes = useMemo<Node[]>(
     () =>
@@ -1195,6 +1333,8 @@ export function PosterCanvas({
         id: card.id,
         type: "poster",
         position: { x: card.x, y: card.y },
+        width: POSTER_NODE_WIDTH,
+        height: estimatedCardHeight,
         data: {
           card,
           isSelected: selectedCardId === card.id,
@@ -1208,6 +1348,7 @@ export function PosterCanvas({
       })),
     [
       cards,
+      estimatedCardHeight,
       frameAspectRatioCss,
       selectedCardId,
       handleDownloadCard,
@@ -1248,7 +1389,33 @@ export function PosterCanvas({
   ).length;
   const failedCount = cards.filter((item) => item.status === "failed").length;
   const selectedCard = selectedCardId ? cards.find((item) => item.id === selectedCardId) : null;
+  const minimapRangeLabel = useMemo(
+    () => formatPosterViewportRange(visiblePosterIndices),
+    [visiblePosterIndices],
+  );
   const showCanvasArrangeTools = false;
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      updateViewportSummary();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [cards, updateViewportSummary, zoomLabel]);
+
+  useEffect(() => {
+    const element = canvasViewportRef.current;
+    if (!element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateViewportSummary();
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [updateViewportSummary]);
 
   if (!cards.length) {
     return (
@@ -1347,11 +1514,14 @@ export function PosterCanvas({
           ) : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div ref={canvasViewportRef} className="min-h-0 flex-1">
         <ReactFlow
           onInit={(instance) => {
             flowRef.current = instance;
             setZoomLabel(`${Math.round(instance.getZoom() * 100)}%`);
+            window.requestAnimationFrame(() => {
+              updateViewportSummary();
+            });
           }}
           nodes={nodes}
           edges={edges}
@@ -1368,11 +1538,15 @@ export function PosterCanvas({
                       y: node.position.y,
                     }
                   : item,
-              ),
+                ),
             );
+          }}
+          onMove={() => {
+            updateViewportSummary();
           }}
           onMoveEnd={(_, viewport) => {
             setZoomLabel(`${Math.round((viewport.zoom ?? 1) * 100)}%`);
+            updateViewportSummary();
           }}
           fitView
           fitViewOptions={{ padding: 0.14, minZoom: 0.32, maxZoom: 1.1 }}
@@ -1383,16 +1557,27 @@ export function PosterCanvas({
           nodesConnectable={false}
           elementsSelectable
         >
+          <Panel
+            position="bottom-right"
+            className="pointer-events-none mb-[142px] mr-3 hidden rounded-xl border border-zinc-200/90 bg-white/92 px-3 py-2 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur md:block"
+          >
+            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Canvas Map</div>
+            <div className="mt-1 text-xs font-semibold text-zinc-900">
+              {cards.length} poster{cards.length > 1 ? "s" : ""}
+            </div>
+            <div className="mt-0.5 text-xs text-zinc-600">{minimapRangeLabel}</div>
+          </Panel>
           <MiniMap
             pannable
             zoomable
+            nodeComponent={PosterMiniMapNode}
             nodeColor={getMiniMapNodeColor}
-            nodeStrokeColor={() => "#ffffff"}
-            nodeBorderRadius={10}
-            maskColor="rgba(17,24,39,0.10)"
+            nodeStrokeColor={() => "rgba(255,255,255,0.95)"}
+            nodeBorderRadius={12}
+            maskColor="rgba(17,24,39,0.16)"
             maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
-            maskStrokeWidth={2}
-            className="!bottom-3 !right-3 !hidden !h-[120px] !w-[180px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)] md:!block"
+            maskStrokeWidth={2.5}
+            className="!bottom-3 !right-3 !hidden !h-[132px] !w-[216px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)] md:!block"
           />
           <Controls showInteractive={false} className="!bottom-3 !left-3" />
           <Background color="#e5e7eb" gap={26} />
