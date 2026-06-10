@@ -29,6 +29,7 @@ import {
   Position,
   ReactFlow,
   type Edge,
+  type MiniMapNodeProps,
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
@@ -43,7 +44,7 @@ import {
 type SaveState = "saved" | "saving" | "error";
 
 const STORYBOARD_CTA_CLASS =
-  "inline-flex items-center rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-3 py-2 text-xs text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+  "inline-flex items-center rounded-full border border-transparent bg-zinc-900 px-3 py-2 text-xs text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)]";
 const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
 
 type StoryboardCanvasProps = {
@@ -767,6 +768,84 @@ function createInitialPack() {
 
 function getSlideIdFromNodeId(nodeId: string) {
   return nodeId.replace(/^(story|image)-/, "");
+}
+
+function StoryboardMiniMapNode({
+  id,
+  x,
+  y,
+  width,
+  height,
+  borderRadius,
+  color,
+  shapeRendering,
+  selected,
+  strokeColor,
+  strokeWidth,
+  onClick,
+}: MiniMapNodeProps) {
+  const safeWidth = Math.max(22, width);
+  const safeHeight = Math.max(16, height);
+  const inset = Math.max(3, Math.min(safeWidth, safeHeight) * 0.08);
+  const stroke = selected ? MINIMAP_VIEWPORT_COLOR : color || strokeColor || "#71717a";
+  const lineWidth = selected ? Math.max(2.5, strokeWidth || 1) : Math.max(1.6, strokeWidth || 1);
+  const isImageNode = id.startsWith("image-");
+
+  return (
+    <g
+      transform={`translate(${x}, ${y})`}
+      onClick={onClick ? (event) => onClick(event, id) : undefined}
+      className={onClick ? "cursor-pointer" : undefined}
+    >
+      <rect
+        x={0}
+        y={0}
+        width={safeWidth}
+        height={safeHeight}
+        rx={borderRadius}
+        ry={borderRadius}
+        fill="rgba(255,255,255,0.38)"
+        stroke={stroke}
+        strokeWidth={lineWidth}
+        shapeRendering={shapeRendering}
+      />
+      {isImageNode ? (
+        <rect
+          x={inset}
+          y={inset}
+          width={Math.max(2, safeWidth - inset * 2)}
+          height={Math.max(2, safeHeight - inset * 2)}
+          rx={Math.min(borderRadius, 4)}
+          ry={Math.min(borderRadius, 4)}
+          fill="transparent"
+          stroke={stroke}
+          strokeWidth={Math.max(1, lineWidth * 0.55)}
+          shapeRendering={shapeRendering}
+        />
+      ) : (
+        <>
+          <line
+            x1={inset}
+            y1={safeHeight * 0.38}
+            x2={safeWidth - inset}
+            y2={safeHeight * 0.38}
+            stroke={stroke}
+            strokeWidth={Math.max(1, lineWidth * 0.55)}
+            shapeRendering={shapeRendering}
+          />
+          <line
+            x1={inset}
+            y1={safeHeight * 0.62}
+            x2={safeWidth * 0.72}
+            y2={safeHeight * 0.62}
+            stroke={stroke}
+            strokeWidth={Math.max(1, lineWidth * 0.55)}
+            shapeRendering={shapeRendering}
+          />
+        </>
+      )}
+    </g>
+  );
 }
 
 function isEditableElement(target: EventTarget | null) {
@@ -3294,10 +3373,11 @@ export function StoryboardCanvas({
 
                 <div className="px-3 pt-3">
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>A Track · Visual</span>
-                      {audioDurationLabel ? <span>{audioDurationLabel}</span> : null}
-                    </div>
+                    {audioDurationLabel ? (
+                      <div className="mb-1 flex items-center justify-end text-[11px] text-zinc-500">
+                        <span>{audioDurationLabel}</span>
+                      </div>
+                    ) : null}
                     {storyboardImage && !isGeneratingImage ? (
                       <div
                         className="flex w-full items-center justify-center overflow-hidden rounded bg-white"
@@ -3998,8 +4078,9 @@ export function StoryboardCanvas({
             <MiniMap
               pannable
               zoomable
+              nodeComponent={StoryboardMiniMapNode}
               nodeColor={getMiniMapNodeColor}
-              nodeStrokeColor={() => "#ffffff"}
+              nodeStrokeColor={() => "#71717a"}
               nodeBorderRadius={8}
               maskColor="rgba(17,24,39,0.10)"
               maskStrokeColor={MINIMAP_VIEWPORT_COLOR}

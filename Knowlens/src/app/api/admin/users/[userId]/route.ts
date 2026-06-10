@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/server/db";
 import { requireAdminEmail } from "@/lib/server/admin-auth";
 import { hasManagedDatabase, pgAll, pgGet } from "@/lib/server/postgres";
-import { parseOpsEventDetailsJson, readOpsLogFileByUserEmail } from "@/lib/server/store";
+import {
+  applyCreditRecordAtomic,
+  logOpsEvent,
+  parseOpsEventDetailsJson,
+  readOpsLogFileByUserEmail,
+} from "@/lib/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -587,4 +592,108 @@ export async function GET(
   };
 
   return NextResponse.json(payload, { headers });
+}
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ userId: string }> },
+) {
+  const adminEmail = await requireAdminEmail();
+  if (!adminEmail) {
+    return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  }
+
+  const resolvedParams = await context.params;
+  const userLookup = decodeURIComponent(resolvedParams?.userId ?? "").trim();
+  if (!userLookup) {
+    return NextResponse.json({ error: "userId is required." }, { status: 400 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    action?: string;
+    amount?: number | string;
+    reason?: string;
+  };
+  if (body.action !== "gift_credits") {
+    return NextResponse.json({ error: "Unsupported admin user action." }, { status: 400 });
+  }
+
+  const amount = Math.round(Number(body.amount));
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100_000) {
+    return NextResponse.json({ error: "Gift amount must be between 1 and 100000 credits." }, { status: 400 });
+  }
+  const reason = (body.reason || "").trim().slice(0, 280);
+
+  const lookupIsEmail = userLookup.includes("@");
+  const userRow = await queryOne(
+    `SELECT
+       id,
+       email
+     FROM users
+     WHERE ${lookupIsEmail ? "LOWER(email) = ?" : "id = ?"}
+     LIMIT 1`,
+    [lookupIsEmail ? userLookup.toLowerCase() : userLookup],
+  );
+
+  if (!userRow) {
+    return NextResponse.json({ error: "User not found." }, { status: 404 });
+  }
+
+  const user = {
+    id: asString(userRow.id),
+    email: asString(userRow.email).trim().toLowerCase(),
+  };
+  if (!user.id || !user.email) {
+    return NextResponse.json({ error: "User record is missing id or email." }, { status: 400 });
+  }
+
+  const description = reason
+    ? `Admin gift credits: ${reason}`
+    : `Admin gift credits by ${adminEmail}`;
+  const result = await applyCreditRecordAtomic({
+    userEmail: user.email,
+    userId: user.id,
+    type: "topup",
+    description,
+    delta: amount,
+  });
+
+  if (!result.applied) {
+    return NextResponse.json({ error: "Gift credits were not applied." }, { status: 500 });
+  }
+
+  logOpsEvent({
+    category: "admin",
+    action: "user.credits.gift",
+    status: "ok",
+    source: "admin_user_detail",
+    userEmail: adminEmail,
+    message: `Admin gifted ${amount} credits to ${user.email}.`,
+    details: {
+      targetUserId: user.id,
+      targetUserEmail: user.email,
+      amount,
+      balance: result.balance,
+      creditRecordId: result.id,
+      reason,
+    },
+  });
+
+  return NextResponse.json(
+    {
+      ok: true,
+      record: {
+        id: result.id,
+        type: "topup",
+        description,
+        delta: amount,
+        balance: result.balance,
+        projectId: null,
+        projectTitle: null,
+        createdAt: new Date().toISOString(),
+      },
+      currentBalance: result.balance,
+    },
+    { headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" } },
+  );
 }

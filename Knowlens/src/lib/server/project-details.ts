@@ -35,6 +35,7 @@ type ProjectTaskResponse = {
   index: number;
   status: string;
   attempts: number;
+  aspectRatio: string;
   rawImageUrl: string | null;
   imageUrl: string;
   renderUrl: string;
@@ -107,6 +108,7 @@ function buildTaskResponse(task: ImageGenerationTaskRow): ProjectTaskResponse {
     index: task.taskIndex,
     status: task.status,
     attempts: task.attempts,
+    aspectRatio: task.aspectRatio,
     rawImageUrl: task.rawImageUrl,
     imageUrl: renderUrl,
     renderUrl,

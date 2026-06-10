@@ -1,17 +1,18 @@
 "use client";
 
 import { Play } from "lucide-react";
-import { useRef, useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 
 type PublishedVideoPlayerProps = {
   src: string;
   poster?: string;
   title: string;
   className?: string;
+  style?: CSSProperties;
   onReady?: () => void;
 };
 
-export function PublishedVideoPlayer({ src, poster, title, className, onReady }: PublishedVideoPlayerProps) {
+export function PublishedVideoPlayer({ src, poster, title, className, style, onReady }: PublishedVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -34,6 +35,7 @@ export function PublishedVideoPlayer({ src, poster, title, className, onReady }:
         preload="metadata"
         aria-label={title}
         className={className}
+        style={style}
         onLoadedMetadata={onReady}
         onCanPlay={onReady}
         onError={onReady}

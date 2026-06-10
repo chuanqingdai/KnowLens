@@ -103,7 +103,7 @@ const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
 const STYLE_COVER_FRAME_CLASS = "relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none";
 const STYLE_CARD_LABEL_CLASS = "flex min-h-[3.5rem] items-start px-2.5 pb-2.5 pt-2";
 const PRIMARY_CARD_ACTION_CLASS =
-  "inline-flex items-center justify-center gap-2 rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-sm font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:text-white disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
+  "inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-zinc-900 text-sm font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:text-white disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
 const GENERATION_MODE_OPTIONS = [
   {
     value: "auto",
@@ -803,7 +803,7 @@ export const ChatPanel = memo(function ChatPanel({
               event.stopPropagation();
               outputSummaryCard.onDownload();
             }}
-            className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-200 disabled:text-zinc-600 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-200 disabled:hover:shadow-none disabled:active:translate-y-0 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border border-transparent bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-200 disabled:text-zinc-600 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-200 disabled:hover:shadow-none disabled:active:translate-y-0 sm:w-auto"
           >
             {outputSummaryCard.canDownload ? (
               <Download size={15} className="shrink-0" aria-hidden="true" />

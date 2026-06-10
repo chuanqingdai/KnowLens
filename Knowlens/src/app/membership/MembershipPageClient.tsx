@@ -166,7 +166,7 @@ const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
 const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
 const PAYMENT_CTA_CLASS =
-  "border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+  "border border-transparent bg-zinc-900 text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)]";
 const SECONDARY_PAYMENT_CTA_CLASS =
   "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100";
 

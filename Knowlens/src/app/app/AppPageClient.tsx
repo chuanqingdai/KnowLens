@@ -68,9 +68,9 @@ const navItems = [
 ];
 
 const HOME_GENERATE_CTA_BASE_CLASS =
-  "mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border-0 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-wait disabled:text-white disabled:active:translate-y-0 sm:ml-auto sm:mt-0 sm:w-auto";
-const HOME_GENERATE_CTA_READY_CLASS = "bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)]";
-const HOME_GENERATE_CTA_BUSY_CLASS = "cursor-wait bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)]";
+  "mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border-0 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-wait disabled:text-white disabled:active:translate-y-0 sm:ml-auto sm:mt-0 sm:w-auto";
+const HOME_GENERATE_CTA_READY_CLASS = "bg-zinc-900";
+const HOME_GENERATE_CTA_BUSY_CLASS = "cursor-wait bg-zinc-800";
 
 
 const textModelOptions = [
@@ -801,6 +801,8 @@ type PublicCaseApiItem = {
     downloadUrl?: string;
     thumbnailUrl?: string;
     mimeType?: string;
+    width?: number | null;
+    height?: number | null;
   }>;
 };
 
@@ -825,7 +827,30 @@ function formatPublicCaseOutputType(outputType?: string): FeaturedCaseItem["form
   return "Poster";
 }
 
+function isPublicCaseVideoAsset(asset: NonNullable<PublicCaseApiItem["assets"]>[number]) {
+  const mimeType = (asset.mimeType || "").toLowerCase();
+  return (
+    mimeType.startsWith("video/") ||
+    /\.mp4(?:$|\?)/i.test(asset.fileUrl) ||
+    /\.mp4(?:$|\?)/i.test(asset.downloadUrl || "")
+  );
+}
+
+function getPublicCaseAssetSize(asset?: { width?: number | null; height?: number | null }) {
+  const width = Number(asset?.width || 0);
+  const height = Number(asset?.height || 0);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return { coverWidth: width, coverHeight: height };
+  }
+  return null;
+}
+
 function estimatePublicCaseCoverSize(item: PublicCaseApiItem) {
+  const videoAsset = item.assets?.find(isPublicCaseVideoAsset);
+  const videoSize = getPublicCaseAssetSize(videoAsset);
+  if (videoSize) {
+    return videoSize;
+  }
   if (item.outputType === "ppt" || item.outputType === "video") {
     return { coverWidth: 1600, coverHeight: 900 };
   }
@@ -864,6 +889,8 @@ function mapPublicCaseToFeatured(item: PublicCaseApiItem, index: number): Featur
       downloadUrl: asset.downloadUrl || asset.fileUrl,
       thumbnailUrl: asset.thumbnailUrl || asset.fileUrl,
       mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
     })),
   };
 }

@@ -6,6 +6,8 @@ import { hasManagedDatabase, pgGet, pgRun } from "@/lib/server/postgres";
 
 const DRAFT_JOB_PREFIX = "content-draft/jobs";
 const DRAFT_BATCH_SIZE = 8;
+const QUEUED_JOB_RESUME_AFTER_MS = 30_000;
+const RUNNING_JOB_RESUME_AFTER_MS = 6 * 60_000;
 const memoryDraftJobs = new Map<string, ContentDraftJob>();
 let draftJobSchemaReady: Promise<void> | null = null;
 
@@ -465,5 +467,6 @@ export function shouldResumeContentDraftJob(job: ContentDraftJob) {
   if (!Number.isFinite(updatedAt)) {
     return true;
   }
-  return Date.now() - updatedAt > 30_000;
+  const staleAfterMs = job.status === "running" ? RUNNING_JOB_RESUME_AFTER_MS : QUEUED_JOB_RESUME_AFTER_MS;
+  return Date.now() - updatedAt > staleAfterMs;
 }

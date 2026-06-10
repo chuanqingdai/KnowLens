@@ -44,6 +44,15 @@ function getPrimaryImageAsset(assets: PublishedCaseAssetRow[], queryAsset?: stri
   );
 }
 
+function getVideoAssetDimensions(asset: PublishedCaseAssetRow | null) {
+  const width = Number(asset?.width || 0);
+  const height = Number(asset?.height || 0);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return { width, height, isPortrait: height > width };
+  }
+  return { width: 16, height: 9, isPortrait: false };
+}
+
 function formatScriptLabel(input: {
   outputType: PublishedCaseOutputType;
   asset: PublishedCaseAssetRow;
@@ -73,6 +82,13 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
   const isPpt = item.outputType === "ppt";
   const isVideo = item.outputType === "video";
   const hasPublishedVideo = Boolean(videoAsset);
+  const videoDimensions = getVideoAssetDimensions(videoAsset);
+  const videoPlayerClassName = videoDimensions.isPortrait
+    ? "mx-auto h-[min(78vh,760px)] w-auto max-w-full rounded-xl bg-black"
+    : "mx-auto max-h-[78vh] w-full max-w-5xl rounded-xl bg-black";
+  const videoPlayerStyle = {
+    aspectRatio: `${videoDimensions.width} / ${videoDimensions.height}`,
+  };
   const scriptAssets = imageAssets.filter((asset) => asset.title.trim() || asset.description.trim());
   const mediaTitle = hasPublishedVideo
     ? item.title
@@ -134,7 +150,8 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                     src={videoAsset?.fileUrl || ""}
                     poster={item.coverUrl || selectedImage?.fileUrl || videoAsset?.thumbnailUrl || undefined}
                     title={item.title}
-                    className="mx-auto aspect-video max-h-[78vh] w-full max-w-5xl rounded-xl bg-black"
+                    className={videoPlayerClassName}
+                    style={videoPlayerStyle}
                   />
                 ) : isVideo ? (
                   videoAsset ? (
@@ -142,7 +159,8 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                       src={videoAsset.fileUrl}
                       poster={item.coverUrl || selectedImage?.fileUrl || videoAsset.thumbnailUrl || undefined}
                       title={item.title}
-                      className="mx-auto aspect-video max-h-[78vh] w-full max-w-5xl rounded-xl bg-black"
+                      className={videoPlayerClassName}
+                      style={videoPlayerStyle}
                     />
                   ) : (
                     <div className="mx-auto flex min-h-[420px] max-w-5xl items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black text-center">

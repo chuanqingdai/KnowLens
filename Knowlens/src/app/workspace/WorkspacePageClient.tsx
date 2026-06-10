@@ -485,6 +485,7 @@ type ImageGenerationRestoreResponse = {
     id?: string;
     runId?: string | null;
     intent?: string | null;
+    ratio?: string | null;
     status?: string | null;
   } | null;
   tasks?: Array<{
@@ -492,6 +493,7 @@ type ImageGenerationRestoreResponse = {
     index?: number;
     status?: string;
     attempts?: number;
+    aspectRatio?: string | null;
     imageUrl?: string;
     renderUrl?: string;
     rawImageUrl?: string | null;
@@ -1584,6 +1586,34 @@ function extractVideoRatio(prompt: string): "16:9" | "9:16" | null {
   }
   if (text.includes("16:9") || text.includes("横版") || text.includes("landscape")) {
     return "16:9";
+  }
+  return null;
+}
+
+function resolveRestoredRatio(input: {
+  intent: string;
+  jobRatio?: string | null;
+  taskRatios?: Array<string | null | undefined>;
+  fallbackText?: string;
+}) {
+  const candidates = [
+    input.jobRatio,
+    ...(input.taskRatios || []),
+    input.fallbackText,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  for (const candidate of candidates) {
+    if (input.intent === "video") {
+      const ratio = extractVideoRatio(candidate);
+      if (ratio) {
+        return ratio;
+      }
+    }
+    if (input.intent === "ppt") {
+      const ratio = extractPptRatio(candidate);
+      if (ratio) {
+        return ratio;
+      }
+    }
   }
   return null;
 }
@@ -4681,6 +4711,20 @@ export default function WorkspacePage() {
           setManualIntent(restoredIntent);
         }
         if (restoredIntent === "ppt" || restoredIntent === "video") {
+          const restoredRatio = resolveRestoredRatio({
+            intent: restoredIntent,
+            jobRatio: payload.job?.ratio,
+            taskRatios: tasks.map((task) => task.aspectRatio),
+            fallbackText: restoredPages
+              .map((page) => [page.visual, page.imagePromptDraft, page.body].filter(Boolean).join(" "))
+              .join(" "),
+          });
+          if (restoredIntent === "video" && (restoredRatio === "16:9" || restoredRatio === "9:16")) {
+            setVideoRatio(restoredRatio);
+          }
+          if (restoredIntent === "ppt" && (restoredRatio === "16:9" || restoredRatio === "4:3")) {
+            setPptRatio(restoredRatio);
+          }
           const restoredImageCount = restoredEntries.reduce(
             (max, item) => Math.max(max, Math.round(Number(item.index || 0))),
             0,

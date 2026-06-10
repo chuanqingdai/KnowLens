@@ -14,7 +14,7 @@ const LANDING_ASSET_VERSION = "20260528c";
 const ENABLE_IMAGE_DEBUG = process.env.NEXT_PUBLIC_DEBUG_IMAGE_LOAD === "true";
 const MEMBERSHIP_SOURCE = "landing-page";
 const LANDING_CTA_CLASS =
-  "inline-flex items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)]";
+  "inline-flex items-center justify-center rounded-full border border-transparent bg-zinc-900 font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)]";
 
 function trackLandingGenerateClick(placement: "hero" | "footer_cta") {
   if (typeof window === "undefined") {

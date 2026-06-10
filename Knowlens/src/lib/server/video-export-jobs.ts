@@ -40,6 +40,9 @@ const DEFAULT_FPS = 30;
 const VIDEO_EXPORT_CRF = "17";
 const VIDEO_EXPORT_PRESET = "veryfast";
 const VIDEO_EXPORT_AUDIO_BITRATE = "192k";
+const VIDEO_TRANSITION_CONCAT_BASE_TIMEOUT_MS = 180_000;
+const VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS = 25_000;
+const VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS = 540_000;
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -695,10 +698,11 @@ async function concatSegmentsWithTransitions(input: {
     const transitionName = mapTransitionToFfmpegXfade(transition);
     const nextVideoLabel = `tv${index + 1}`;
     const outputLabel = `xv${index}`;
+    const centeredOffsetSec = Math.max(0.05, offsetSec - durationSec / 2);
     transitionFilters.push(
       `[${currentVideoLabel}][${nextVideoLabel}]xfade=transition=${transitionName}:duration=${durationSec.toFixed(
         3,
-      )}:offset=${offsetSec.toFixed(3)}[${outputLabel}]`,
+      )}:offset=${centeredOffsetSec.toFixed(3)}[${outputLabel}]`,
     );
     currentVideoLabel = outputLabel;
     offsetSec += Math.max(0.1, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC);
@@ -712,6 +716,12 @@ async function concatSegmentsWithTransitions(input: {
     `[${currentVideoLabel}]format=yuv420p[v]`,
     `${audioConcatInputs}concat=n=${segmentPaths.length}:v=0:a=1[a]`,
   ].join(";");
+
+  const timeoutMs = Math.min(
+    VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS,
+    VIDEO_TRANSITION_CONCAT_BASE_TIMEOUT_MS +
+      segmentPaths.length * VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS,
+  );
 
   await runFfmpeg(
     [
@@ -742,7 +752,7 @@ async function concatSegmentsWithTransitions(input: {
       "make_zero",
       outputPath,
     ],
-    260_000,
+    timeoutMs,
   );
 }
 

@@ -315,12 +315,12 @@ export function buildTuziImagePrompt(input: {
 }) {
   // Prompt3: compile one confirmed draft page/frame into one image-generation prompt.
   // Visual-translation composition: current-page task first, optional fields only when they sharpen that task.
-  const currentContent = sanitizePromptSignal(input.draftContent, 420);
   const style = compactText(input.selectedStyle, 520);
   const ratio = compactText(input.aspectRatio, 24) || "9:16";
   const index = Number.isFinite(input.posterIndex) ? Math.max(1, Math.round(input.posterIndex)) : 1;
   const total = Number.isFinite(input.totalCount) ? Math.max(1, Math.round(input.totalCount)) : 1;
   const outputType = input.outputType || "poster";
+  const currentContent = sanitizePromptSignal(input.draftContent, outputType === "video" ? 760 : 420);
   const pageRole = input.pageRole || input.visualDesign?.pageRole || "mechanism";
   const visualType = sanitizePromptSignal(input.visualType || "", 110);
   const visualElements = (input.visualElements || [])
@@ -329,7 +329,10 @@ export function buildTuziImagePrompt(input: {
     .slice(0, 5)
     .join(", ");
   // Draft-layer prompt text should only be treated as hint, not final prompt source.
-  const sourceImagePromptDraft = sanitizePromptSignal(input.imagePromptDraft || input.imagePrompt || "", 120);
+  const sourceImagePromptDraft = sanitizePromptSignal(
+    input.imagePromptDraft || input.imagePrompt || "",
+    outputType === "video" ? 360 : 120,
+  );
   const visibleTitle = sanitizePromptSignal(input.visibleText?.title || "", 120);
   const visibleSubtitle = sanitizePromptSignal(input.visibleText?.subtitle || "", 120);
   const visibleLabelLimit =
@@ -487,6 +490,9 @@ export function buildTuziImagePrompt(input: {
     textStrategyGuidance,
     outputType === "video"
       ? "Video readability rule: assume the frame is seen briefly. If any text appears, it must be large, bold, sparse, and readable at a glance; never rely on small labels or multi-line notes."
+      : "",
+    outputType === "video"
+      ? "Voiceover alignment rule: the visual must directly support the current frame's narration, showing the same concrete object, action, cause/effect, contrast, example, or state change instead of a generic topic scene."
       : "",
     "Only use this current page/frame. Do not import other pages' facts or labels.",
     "Do not infer or render official brand colors, logos, trademark symbols, product marks, or corporate visual identity unless the selected style prompt or user text explicitly asks for them.",

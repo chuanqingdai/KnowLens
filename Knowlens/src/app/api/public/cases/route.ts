@@ -27,6 +27,8 @@ export async function GET() {
       downloadUrl: asset.downloadUrl,
       thumbnailUrl: asset.thumbnailUrl,
       mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
     })),
   }));
 

@@ -239,7 +239,7 @@ export default function AuthPage() {
                 });
               }}
               disabled={isGoogleLoading}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-zinc-900 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isGoogleLoading ? (
                 <Loader2 size={15} className="animate-spin text-white/90" />

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Copy, ExternalLink, Loader2, X } from "lucide-react";
+import { Copy, ExternalLink, Gift, Loader2, X } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
 
 type UserDetailResponse = {
@@ -97,6 +97,11 @@ type CreditsPageResponse = {
   page?: number;
   limit?: number;
   hasMore?: boolean;
+};
+
+type GiftCreditsResponse = {
+  currentBalance?: number;
+  record?: UserDetailResponse["credits"]["records"][number];
 };
 
 type ProjectsPageResponse = {
@@ -207,6 +212,11 @@ export default function AdminUserDetailPage() {
   const [creditsError, setCreditsError] = useState("");
   const [creditsPage, setCreditsPage] = useState(1);
   const [creditsHasMore, setCreditsHasMore] = useState(false);
+  const [giftAmount, setGiftAmount] = useState("");
+  const [giftReason, setGiftReason] = useState("");
+  const [giftLoading, setGiftLoading] = useState(false);
+  const [giftError, setGiftError] = useState("");
+  const [giftSuccess, setGiftSuccess] = useState("");
   const [projectRows, setProjectRows] = useState<UserDetailResponse["projects"]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState("");
@@ -240,6 +250,10 @@ export default function AdminUserDetailPage() {
     setCreditsError("");
     setCreditsPage(1);
     setCreditsHasMore(false);
+    setGiftAmount("");
+    setGiftReason("");
+    setGiftError("");
+    setGiftSuccess("");
     setProjectRows([]);
     setProjectsError("");
     setProjectsPage(1);
@@ -352,6 +366,61 @@ export default function AdminUserDetailPage() {
       .then(() => setHint(`已复制 ${label}`))
       .catch(() => setHint(`复制 ${label} 失败`));
     window.setTimeout(() => setHint(""), 2200);
+  }
+
+  async function submitGiftCredits() {
+    if (!data?.user?.id || giftLoading) {
+      return;
+    }
+    const amount = Math.round(Number(giftAmount));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setGiftError("请输入大于 0 的积分数量。");
+      return;
+    }
+    setGiftLoading(true);
+    setGiftError("");
+    setGiftSuccess("");
+    try {
+      const payload = (await fetch(`/api/admin/users/${encodeURIComponent(data.user.id)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          action: "gift_credits",
+          amount,
+          reason: giftReason,
+        }),
+      }).then(readJsonOrThrow)) as GiftCreditsResponse;
+      const nextBalance = Number(payload.currentBalance);
+      if (Number.isFinite(nextBalance)) {
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                credits: {
+                  ...prev.credits,
+                  currentBalance: nextBalance,
+                },
+              }
+            : prev,
+        );
+      }
+      if (payload.record) {
+        setCreditsRecords((prev) => [payload.record as UserDetailResponse["credits"]["records"][number], ...prev]);
+      } else {
+        void loadCreditsPage(1);
+      }
+      setGiftAmount("");
+      setGiftReason("");
+      setGiftSuccess(`已赠送 ${amount} 积分。`);
+      window.setTimeout(() => setGiftSuccess(""), 2600);
+    } catch (fetchError) {
+      setGiftError(fetchError instanceof Error ? fetchError.message : "赠送积分失败。");
+    } finally {
+      setGiftLoading(false);
+    }
   }
 
   async function openLogDialog(nextPage = 1) {
@@ -480,8 +549,47 @@ export default function AdminUserDetailPage() {
           </article>
 
           <article className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <p className="text-sm font-semibold text-zinc-900">积分余额与流水</p>
-            <p className="mt-2 text-2xl font-semibold text-zinc-900">{credits.currentBalance}</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">积分余额与流水</p>
+                <p className="mt-2 text-2xl font-semibold text-zinc-900">{credits.currentBalance}</p>
+              </div>
+              <div className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:w-[300px]">
+                <div className="flex items-center gap-1 text-xs font-semibold text-zinc-900">
+                  <Gift size={13} />
+                  赠送积分
+                </div>
+                <div className="mt-2 grid grid-cols-[96px_1fr] gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    value={giftAmount}
+                    onChange={(event) => setGiftAmount(event.target.value)}
+                    placeholder="数量"
+                    className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
+                  />
+                  <input
+                    type="text"
+                    value={giftReason}
+                    onChange={(event) => setGiftReason(event.target.value)}
+                    placeholder="备注，可选"
+                    className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={giftLoading}
+                  onClick={submitGiftCredits}
+                  className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {giftLoading ? <Loader2 size={12} className="animate-spin" /> : <Gift size={12} />}
+                  {giftLoading ? "赠送中..." : "确认赠送"}
+                </button>
+                {giftError ? <p className="mt-2 text-xs text-red-600">{giftError}</p> : null}
+                {giftSuccess ? <p className="mt-2 text-xs text-emerald-700">{giftSuccess}</p> : null}
+              </div>
+            </div>
             <div className="mt-3 space-y-2">
               {creditsError ? (
                 <button

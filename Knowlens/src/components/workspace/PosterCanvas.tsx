@@ -30,7 +30,7 @@ import {
 type SaveState = "saved" | "saving" | "error";
 
 const POSTER_CTA_CLASS =
-  "inline-flex h-8 items-center gap-1 rounded-full border-0 bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
+  "inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-zinc-900 text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-300 disabled:shadow-none disabled:hover:bg-none disabled:hover:bg-zinc-300 disabled:hover:shadow-none disabled:active:translate-y-0";
 const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
 const POSTER_NODE_WIDTH = 420;
 
@@ -255,6 +255,7 @@ function PosterMiniMapNode({
   const safeHeight = Math.max(24, height);
   const headerHeight = Math.max(10, Math.min(18, safeHeight * 0.08));
   const labelFontSize = Math.max(10, Math.min(18, safeWidth * 0.16));
+  const inset = Math.max(3, safeWidth * 0.05);
   const showLabel = safeWidth >= 28 && safeHeight >= 40 && posterIndex != null;
 
   return (
@@ -270,26 +271,28 @@ function PosterMiniMapNode({
         height={safeHeight}
         rx={borderRadius}
         ry={borderRadius}
-        fill={color || "#18181b"}
-        stroke={selected ? MINIMAP_VIEWPORT_COLOR : strokeColor || "rgba(255,255,255,0.95)"}
-        strokeWidth={selected ? Math.max(2, strokeWidth || 1) : strokeWidth || 1}
+        fill="rgba(255,255,255,0.38)"
+        stroke={selected ? MINIMAP_VIEWPORT_COLOR : color || strokeColor || "#71717a"}
+        strokeWidth={selected ? Math.max(2.5, strokeWidth || 1) : Math.max(1.6, strokeWidth || 1)}
         shapeRendering={shapeRendering}
       />
       <rect
-        x={0}
-        y={0}
-        width={safeWidth}
+        x={inset}
+        y={Math.max(3, safeHeight * 0.035)}
+        width={safeWidth - inset * 2}
         height={headerHeight}
-        rx={borderRadius}
-        ry={borderRadius}
-        fill={selected ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.14)"}
+        rx={Math.min(borderRadius, 4)}
+        ry={Math.min(borderRadius, 4)}
+        fill="transparent"
+        stroke={selected ? MINIMAP_VIEWPORT_COLOR : color || "#71717a"}
+        strokeWidth={Math.max(1, (strokeWidth || 1) * 0.8)}
         shapeRendering={shapeRendering}
       />
       {showLabel ? (
         <text
           x={safeWidth / 2}
           y={Math.max(headerHeight + labelFontSize, safeHeight / 2 + labelFontSize * 0.18)}
-          fill="rgba(255,255,255,0.92)"
+          fill={selected ? MINIMAP_VIEWPORT_COLOR : color || "#27272a"}
           fontSize={labelFontSize}
           fontWeight={700}
           textAnchor="middle"

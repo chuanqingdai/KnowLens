@@ -29,6 +29,8 @@ export type FeaturedCaseItem = {
     thumbnailUrl?: string;
     mimeType?: string;
     pageIndex?: number;
+    width?: number | null;
+    height?: number | null;
   }>;
 };
 
