@@ -15,6 +15,17 @@ type ProjectDetailPayload = {
     email: string;
   };
   detail?: {
+    job?: {
+      id: string;
+      intent: string | null;
+      ratio: string | null;
+      status: string | null;
+      errorCode: string | null;
+      errorMessage: string | null;
+      requestJson: string | null;
+      runId: string | null;
+      updatedAt: string;
+    } | null;
     pages: Array<{
       id: string;
       pageIndex: number;
@@ -25,10 +36,12 @@ type ProjectDetailPayload = {
       visual: string;
       imagePromptDraft: string;
       imageUrl: string | null;
+      rawImageUrl?: string | null;
       status: string | null;
       imageHistory?: Array<{
         taskId: string;
         renderUrl: string;
+        rawImageUrl?: string | null;
         status: string;
       }>;
     }>;
@@ -36,10 +49,43 @@ type ProjectDetailPayload = {
       taskId: string;
       imageUrl: string;
       renderUrl: string;
+      rawImageUrl?: string | null;
       status: string;
     }>;
   };
 };
+
+function parseRequestJson(input?: string | null) {
+  const raw = (input || "").trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readPositiveInt(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function readText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function pickAssetUrl(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const normalized = (value || "").trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
 
 function formatDateTime(input: string) {
   const date = new Date(input);
@@ -138,7 +184,7 @@ export default function AdminProjectDetailPage() {
   const owner = project ? data?.users.find((item) => item.id === project.userId) || null : null;
   const logs = useMemo(() => data?.logs.filter((item) => item.projectId === projectId) || [], [data?.logs, projectId]);
   const credits = useMemo(() => data?.creditRecords.filter((item) => item.projectId === projectId) || [], [data?.creditRecords, projectId]);
-  const contentPages = detail?.pages || [];
+  const contentPages = useMemo(() => detail?.pages || [], [detail?.pages]);
   const generatedAssets = useMemo(() => {
     const seen = new Set<string>();
     const items: Array<{
@@ -148,10 +194,13 @@ export default function AdminProjectDetailPage() {
       status: string;
     }> = [];
     contentPages.forEach((page) => {
-      const currentImage =
-        (page.imageUrl || "").trim() ||
-        page.imageHistory?.find((item) => item.renderUrl)?.renderUrl ||
-        "";
+      const historyAsset = page.imageHistory?.find((item) => pickAssetUrl(item.renderUrl, item.rawImageUrl));
+      const currentImage = pickAssetUrl(
+        page.imageUrl,
+        page.rawImageUrl,
+        historyAsset?.renderUrl,
+        historyAsset?.rawImageUrl,
+      );
       if (!currentImage || seen.has(currentImage)) {
         return;
       }
@@ -164,7 +213,7 @@ export default function AdminProjectDetailPage() {
       });
     });
     (detail?.tasks || []).forEach((task, idx) => {
-      const currentImage = (task.renderUrl || task.imageUrl || "").trim();
+      const currentImage = pickAssetUrl(task.renderUrl, task.imageUrl, task.rawImageUrl);
       if (!currentImage || seen.has(currentImage)) {
         return;
       }
@@ -201,13 +250,47 @@ export default function AdminProjectDetailPage() {
   }
 
   const originalInput = project.originalInput?.trim() || project.topic;
+  const requestSnapshot = parseRequestJson(detail?.job?.requestJson);
+  const derivedDirection =
+    readText(requestSnapshot?.intent) ||
+    readText(requestSnapshot?.normalizedDirection) ||
+    readText(detail?.job?.intent) ||
+    project.type;
+  const derivedCount =
+    readPositiveInt(requestSnapshot?.normalizedCount) ??
+    readPositiveInt(requestSnapshot?.count) ??
+    readPositiveInt(requestSnapshot?.posterCount) ??
+    readPositiveInt(requestSnapshot?.pptPageCount) ??
+    readPositiveInt(requestSnapshot?.videoStoryboardCount) ??
+    (detail?.tasks.length || contentPages.length || null);
+  const derivedRatio =
+    readText(requestSnapshot?.ratio) ||
+    readText(requestSnapshot?.normalizedRatio) ||
+    readText(detail?.job?.ratio) ||
+    (project.type === "video" ? "16:9" : "9:16");
+  const derivedImageModel =
+    readText(requestSnapshot?.imageModel) ||
+    readText(requestSnapshot?.imageModelPolicy) ||
+    project.imageModel;
+  const latestImageJobSummary = detail?.job
+    ? {
+        status: detail.job.status || "unknown",
+        runId: detail.job.runId || "",
+        errorCode: detail.job.errorCode || "",
+        errorMessage: detail.job.errorMessage || "",
+        taskCount: detail.tasks.length,
+      }
+    : null;
   const generationConfig = {
     normalizedConfig: {
-      normalizedDirection: project.type,
-      normalizedCount: project.type === "poster" ? 1 : project.type === "ppt" ? 8 : 10,
-      normalizedRatio: project.type === "video" ? "16:9" : "9:16",
+      normalizedDirection: derivedDirection || project.type,
+      normalizedCount: derivedCount ?? (project.type === "poster" ? 1 : null),
+      normalizedRatio: derivedRatio,
     },
-    modelConfig: { textModel: project.textModel, imageModel: project.imageModel },
+    modelConfig: {
+      textModel: project.textModel,
+      imageModel: derivedImageModel,
+    },
   };
 
   return (
@@ -263,6 +346,24 @@ export default function AdminProjectDetailPage() {
             <div className="mt-3 rounded-lg bg-zinc-950 p-3">
               <p className="text-xs font-medium text-zinc-400">生成配置</p>
               <pre className="mt-2 overflow-x-auto text-xs text-zinc-100">{JSON.stringify(generationConfig, null, 2)}</pre>
+            </div>
+            <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700">
+              <p className="font-medium text-zinc-900">最新图片任务状态</p>
+              {latestImageJobSummary ? (
+                <div className="mt-2 space-y-1.5">
+                  <p>job status: {latestImageJobSummary.status}</p>
+                  <p>task count: {latestImageJobSummary.taskCount}</p>
+                  {latestImageJobSummary.runId ? <p>runId: {latestImageJobSummary.runId}</p> : null}
+                  {latestImageJobSummary.errorCode ? <p>errorCode: {latestImageJobSummary.errorCode}</p> : null}
+                  {latestImageJobSummary.errorMessage ? (
+                    <p className="leading-5 text-red-700">error: {latestImageJobSummary.errorMessage}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-zinc-500">
+                  No image generation job found yet. This usually means the project stopped before image generation started.
+                </p>
+              )}
             </div>
           </article>
         </section>

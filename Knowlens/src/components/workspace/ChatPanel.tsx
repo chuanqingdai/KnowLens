@@ -1133,7 +1133,7 @@ export const ChatPanel = memo(function ChatPanel({
       : `Limited-time rate applied: ${billingSummary.promoCreditsPerOutput} credits per standard output (regular ${billingSummary.regularCreditsPerOutput}).`;
   const imageBillingModelLabel = billingSummary.imageModelLabel || "GPT image2";
   const imageBillingDiscountText = `limited-time 30% rate, regular ${billingSummary.regularCreditsPerOutput} credits`;
-  const ttsBillingModelLabel = billingSummary.ttsModelLabel || "OpenAI TTS Pro";
+  const ttsBillingModelLabel = billingSummary.ttsModelLabel || "TTS Narration";
 
   useEffect(() => {
     if (typeof window === "undefined") {

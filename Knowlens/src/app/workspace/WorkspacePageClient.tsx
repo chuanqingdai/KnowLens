@@ -562,7 +562,7 @@ const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 660000;
 const STEP_RUN_MAX_CONCURRENT_TASKS = 3;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
-const BASIC_TTS_CREDITS_PER_1000_CHARS = 10;
+const BASIC_TTS_CREDITS_PER_1000_CHARS = 5;
 const PRO_TTS_CREDITS_PER_1000_CHARS = 20;
 const VIDEO_TTS_DEFAULT_KEY = "knowlens-video-tts-default-v1";
 const DEFAULT_FREE_TTS_VOICE_ID = "basic_narrator_female";
@@ -588,8 +588,8 @@ const TEXT_MODEL_OPTION_LABELS: Record<string, string> = {
   "claude-sonnet-4.6": "Claude Sonnet 4.7",
 };
 const TTS_VOICE_BILLING_LABELS: Record<string, string> = {
-  basic_narrator_male: "OpenAI TTS Basic · Guy",
-  basic_narrator_female: "OpenAI TTS Basic · Jenny",
+  basic_narrator_male: "Basic Voice · Guy",
+  basic_narrator_female: "Basic Voice · Jenny",
   pro_documentary_male: "OpenAI TTS Pro · Cedar",
   pro_documentary_female: "OpenAI TTS Pro · Marin",
   pro_deep_science: "OpenAI TTS Pro · Onyx",
@@ -648,7 +648,7 @@ function getImageModelBillingLabel() {
 }
 
 function getTtsBillingModelLabel(voiceId: string) {
-  return TTS_VOICE_BILLING_LABELS[voiceId] ?? (PRO_TTS_VOICE_IDS.has(voiceId) ? "OpenAI TTS Pro" : "OpenAI TTS Basic");
+  return TTS_VOICE_BILLING_LABELS[voiceId] ?? (PRO_TTS_VOICE_IDS.has(voiceId) ? "OpenAI TTS Pro" : "Basic Voice");
 }
 
 function scheduleWorkspaceClientLogFlush() {

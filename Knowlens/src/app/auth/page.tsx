@@ -209,12 +209,12 @@ export default function AuthPage() {
           {t("KnowLens.ai", "KnowLens.ai")}
         </p>
         <h1 className="mt-2 text-[34px] font-semibold leading-[1.12] tracking-tight text-zinc-900">
-          {t("Continue with Google", "使用 Google 继续")}
+          {t("Sign in to KnowLens", "登录 KnowLens")}
         </h1>
         <p className="mt-3 text-sm leading-6 text-zinc-600">
           {t(
-            "Sign in once to access your KnowLens.ai workspace, projects, and credits.",
-            "登录一次即可访问 KnowLens.ai 的工作台、项目与积分。",
+            "Sign in to get 50 free credits and start creating infographics, slides, and explainer videos.",
+            "登录即可获得 50 积分，开始生成信息图、演示文稿和讲解视频。",
           )}
         </p>
 
@@ -239,13 +239,19 @@ export default function AuthPage() {
                 });
               }}
               disabled={isGoogleLoading}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-[linear-gradient(135deg,#6D5DF6_0%,#8B5CF6_100%)] px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(109,93,246,0.24)] transition hover:bg-[linear-gradient(135deg,#5B4BEA_0%,#7C3AED_100%)] hover:shadow-[0_10px_24px_rgba(109,93,246,0.32)] active:translate-y-px active:shadow-[0_6px_16px_rgba(109,93,246,0.22)] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isGoogleLoading ? <Loader2 size={15} className="animate-spin text-zinc-500" /> : <GoogleMark />}
+              {isGoogleLoading ? (
+                <Loader2 size={15} className="animate-spin text-white/90" />
+              ) : (
+                <span className="drop-shadow-[0_0.5px_2px_rgba(255,255,255,0.95)]">
+                  <GoogleMark />
+                </span>
+              )}
               <span>
                 {isGoogleLoading
                   ? t("Connecting...", "正在连接 Google...")
-                  : t("Continue with Google", "继续使用 Google 登录")}
+                  : t("Sign in with Google", "使用 Google 登录")}
               </span>
             </button>
           ) : null}
@@ -289,13 +295,6 @@ export default function AuthPage() {
           </div>
         ) : null}
 
-        <div className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs text-zinc-600">
-          <ShieldCheck size={13} />
-          {t(
-            "You will return to your previous page after sign-in.",
-            "登录后将自动返回你刚才的页面。",
-          )}
-        </div>
       </section>
     </main>
   );

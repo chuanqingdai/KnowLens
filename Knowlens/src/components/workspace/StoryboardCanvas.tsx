@@ -262,7 +262,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Steady male tone for general science explainers.",
     notes: "Included male voice",
-    creditPer1000Chars: 10,
+    creditPer1000Chars: 5,
     profile: "male",
   },
   {
@@ -276,7 +276,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
     ageGroup: "adult",
     description: "Warm female tone for friendly classroom explainers.",
     notes: "Included female voice",
-    creditPer1000Chars: 10,
+    creditPer1000Chars: 5,
     profile: "female",
   },
   {

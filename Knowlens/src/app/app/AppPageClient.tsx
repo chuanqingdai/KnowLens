@@ -15,8 +15,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 import {
+  Bot,
   Check,
-  ChevronDown,
   Crown,
   FileText,
   FolderOpen,
@@ -2156,6 +2156,7 @@ export default function Home() {
 
   const shouldShowRecentProjects =
     sessionStatus === "authenticated" && currentEmail.length > 0 && resolvedRecentProjects.length > 0;
+  const shouldShowCreditUpgradeButton = sessionStatus === "authenticated" && currentEmail.length > 0;
 
   const featuredFilteredItems = useMemo(
     () =>
@@ -2269,10 +2270,16 @@ export default function Home() {
               onClick={() => openMembershipFromHome("upgrade_button")}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
             >
-              <Zap size={14} className="text-zinc-500" />
-              <span className="font-medium text-zinc-900">{currentCredits}</span>
-              <span className="text-zinc-500">|</span>
-              <span className="font-medium">Upgrade</span>
+              {shouldShowCreditUpgradeButton ? (
+                <>
+                  <Zap size={14} className="text-zinc-500" />
+                  <span className="font-medium text-zinc-900">{currentCredits}</span>
+                  <span className="text-zinc-500">|</span>
+                  <span className="font-medium">Upgrade</span>
+                </>
+              ) : (
+                <span className="font-medium text-zinc-900">Pricing</span>
+              )}
             </button>
             <UserMenu />
           </div>
@@ -2283,10 +2290,16 @@ export default function Home() {
             onClick={() => openMembershipFromHome("upgrade_button")}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
-            <Zap size={15} className="text-zinc-500" />
-            <span className="font-medium text-zinc-900">{currentCredits}</span>
-            <span className="text-zinc-500">|</span>
-            <span className="font-medium">Upgrade</span>
+            {shouldShowCreditUpgradeButton ? (
+              <>
+                <Zap size={15} className="text-zinc-500" />
+                <span className="font-medium text-zinc-900">{currentCredits}</span>
+                <span className="text-zinc-500">|</span>
+                <span className="font-medium">Upgrade</span>
+              </>
+            ) : (
+              <span className="font-medium text-zinc-900">Pricing</span>
+            )}
           </button>
           <UserMenu />
         </div>
@@ -2398,18 +2411,16 @@ export default function Home() {
 
                 <div className="mt-3 px-4 py-4 sm:px-5">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative w-[calc(50%-6px)] min-w-[130px] sm:w-auto">
+                    <div className="relative">
                       <button
                         ref={textModelButtonRef}
                         type="button"
                         onClick={toggleTextModelMenu}
-                        className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 sm:w-36"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                        title={selectedTextModel.label}
+                        aria-label={`Choose text model. Current model: ${selectedTextModel.label}`}
                       >
-                        <span className="truncate">{selectedTextModel.label}</span>
-                        <ChevronDown
-                          size={14}
-                          className={`text-zinc-500 transition ${openMenu === "text" ? "rotate-180" : ""}`}
-                        />
+                        <Bot size={16} className={openMenu === "text" ? "text-zinc-700" : ""} />
                       </button>
                       {openMenu === "text" ? (
                         <div

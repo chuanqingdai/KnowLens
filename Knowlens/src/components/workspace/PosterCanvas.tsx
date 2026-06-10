@@ -682,10 +682,20 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
         {showImage ? (
           <div className="absolute inset-0">
             <img
+              aria-hidden="true"
+              src={card.imageSrc}
+              alt=""
+              className="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-30 blur-2xl"
+              loading="eager"
+              decoding="async"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-white/18" />
+            <img
               data-testid={`poster-image-${Math.max(0, card.index - 1)}`}
               src={card.imageSrc}
               alt={`Poster ${card.index}`}
-              className={`block h-full w-full object-contain transition-opacity duration-200 ${
+              className={`relative z-10 block h-full w-full object-contain transition-opacity duration-200 ${
                 isImageLoading ? "opacity-0" : "opacity-100"
               }`}
               loading={card.index <= 2 ? "eager" : "lazy"}
