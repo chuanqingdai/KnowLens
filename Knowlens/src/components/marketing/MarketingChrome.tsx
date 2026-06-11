@@ -220,7 +220,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
           </Link>
           <div className="flex items-center gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
-            <div className="group relative hidden sm:block">
+            <div className="group relative hidden py-2 sm:block">
               <button
                 type="button"
                 className="inline-flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
@@ -229,17 +229,19 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
                 Features
                 <ChevronDown size={13} className="text-zinc-500 transition group-hover:rotate-180" aria-hidden="true" />
               </button>
-              <div className="invisible absolute right-0 top-10 z-50 w-56 rounded-xl border border-zinc-200 bg-white p-1.5 opacity-0 shadow-[0_18px_35px_rgba(15,23,42,0.14)] transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-                {focusedLandingLinks.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-                    role="menuitem"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+              <div className="invisible absolute right-0 top-full z-50 w-56 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                <div className="rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.14)]">
+                  {focusedLandingLinks.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+                      role="menuitem"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
               </div>
             </div>
             <Link

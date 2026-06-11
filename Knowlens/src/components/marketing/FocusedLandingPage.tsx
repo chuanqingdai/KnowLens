@@ -87,6 +87,7 @@ const MAX_EXAMPLE_CARDS = 6;
 export const explainerVideoLandingContent: FocusedLandingPageContent = {
   pageVariant: "focused_explainer_video",
   landingPageType: "explainer_video_creator",
+  usePublicCases: false,
   hero: {
     eyebrow: "CREATOR-READY VISUAL QUALITY",
     title: "AI Explainer Videos for YouTube and TikTok Creators",
@@ -141,70 +142,70 @@ export const explainerVideoLandingContent: FocusedLandingPageContent = {
   ],
   examples: [
     {
-      title: "Seed Germination: From Seed to Sprout",
-      image: "/en-picture/photosynthesis-infographic-case.jpg",
-      outputType: "Plant Science",
-      platform: "YouTube Short",
-      category: "Plant Science",
+      title: "What Black Holes Really Do",
+      image: "/picture/black-hole-video-visual-case.jpg",
+      outputType: "Space Science",
+      platform: "YouTube Shorts",
+      category: "Physics",
       description:
-        "A dry seed may look lifeless, but inside it is a living embryo waiting for the right conditions. Water enters through the seed coat, enzymes wake up, stored food becomes usable energy, the radicle pushes downward to form the first root, and the shoot grows upward until the first leaves can begin making food from sunlight.",
+        "A black hole is not an empty hole in space. It is a region where matter has been compressed so tightly that gravity bends space-time sharply. Beyond the event horizon, even light cannot escape, while material outside may heat up, swirl into an accretion disk, and reveal the black hole's presence through intense radiation.",
       topic:
-        "A tiny dry seed can become a living plant because it carries an embryo and stored food inside a protective seed coat. When water enters the seed, the tissues swell and enzymes begin breaking stored starches into energy. The radicle emerges first and grows downward as the young root, anchoring the plant and absorbing water. The shoot then grows upward through the soil, the seed leaves open, and the new plant begins using sunlight to make its own food.",
+        "A black hole forms when a huge amount of mass is packed into an extremely small region, creating gravity so strong that space-time curves dramatically. The event horizon marks the boundary where escape becomes impossible, even for light. Outside that boundary, gas and dust can spiral into a hot accretion disk, releasing energy before crossing inward. Scientists study black holes by watching how they affect nearby stars, light, and matter.",
     },
     {
-      title: "How Vaccines Train the Immune System",
-      image: "/en-picture/printing-press-history-infographic-case.jpg",
-      outputType: "Immune Science",
-      platform: "YouTube Short",
+      title: "How Blue Light Affects Sleep",
+      image: "/picture/blue-light-health-poster-case.jpg",
+      outputType: "Human Biology",
+      platform: "YouTube Shorts",
       category: "Health Science",
+      description:
+        "Blue light is part of the visible light spectrum and is common in daylight and screens. In the evening, bright blue-rich light can signal the brain that it is still daytime, suppress melatonin, and make it harder for the body to shift into sleep. Timing, brightness, and viewing distance all affect the impact.",
+      topic:
+        "Blue light helps regulate the body's internal clock because morning daylight contains strong blue wavelengths that tell the brain to stay alert. At night, bright screens and overhead lights can delay melatonin release, making sleep feel farther away. The effect depends on brightness, exposure time, and how close the light is to the eyes. Dimming screens, reducing late-night exposure, and keeping a consistent sleep schedule can help the body wind down.",
+    },
+    {
+      title: "Why Volcanoes Erupt",
+      image: "/picture/volcano-eruption-ppt-case.jpg",
+      outputType: "Earth Science",
+      platform: "TikTok",
+      category: "Geology",
+      description:
+        "Volcanoes erupt when molten rock, gases, and pressure move upward through weak points in Earth's crust. As magma rises, dissolved gases expand, pressure builds, and the volcano may release lava, ash, steam, and rock fragments. The eruption style depends on magma chemistry, gas content, and the shape of the volcanic system.",
+      topic:
+        "A volcano erupts when magma from inside Earth rises toward the surface through cracks and vents. As the magma moves upward, pressure drops and dissolved gases expand, similar to bubbles forming when a bottle is opened. If pressure builds faster than it can escape, the volcano can erupt explosively, throwing ash and rock into the air. If the magma flows more easily, lava may spread across the surface instead.",
+    },
+    {
+      title: "How DNA Copies Itself",
+      image: "/picture/dna-video-script-case.jpg",
+      outputType: "Biology",
+      platform: "TikTok",
+      category: "Genetics",
+      description:
+        "DNA replication lets cells copy genetic instructions before they divide. The double helix unzips, each original strand acts as a template, and enzymes assemble matching nucleotides to create two nearly identical DNA molecules. This copying process allows new cells to inherit the information needed to function.",
+      topic:
+        "DNA stores genetic information in a double helix made of paired bases. Before a cell divides, enzymes separate the two strands, and each strand becomes a template for a new partner strand. Adenine pairs with thymine, and cytosine pairs with guanine, which helps preserve the code. Proofreading enzymes reduce mistakes, so the two resulting DNA molecules carry almost the same instructions as the original.",
+    },
+    {
+      title: "Life in the Deep Sea",
+      image: "/picture/deep-sea-podcast-visual-case.jpg",
+      outputType: "Ocean Science",
+      platform: "Instagram Reels",
+      category: "Ecosystems",
+      description:
+        "The deep sea is dark, cold, and under crushing pressure, yet it supports life through remarkable adaptations. Some animals use bioluminescence to communicate or hunt, while communities near hydrothermal vents rely on microbes that turn chemicals into energy instead of sunlight.",
+      topic:
+        "Deep-sea environments receive little or no sunlight, so organisms survive with unusual adaptations. Many animals produce bioluminescent light to attract prey, confuse predators, or find mates. Near hydrothermal vents, bacteria use chemicals from the seafloor to make energy, forming the base of entire ecosystems. These habitats show that life can thrive even where pressure is extreme, temperatures vary sharply, and sunlight cannot reach.",
+    },
+    {
+      title: "How Vaccines Train Immunity",
+      image: "/picture/immune-mechanism-infographic-case.jpg",
+      outputType: "Medical Science",
+      platform: "YouTube Shorts",
+      category: "Immunity",
       description:
         "Vaccines prepare the immune system by safely introducing a recognizable piece or weakened form of a germ. Immune cells learn the antigen, activate B cells and T cells, produce antibodies, and form memory cells so the body can respond faster if the real infection appears later.",
       topic:
         "A vaccine works like a safe rehearsal for the immune system. It introduces an antigen that immune cells can recognize without causing the full disease. Helper T cells coordinate the response, B cells produce antibodies, and some immune cells become long-lasting memory cells. If the real pathogen appears later, the body can recognize it quickly, produce defenses faster, and reduce the chance of severe illness.",
-    },
-    {
-      title: "How a Tesla EV Works",
-      image: "/en-picture/inflation-daily-life-infographic-case.jpg",
-      outputType: "Technology",
-      platform: "LinkedIn / X",
-      category: "Technology",
-      description:
-        "An electric vehicle stores energy in a large battery pack and sends it through power electronics to an electric motor. The inverter controls how electricity reaches the motor, the motor turns the wheels, and regenerative braking recovers some motion energy back into the battery.",
-      topic:
-        "An electric vehicle is powered by a battery pack, an inverter, an electric motor, and a control system working together. Charging fills the battery with electrical energy. When the driver accelerates, the inverter converts battery power into the form the motor needs, and the motor turns the wheels directly. During braking, the motor can act like a generator, converting some motion energy back into electricity and sending it to the battery.",
-    },
-    {
-      title: "How a Total Solar Eclipse Happens",
-      image: "/en-picture/astronomy/astronomy-infographic-card.jpg",
-      outputType: "Astronomy",
-      platform: "TikTok",
-      category: "Astronomy",
-      description:
-        "A total solar eclipse happens when the Moon passes between the Sun and Earth at just the right alignment. The darkest part of the Moon's shadow, the umbra, reaches a narrow path on Earth, while the lighter penumbra creates a partial eclipse over a wider area.",
-      topic:
-        "A total solar eclipse occurs during a new moon when the Moon moves directly between the Sun and Earth. The Moon blocks sunlight and casts two main shadow regions: the umbra, where the Sun is fully covered, and the penumbra, where only part of the Sun is covered. Totality is visible only along the narrow path touched by the umbra. Eclipses do not happen every month because the Moon's orbit is tilted relative to Earth's orbit around the Sun.",
-    },
-    {
-      title: "Photosynthesis: How Leaves Turn Light into Life",
-      image: "/en-picture/biology/biology-infographic-card.jpg",
-      outputType: "Biology",
-      platform: "Instagram Reel",
-      category: "Biology",
-      description:
-        "Photosynthesis is how plants use light energy to make sugar from water and carbon dioxide. Chlorophyll captures sunlight, roots supply water, leaves take in carbon dioxide, glucose stores energy for growth, and oxygen is released back into the air.",
-      topic:
-        "Plants turn sunlight into chemical energy through photosynthesis. Chlorophyll in the leaves captures light, roots bring water up from the soil, and carbon dioxide enters through tiny pores called stomata. Inside the leaf, these ingredients are used to produce glucose, a sugar that stores energy for growth. Oxygen is released as a byproduct, which is why photosynthesis helps support life across Earth's ecosystems.",
-    },
-    {
-      title: "Plate Tectonics and Earthquakes",
-      image: "/en-picture/geography/geography-infographic-card.jpg",
-      outputType: "Earth Science",
-      platform: "TikTok",
-      category: "Earth Science",
-      description:
-        "Earth's outer shell is broken into tectonic plates that slowly move over the mantle. Where plates collide, separate, or slide past each other, stress can build along faults until rocks suddenly slip and release energy as seismic waves.",
-      topic:
-        "Earthquakes happen because Earth's outer shell is divided into moving tectonic plates. Heat inside the planet helps drive slow plate motion, creating convergent boundaries where plates collide, divergent boundaries where they pull apart, and transform boundaries where they slide past each other. When rocks along a fault are locked, stress builds over time. A sudden slip releases energy, seismic waves spread outward, and the strongest shaking is often felt near the epicenter.",
     },
   ],
   personas: [
@@ -651,7 +652,7 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
               : "Explore short explainer video ideas for science, tech, health, history, and everyday learning content."
           }
         />
-        <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid items-start gap-5 md:grid-cols-2 lg:grid-cols-3">
           {visibleExamples.map((item) => (
             <article
               key={item.title}
