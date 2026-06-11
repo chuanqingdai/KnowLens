@@ -2349,16 +2349,7 @@ export const ChatPanel = memo(function ChatPanel({
                       );
                     })}
                   </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                    <button
-                      type="button"
-                      onClick={onConfirmConfig}
-                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
-                    >
-                      Next
-                    </button>
-                  </div>
+                  {renderConfirmConfigFooter()}
                 </div>
               ) : null}
 
@@ -2417,16 +2408,7 @@ export const ChatPanel = memo(function ChatPanel({
                       );
                     })}
                   </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                    <button
-                      type="button"
-                      onClick={onConfirmConfig}
-                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
-                    >
-                      Next
-                    </button>
-                  </div>
+                  {renderConfirmConfigFooter()}
                 </div>
               ) : null}
 
@@ -2478,16 +2460,7 @@ export const ChatPanel = memo(function ChatPanel({
                       );
                     })}
                   </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                    <button
-                      type="button"
-                      onClick={onConfirmConfig}
-                      className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
-                    >
-                      Next
-                    </button>
-                  </div>
+                  {renderConfirmConfigFooter()}
                 </div>
               ) : null}
             </div>
@@ -2554,16 +2527,7 @@ export const ChatPanel = memo(function ChatPanel({
                   );
                 })}
               </div>
-              <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                <button
-                  type="button"
-                  onClick={onConfirmConfig}
-                  className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
-                >
-                  Next
-                </button>
-              </div>
+              {renderConfirmConfigFooter()}
             </div>
           ) : null}
 
@@ -2622,16 +2586,7 @@ export const ChatPanel = memo(function ChatPanel({
                   );
                 })}
               </div>
-              <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                <button
-                  type="button"
-                  onClick={onConfirmConfig}
-                  className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
-                >
-                  Next
-                </button>
-              </div>
+              {renderConfirmConfigFooter()}
             </div>
           ) : null}
 
@@ -2694,16 +2649,7 @@ export const ChatPanel = memo(function ChatPanel({
                   );
                 })}
               </div>
-              <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-zinc-500">Confirm settings before continuing.</p>
-                <button
-                  type="button"
-                  onClick={onConfirmConfig}
-                  className={`${PRIMARY_CARD_ACTION_CLASS} h-9 px-4`}
-                >
-                  Next
-                </button>
-              </div>
+              {renderConfirmConfigFooter()}
             </div>
           ) : null}
 

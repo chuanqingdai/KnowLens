@@ -1772,6 +1772,14 @@ function shouldDropGenerationEvent(input: GenerationOpsEventInput) {
     }
     generationOpsTraceSummarySeen.add(summaryKey);
   }
+  if (
+    (action === "generation.tasks.run.start" ||
+      action === "generation.provider.poll.start" ||
+      action === "generation.provider.poll.processing") &&
+    clampText(input.taskStatus, 64).toLowerCase() === "generating"
+  ) {
+    return true;
+  }
   return false;
 }
 

@@ -343,7 +343,7 @@ async function requestImageByPolicy(input: {
             elapsedMs: Date.now() - providerStartedAt,
             errorCode: missingUrlFailure.errorCode,
             errorMessage: missingUrlFailure.errorMessage,
-          });
+      }
           lastFailure = missingUrlFailure;
           continue;
         }
@@ -833,14 +833,78 @@ export async function POST(request: NextRequest) {
         });
       }
     };
+    const runDirectProviderFallback = async (input: {
+      task: ImageGenerationTaskRow;
+      causeCode: string;
+      causeMessage: string;
+      source: string;
+    }) => {
+      const fallbackPolicy = providerPolicy.filter((provider) => provider !== "duomi");
+      if (!fallbackPolicy.length) {
+        return markTaskFailed({
+          task: input.task,
+          status: isTimeoutCode(input.causeCode) ? "timed_out" : "failed",
+          providerUsed: "duomi",
+          errorCode: input.causeCode,
+          errorMessage: input.causeMessage,
+          source: input.source,
+        });
+      }
+      const isFreeUser = await isFreeUserBySubscriptionSafe({
+        email,
+        source: "workspace_image_task_run_fallback",
+        projectId,
+        details: {
+          stage: "provider_fallback",
+          jobId,
+          taskId: input.task.id,
+          taskIndex: input.task.taskIndex,
+          causeCode: input.causeCode,
+        },
+      });
+      const prompt = isFreeUser ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
+      const fallback = await requestImageByPolicy({
+        providerPolicy: fallbackPolicy,
+        imageModel,
+        prompt,
+        aspectRatio,
+        size,
+        routeStartedAt,
+        taskDeadlineAt: Date.now() + normalizeTaskBudgetMs(),
+        allowProviderFallback: true,
+      });
+      if (fallback.result.ok) {
+        return persistGeneratedImage({
+          task: input.task,
+          providerUsed: fallback.providerUsed,
+          imageUrl: fallback.result.imageUrl,
+        });
+      }
+      return markTaskFailed({
+        task: input.task,
+        status: isTimeoutCode(fallback.result.errorCode) || isTimeoutCode(input.causeCode) ? "timed_out" : "failed",
+        providerUsed: fallback.providerUsed,
+        errorCode: fallback.result.errorCode || input.causeCode,
+        errorMessage: fallback.result.errorMessage || input.causeMessage,
+        source: input.source,
+      });
+    };
 
-    if (!duomiConfig) {
+    if (!basePrompt) {
       return markTaskFailed({
         task: queuedTask,
         status: "failed",
-        providerUsed: defaultProvider,
-        errorCode: "DUOMI_PROVIDER_NOT_CONFIGURED",
-        errorMessage: "Duomi image provider is not configured.",
+        providerUsed: queuedTask.providerUsed || defaultProvider,
+        errorCode: "IMAGE_GENERATION_PROMPT_EMPTY",
+        errorMessage: "Image generation prompt is empty.",
+        source: "image_task_run_prompt_empty",
+      });
+    }
+    if (!duomiConfig) {
+      return runDirectProviderFallback({
+        task: queuedTask,
+        causeCode: "DUOMI_PROVIDER_NOT_CONFIGURED",
+        causeMessage: "Duomi image provider is not configured.",
         source: "image_task_run_provider_config",
       });
     }
@@ -886,12 +950,10 @@ export async function POST(request: NextRequest) {
         });
       }
       if (metadata.deadlineAt && Date.now() >= metadata.deadlineAt) {
-        return markTaskFailed({
+        return runDirectProviderFallback({
           task: queuedTask,
-          status: "timed_out",
-          providerUsed: metadata.provider,
-          errorCode: "IMAGE_PROVIDER_DEADLINE_EXCEEDED",
-          errorMessage: "Image provider task timed out.",
+          causeCode: "IMAGE_PROVIDER_DEADLINE_EXCEEDED",
+          causeMessage: "Image provider task timed out.",
           source: "image_task_run_provider_deadline",
         });
       }
@@ -978,12 +1040,10 @@ export async function POST(request: NextRequest) {
           imageUrl: pollResult.imageUrl,
         });
       }
-      return markTaskFailed({
+      return runDirectProviderFallback({
         task: queuedTask,
-        status: isTimeoutCode(pollResult.errorCode) ? "timed_out" : "failed",
-        providerUsed: "duomi",
-        errorCode: pollResult.errorCode || "DUOMI_POLL_FAILED",
-        errorMessage: pollResult.errorMessage || "Duomi provider polling failed.",
+        causeCode: pollResult.errorCode || "DUOMI_POLL_FAILED",
+        causeMessage: pollResult.errorMessage || "Duomi provider polling failed.",
         source: "image_task_run_provider_poll",
       });
     }
@@ -1138,12 +1198,10 @@ export async function POST(request: NextRequest) {
         imageUrl: createResult.imageUrl,
       });
     }
-    return markTaskFailed({
+    return runDirectProviderFallback({
       task: queuedTask,
-      status: isTimeoutCode(createResult.errorCode) ? "timed_out" : "failed",
-      providerUsed: "duomi",
-      errorCode: createResult.errorCode || "DUOMI_CREATE_FAILED",
-      errorMessage: createResult.errorMessage || "Duomi provider task creation failed.",
+      causeCode: createResult.errorCode || "DUOMI_CREATE_FAILED",
+      causeMessage: createResult.errorMessage || "Duomi provider task creation failed.",
       source: "image_task_run_provider_create",
     });
 

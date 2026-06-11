@@ -43,6 +43,8 @@ const VIDEO_EXPORT_AUDIO_BITRATE = "192k";
 const VIDEO_TRANSITION_CONCAT_BASE_TIMEOUT_MS = 180_000;
 const VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS = 25_000;
 const VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS = 540_000;
+const MIN_VISIBLE_TRANSITION_DURATION_SEC = 0.8;
+const MAX_VISIBLE_TRANSITION_DURATION_SEC = 1.25;
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -109,6 +111,18 @@ function normalizeTransitionPresetId(value: string | null | undefined): Transiti
 }
 
 function mapTransitionToFfmpegXfade(transition: SceneTransition) {
+  if (transition.type === "cross_dissolve") {
+    return "fade";
+  }
+  if (transition.type === "dip_to_color") {
+    return "fadeblack";
+  }
+  if (transition.type === "light_sweep") {
+    if (transition.direction === "up") return "wipeup";
+    if (transition.direction === "down") return "wipedown";
+    if (transition.direction === "left") return "wipeleft";
+    return "wiperight";
+  }
   if (transition.type === "wipe") {
     if (transition.direction === "right") return "wiperight";
     if (transition.direction === "up") return "wipeup";
@@ -672,7 +686,10 @@ async function concatSegmentsWithTransitions(input: {
 
   const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
   const transitionDurations = transitions.map((transition, index) => {
-    const requested = Math.max(0.2, Math.min(1.4, transition.durationSeconds || 0.45));
+    const requested = Math.max(
+      MIN_VISIBLE_TRANSITION_DURATION_SEC,
+      Math.min(MAX_VISIBLE_TRANSITION_DURATION_SEC, transition.durationSeconds || MIN_VISIBLE_TRANSITION_DURATION_SEC),
+    );
     const currentDuration = Math.max(0.25, segmentDurationsSec[index] || DEFAULT_SCENE_DURATION_SEC);
     const nextDuration = Math.max(0.25, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC);
     const maxSafeDuration = Math.max(0.2, Math.min(currentDuration, nextDuration) - 0.05);
@@ -692,20 +709,26 @@ async function concatSegmentsWithTransitions(input: {
 
   const transitionFilters: string[] = [];
   let currentVideoLabel = "tv0";
-  let offsetSec = Math.max(0.1, segmentDurationsSec[0] || DEFAULT_SCENE_DURATION_SEC);
+  let currentVideoDurationSec =
+    Math.max(0.25, segmentDurationsSec[0] || DEFAULT_SCENE_DURATION_SEC) +
+    (transitionDurations[0] || 0);
   transitions.forEach((transition, index) => {
     const durationSec = transitionDurations[index] || 0.45;
     const transitionName = mapTransitionToFfmpegXfade(transition);
     const nextVideoLabel = `tv${index + 1}`;
     const outputLabel = `xv${index}`;
-    const centeredOffsetSec = Math.max(0.05, offsetSec - durationSec / 2);
+    const offsetSec = Math.max(0.05, currentVideoDurationSec - durationSec);
     transitionFilters.push(
       `[${currentVideoLabel}][${nextVideoLabel}]xfade=transition=${transitionName}:duration=${durationSec.toFixed(
         3,
-      )}:offset=${centeredOffsetSec.toFixed(3)}[${outputLabel}]`,
+      )}:offset=${offsetSec.toFixed(3)}[${outputLabel}]`,
     );
     currentVideoLabel = outputLabel;
-    offsetSec += Math.max(0.1, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC);
+    currentVideoDurationSec =
+      currentVideoDurationSec +
+      Math.max(0.25, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC) +
+      (transitionDurations[index + 1] || 0) -
+      durationSec;
   });
 
   const audioConcatInputs = segmentPaths.map((_, index) => `[a${index}]`).join("");
@@ -1080,7 +1103,7 @@ export async function runVideoExportJob(jobId: string) {
           action: "video_export_transition_concat_fallback",
           status: "error",
           code: "VIDEO_TRANSITION_CONCAT_FAILED",
-          message: "Transition concat failed; falling back to hard cuts.",
+          message: "Transition concat failed; retrying with simple fade transitions.",
           details: {
             transitionPresetId: job.timeline.transitionPresetId,
             transitionCount: transitions.length,
@@ -1088,7 +1111,50 @@ export async function runVideoExportJob(jobId: string) {
             error: getProcessErrorMessage(error),
           },
         });
-        await concatSegments(segmentPaths, outputPath);
+        const fadeTransitions = transitions.map((transition) => ({
+          ...transition,
+          type: "fade" as const,
+          durationSeconds: Math.max(
+            MIN_VISIBLE_TRANSITION_DURATION_SEC,
+            Math.min(
+              MAX_VISIBLE_TRANSITION_DURATION_SEC,
+              transition.durationSeconds || MIN_VISIBLE_TRANSITION_DURATION_SEC,
+            ),
+          ),
+        }));
+        try {
+          await concatSegmentsWithTransitions({
+            segmentPaths,
+            segmentDurationsSec,
+            transitions: fadeTransitions,
+            fps: job.timeline.fps,
+            outputPath,
+          });
+          await logVideoExportJobEvent({
+            job,
+            action: "video_export_transition_concat_fade_fallback",
+            status: "ok",
+            message: "Transition concat recovered with fade transitions.",
+            details: {
+              transitionPresetId: job.timeline.transitionPresetId,
+              transitionCount: fadeTransitions.length,
+            },
+          });
+        } catch (fadeError) {
+          await logVideoExportJobEvent({
+            job,
+            action: "video_export_transition_concat_failed",
+            status: "error",
+            code: "VIDEO_TRANSITION_FADE_FALLBACK_FAILED",
+            message: "Fade transition concat failed.",
+            details: {
+              transitionPresetId: job.timeline.transitionPresetId,
+              transitionCount: fadeTransitions.length,
+              error: getProcessErrorMessage(fadeError),
+            },
+          });
+          throw fadeError;
+        }
       }
     } else {
       await concatSegments(segmentPaths, outputPath);

@@ -772,10 +772,7 @@ function normalizeTasksFromPayload(payload: GenerateBatchPayload) {
     .map((task, idx) => {
       const index = Number.isFinite(task.index) ? Math.max(1, Math.round(Number(task.index))) : idx + 1;
       const outputType = (task.outputType || "poster").trim() || "poster";
-      const promptSource =
-        outputType === "video"
-          ? buildPromptFromPayloadTask(task)
-          : task.prompt || task.composedPrompt || buildPromptFromPayloadTask(task);
+      const promptSource = task.prompt || task.composedPrompt || buildPromptFromPayloadTask(task);
       const prompt = clampPromptForImage(promptSource);
       if (!prompt) {
         return null;

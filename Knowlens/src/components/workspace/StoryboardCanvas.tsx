@@ -24,12 +24,10 @@ import {
 
 import {
   Controls,
-  MiniMap,
   PanOnScrollMode,
   Position,
   ReactFlow,
   type Edge,
-  type MiniMapNodeProps,
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
@@ -45,8 +43,6 @@ type SaveState = "saved" | "saving" | "error";
 
 const STORYBOARD_CTA_CLASS =
   "inline-flex items-center rounded-full border border-transparent bg-zinc-900 px-3 py-2 text-xs text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)]";
-const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
-
 type StoryboardCanvasProps = {
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
   canvasModeExternal?: CanvasMode;
@@ -842,84 +838,6 @@ function createInitialPack() {
 
 function getSlideIdFromNodeId(nodeId: string) {
   return nodeId.replace(/^(story|image)-/, "");
-}
-
-function StoryboardMiniMapNode({
-  id,
-  x,
-  y,
-  width,
-  height,
-  borderRadius,
-  color,
-  shapeRendering,
-  selected,
-  strokeColor,
-  strokeWidth,
-  onClick,
-}: MiniMapNodeProps) {
-  const safeWidth = Math.max(22, width);
-  const safeHeight = Math.max(16, height);
-  const inset = Math.max(3, Math.min(safeWidth, safeHeight) * 0.08);
-  const stroke = selected ? MINIMAP_VIEWPORT_COLOR : color || strokeColor || "#71717a";
-  const lineWidth = selected ? Math.max(2.5, strokeWidth || 1) : Math.max(1.6, strokeWidth || 1);
-  const isImageNode = id.startsWith("image-");
-
-  return (
-    <g
-      transform={`translate(${x}, ${y})`}
-      onClick={onClick ? (event) => onClick(event, id) : undefined}
-      className={onClick ? "cursor-pointer" : undefined}
-    >
-      <rect
-        x={0}
-        y={0}
-        width={safeWidth}
-        height={safeHeight}
-        rx={borderRadius}
-        ry={borderRadius}
-        fill="rgba(255,255,255,0.38)"
-        stroke={stroke}
-        strokeWidth={lineWidth}
-        shapeRendering={shapeRendering}
-      />
-      {isImageNode ? (
-        <rect
-          x={inset}
-          y={inset}
-          width={Math.max(2, safeWidth - inset * 2)}
-          height={Math.max(2, safeHeight - inset * 2)}
-          rx={Math.min(borderRadius, 4)}
-          ry={Math.min(borderRadius, 4)}
-          fill="transparent"
-          stroke={stroke}
-          strokeWidth={Math.max(1, lineWidth * 0.55)}
-          shapeRendering={shapeRendering}
-        />
-      ) : (
-        <>
-          <line
-            x1={inset}
-            y1={safeHeight * 0.38}
-            x2={safeWidth - inset}
-            y2={safeHeight * 0.38}
-            stroke={stroke}
-            strokeWidth={Math.max(1, lineWidth * 0.55)}
-            shapeRendering={shapeRendering}
-          />
-          <line
-            x1={inset}
-            y1={safeHeight * 0.62}
-            x2={safeWidth * 0.72}
-            y2={safeHeight * 0.62}
-            stroke={stroke}
-            strokeWidth={Math.max(1, lineWidth * 0.55)}
-            shapeRendering={shapeRendering}
-          />
-        </>
-      )}
-    </g>
-  );
 }
 
 function isEditableElement(target: EventTarget | null) {
@@ -3440,7 +3358,7 @@ export function StoryboardCanvas({
           data: {
             label: (
               <div
-                className={`w-[380px] overflow-visible rounded-xl border bg-white shadow-sm transition ${
+                className={`w-[380px] overflow-hidden rounded-xl border bg-white shadow-sm transition ${
                   activePreviewSlideId === slide.id
                     ? "border-zinc-900 ring-2 ring-zinc-900/20"
                     : isNodeSelected
@@ -3874,28 +3792,6 @@ export function StoryboardCanvas({
       validationMap,
     ],
   );
-  const getMiniMapNodeColor = useCallback((node: Node) => {
-    const slideId = getSlideIdFromNodeId(node.id);
-    const generationState = generationTaskStateByIndex?.[slides.find((slide) => slide.id === slideId)?.page ?? -1];
-    if (slideId && selectedSlideId === slideId) {
-      return MINIMAP_VIEWPORT_COLOR;
-    }
-    if (node.id.startsWith("story-")) {
-      return "#71717a";
-    }
-    if (generationState?.status === "failed") {
-      return "#ef4444";
-    }
-    if (
-      generationState?.status === "queued" ||
-      generationState?.status === "generating" ||
-      generationState?.status === "retrying"
-    ) {
-      return "#8B5CF6";
-    }
-    return "#18181b";
-  }, [generationTaskStateByIndex, selectedSlideId, slides]);
-
   useEffect(() => {
     onSaveStateChange?.(saveState, hasUnsavedChanges);
   }, [hasUnsavedChanges, onSaveStateChange, saveState]);
@@ -4161,20 +4057,6 @@ export function StoryboardCanvas({
           }}
           onPaneClick={() => setSelectedSlideId(null)}
         >
-          {canvasMode === "free" ? (
-            <MiniMap
-              pannable
-              zoomable
-              nodeComponent={StoryboardMiniMapNode}
-              nodeColor={getMiniMapNodeColor}
-              nodeStrokeColor={() => "#71717a"}
-              nodeBorderRadius={8}
-              maskColor="rgba(17,24,39,0.10)"
-              maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
-              maskStrokeWidth={2}
-              className="!bottom-3 !right-3 !h-[118px] !w-[188px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
-            />
-          ) : null}
           {canvasMode === "free" ? (
             <Controls
             style={{ background: "#ffffff", border: "1px solid #e4e4e7", color: "#27272a" }}
