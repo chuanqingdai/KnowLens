@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { FolderOpen, Home as HomeIcon, Menu, Sparkles, UserCircle2 } from "lucide-react";
+import { FolderOpen, Home as HomeIcon, Menu, Sparkles, TrendingUp, UserCircle2 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 
 const navItems = [
   { label: "Home", icon: HomeIcon, href: "/app" },
   { label: "Projects", icon: FolderOpen, href: "/projects" },
+  { label: "Growth Studio", icon: TrendingUp, href: "/growth-studio" },
   { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 

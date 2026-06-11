@@ -32,6 +32,7 @@ import {
   SendHorizontal,
   ExternalLink,
   Share2,
+  TrendingUp,
   UserCircle2,
   Upload,
   X,
@@ -64,6 +65,7 @@ import { readAttributionPayload } from "@/lib/attribution";
 const navItems = [
   { key: "home", label: "Home", icon: HomeIcon, href: "/app" },
   { key: "projects", label: "Projects", icon: FolderOpen, href: "/projects" },
+  { key: "growth-studio", label: "Growth Studio", icon: TrendingUp, href: "/growth-studio" },
   { key: "profile", label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 

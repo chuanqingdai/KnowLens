@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
@@ -13,6 +13,17 @@ type MarketingChromeProps = {
   children: React.ReactNode;
   showLocaleSwitch?: boolean;
 };
+
+const focusedLandingLinks = [
+  {
+    href: "/aI-explainer-videos",
+    label: "AI Explainer Videos",
+  },
+  {
+    href: "/ai-information-generator",
+    label: "AI Information Generator",
+  },
+];
 
 declare global {
   interface Window {
@@ -209,6 +220,28 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
           </Link>
           <div className="flex items-center gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
+            <div className="group relative hidden sm:block">
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                aria-haspopup="menu"
+              >
+                Features
+                <ChevronDown size={13} className="text-zinc-500 transition group-hover:rotate-180" aria-hidden="true" />
+              </button>
+              <div className="invisible absolute right-0 top-10 z-50 w-56 rounded-xl border border-zinc-200 bg-white p-1.5 opacity-0 shadow-[0_18px_35px_rgba(15,23,42,0.14)] transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                {focusedLandingLinks.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+                    role="menuitem"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
             <Link
               href="/membership"
               className="inline-flex h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
@@ -232,24 +265,54 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
       <main className="relative z-10 flex-1">{children}</main>
 
       <footer className="relative z-10 border-t border-zinc-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs text-zinc-500">© 2026 KnowLens.ai · All rights reserved</p>
-          <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-600">
-            <Link href="/about" className="hover:text-zinc-900">
-              {t("About", "关于")}
+        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-9 sm:px-6 md:grid-cols-[1.3fr_1fr_1fr]">
+          <div>
+            <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
+                <img
+                  src="/logo.png?v=202605241930"
+                  alt="KnowLens.ai"
+                  width={30}
+                  height={30}
+                  className="h-[30px] w-[30px] object-contain"
+                />
+              </span>
+              <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
             </Link>
-            <Link href="/privacy" className="hover:text-zinc-900">
-              {t("Privacy", "隐私政策")}
-            </Link>
-            <Link href="/terms" className="hover:text-zinc-900">
-              {t("Terms", "使用条款")}
-            </Link>
-            <Link href="/payment-terms" className="hover:text-zinc-900">
-              {t("Payment Terms", "支付条款")}
-            </Link>
-            <Link href="/contact" className="hover:text-zinc-900">
-              {t("Contact", "联系我们")}
-            </Link>
+            <p className="mt-3 max-w-sm text-xs leading-5 text-zinc-500">
+              Turn scripts, ideas, and notes into short visual explainer videos.
+            </p>
+            <p className="mt-5 text-xs text-zinc-500">© 2026 KnowLens.ai · All rights reserved</p>
+          </div>
+          <nav>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Features</p>
+            <div className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
+              {focusedLandingLinks.map((item) => (
+                <Link key={item.href} href={item.href} className="hover:text-zinc-950">
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </nav>
+          <nav>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Company & Legal</p>
+            <div className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
+              <Link href="/about" className="hover:text-zinc-950">
+                {t("About", "About")}
+              </Link>
+              <Link href="/privacy" className="hover:text-zinc-950">
+                {t("Privacy", "Privacy")}
+              </Link>
+              <Link href="/terms" className="hover:text-zinc-950">
+                {t("Terms", "Terms")}
+              </Link>
+              <Link href="/payment-terms" className="hover:text-zinc-950">
+                {t("Payment Terms", "Payment Terms")}
+              </Link>
+              <Link href="/contact" className="hover:text-zinc-950">
+                {t("Contact", "Contact")}
+              </Link>
+            </div>
           </nav>
         </div>
       </footer>

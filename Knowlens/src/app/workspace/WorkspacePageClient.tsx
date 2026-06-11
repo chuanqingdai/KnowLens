@@ -1187,8 +1187,8 @@ const styleOptions = [
 ] as StyleOption[];
 
 const intentOptions: { id: "ppt" | "video" | "poster"; label: string; desc: string }[] = [
-  { id: "poster", label: "Generate Poster", desc: "Best for one-page explainers." },
   { id: "video", label: "Generate Video", desc: "Best for short narrated content." },
+  { id: "poster", label: "Generate Poster", desc: "Best for one-page explainers." },
   { id: "ppt", label: "Generate PPT", desc: "Best for teaching and presentations." },
 ];
 
@@ -2752,7 +2752,7 @@ export default function WorkspacePage() {
     if (detected.intent === "ppt" || detected.intent === "video" || detected.intent === "poster") {
       return detected.intent;
     }
-    return inferRecommendedIntent(initialEntry.prompt, initialEntry.sources);
+    return "video";
   });
   const [posterSizeId, setPosterSizeId] = useState<string | null>(() =>
     normalizePosterSizeId(

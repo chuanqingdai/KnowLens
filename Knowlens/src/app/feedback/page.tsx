@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Menu,
   Send,
+  TrendingUp,
   UserCircle2,
   X,
 } from "lucide-react";
@@ -26,7 +27,8 @@ import { resolveRoleByEmail } from "@/lib/auth";
 
 const navItems = [
   { label: "Home", icon: HomeIcon, href: "/app" },
-  { label: "My Projects", icon: FolderOpen, href: "/projects" },
+  { label: "Projects", icon: FolderOpen, href: "/projects" },
+  { label: "Growth Studio", icon: TrendingUp, href: "/growth-studio" },
   { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
