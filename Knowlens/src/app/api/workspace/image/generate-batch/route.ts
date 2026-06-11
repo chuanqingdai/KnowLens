@@ -312,6 +312,10 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
     outputType === "video"
       ? "Video storyboard readability rule: frames are viewed briefly, so avoid small text, dense labels, subtitle-style overlays, tiny chart annotations, fine print, and multi-line notes. Prefer no on-screen text on body frames; if any text appears, keep it very short, large, bold, and glance-readable."
       : "";
+  const cleanPptExportRule =
+    outputType === "ppt"
+      ? "PPT export clean-image rule: do not create a separate slide title, top header bar, dark/translucent title mask, banner strip, or boxed title overlay. If text is needed, use only short integrated labels/callouts inside the visual."
+      : "";
 
   return [
     `Create one ${aspectRatio} ${outputType} visual.`,
@@ -326,12 +330,14 @@ function buildPromptFromPayloadTask(task: NonNullable<GenerateBatchPayload["task
       : "",
     "Use one dominant hero visual, integrated infographic composition, embedded callouts, whitespace, and readable hierarchy.",
     "Only use this current page/frame; do not pull facts, labels, titles, or body text from other pages.",
+    "This visual must express the unique focus of this page/frame. Avoid generic topic-wide imagery or repeating the same subject, scene, diagram structure, or label pattern from neighboring pages unless the state/action clearly changes.",
     textMode === "strict" && visibleTitle ? `Source title fact/text: ${visibleTitle}` : "",
     textMode === "strict" && visibleSubtitle ? `Source subtitle fact/text: ${visibleSubtitle}` : "",
     textMode === "strict" && visibleLabels ? `Optional short label ideas: ${visibleLabels}` : "",
     !composition && layout ? `Layout direction: ${layout}` : "",
     textDensity ? `Text density: ${textDensity}` : "",
     shortViewVideoRule,
+    cleanPptExportRule,
     `Text: ${textMode === "strict" ? "fact-strict, expression-guided" : textMode}.`,
     textMode === "guided"
       ? `Use concise ${textLanguage} labels. ${dominantLanguageRule} Light rewrite is ${textAllowRewrite === false ? "disabled" : "allowed"} for clarity. No fake numbers, unrelated terms, wrong-language labels, or dense paragraphs.`

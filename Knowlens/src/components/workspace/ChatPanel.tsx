@@ -104,6 +104,7 @@ type StyleOption = {
 };
 
 const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
+const VIDEO_OUTPUT_COUNT_OPTIONS = [6, 8, 10, 14, 16, 20, 24] as const;
 const STYLE_COVER_FRAME_CLASS = "relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none";
 const STYLE_CARD_LABEL_CLASS = "flex min-h-[3.5rem] items-start px-2.5 pb-2.5 pt-2";
 const PRIMARY_CARD_ACTION_CLASS =
@@ -1729,7 +1730,7 @@ export const ChatPanel = memo(function ChatPanel({
                 <p className="text-sm font-medium text-zinc-900">Video Options</p>
                 <p className="mt-2 text-xs text-zinc-500">Storyboard Frames</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {OUTPUT_COUNT_OPTIONS.map((count) => (
+                  {VIDEO_OUTPUT_COUNT_OPTIONS.map((count) => (
                     <button
                       key={`video-count-en-${count}`}
                       type="button"
@@ -2118,7 +2119,7 @@ export const ChatPanel = memo(function ChatPanel({
             <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
               <p className="text-xs font-medium text-zinc-500">Storyboard Frames</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {OUTPUT_COUNT_OPTIONS.map((count) => (
+                {VIDEO_OUTPUT_COUNT_OPTIONS.map((count) => (
                   <button
                     key={`locked-video-count-${count}`}
                     type="button"
@@ -2366,7 +2367,7 @@ export const ChatPanel = memo(function ChatPanel({
                   <p className="text-sm font-medium text-zinc-900">Video Options</p>
                   <p className="mt-2 text-xs text-zinc-500">Storyboard Frames</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {OUTPUT_COUNT_OPTIONS.map((count) => (
+                    {VIDEO_OUTPUT_COUNT_OPTIONS.map((count) => (
                       <button
                         key={count}
                         type="button"
@@ -2571,7 +2572,7 @@ export const ChatPanel = memo(function ChatPanel({
               <p className="text-sm font-medium text-zinc-900">Video Options</p>
               <p className="mt-2 text-xs font-medium text-zinc-500">Storyboard Frames</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {OUTPUT_COUNT_OPTIONS.map((count) => (
+                {VIDEO_OUTPUT_COUNT_OPTIONS.map((count) => (
                   <button
                     key={count}
                     type="button"

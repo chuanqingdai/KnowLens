@@ -581,7 +581,7 @@ export default function LandingPage() {
   const previewWideLoop = [...previewWideCases, ...previewWideCases];
   const previewTallLoop = [...previewTallCases, ...previewTallCases];
   const [activeFlowId, setActiveFlowId] = useState(DEFAULT_CAPABILITY_FLOW_ID);
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("yearly");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [activeFlowPreviewSrc, setActiveFlowPreviewSrc] = useState(() =>
     toOptimized(
       capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID)?.previewImage ??

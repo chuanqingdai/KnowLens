@@ -22,9 +22,6 @@ type ExportRequestBody = {
 export const runtime = "nodejs";
 const WIDE_SLIDE_WIDTH = 13.333;
 const WIDE_SLIDE_HEIGHT = 7.5;
-const FIRST_SLIDE_TITLE_BAND_HEIGHT = 1.02;
-const FIRST_SLIDE_TITLE_PADDING_X = 0.6;
-const FIRST_SLIDE_TITLE_PADDING_Y = 0.2;
 
 function extractWorkspaceAssetTaskId(url: string, origin: string) {
   try {
@@ -136,37 +133,6 @@ export async function POST(request: NextRequest) {
           h: WIDE_SLIDE_HEIGHT,
         },
       });
-
-      if (idx === 0) {
-        const titleText = slide.title?.trim() || body.title?.trim() || "KnowLens.ai";
-        page.addShape(pptx.ShapeType.rect, {
-          x: 0,
-          y: 0,
-          w: WIDE_SLIDE_WIDTH,
-          h: FIRST_SLIDE_TITLE_BAND_HEIGHT,
-          fill: {
-            color: "111827",
-            transparency: 30,
-          },
-          line: {
-            color: "111827",
-            transparency: 100,
-          },
-        });
-        page.addText(titleText, {
-          x: FIRST_SLIDE_TITLE_PADDING_X,
-          y: FIRST_SLIDE_TITLE_PADDING_Y,
-          w: WIDE_SLIDE_WIDTH - FIRST_SLIDE_TITLE_PADDING_X * 2,
-          h: FIRST_SLIDE_TITLE_BAND_HEIGHT - FIRST_SLIDE_TITLE_PADDING_Y,
-          fontFace: "Calibri",
-          fontSize: 28,
-          bold: true,
-          color: "FFFFFF",
-          valign: "middle",
-          align: "left",
-          fit: "shrink",
-        });
-      }
     }
 
     const buffer = (await pptx.write({
