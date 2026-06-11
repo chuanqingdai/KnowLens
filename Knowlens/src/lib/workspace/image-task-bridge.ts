@@ -24,6 +24,7 @@ export type NormalizedImageTaskResult = {
 };
 
 const SUCCESS_STATUS_SET = new Set(["asset_ready", "completed", "success", "succeeded"]);
+const ACTIVE_STATUS_SET = new Set(["queued", "running", "generating", "asset_downloading", "retrying", "processing"]);
 const INDEX_OFFSET_CANDIDATES = [0, -1, 1] as const;
 
 function toRoundedFiniteNumber(value: unknown) {
@@ -57,6 +58,10 @@ export function resolveFinalImageUrlFromTask(task: ImageBatchTaskResultLike | nu
     }
   }
   return "";
+}
+
+export function isImageTaskActiveStatus(status: unknown) {
+  return ACTIVE_STATUS_SET.has(normalizeImageTaskStatus(status));
 }
 
 function resolveBestIndexOffset(requestedTaskIndexes: number[], taskResults: ImageBatchTaskResultLike[]) {

@@ -50,6 +50,10 @@ function toUserFacingErrorCode(code?: string) {
   return "GEN-500";
 }
 
+function hasChineseText(text: string) {
+  return /[\u3400-\u9fff]/.test(text);
+}
+
 type SlideDraft = {
   page: number;
   title: string;
@@ -607,9 +611,19 @@ export const ChatPanel = memo(function ChatPanel({
   onRetryErrorTurn,
   outputSummaryCard,
 }: ChatPanelProps) {
-  void outputLanguage;
-  const isZh = false;
-  const shouldUseEnglishUi = true;
+  const draftTextForLanguage = [
+    summaryText,
+    ...outlineItems,
+    ...slideDrafts.flatMap((slide) => [slide.title, slide.body, slide.visual]),
+    posterDraft?.headline,
+    posterDraft?.subtitle,
+    posterDraft?.body,
+    ...(posterDraft?.points ?? []),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const isZh = outputLanguage === "zh" || hasChineseText(draftTextForLanguage);
+  const shouldUseEnglishUi = !isZh;
   const t = (en: string, zh: string) => (isZh ? zh : en);
   const prompt1LoadingMessages = useMemo(
     () =>
@@ -1378,7 +1392,7 @@ export const ChatPanel = memo(function ChatPanel({
             {outlineItems.map((item, index) => (
               <li key={`outline-${index + 1}-${item}`} className="py-2.5">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                  {intent === "video" ? `Frame ${index + 1}` : `Page ${index + 1}`}
+                  {intent === "video" ? `${t("Frame", "分镜")} ${index + 1}` : `${t("Page", "页面")} ${index + 1}`}
                 </p>
                 <p className="mt-1 font-semibold text-zinc-900">{compactDraftLine(item, 120)}</p>
               </li>
@@ -1396,7 +1410,13 @@ export const ChatPanel = memo(function ChatPanel({
               return (
                 <section key={`${slide.page}-${slide.title}`} className="py-3">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                    {isCover ? (intent === "video" ? "Cover Frame" : "Cover Page") : intent === "video" ? `Frame ${bodyOrdinal}` : `Page ${bodyOrdinal}`}
+                    {isCover
+                      ? intent === "video"
+                        ? t("Cover Frame", "封面分镜")
+                        : t("Cover Page", "封面页")
+                      : intent === "video"
+                        ? `${t("Frame", "分镜")} ${bodyOrdinal}`
+                        : `${t("Page", "页面")} ${bodyOrdinal}`}
                   </p>
                   <p className={`mt-1 whitespace-pre-line font-semibold text-zinc-900 ${isCover ? "text-lg leading-7" : "text-sm"}`}>
                     {normalizeSlashLineBreaks(compactDraftLine(slide.title, 120))}

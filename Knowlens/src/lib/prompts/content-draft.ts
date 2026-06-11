@@ -720,6 +720,9 @@ function buildPptPrompt(
     ...batchLines,
     "Schema (strict JSON keys): contentMeta, outlineItems, slideDrafts.",
     `All user-facing values inside outlineItems and slideDrafts must be written in ${outputLanguage}, except proper nouns.`,
+    isChineseLanguage(outputLanguage)
+      ? "当输出语言是中文时，title、mainPoint、body、supportNote、visual、imagePrompt 里的描述语言必须统一为中文；不要写 Visual、Scene、Page、structure、framework、layout 等英文提示词或中英混排说明，专有名词除外。"
+      : "Keep title, mainPoint, body, supportNote, visual, and imagePrompt in the selected output language; do not mix in another language for labels or descriptive phrases, except proper nouns.",
     "slideDrafts item fields: page, title, mainPoint, body, supportNote, visual, imagePrompt, isCover.",
     "Drafting guidance:",
     "The reference taskType and visualization type are hints only. Trust the user input when they conflict.",
@@ -818,6 +821,9 @@ function buildVideoPrompt(
     ...batchLines,
     "Schema (strict JSON keys): contentMeta, outlineItems, storyboardDrafts.",
     `All user-facing values inside outlineItems and storyboardDrafts must be written in ${outputLanguage}, except proper nouns.`,
+    isChineseLanguage(outputLanguage)
+      ? "当输出语言是中文时，title、narration、visual、onScreenText 里的描述语言必须统一为中文；不要写 Visual、Scene、Frame、structure、comparison chart、flow diagram 等英文提示词或中英混排说明，专有名词除外。"
+      : "Keep title, narration, visual, and onScreenText in the selected output language; do not mix in another language for labels or descriptive phrases, except proper nouns.",
     "storyboardDrafts item fields: index, title, durationSec, narration, visual, onScreenText, isCover.",
     "Drafting guidance:",
     "The reference taskType and visualization type are hints only. Trust the user input when they conflict.",

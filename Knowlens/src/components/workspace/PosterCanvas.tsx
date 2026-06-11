@@ -613,9 +613,9 @@ const PosterNode = memo(function PosterNode({ data }: NodeProps<Node<PosterNodeD
     onRedraw,
     onDownload,
   } = data;
-  const canEdit = card.status === "ready" && !card.imageLoading;
   const isGenerating =
     card.status === "queued" || card.status === "generating" || card.status === "retrying";
+  const canEdit = !isGenerating && !card.imageLoading;
   const isImageLoading = card.status === "ready" && Boolean(card.imageLoading);
   const showImage = card.status === "ready" && Boolean(card.imageSrc);
   const showPlaceholder = !showImage || isImageLoading;
@@ -1211,19 +1211,21 @@ export function PosterCanvas({
     let triggerIndex: number | null = null;
     setCards((prev) =>
       prev.map((item) => {
-        if (item.id !== id || item.status !== "ready") {
+        if (item.id !== id || (item.status !== "ready" && item.status !== "failed")) {
           return item;
         }
-        const archived = {
-          id: `${item.id}-archive-${Date.now()}`,
-          imageSrc: item.imageSrc,
-          createdAt: Date.now(),
-        };
+        const archived = item.imageSrc
+          ? {
+              id: `${item.id}-archive-${Date.now()}`,
+              imageSrc: item.imageSrc,
+              createdAt: Date.now(),
+            }
+          : null;
         triggerIndex = item.index;
         triggerCopy = item.copy;
         return {
           ...item,
-          archives: [archived, ...item.archives].slice(0, 12),
+          archives: archived ? [archived, ...item.archives].slice(0, 12) : item.archives,
           imageSrc: "",
           status: "retrying",
           imageLoading: false,

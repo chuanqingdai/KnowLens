@@ -68,6 +68,7 @@ type StoryboardCanvasProps = {
   >;
   generationInProgress?: boolean;
   onRetryGenerationTask?: (index: number) => void;
+  onRedrawGenerationTask?: (index: number, copy: string) => void;
   hasMembership?: boolean;
   onRequestTtsUpgrade?: () => void;
   onTtsVoiceBilling?: (input: {
@@ -469,6 +470,79 @@ function buildPrompt(title: string, visual: string) {
   return visual.trim() || title.trim();
 }
 
+function hasChineseText(text: string) {
+  return /[\u3400-\u9fff]/.test(text);
+}
+
+function getStoryboardCopy(slides: SlideItem[]) {
+  const isChinese = slides.some((slide) => hasChineseText([slide.title, slide.body, slide.visual].join("\n")));
+  return {
+    scenePrefix: isChinese ? "分镜" : "Scene",
+    slidePrefix: isChinese ? "幻灯片" : "Slide",
+    suggestedDuration: isChinese ? "建议时长 15-20 秒" : "Suggested duration 15-20s",
+    narration: isChinese ? "旁白" : "Narration",
+    visualGoal: isChinese ? "视觉目标" : "Visual goal",
+    visualGoalText: (title: string) =>
+      isChinese
+        ? `清晰解释“${title.replace("?", "") || "这一页"}”的核心观点。`
+        : `Explain the core idea of "${title.replace("?", "") || "this scene"}" clearly.`,
+    composition: isChinese ? "画面结构" : "Composition",
+    cameraMotion: isChinese ? "镜头与动态" : "Camera & motion",
+    cameraMotionText: (lensMode: string) =>
+      isChinese ? `${lensMode}；用箭头和轻微动效突出关键时刻。` : `${lensMode}; highlight key moments with arrows and subtle pulses.`,
+    onScreenText: isChinese ? "画面文字" : "On-screen text",
+    onScreenTextValue: isChinese ? "标题加 2-3 个短关键词。" : "Title plus 2-3 short keywords.",
+    sceneImage: isChinese ? "分镜图片" : "Scene Image",
+    videoCover: isChinese ? "视频封面" : "Video cover",
+    retry: isChinese ? "重试" : "Retry",
+    redraw: isChinese ? "重新生图" : "Redraw",
+    generatingImage: isChinese ? "正在生成图片" : "Generating image",
+    generatingImageSlow: isChinese ? "正在生成图片（约 2-3 分钟）" : "Generating image (2-3 min)",
+    waitingForGeneration: isChinese ? "等待生成" : "Waiting for generation",
+    sceneImagePrompt: isChinese ? "分镜图片提示词" : "Scene image prompt",
+    addSceneImagePrompt: isChinese ? "点击添加分镜图片提示词" : "Click to add a scene image prompt",
+    optionalCoverVoiceover: isChinese ? "封面旁白可选" : "Optional cover voice-over",
+    voiceoverScript: isChinese ? "配音脚本" : "Voice-over script",
+    coverNarrationPlaceholder: isChinese ? "可选的封面旁白..." : "Optional narration for the cover...",
+    sceneNarrationPlaceholder: isChinese ? "这一幕的旁白..." : "Narration for this scene...",
+    pageContent: isChinese ? "页面内容" : "Page content",
+    editing: isChinese ? "编辑中" : "Editing",
+    visualStructurePrefix: isChinese ? "画面结构：" : "Visual structure: ",
+    waitingForPageContent: isChinese ? "等待页面内容..." : "Waiting for page content...",
+    sciencePresentation: isChinese ? "科学演示" : "Science presentation",
+  };
+}
+
+function buildEditablePageContent(slide: SlideItem, visualStructurePrefix: string) {
+  return [
+    slide.title.trim(),
+    slide.body.trim(),
+    slide.visual.trim() ? `${visualStructurePrefix}${slide.visual.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function parseEditablePageContent(value: string) {
+  const lines = value.replace(/\r/g, "").split("\n");
+  const title = lines[0]?.trim() ?? "";
+  const visualLineIndex = lines.findIndex((line) => /^\s*(Visual structure|画面结构)\s*[:：]/i.test(line));
+  const bodyLines = visualLineIndex >= 0 ? lines.slice(1, visualLineIndex) : lines.slice(1);
+  const visual =
+    visualLineIndex >= 0
+      ? lines
+          .slice(visualLineIndex)
+          .join("\n")
+          .replace(/^\s*(Visual structure|画面结构)\s*[:：]\s*/i, "")
+          .trim()
+      : "";
+  return {
+    title,
+    body: bodyLines.join("\n").trim(),
+    visual,
+  };
+}
+
 function stripVisibleAspectRatioText(text: string) {
   return text
     .trim()
@@ -623,7 +697,7 @@ function buildSlides(seedSlides: CanvasSeedSlide[]): SlideItem[] {
     ...item,
     body: normalizeCoverNarration(item),
     coverTitle: item.page === 1 && !item.isCover ? item.title : undefined,
-    coverSubtitle: item.page === 1 && !item.isCover ? "Waiting for generation" : undefined,
+    coverSubtitle: item.page === 1 && !item.isCover ? (hasChineseText(item.title) ? "等待生成" : "Waiting for generation") : undefined,
     coverTitleX: item.page === 1 && !item.isCover ? 50 : undefined,
     coverTitleY: item.page === 1 && !item.isCover ? 22 : undefined,
     coverTitleSize: item.page === 1 && !item.isCover ? 50 : undefined,
@@ -970,6 +1044,7 @@ export function StoryboardCanvas({
   generationTaskStateByIndex,
   generationInProgress = false,
   onRetryGenerationTask,
+  onRedrawGenerationTask,
   hasMembership = false,
   onRequestTtsUpgrade,
   onTtsVoiceBilling,
@@ -1155,6 +1230,7 @@ export function StoryboardCanvas({
   const promptBySlideId = present.promptBySlideId;
   const imageHistoryBySlideId = present.imageHistoryBySlideId;
   const activeImageIndexBySlideId = present.activeImageIndexBySlideId;
+  const storyboardCopy = useMemo(() => getStoryboardCopy(slides), [slides]);
 
   const canvasMode: CanvasMode = canvasModeExternal ?? "free";
 
@@ -2186,13 +2262,21 @@ export function StoryboardCanvas({
 
   const regenerateSlideImage = useCallback(
     (slideId: string, page: number) => {
+      const slide = slides.find((item) => item.id === slideId);
+      if (slide && onRedrawGenerationTask) {
+        onRedrawGenerationTask(
+          page,
+          buildEditablePageContent(slide, storyboardCopy.visualStructurePrefix),
+        );
+        return;
+      }
       if (onRetryGenerationTask) {
         onRetryGenerationTask(page);
         return;
       }
       redrawImageForSlide(slideId, page);
     },
-    [onRetryGenerationTask, redrawImageForSlide],
+    [onRedrawGenerationTask, onRetryGenerationTask, redrawImageForSlide, slides, storyboardCopy.visualStructurePrefix],
   );
 
   const selectHistoryImage = useCallback(
@@ -3183,9 +3267,9 @@ export function StoryboardCanvas({
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
-                    Scene {slide.page.toString().padStart(2, "0")}
+                    {storyboardCopy.scenePrefix} {slide.page.toString().padStart(2, "0")}
                   </span>
-                  <span className="text-xs text-zinc-500">Suggested duration 15-20s</span>
+                  <span className="text-xs text-zinc-500">{storyboardCopy.suggestedDuration}</span>
                 </div>
 
                 <input
@@ -3199,7 +3283,7 @@ export function StoryboardCanvas({
                 <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200">
                   <div className="grid grid-cols-[86px_minmax(0,1fr)] text-xs">
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      Narration
+                      {storyboardCopy.narration}
                     </p>
                     <textarea
                       value={slide.body}
@@ -3211,13 +3295,13 @@ export function StoryboardCanvas({
                       }`}
                     />
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      Visual goal
+                      {storyboardCopy.visualGoal}
                     </p>
                     <p className="border-b border-zinc-200 px-2 py-2 leading-5 text-zinc-700">
-                      Explain the core idea of &quot;{slide.title.replace("?", "") || "this scene"}&quot; clearly.
+                      {storyboardCopy.visualGoalText(slide.title)}
                     </p>
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      Composition
+                      {storyboardCopy.composition}
                     </p>
                     <textarea
                       value={slide.visual}
@@ -3229,16 +3313,16 @@ export function StoryboardCanvas({
                       }`}
                     />
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      Camera & motion
+                      {storyboardCopy.cameraMotion}
                     </p>
                     <p className="border-b border-zinc-200 px-2 py-2 text-zinc-700">
-                      {lensMode}; highlight key moments with arrows and subtle pulses.
+                      {storyboardCopy.cameraMotionText(lensMode)}
                     </p>
                     <p className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
-                      On-screen text
+                      {storyboardCopy.onScreenText}
                     </p>
                     <p className="border-b border-zinc-200 px-2 py-2 text-zinc-700">
-                      Title plus 2-3 short keywords.
+                      {storyboardCopy.onScreenTextValue}
                     </p>
                     <p className="border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-500">
                       Transition
@@ -3366,8 +3450,8 @@ export function StoryboardCanvas({
               >
                 <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 text-xs">
                   <span className="text-zinc-500">
-                    Scene Image {slide.page.toString().padStart(2, "0")}
-                    {slide.isCover ? " (Video cover)" : ""}
+                    {storyboardCopy.sceneImage} {slide.page.toString().padStart(2, "0")}
+                    {slide.isCover ? ` (${storyboardCopy.videoCover})` : ""}
                   </span>
                 </div>
 
@@ -3412,7 +3496,7 @@ export function StoryboardCanvas({
                               className="nodrag nopan nowheel mt-2 inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
                             >
                               <RotateCcw size={12} />
-                              Retry
+                              {storyboardCopy.retry}
                             </button>
                           ) : null}
                         </div>
@@ -3424,7 +3508,7 @@ export function StoryboardCanvas({
                       >
                         <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 shadow-sm">
                           <LoaderCircle size={12} className="animate-spin text-blue-500" />
-                          Generating image
+                          {storyboardCopy.generatingImage}
                         </span>
                       </div>
                     ) : (
@@ -3432,7 +3516,7 @@ export function StoryboardCanvas({
                         className="flex w-full items-center justify-center rounded bg-white text-xs text-zinc-400"
                         style={{ aspectRatio: resolvedImageAspectRatio }}
                       >
-                        Waiting for generation
+                        {storyboardCopy.waitingForGeneration}
                       </div>
                     )}
                   </div>
@@ -3440,7 +3524,7 @@ export function StoryboardCanvas({
 
                 <div className="px-3 pt-3">
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
-                    <div className="text-[11px] text-zinc-500">Scene image prompt</div>
+                    <div className="text-[11px] text-zinc-500">{storyboardCopy.sceneImagePrompt}</div>
                     {isPromptEditing ? (
                       <textarea
                         value={imagePrompt}
@@ -3464,16 +3548,17 @@ export function StoryboardCanvas({
                             : "border-zinc-200"
                         }`}
                       >
-                        {imagePrompt || "Click to add a scene image prompt"}
+                        {imagePrompt || storyboardCopy.addSceneImagePrompt}
                       </button>
                     )}
                     <div className="mt-2 flex items-center justify-end gap-2">
                       <button
                         type="button"
+                        disabled={isGeneratingImage}
                         onClick={() => regenerateSlideImage(slide.id, slide.page)}
-                        className="nodrag nopan nowheel rounded-md border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
+                        className="nodrag nopan nowheel rounded-md border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-300 disabled:bg-zinc-300"
                       >
-                        Redraw
+                        {storyboardCopy.redraw}
                       </button>
                     </div>
 
@@ -3506,15 +3591,15 @@ export function StoryboardCanvas({
                 <div className="px-3 pt-3">
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
                     <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>Narration</span>
-                      <span>{slide.isCover ? "Optional cover voice-over" : "Voice-over script"}</span>
+                      <span>{storyboardCopy.narration}</span>
+                      <span>{slide.isCover ? storyboardCopy.optionalCoverVoiceover : storyboardCopy.voiceoverScript}</span>
                     </div>
                     <textarea
                       value={narrationText}
                       onChange={(event) =>
                         updateSlide(slide.id, "body", event.target.value)
                       }
-                      placeholder={slide.isCover ? "Optional narration for the cover..." : "Narration for this scene..."}
+                      placeholder={slide.isCover ? storyboardCopy.coverNarrationPlaceholder : storyboardCopy.sceneNarrationPlaceholder}
                       className={`nodrag nopan nowheel h-20 w-full resize-none rounded border bg-white px-2 py-1.5 text-[11px] leading-5 text-zinc-700 outline-none ${
                         validationMap[slide.id]?.body
                           ? "border-red-300"
@@ -3760,6 +3845,7 @@ export function StoryboardCanvas({
       audioDurationBySlideId,
       audioProgressBySlideId,
       canvasMode,
+      commitChange,
       editingPromptSlideId,
       generatedAudioBySlideId,
       generationInProgress,
@@ -3779,6 +3865,7 @@ export function StoryboardCanvas({
       selectedSlideId,
       sampleAudioByVoiceId,
       slides,
+      storyboardCopy,
       ttsBySlideId,
       toggleAudioPreviewForSlide,
       updatePromptForSlide,
@@ -4112,13 +4199,7 @@ export function StoryboardCanvas({
                     generationState?.status === "retrying" ||
                     (!currentImage && !generationState?.status && generationInProgress);
                   const isGenerationFailed = generationState?.status === "failed";
-                  const pageContent = [
-                    slide.title.trim(),
-                    slide.body.trim(),
-                    slide.visual.trim() ? `Visual structure: ${slide.visual.trim()}` : "",
-                  ]
-                    .filter(Boolean)
-                    .join("\n");
+                  const pageContent = buildEditablePageContent(slide, storyboardCopy.visualStructurePrefix);
                   return (
                     <section
                       key={`ppt-page-flow-${slide.id}`}
@@ -4129,12 +4210,12 @@ export function StoryboardCanvas({
                     >
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-xs font-medium text-zinc-600">
-                          Slide {slide.page} / {slides.length}
+                          {storyboardCopy.slidePrefix} {slide.page} / {slides.length}
                         </p>
                         {isActive ? (
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
                             <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" aria-hidden="true" />
-                            Editing
+                            {storyboardCopy.editing}
                           </span>
                         ) : null}
                       </div>
@@ -4152,7 +4233,7 @@ export function StoryboardCanvas({
                           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white">
                             <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 shadow-sm">
                               <LoaderCircle size={12} className="animate-spin text-blue-500" />
-                              Generating image (2-3 min)
+                              {storyboardCopy.generatingImageSlow}
                             </div>
                           </div>
                         ) : null}
@@ -4175,7 +4256,7 @@ export function StoryboardCanvas({
                                   className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
                                 >
                                   <RotateCcw size={12} />
-                                  Retry
+                                  {storyboardCopy.retry}
                                 </button>
                               ) : null}
                             </div>
@@ -4193,7 +4274,7 @@ export function StoryboardCanvas({
                               rows={2}
                             />
                             <textarea
-                              value={slide.coverSubtitle || "Science presentation"}
+                              value={slide.coverSubtitle || storyboardCopy.sciencePresentation}
                               onChange={(event) =>
                                 updateSlideField(slide.id, "coverSubtitle", event.target.value)
                               }
@@ -4207,24 +4288,41 @@ export function StoryboardCanvas({
 
                       <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2">
                         <div className="mb-1.5 flex items-center justify-between">
-                          <p className="text-[11px] text-zinc-600">Page content</p>
+                          <p className="text-[11px] text-zinc-600">{storyboardCopy.pageContent}</p>
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
+                              disabled={isGenerating}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 regenerateSlideImage(slide.id, slide.page);
                               }}
-                              className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700"
+                              className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-300 disabled:bg-zinc-300"
                             >
-                              Redraw
+                              {storyboardCopy.redraw}
                             </button>
                           </div>
                         </div>
                         <textarea
-                          value={pageContent || "Waiting for page content..."}
-                          readOnly
-                          className="h-24 w-full resize-none rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs leading-5 text-zinc-700 outline-none"
+                          value={pageContent}
+                          placeholder={storyboardCopy.waitingForPageContent}
+                          onChange={(event) => {
+                            const parsed = parseEditablePageContent(event.target.value);
+                            commitChange((prev) => ({
+                              ...prev,
+                              slides: prev.slides.map((item) =>
+                                item.id === slide.id
+                                  ? {
+                                      ...item,
+                                      title: parsed.title,
+                                      body: parsed.body,
+                                      visual: parsed.visual,
+                                    }
+                                  : item,
+                              ),
+                            }));
+                          }}
+                          className="nodrag nopan nowheel h-24 w-full resize-none rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs leading-5 text-zinc-700 outline-none focus:border-zinc-400"
                         />
                         {shouldShowHistory ? (
                           <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">

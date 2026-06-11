@@ -40,6 +40,7 @@ import {
 } from "@/lib/language";
 import {
   buildGenerationTaskStateByIndexFromNormalized,
+  isImageTaskActiveStatus,
   normalizeImageTaskStatus,
   normalizeImageBatchTaskResults,
   type ImageBatchTaskResultLike,
@@ -1330,28 +1331,32 @@ function parsePosterCardCopy(copy: string, fallbackTitle: string): ParsedPosterC
   const title = compactLineText(lines[0] || fallbackTitle);
   const pageFocus =
     compactLineText(
-      lines.find((line) => /^本页重点[:：]/.test(line))?.replace(/^本页重点[:：]\s*/i, ""),
+      lines
+        .find((line) => /^(本页重点|Page Focus)[:：]/i.test(line))
+        ?.replace(/^(本页重点|Page Focus)[:：]\s*/i, ""),
     ) || title;
   const visualStructure =
     compactLineText(
-      lines.find((line) => /^画面结构[:：]/.test(line))?.replace(/^画面结构[:：]\s*/i, ""),
+      lines
+        .find((line) => /^(画面结构|Visual structure)[:：]/i.test(line))
+        ?.replace(/^(画面结构|Visual structure)[:：]\s*/i, ""),
     ) || "Structured infographic";
 
-  const contentStartIndex = lines.findIndex((line) => /^内容[:：]?$/i.test(line));
+  const contentStartIndex = lines.findIndex((line) => /^(内容|Content)[:：]?$/i.test(line));
   const extractedFromContent =
     contentStartIndex >= 0
       ? lines
           .slice(contentStartIndex + 1)
-          .filter((line) => !/^画面结构[:：]/.test(line))
+          .filter((line) => !/^(画面结构|Visual structure)[:：]/i.test(line))
           .map((line) => compactLineText(line.replace(/^\d+\.\s*/, "")))
           .filter(Boolean)
       : [];
 
   const fallbackLines = lines
     .slice(1)
-    .filter((line) => !/^本页重点[:：]/.test(line))
-    .filter((line) => !/^画面结构[:：]/.test(line))
-    .filter((line) => !/^内容[:：]?$/i.test(line))
+    .filter((line) => !/^(本页重点|Page Focus)[:：]/i.test(line))
+    .filter((line) => !/^(画面结构|Visual structure)[:：]/i.test(line))
+    .filter((line) => !/^(内容|Content)[:：]?$/i.test(line))
     .map((line) => compactLineText(line.replace(/^\d+\.\s*/, "")))
     .filter(Boolean);
 
@@ -4516,6 +4521,8 @@ export default function WorkspacePage() {
           normalizeGenerationRunId(jobId ? `restored-${jobId}` : `restored-pages-${projectId}`);
         const now = Date.now();
         const restoredState: Record<number, GenerationTaskUiState> = {};
+        const normalizedJobStatus = normalizeImageTaskStatus(payload.job?.status);
+        const isRestoredJobActive = isRestoredImageLoadingStatus(normalizedJobStatus);
         for (const task of tasks) {
           const index = Math.round(Number(task.index));
           if (!Number.isFinite(index) || index <= 0) {
@@ -4541,7 +4548,7 @@ export default function WorkspacePage() {
             };
             continue;
           }
-          if (isRestoredImageLoadingStatus(status) && isFreshLoading) {
+          if (isRestoredImageLoadingStatus(status) && (isFreshLoading || isRestoredJobActive)) {
             restoredState[index] = {
               index,
               status: status === "queued" ? "queued" : "generating",
@@ -4579,7 +4586,6 @@ export default function WorkspacePage() {
           }
         }
 
-        const normalizedJobStatus = normalizeImageTaskStatus(payload.job?.status);
         for (const page of restoredPages) {
           const index = Math.max(1, Math.round(Number(page.pageIndex || 0)));
           if (!Number.isFinite(index) || index <= 0 || restoredState[index]) {
@@ -4642,7 +4648,7 @@ export default function WorkspacePage() {
             continue;
           }
 
-          if (hasRealImageGenerationJob && isRestoredImageLoadingStatus(derivedStatus) && isFreshLoading) {
+          if (hasRealImageGenerationJob && isRestoredImageLoadingStatus(derivedStatus) && (isFreshLoading || isRestoredJobActive)) {
             restoredState[index] = {
               index,
               status: derivedStatus === "queued" ? "queued" : "generating",
@@ -5350,6 +5356,16 @@ export default function WorkspacePage() {
           "TASK_NOT_QUEUED",
         ]);
         const taskRunInFlightIds = new Set<string>();
+        const hasActiveBackendState = (nextPayload: ImageGenerateBatchResponse | null) => {
+          const status = (nextPayload?.job?.status || "").trim().toLowerCase();
+          const taskStatuses = nextPayload?.tasks?.map((task) => (task.status || "").trim().toLowerCase()) ?? [];
+          return (
+            status === "queued" ||
+            status === "running" ||
+            status === "processing" ||
+            taskStatuses.some((item) => pollActiveTaskStatuses.has(item))
+          );
+        };
         const mergePolledPayload = (
           nextPayload: ImageGenerateBatchResponse | null,
           previousPayload: ImageGenerateBatchResponse | null,
@@ -5704,9 +5720,9 @@ export default function WorkspacePage() {
           }
           emitUiEvent({
             action: "ui.job.poll.stop",
-            status: "error",
+            status: "info",
             code: latestPayload?.code || "IMAGE_JOB_POLL_TIMEOUT",
-            message: latestPayload?.error || tr("Generation timed out.", "生成超时。"),
+            message: latestPayload?.error || "Client polling window ended before the provider reached a terminal state.",
             details: {
               jobId,
               runId: activeRunId,
@@ -5715,26 +5731,18 @@ export default function WorkspacePage() {
               finalJobStatus: latestPayload?.job?.status || "unknown",
             },
           });
-          const timeoutResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+          const finalStatusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+            method: "GET",
             credentials: "same-origin",
-            body: JSON.stringify({
-              action: "timeout",
-              reason: "frontend_poll_timeout",
-            }),
           }).catch(() => null);
-          if (timeoutResponse?.ok) {
-            const timeoutPayload = (await timeoutResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
-            const recoveredTimeoutPayload = mergePolledPayload(timeoutPayload, latestPayload, jobId);
-            if (recoveredTimeoutPayload) {
-              latestPayload = recoveredTimeoutPayload;
-              responseJobId = (latestPayload.job?.id || "").trim() || jobId;
-              writeReadyTasksFromPayload(latestPayload, jobId);
-              return latestPayload;
-            }
+          if (finalStatusResponse?.ok) {
+            const finalStatusPayload = (await finalStatusResponse.json().catch(() => null)) as ImageGenerateBatchResponse | null;
+            latestPayload = mergePolledPayload(finalStatusPayload, latestPayload, jobId) ?? latestPayload;
+            responseJobId = (latestPayload?.job?.id || "").trim() || jobId;
+            writeReadyTasksFromPayload(latestPayload, jobId);
+          }
+          if (hasActiveBackendState(latestPayload)) {
+            return latestPayload;
           }
           return buildPollFailurePayload(
             latestPayload,
@@ -5832,6 +5840,7 @@ export default function WorkspacePage() {
           );
           const normalizedStatus = normalizedResult?.normalizedStatus || "";
           const shouldMarkSuccess = normalizedResult?.shouldMarkSuccess === true;
+          const shouldKeepActive = Boolean(normalizedResult) && isImageTaskActiveStatus(normalizedStatus);
           logWorkspaceImageDebug("[ImageRenderDebug] result normalized:", {
             requestedTaskIndex: task.index,
             backendTaskIndex: normalizedResult?.backendTaskIndex ?? result?.index,
@@ -5921,6 +5930,31 @@ export default function WorkspacePage() {
                 taskStatus: result?.status || null,
                 taskId: result?.taskId || null,
               },
+            });
+            return;
+          }
+          if (shouldKeepActive) {
+            removeImageErrorTurnByTaskIndex(task.index);
+            setGenerationTaskStateByIndex((prev) => {
+              const previous = prev[task.index];
+              const nextState: GenerationTaskUiState = {
+                index: task.index,
+                status: normalizedStatus === "queued" ? "queued" : "generating",
+                attempts: previous?.attempts || 1,
+                maxAttempts,
+                rawImageUrl: result?.rawImageUrl || undefined,
+                runId: activeRunId,
+                jobId: responseJobId || currentGenerationJobIdRef.current || undefined,
+                source: "current-run",
+                error: undefined,
+                errorCode: undefined,
+                startedAt: previous?.startedAt ?? Date.now(),
+                lastUpdatedAt: Date.now(),
+              };
+              return {
+                ...prev,
+                [task.index]: nextState,
+              };
             });
             return;
           }
@@ -6168,6 +6202,34 @@ export default function WorkspacePage() {
     },
     [buildGenerationRequestPayload, currentEmail, emitFlowAudit, runGenerationBatch, setGenerationRunContext, tr],
   );
+  const markGenerationTaskRetrying = useCallback((index: number, runId: string) => {
+    const now = Date.now();
+    setGenerationTaskStateByIndex((prev) => ({
+      ...prev,
+      [index]: {
+        ...(prev[index] ?? {
+          index,
+          attempts: 0,
+          maxAttempts: 1,
+          startedAt: now,
+        }),
+        index,
+        status: "retrying",
+        attempts: Math.max(1, (prev[index]?.attempts ?? 0) + 1),
+        maxAttempts: prev[index]?.maxAttempts ?? 1,
+        imageUrl: undefined,
+        rawImageUrl: undefined,
+        runId,
+        jobId: undefined,
+        source: "current-run",
+        error: undefined,
+        errorCode: undefined,
+        startedAt: now,
+        lastUpdatedAt: now,
+      },
+    }));
+    setGenerationConfirmError(null);
+  }, []);
   const handleRetryGenerationTask = useCallback(
     (index: number) => {
       const normalizedIndex = Math.max(1, Math.round(Number(index) || 0));
@@ -6230,15 +6292,19 @@ export default function WorkspacePage() {
         delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
         return;
       }
+      markGenerationTaskRetrying(index, nextRunId);
       setGenerationRunContext(nextRunId, null);
+      generationRequestInFlightRef.current = true;
       void runGenerationTasksOrdered([task], nextRunId, true).finally(() => {
         delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
+        generationRequestInFlightRef.current = false;
       });
     },
-    [chargeImageTaskCredits, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
+    [chargeImageTaskCredits, markGenerationTaskRetrying, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
   );
   const handleRedrawGenerationTask = useCallback(
     (index: number, copy: string) => {
+      const normalizedIndex = Math.max(1, Math.round(Number(index) || 0));
       const baseTask = resolveImageGenerationTaskForIndex(index);
       if (!baseTask) {
         const message = tr(
@@ -6258,6 +6324,10 @@ export default function WorkspacePage() {
         pushWorkspaceToast(message);
         return;
       }
+      if (retryingGenerationTaskIndexesRef.current[normalizedIndex]) {
+        pushWorkspaceToast(tr("This image is already retrying.", "这张图片正在重试。"));
+        return;
+      }
 
       const parsedCopy = parsePosterCardCopy(copy, baseTask.contentTitle || `Poster ${index}`);
       const contentBody = compactLineText([parsedCopy.pageFocus, ...parsedCopy.contentLines].join("\n"));
@@ -6270,7 +6340,10 @@ export default function WorkspacePage() {
         ...baseTask.visualDesign,
         mainVisual: parsedCopy.visualStructure || baseTask.visualDesign.mainVisual,
         composition: compactLineText(
-          [baseTask.visualDesign.composition, `Redraw focus: ${parsedCopy.pageFocus}`]
+          [
+            baseTask.visualDesign.composition,
+            `${outputLanguage.toLowerCase().startsWith("zh") ? "重绘重点" : "Redraw focus"}: ${parsedCopy.pageFocus}`,
+          ]
             .filter(Boolean)
             .join(" | "),
         ),
@@ -6315,18 +6388,23 @@ export default function WorkspacePage() {
       });
 
       const nextRunId = createGenerationRunId();
+      retryingGenerationTaskIndexesRef.current[normalizedIndex] = true;
       if (!chargeImageTaskCredits({ runId: nextRunId, taskIndex: index, action: "redraw" })) {
+        delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
         return;
       }
+      markGenerationTaskRetrying(index, nextRunId);
       setGenerationRunContext(nextRunId, null);
       generationRequestInFlightRef.current = true;
       setGenerationConfirmError(null);
       void runGenerationTasksOrdered([redrawTask], nextRunId, true).finally(() => {
+        delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
         generationRequestInFlightRef.current = false;
       });
     },
     [
       chargeImageTaskCredits,
+      markGenerationTaskRetrying,
       normalizedGenerationConfig.normalizedCount,
       outputLanguage,
       pushWorkspaceToast,
@@ -7201,6 +7279,9 @@ export default function WorkspacePage() {
         .filter((item) => {
           const active = item.status === "queued" || item.status === "generating" || item.status === "retrying";
           if (!active) {
+            return false;
+          }
+          if (item.jobId) {
             return false;
           }
           const startedAt = item.startedAt ?? item.lastUpdatedAt ?? now;
@@ -10356,6 +10437,7 @@ export default function WorkspacePage() {
                 generationTaskStateByIndex={generationTaskStateByIndex}
                 generationInProgress={generationInProgress}
                 onRetryGenerationTask={handleRetryGenerationTask}
+                onRedrawGenerationTask={handleRedrawGenerationTask}
                 hasMembership={hasActiveMembership}
                 onRequestTtsUpgrade={() => {
                   openCreditsPaywall({ scene: "tts_premium" });
