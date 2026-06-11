@@ -12,7 +12,6 @@ import {
   FlaskConical,
   PanelsTopLeft,
   Share2,
-  Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
@@ -544,11 +543,7 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
     <MarketingChrome>
       <section className="mx-auto flex min-h-[calc(100svh-7rem)] w-full max-w-6xl flex-col items-center justify-center px-4 pb-12 pt-10 text-center sm:px-6 lg:pt-14">
         <div className="mx-auto max-w-5xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm">
-            <Sparkles size={14} className="text-blue-600" aria-hidden="true" />
-            {content.hero.eyebrow}
-          </div>
-          <h1 className="mx-auto mt-6 max-w-[1080px] text-5xl font-semibold tracking-tight text-zinc-950 sm:text-6xl lg:text-[4.35rem] lg:leading-[1.04]">
+          <h1 className="mx-auto max-w-[1080px] text-5xl font-semibold tracking-tight text-zinc-950 sm:text-6xl lg:text-[4.35rem] lg:leading-[1.04]">
             {content.hero.title}
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600">{content.hero.subtitle}</p>
@@ -582,6 +577,11 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
             className="aspect-[936/527] w-full object-cover"
           />
         </div>
+        {content.landingPageType === "information_generator" ? (
+          <p className="mt-3 text-sm text-zinc-500">
+            Generated examples: educational infographics, visual summaries, posters, carousel-style visuals.
+          </p>
+        ) : null}
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6" id="before-after">
@@ -603,7 +603,7 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
             onClick={() => startGeneration(content, content.hero.exampleTopic, "before_after")}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white hover:bg-zinc-800"
           >
-            Try This Topic
+            {content.landingPageType === "information_generator" ? "Try with Your Topic" : "Try This Topic"}
             <ArrowRight size={15} aria-hidden="true" />
           </button>
         </div>
@@ -613,12 +613,12 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
         <SectionHeading
           title={
             content.landingPageType === "information_generator"
-              ? "Turn Information into Clear Visual Structures"
+              ? "Create Different Types of Infographics"
               : "Create Once. Adapt for Every Channel."
           }
           description={
             content.landingPageType === "information_generator"
-              ? "Choose the information format that fits your message, from classroom visuals to science explainers and campaign graphics."
+              ? "Choose the right visual structure for your idea, from educational visuals to social media posters and carousel-style graphics."
               : "Turn one script or topic into short explainer videos for the channels your audience already watches."
           }
         />
@@ -644,10 +644,14 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
 
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading
-          title="See What You Can Create with KnowLens"
+          title={
+            content.landingPageType === "information_generator"
+              ? "AI-Generated Infographic Examples"
+              : "See What You Can Create with KnowLens"
+          }
           description={
             content.landingPageType === "information_generator"
-              ? "Explore 9:16 information visualization ideas for lessons, science explainers, and shareable visual content."
+              ? "Explore visual examples created from topics, notes, and short text prompts."
               : "Explore short explainer video ideas for science, tech, health, history, and everyday learning content."
           }
         />
@@ -658,7 +662,11 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
               className="mb-5 break-inside-avoid overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"
             >
               <div className="bg-zinc-100">
-                <img src={item.image} alt={item.title} className="h-auto w-full object-contain" />
+                <img
+                  src={item.image}
+                  alt={content.landingPageType === "information_generator" ? `${item.title} infographic example` : item.title}
+                  className="h-auto w-full object-contain"
+                />
               </div>
               <div className="p-4">
                 <div className="flex flex-wrap gap-2 text-[11px] font-medium text-zinc-600">
@@ -688,7 +696,7 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
                     onClick={() => startGeneration(content, item.topic, "example")}
                     className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-500 hover:text-zinc-950"
                   >
-                    Try topic
+                    {content.landingPageType === "information_generator" ? "Create Similar" : "Try topic"}
                     <ArrowRight size={14} aria-hidden="true" />
                   </button>
                 </div>
@@ -702,12 +710,12 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
         <SectionHeading
           title={
             content.landingPageType === "information_generator"
-              ? "Built for Students, Science Communicators, and Teams"
+              ? "Built for Anyone Who Needs Clear Visual Content"
               : "Built for Creators, Educators, and Teams"
           }
           description={
             content.landingPageType === "information_generator"
-              ? "From classroom projects to public science outreach, KnowLens helps turn ideas and notes into information visuals people can understand at a glance."
+              ? "Use KnowLens to turn ideas, notes, and explanations into visual summaries for learning, social media, and presentations."
               : "From science Shorts to TikTok explainers, KnowLens helps creators turn ideas, scripts, and notes into short videos people can understand and share."
           }
         />
@@ -727,12 +735,12 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
           eyebrow="HOW IT WORKS"
           title={
             content.landingPageType === "information_generator"
-              ? "Create a Clear Information Visual in 3 Simple Steps"
+              ? "Create an Infographic in 3 Simple Steps"
               : "Create Short Explainer Videos in 3 Simple Steps"
           }
           description={
             content.landingPageType === "information_generator"
-              ? "Start with a topic, outline, or notes. KnowLens helps organize the message into an information visual people can scan quickly."
+              ? "Start with a topic, outline, or notes. KnowLens helps organize the message into an infographic people can scan quickly."
               : "Start with a topic, script, article, or notes. KnowLens helps shape the idea into a short visual explainer for YouTube Shorts and TikTok."
           }
         />
@@ -748,9 +756,9 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {(content.landingPageType === "information_generator"
             ? [
-                ["Add Your Source", "Paste a topic, lesson note, campaign idea, research summary, or rough outline."],
-                ["Shape the Message", "KnowLens organizes the main points, highlights the key facts, and turns scattered notes into a visualization-ready structure."],
-                ["Generate the Visual", "Create a clear information visual with a title, sections, labels, and a layout people can understand at a glance."],
+                ["Add a Topic, Text, or Notes", "Start from an idea, short explanation, rough notes, or an outline."],
+                ["Choose a Visual Direction", "KnowLens organizes your content into sections, highlights, diagrams, and key points."],
+                ["Generate and Download", "Create a polished infographic, poster, carousel-style image, or visual summary."],
               ]
             : [
                 ["Add Your Source", "Paste a topic, script, article, lesson note, research summary, or rough idea. Start with the material you already have, whether it is a creator script, a classroom topic, or a business explanation."],
@@ -773,7 +781,9 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
               Start Free. Upgrade When You Need More.
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-zinc-600">
-              Try KnowLens with free credits. Upgrade when you want more generations, HD exports, watermark removal, or more video projects.
+              {content.landingPageType === "information_generator"
+                ? "Try KnowLens with free credits. Upgrade when you want more infographic generations, HD exports, watermark removal, or more projects."
+                : "Try KnowLens with free credits. Upgrade when you want more generations, HD exports, watermark removal, or more video projects."}
             </p>
           </div>
           <div className="mt-8 grid gap-x-8 gap-y-6 border-t border-zinc-200 pt-6 text-left md:grid-cols-4">
@@ -793,7 +803,11 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
       <section className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6">
         <SectionHeading
           title="FAQ"
-          description="Common questions about creating visual explainer videos with KnowLens."
+          description={
+            content.landingPageType === "information_generator"
+              ? "Common questions about creating infographics, posters, and visual summaries with KnowLens."
+              : "Common questions about creating visual explainer videos with KnowLens."
+          }
         />
         <div className="mt-8 divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white">
           {content.faq.map((item) => (
@@ -809,9 +823,15 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
 
       <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
         <div className="rounded-[2rem] bg-zinc-950 px-6 py-12 text-center text-white sm:px-10">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">Turn Your Next Idea into a Visual Explainer</h2>
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
+            {content.landingPageType === "information_generator"
+              ? "Turn Your Next Idea into an Infographic"
+              : "Turn Your Next Idea into a Visual Explainer"}
+          </h2>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-zinc-300">
-            Start with a topic, script, article, or notes. Generate a short visual explainer video for YouTube Shorts, TikTok, or Reels in minutes.
+            {content.landingPageType === "information_generator"
+              ? "Start with a topic, notes, or plain text. Generate a clear visual summary in minutes."
+              : "Start with a topic, script, article, or notes. Generate a short visual explainer video for YouTube Shorts, TikTok, or Reels in minutes."}
           </p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <button
@@ -819,7 +839,7 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
               onClick={() => startGeneration(content, content.hero.exampleTopic, "final_cta")}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 hover:bg-zinc-100"
             >
-              Generate Your First Video
+              {content.landingPageType === "information_generator" ? "Create an Infographic" : "Generate Your First Video"}
               <ArrowRight size={16} aria-hidden="true" />
             </button>
             <a

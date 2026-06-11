@@ -701,7 +701,7 @@ async function concatSegmentsWithTransitions(input: {
       outgoingTransitionSec > 0
         ? `,tpad=stop_mode=clone:stop_duration=${outgoingTransitionSec.toFixed(3)}`
         : "";
-    return `[${index}:v]fps=${fps},settb=AVTB,setpts=PTS-STARTPTS,setsar=1,format=yuv420p${padFilter}[tv${index}]`;
+    return `[${index}:v]fps=${fps},settb=AVTB,setpts=PTS-STARTPTS,setsar=1,format=yuv420p${padFilter},fps=${fps},settb=AVTB,setpts=PTS-STARTPTS[tv${index}]`;
   });
   const audioInputs = segmentPaths.map((_, index) => {
     return `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`;
@@ -716,12 +716,14 @@ async function concatSegmentsWithTransitions(input: {
     const durationSec = transitionDurations[index] || 0.45;
     const transitionName = mapTransitionToFfmpegXfade(transition);
     const nextVideoLabel = `tv${index + 1}`;
+    const rawOutputLabel = `xvraw${index}`;
     const outputLabel = `xv${index}`;
     const offsetSec = Math.max(0.05, currentVideoDurationSec - durationSec);
     transitionFilters.push(
       `[${currentVideoLabel}][${nextVideoLabel}]xfade=transition=${transitionName}:duration=${durationSec.toFixed(
         3,
-      )}:offset=${offsetSec.toFixed(3)}[${outputLabel}]`,
+      )}:offset=${offsetSec.toFixed(3)}[${rawOutputLabel}]`,
+      `[${rawOutputLabel}]fps=${fps},settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[${outputLabel}]`,
     );
     currentVideoLabel = outputLabel;
     currentVideoDurationSec =
