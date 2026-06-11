@@ -409,6 +409,16 @@ type CreditsPaywallContext = {
   count?: number;
 };
 
+const ACTIVE_GENERATION_TASK_STATUSES = new Set<GenerationTaskUiStatus>([
+  "queued",
+  "generating",
+  "retrying",
+]);
+
+function isActiveGenerationTaskState(state?: { status?: GenerationTaskUiStatus } | null) {
+  return Boolean(state?.status && ACTIVE_GENERATION_TASK_STATUSES.has(state.status));
+}
+
 type GenerationConfirmResponse = {
   ok?: boolean;
   error?: string;
@@ -563,7 +573,7 @@ const GENERATION_CONFIRM_CREDITS_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS = 30000;
 const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 660000;
-const STEP_RUN_MAX_CONCURRENT_TASKS = 3;
+const STEP_RUN_MAX_CONCURRENT_TASKS = 5;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const BASIC_TTS_CREDITS_PER_1000_CHARS = 5;
 const PRO_TTS_CREDITS_PER_1000_CHARS = 20;
@@ -6262,28 +6272,8 @@ export default function WorkspacePage() {
         pushWorkspaceToast(tr("This image is already retrying.", "这张图片正在重试。"));
         return;
       }
-      if (generationRequestInFlightRef.current) {
-        const message = tr(
-          "Another image is still generating. Please retry after it finishes.",
-          "还有图片正在生成，请稍后再重试。",
-        );
-        setGenerationTaskStateByIndex((prev) => ({
-          ...prev,
-          [index]: {
-            ...(prev[index] ?? {
-              index,
-              attempts: 1,
-              maxAttempts: 1,
-              startedAt: Date.now(),
-            }),
-            status: "failed",
-            error: message,
-            errorCode: "IMAGE_RETRY_BUSY",
-            lastUpdatedAt: Date.now(),
-          },
-        }));
-        setGenerationConfirmError(message);
-        pushWorkspaceToast(message);
+      if (isActiveGenerationTaskState(generationTaskStateByIndex[normalizedIndex])) {
+        pushWorkspaceToast(tr("This image is already generating.", "这张图片正在生成中。"));
         return;
       }
       const nextRunId = createGenerationRunId();
@@ -6294,13 +6284,11 @@ export default function WorkspacePage() {
       }
       markGenerationTaskRetrying(index, nextRunId);
       setGenerationRunContext(nextRunId, null);
-      generationRequestInFlightRef.current = true;
       void runGenerationTasksOrdered([task], nextRunId, true).finally(() => {
         delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
-        generationRequestInFlightRef.current = false;
       });
     },
-    [chargeImageTaskCredits, markGenerationTaskRetrying, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
+    [chargeImageTaskCredits, generationTaskStateByIndex, markGenerationTaskRetrying, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
   );
   const handleRedrawGenerationTask = useCallback(
     (index: number, copy: string) => {
@@ -6315,17 +6303,11 @@ export default function WorkspacePage() {
         pushWorkspaceToast(message);
         return;
       }
-      if (generationRequestInFlightRef.current) {
-        const message = tr(
-          "Another image is still generating. Please retry after it finishes.",
-          "还有图片正在生成，请稍后再重试。",
-        );
-        setGenerationConfirmError(message);
-        pushWorkspaceToast(message);
-        return;
-      }
-      if (retryingGenerationTaskIndexesRef.current[normalizedIndex]) {
-        pushWorkspaceToast(tr("This image is already retrying.", "这张图片正在重试。"));
+      if (
+        retryingGenerationTaskIndexesRef.current[normalizedIndex] ||
+        isActiveGenerationTaskState(generationTaskStateByIndex[normalizedIndex])
+      ) {
+        pushWorkspaceToast(tr("This image is already generating.", "这张图片正在生成中。"));
         return;
       }
 
@@ -6395,16 +6377,15 @@ export default function WorkspacePage() {
       }
       markGenerationTaskRetrying(index, nextRunId);
       setGenerationRunContext(nextRunId, null);
-      generationRequestInFlightRef.current = true;
       setGenerationConfirmError(null);
       void runGenerationTasksOrdered([redrawTask], nextRunId, true).finally(() => {
         delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
-        generationRequestInFlightRef.current = false;
       });
     },
     [
       chargeImageTaskCredits,
       markGenerationTaskRetrying,
+      generationTaskStateByIndex,
       normalizedGenerationConfig.normalizedCount,
       outputLanguage,
       pushWorkspaceToast,

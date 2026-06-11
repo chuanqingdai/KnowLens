@@ -48,7 +48,7 @@ const FALLBACK_PROVIDER_CALL_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_PRO
 const ROUTE_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_ROUTE_EXECUTION_BUDGET_MS || "590000", 10);
 const TASK_EXECUTION_BUDGET_MS = Number.parseInt(process.env.IMAGE2_TASK_EXECUTION_BUDGET_MS || "570000", 10);
 const ASSET_DOWNLOAD_TIMEOUT_MS = Number.parseInt(process.env.IMAGE2_ASSET_DOWNLOAD_TIMEOUT_MS || "45000", 10);
-const STEP_RUN_MAX_ACTIVE_TASKS = 3;
+const STEP_RUN_MAX_ACTIVE_TASKS = 5;
 
 function ensureSafeOrigin(req: NextRequest) {
   const origin = req.headers.get("origin");
@@ -136,7 +136,7 @@ function normalizeStepRunMaxActiveTasks() {
   if (!Number.isFinite(raw)) {
     return STEP_RUN_MAX_ACTIVE_TASKS;
   }
-  return Math.max(1, Math.min(4, raw));
+  return Math.max(1, Math.min(5, raw));
 }
 
 function isTimeoutCode(code?: string | null) {
@@ -343,7 +343,7 @@ async function requestImageByPolicy(input: {
             elapsedMs: Date.now() - providerStartedAt,
             errorCode: missingUrlFailure.errorCode,
             errorMessage: missingUrlFailure.errorMessage,
-      }
+          });
           lastFailure = missingUrlFailure;
           continue;
         }

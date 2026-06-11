@@ -37,6 +37,7 @@ const COVER_SCENE_DURATION_SEC = 1;
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
 const DEFAULT_FPS = 30;
+const VIDEO_TTS_PLAYBACK_RATE = 1.2;
 const VIDEO_EXPORT_CRF = "17";
 const VIDEO_EXPORT_PRESET = "veryfast";
 const VIDEO_EXPORT_AUDIO_BITRATE = "192k";
@@ -525,11 +526,13 @@ async function renderSceneSegment(input: {
     `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2:color=0x0b0c0f,` +
     "format=yuv420p";
   if (input.audioPath) {
-    const durationSec = Math.max(0.5, await getMediaDurationSec(input.audioPath, input.durationSec));
+    const rawDurationSec = await getMediaDurationSec(input.audioPath, input.durationSec);
+    const durationSec = Math.max(0.5, rawDurationSec / VIDEO_TTS_PLAYBACK_RATE);
     const durationText = durationSec.toFixed(3);
+    const audioTempoFilter = `atempo=${VIDEO_TTS_PLAYBACK_RATE.toFixed(2)}`;
     const videoFilter = `${scaleFilter},setpts=PTS-STARTPTS`;
     const audioFilter =
-      `apad=whole_dur=${durationText},atrim=0:${durationText},` +
+      `${audioTempoFilter},apad=whole_dur=${durationText},atrim=0:${durationText},` +
       "aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo," +
       "asetpts=PTS-STARTPTS,alimiter=limit=0.95";
     await runFfmpeg([
