@@ -103,7 +103,7 @@ type StyleOption = {
   coverImage?: string;
 };
 
-const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
+const OUTPUT_COUNT_OPTIONS = [6, 8, 10, 14, 16, 20, 24] as const;
 const VIDEO_OUTPUT_COUNT_OPTIONS = [6, 8, 10, 14, 16, 20, 24] as const;
 const STYLE_COVER_FRAME_CLASS = "relative aspect-[471/836] w-full overflow-hidden bg-zinc-100 leading-none";
 const STYLE_CARD_LABEL_CLASS = "flex min-h-[3.5rem] items-start px-2.5 pb-2.5 pt-2";

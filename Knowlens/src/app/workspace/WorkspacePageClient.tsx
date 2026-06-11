@@ -1192,7 +1192,7 @@ const intentOptions: { id: "ppt" | "video" | "poster"; label: string; desc: stri
   { id: "ppt", label: "Generate PPT", desc: "Best for teaching and presentations." },
 ];
 
-const OUTPUT_COUNT_OPTIONS = [6, 10, 14, 16, 20, 24] as const;
+const OUTPUT_COUNT_OPTIONS = [6, 8, 10, 14, 16, 20, 24] as const;
 
 const posterSizeOptions = [
   { id: "poster-9-16", label: "9:16 Portrait", desc: "Great for mobile-first vertical delivery." },
