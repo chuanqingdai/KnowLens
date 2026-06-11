@@ -37,9 +37,13 @@ const COVER_SCENE_DURATION_SEC = 1;
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
 const DEFAULT_FPS = 30;
+const VIDEO_TTS_PLAYBACK_RATE = 1.2;
 const VIDEO_EXPORT_CRF = "17";
 const VIDEO_EXPORT_PRESET = "veryfast";
 const VIDEO_EXPORT_AUDIO_BITRATE = "192k";
+const VIDEO_TRANSITION_CONCAT_BASE_TIMEOUT_MS = 180_000;
+const VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS = 25_000;
+const VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS = 540_000;
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -508,11 +512,13 @@ async function renderSceneSegment(input: {
     `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2:color=0x0b0c0f,` +
     "format=yuv420p";
   if (input.audioPath) {
-    const durationSec = Math.max(0.5, await getMediaDurationSec(input.audioPath, input.durationSec));
+    const rawDurationSec = await getMediaDurationSec(input.audioPath, input.durationSec);
+    const durationSec = Math.max(0.5, rawDurationSec / VIDEO_TTS_PLAYBACK_RATE);
     const durationText = durationSec.toFixed(3);
+    const audioTempoFilter = `atempo=${VIDEO_TTS_PLAYBACK_RATE.toFixed(2)}`;
     const videoFilter = `${scaleFilter},setpts=PTS-STARTPTS`;
     const audioFilter =
-      `apad=whole_dur=${durationText},atrim=0:${durationText},` +
+      `${audioTempoFilter},apad=whole_dur=${durationText},atrim=0:${durationText},` +
       "aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo," +
       "asetpts=PTS-STARTPTS,alimiter=limit=0.95";
     await runFfmpeg([
@@ -695,10 +701,11 @@ async function concatSegmentsWithTransitions(input: {
     const transitionName = mapTransitionToFfmpegXfade(transition);
     const nextVideoLabel = `tv${index + 1}`;
     const outputLabel = `xv${index}`;
+    const centeredOffsetSec = Math.max(0.05, offsetSec - durationSec / 2);
     transitionFilters.push(
       `[${currentVideoLabel}][${nextVideoLabel}]xfade=transition=${transitionName}:duration=${durationSec.toFixed(
         3,
-      )}:offset=${offsetSec.toFixed(3)}[${outputLabel}]`,
+      )}:offset=${centeredOffsetSec.toFixed(3)}[${outputLabel}]`,
     );
     currentVideoLabel = outputLabel;
     offsetSec += Math.max(0.1, segmentDurationsSec[index + 1] || DEFAULT_SCENE_DURATION_SEC);
@@ -712,6 +719,12 @@ async function concatSegmentsWithTransitions(input: {
     `[${currentVideoLabel}]format=yuv420p[v]`,
     `${audioConcatInputs}concat=n=${segmentPaths.length}:v=0:a=1[a]`,
   ].join(";");
+
+  const timeoutMs = Math.min(
+    VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS,
+    VIDEO_TRANSITION_CONCAT_BASE_TIMEOUT_MS +
+      segmentPaths.length * VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS,
+  );
 
   await runFfmpeg(
     [
@@ -742,7 +755,7 @@ async function concatSegmentsWithTransitions(input: {
       "make_zero",
       outputPath,
     ],
-    260_000,
+    timeoutMs,
   );
 }
 

@@ -2823,16 +2823,11 @@ function normalizeOutlineItems(
     ? raw.map((item) => normalizeTextItem(item)).filter(Boolean)
     : [];
   if (direction === "ppt" || direction === "video") {
-    const fallback = buildGenericMediaSeed(topic, count, direction, outputLanguage).map((item) => item.title);
     const badCount = list.filter((item) => isTemplateInstructionText(item)).length;
     if (!list.length || badCount >= Math.max(1, Math.ceil(list.length / 2))) {
-      return fallback;
+      return [];
     }
-    return Array.from({ length: count }, (_, idx) => {
-      const item = list[idx];
-      if (!item || isTemplateInstructionText(item)) {
-        return toConciseDraftTitle(fallback[idx] || `${topic} · ${idx + 1}`, topic, outputLanguage);
-      }
+    return list.slice(0, count).map((item) => {
       return toConciseDraftTitle(item, topic, outputLanguage) || item;
     });
   }
@@ -2854,7 +2849,6 @@ function normalizeSlideDrafts(
   outputLanguage: OutputLanguage = "zh",
   forceFirstCover = true,
 ) {
-  const fallbackSlides = buildGenericMediaSeed(topic, count, "ppt", outputLanguage);
   const list = Array.isArray(raw) ? raw : [];
   const drafts = list
     .map((item, idx) => {
@@ -2862,9 +2856,11 @@ function normalizeSlideDrafts(
         return null;
       }
       const row = item as PptSlideDraft;
-      const fallback = fallbackSlides[idx] || fallbackSlides[fallbackSlides.length - 1];
-      const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || fallback?.title || `Slide ${idx + 1}`;
-      const titleCandidate = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || "";
+      if (!rawTitle || isTemplateInstructionText(rawTitle)) {
+        return null;
+      }
+      const titleCandidate = rawTitle;
       const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage) || titleCandidate;
       const mainPoint = normalizeTextItem(row.mainPoint);
       const body = normalizeTextItem(row.body);
@@ -2873,18 +2869,22 @@ function normalizeSlideDrafts(
       const imagePromptDraft = normalizeTextItem(row.imagePromptDraft || row.imagePrompt);
       const isCover = row.isCover === true || (forceFirstCover && count > 1 && idx === 0);
       const bodyLines = isCover ? [] : [mainPoint, body, support].filter(Boolean);
+      if (!isCover && (!bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line)))) {
+        return null;
+      }
       const safeBody = isCover
         ? ""
-        : !bodyLines.length || bodyLines.some((line) => isTemplateInstructionText(line))
-          ? compactPptSlideBody(fallback?.body || fallback?.mainPoint || "", outputLanguage)
-          : compactPptSlideBody(bodyLines.join("\n"), outputLanguage);
+        : compactPptSlideBody(bodyLines.join("\n"), outputLanguage);
+      if (!isCover && !safeBody) {
+        return null;
+      }
       return {
         page: Number.isFinite(row.page) ? Number(row.page) : idx + 1,
         title,
         body: safeBody,
-        visual: visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "",
-        imagePromptDraft: imagePromptDraft || fallback?.imagePrompt || "",
-        imagePrompt: imagePromptDraft || fallback?.imagePrompt || "",
+        visual: visual && !isTemplateInstructionText(visual) ? visual : "",
+        imagePromptDraft,
+        imagePrompt: imagePromptDraft,
         isCover,
       };
     })
@@ -2893,23 +2893,7 @@ function normalizeSlideDrafts(
   if (drafts.length >= count) {
     return drafts.slice(0, count);
   }
-  return outlineItems.slice(0, count).map((title, idx) => {
-    const existing = drafts[idx];
-    if (existing) {
-      return existing;
-    }
-    const isCover = forceFirstCover && count > 1 && idx === 0;
-    return {
-      page: idx + 1,
-      title: toConciseDraftTitle(title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`, topic, outputLanguage)
-        || title || fallbackSlides[idx]?.title || `Slide ${idx + 1}`,
-      body: isCover ? "" : compactPptSlideBody(fallbackSlides[idx]?.body || "", outputLanguage),
-      visual: fallbackSlides[idx]?.visual || "",
-      imagePromptDraft: fallbackSlides[idx]?.imagePrompt || "",
-      imagePrompt: fallbackSlides[idx]?.imagePrompt || "",
-      isCover,
-    };
-  });
+  return drafts;
 }
 
 function normalizeStoryboardDrafts(
@@ -2920,7 +2904,6 @@ function normalizeStoryboardDrafts(
   outputLanguage: OutputLanguage = "zh",
   forceFirstCover = true,
 ) {
-  const fallbackFrames = buildGenericMediaSeed(topic, count, "video", outputLanguage);
   const list = Array.isArray(raw) ? raw : [];
   const drafts = list
     .map((item, idx) => {
@@ -2928,27 +2911,24 @@ function normalizeStoryboardDrafts(
         return null;
       }
       const row = item as VideoStoryboardDraft;
-      const fallback = fallbackFrames[idx] || fallbackFrames[fallbackFrames.length - 1];
-      const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || fallback?.title || `Frame ${idx + 1}`;
-      const titleCandidate = isTemplateInstructionText(rawTitle) ? fallback?.title || rawTitle : rawTitle;
+      const rawTitle = normalizeTextItem(row.title) || outlineItems[idx] || "";
+      if (!rawTitle || isTemplateInstructionText(rawTitle)) {
+        return null;
+      }
+      const titleCandidate = rawTitle;
       const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage) || titleCandidate;
       const narration = normalizeTextItem(row.narration);
       const visual = normalizeTextItem(row.visual);
       const isCover = row.isCover === true || (forceFirstCover && count > 1 && idx === 0);
-      const safeVisual = visual && !isTemplateInstructionText(visual) ? visual : fallback?.visual || "";
+      const safeVisual = visual && !isTemplateInstructionText(visual) ? visual : "";
+      if (!isCover && (!narration || isTemplateInstructionText(narration) || !safeVisual)) {
+        return null;
+      }
       const safeNarration = isCover
         ? ""
-        : narration && !isTemplateInstructionText(narration)
-        ? tuneStoryboardNarrationLength({
-            narration,
-            fallbackNarration: fallback?.narration || fallback?.mainPoint || "",
-            title,
-            visual: safeVisual,
-            outputLanguage,
-          })
         : tuneStoryboardNarrationLength({
-            narration: "",
-            fallbackNarration: fallback?.narration || fallback?.mainPoint || "",
+            narration,
+            fallbackNarration: "",
             title,
             visual: safeVisual,
             outputLanguage,
@@ -2968,31 +2948,7 @@ function normalizeStoryboardDrafts(
   if (drafts.length >= count) {
     return drafts.slice(0, count);
   }
-  return outlineItems.slice(0, count).map((title, idx) => {
-    const existing = drafts[idx];
-    if (existing) {
-      return existing;
-    }
-    const isCover = forceFirstCover && count > 1 && idx === 0;
-    return {
-      index: idx + 1,
-      title: toConciseDraftTitle(title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`, topic, outputLanguage)
-        || title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
-      narration: isCover
-        ? ""
-        : tuneStoryboardNarrationLength({
-            narration: "",
-            fallbackNarration: fallbackFrames[idx]?.narration || "",
-            title: title || fallbackFrames[idx]?.title || `Frame ${idx + 1}`,
-            visual: fallbackFrames[idx]?.visual || "",
-            outputLanguage,
-          }),
-      visual: fallbackFrames[idx]?.visual || "",
-      imagePromptDraft: "",
-      imagePrompt: "",
-      isCover,
-    };
-  });
+  return drafts;
 }
 
 function enforcePosterSpecificity(draft: PosterDraft, topic: string): PosterDraft {
@@ -3456,6 +3412,7 @@ export async function POST(request: NextRequest) {
         count: outputCount,
         ratioOrSize: posterSizeLabel,
         outputLanguage,
+        draftBatch: draftBatch ?? undefined,
       });
       logOpsEvent({
         category: "llm",
@@ -3559,12 +3516,9 @@ export async function POST(request: NextRequest) {
         userEmail: email,
         details: { direction, outputCount, providerPath },
       });
-      const outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic, direction, outputLanguage);
-      const sourceAwareSeed = draftBatch?.includeCover === false
-        ? null
-        : buildSourceAwareMediaSeed(prompt, topic, outputCount, direction, outputLanguage);
+      let outlineItems = normalizeOutlineItems(parsed.outlineItems, outputCount, topic, direction, outputLanguage);
       if (direction === "ppt") {
-        const slideDrafts = normalizeSlideDrafts(
+        let slideDrafts = normalizeSlideDrafts(
           parsed.slideDrafts,
           outlineItems,
           outputCount,
@@ -3572,44 +3526,118 @@ export async function POST(request: NextRequest) {
           outputLanguage,
           draftBatch?.includeCover !== false,
         );
-        if (
-          sourceAwareSeed?.length &&
-          shouldPreferSourceAwareMediaSeed({
-            sourceText: prompt,
-            outputLanguage,
-            titles: slideDrafts.map((item) => item.title),
-            bodyTexts: slideDrafts.map((item) => item.body),
-          })
-        ) {
-          const sourceOutlineItems = sourceAwareSeed.map((item) => item.title);
-          const sourceSlideDrafts = sourceAwareSeed.map((item, idx) => ({
-            page: idx + 1,
-            title: item.title,
-            body: item.isCover ? "" : item.body || item.mainPoint,
-            visual: item.visual,
-            imagePromptDraft: item.imagePrompt,
-            imagePrompt: item.imagePrompt,
-            isCover: item.isCover === true,
-          }));
-          return NextResponse.json({
-            direction,
-            normalizedDirection: direction,
-            normalizedCount: outputCount,
-            normalizedRatio: posterSizeLabel,
-            outlineItems: sourceOutlineItems,
-            slideDrafts: sourceSlideDrafts,
-            outputLanguage,
-            source: "fallback",
-            providerPath,
-            fallbackReason: "source_aware_template_repair",
-            llmUsage:
-              llmUsage ??
-              buildEstimatedDraftLlmUsage({
-                promptBundle,
-                generatedText: content,
-                model: modelForLog,
-              }),
+        let bodySlideCount = slideDrafts.filter((item) => !item.isCover && item.body.trim()).length;
+        let isCompletePptDraft =
+          outlineItems.length >= outputCount &&
+          slideDrafts.length >= outputCount &&
+          bodySlideCount >= Math.max(1, outputCount - 1);
+        if (!isCompletePptDraft) {
+          logOpsEvent({
+            category: "llm",
+            action: "draft_generation_retry",
+            status: "ok",
+            source: modelForLog,
+            userEmail: email,
+            code: "DRAFT_PPT_INCOMPLETE_RETRY",
+            message: "Retrying incomplete PPT draft with a smaller JSON schema.",
+            details: {
+              stage: "draft_response_validation_retry",
+              direction,
+              outputCount,
+              outlineCount: outlineItems.length,
+              slideDraftCount: slideDrafts.length,
+              bodySlideCount,
+              providerPath,
+            },
           });
+          const retryPromptBundle = buildSmallSchemaDraftPrompt({
+            direction,
+            topic,
+            userPrompt: prompt,
+            count: outputCount,
+            ratioOrSize: posterSizeLabel,
+            outputLanguage,
+            draftBatch: draftBatch ?? undefined,
+          });
+          const retryResult = await requestDraftFromResolvedProvider({
+            providerPath,
+            textModel,
+            promptBundle: retryPromptBundle,
+            onRetry: (firstError) => {
+              logOpsEvent({
+                category: "llm",
+                action: "draft_generation_retry",
+                status: "ok",
+                source: modelForLog,
+                userEmail: email,
+                code: "DRAFT_PPT_INCOMPLETE_REQUEST_RETRY",
+                message: firstError,
+                details: { stage: "draft_response_validation_retry_request_retry", direction, outputCount, providerPath },
+              });
+            },
+          });
+          if (retryResult.ok) {
+            let retryParsed: ReturnType<typeof parseJsonContent> = null;
+            try {
+              retryParsed = parseJsonContent(retryResult.text);
+            } catch {
+              retryParsed = null;
+            }
+            if (retryParsed) {
+              const retryOutlineItems = normalizeOutlineItems(
+                retryParsed.outlineItems,
+                outputCount,
+                topic,
+                direction,
+                outputLanguage,
+              );
+              const retrySlideDrafts = normalizeSlideDrafts(
+                retryParsed.slideDrafts,
+                retryOutlineItems,
+                outputCount,
+                topic,
+                outputLanguage,
+                draftBatch?.includeCover !== false,
+              );
+              const retryBodySlideCount = retrySlideDrafts.filter((item) => !item.isCover && item.body.trim()).length;
+              if (
+                retryOutlineItems.length >= outputCount &&
+                retrySlideDrafts.length >= outputCount &&
+                retryBodySlideCount >= Math.max(1, outputCount - 1)
+              ) {
+                outlineItems = retryOutlineItems;
+                slideDrafts = retrySlideDrafts;
+                bodySlideCount = retryBodySlideCount;
+                content = retryResult.text;
+                llmUsage = retryResult.usage ?? llmUsage;
+                isCompletePptDraft = true;
+              }
+            }
+          }
+        }
+        if (!isCompletePptDraft) {
+          logOpsEvent({
+            category: "llm",
+            action: "draft_generation_failed",
+            status: "error",
+            source: modelForLog,
+            userEmail: email,
+            code: "DRAFT_PPT_INCOMPLETE",
+            message: "Model response did not include a complete usable PPT draft.",
+            details: {
+              stage: "draft_response_validation",
+              direction,
+              outputCount,
+              outlineCount: outlineItems.length,
+              slideDraftCount: slideDrafts.length,
+              bodySlideCount,
+              providerPath,
+            },
+          });
+          return NextResponse.json(
+            { error: "Model response did not include a complete usable PPT draft.", providerPath },
+            { status: 502 },
+          );
         }
         return NextResponse.json({
           direction,
@@ -3630,7 +3658,7 @@ export async function POST(request: NextRequest) {
             }),
         });
       }
-      const storyboardDrafts = normalizeStoryboardDrafts(
+      let storyboardDrafts = normalizeStoryboardDrafts(
         parsed.storyboardDrafts,
         outlineItems,
         outputCount,
@@ -3638,50 +3666,120 @@ export async function POST(request: NextRequest) {
         outputLanguage,
         draftBatch?.includeCover !== false,
       );
-      if (
-        sourceAwareSeed?.length &&
-        shouldPreferSourceAwareMediaSeed({
-          sourceText: prompt,
-          outputLanguage,
-          titles: storyboardDrafts.map((item) => item.title),
-          bodyTexts: storyboardDrafts.map((item) => item.narration),
-        })
-      ) {
-        const sourceOutlineItems = sourceAwareSeed.map((item) => item.title);
-        const sourceStoryboardDrafts = sourceAwareSeed.map((item, idx) => ({
-          index: idx + 1,
-          title: item.title,
-          narration: item.isCover ? "" : tuneStoryboardNarrationLength({
-            narration: item.narration || item.body || item.mainPoint,
-            fallbackNarration: item.body || item.mainPoint,
-            title: item.title,
-            visual: item.visual,
-            outputLanguage,
-          }),
-          visual: item.visual,
-          imagePromptDraft: "",
-          imagePrompt: "",
-          isCover: item.isCover === true,
-        }));
-        return NextResponse.json({
-          direction,
-          normalizedDirection: direction,
-          normalizedCount: outputCount,
-          normalizedRatio: posterSizeLabel,
-          outlineItems: sourceOutlineItems,
-          storyboardDrafts: sourceStoryboardDrafts,
-          outputLanguage,
-          source: "fallback",
-          providerPath,
-          fallbackReason: "source_aware_template_repair",
-          llmUsage:
-            llmUsage ??
-            buildEstimatedDraftLlmUsage({
-              promptBundle,
-              generatedText: content,
-              model: modelForLog,
-            }),
+      let narratedFrameCount = storyboardDrafts.filter((item) => !item.isCover && item.narration.trim() && item.visual.trim()).length;
+      let isCompleteVideoDraft =
+        outlineItems.length >= outputCount &&
+        storyboardDrafts.length >= outputCount &&
+        narratedFrameCount >= Math.max(1, outputCount - 1);
+      if (!isCompleteVideoDraft) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_retry",
+          status: "ok",
+          source: modelForLog,
+          userEmail: email,
+          code: "DRAFT_VIDEO_INCOMPLETE_RETRY",
+          message: "Retrying incomplete video storyboard with a smaller JSON schema.",
+          details: {
+            stage: "draft_response_validation_retry",
+            direction,
+            outputCount,
+            outlineCount: outlineItems.length,
+            storyboardDraftCount: storyboardDrafts.length,
+            narratedFrameCount,
+            providerPath,
+          },
         });
+        const retryPromptBundle = buildSmallSchemaDraftPrompt({
+          direction,
+          topic,
+          userPrompt: prompt,
+          count: outputCount,
+          ratioOrSize: posterSizeLabel,
+          outputLanguage,
+          draftBatch: draftBatch ?? undefined,
+        });
+        const retryResult = await requestDraftFromResolvedProvider({
+          providerPath,
+          textModel,
+          promptBundle: retryPromptBundle,
+          onRetry: (firstError) => {
+            logOpsEvent({
+              category: "llm",
+              action: "draft_generation_retry",
+              status: "ok",
+              source: modelForLog,
+              userEmail: email,
+              code: "DRAFT_VIDEO_INCOMPLETE_REQUEST_RETRY",
+              message: firstError,
+              details: { stage: "draft_response_validation_retry_request_retry", direction, outputCount, providerPath },
+            });
+          },
+        });
+        if (retryResult.ok) {
+          let retryParsed: ReturnType<typeof parseJsonContent> = null;
+          try {
+            retryParsed = parseJsonContent(retryResult.text);
+          } catch {
+            retryParsed = null;
+          }
+          if (retryParsed) {
+            const retryOutlineItems = normalizeOutlineItems(
+              retryParsed.outlineItems,
+              outputCount,
+              topic,
+              direction,
+              outputLanguage,
+            );
+            const retryStoryboardDrafts = normalizeStoryboardDrafts(
+              retryParsed.storyboardDrafts,
+              retryOutlineItems,
+              outputCount,
+              topic,
+              outputLanguage,
+              draftBatch?.includeCover !== false,
+            );
+            const retryNarratedFrameCount = retryStoryboardDrafts.filter(
+              (item) => !item.isCover && item.narration.trim() && item.visual.trim(),
+            ).length;
+            if (
+              retryOutlineItems.length >= outputCount &&
+              retryStoryboardDrafts.length >= outputCount &&
+              retryNarratedFrameCount >= Math.max(1, outputCount - 1)
+            ) {
+              outlineItems = retryOutlineItems;
+              storyboardDrafts = retryStoryboardDrafts;
+              narratedFrameCount = retryNarratedFrameCount;
+              content = retryResult.text;
+              llmUsage = retryResult.usage ?? llmUsage;
+              isCompleteVideoDraft = true;
+            }
+          }
+        }
+      }
+      if (!isCompleteVideoDraft) {
+        logOpsEvent({
+          category: "llm",
+          action: "draft_generation_failed",
+          status: "error",
+          source: modelForLog,
+          userEmail: email,
+          code: "DRAFT_VIDEO_INCOMPLETE",
+          message: "Model response did not include a complete usable video storyboard.",
+          details: {
+            stage: "draft_response_validation",
+            direction,
+            outputCount,
+            outlineCount: outlineItems.length,
+            storyboardDraftCount: storyboardDrafts.length,
+            narratedFrameCount,
+            providerPath,
+          },
+        });
+        return NextResponse.json(
+          { error: "Model response did not include a complete usable video storyboard.", providerPath },
+          { status: 502 },
+        );
       }
       return NextResponse.json({
         direction,

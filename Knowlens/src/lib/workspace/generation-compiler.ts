@@ -247,10 +247,10 @@ function buildVideoScenePromptDraft(input: {
   promptDraft: string;
   isCover: boolean;
 }) {
-  const sceneCopy = stripVisibleAspectRatioText(sanitizePromptLine(input.sceneText));
+  const narrationSource = stripVisibleAspectRatioText(sanitizePromptLine(input.sceneText));
   const visualDirection = stripVisibleAspectRatioText(sanitizePromptLine(input.visual));
   const fallbackPrompt = stripVisibleAspectRatioText(input.promptDraft);
-  const sceneBasis = cleanText([sceneCopy, visualDirection, fallbackPrompt].filter(Boolean).join(" | "));
+  const sceneBasis = cleanText([narrationSource, visualDirection, fallbackPrompt].filter(Boolean).join(" | "));
   if (input.isCover) {
     return cleanText(
       [
@@ -265,9 +265,14 @@ function buildVideoScenePromptDraft(input: {
   return cleanText(
     [
       input.title ? `Scene title: ${input.title}` : "",
+      narrationSource ? `Voiceover to support visually: ${narrationSource}` : "",
+      visualDirection ? `Storyboard visual direction: ${visualDirection}` : "",
+      fallbackPrompt && fallbackPrompt !== visualDirection ? `Extra visual hint: ${fallbackPrompt}` : "",
       sceneBasis ? `Scene basis: ${sceneBasis}` : "",
-      "Use this scene's copy as the source of truth.",
-      "Create one clear focal subject with one visible action or change.",
+      "Use the voiceover as the source of truth for this frame.",
+      "The image must help explain the exact narration beat: show its concrete subject, cause/effect, contrast, example, motion cue, or state change.",
+      "Do not create a generic topic illustration if it does not directly support what the narration says.",
+      "Create one clear focal subject with one visible action or change that matches the voiceover.",
       "Simple composition, 1-3 visual elements maximum, no subtitles, no bullet lists, no tiny labels, no UI text, no dense annotations.",
     ]
       .filter(Boolean)

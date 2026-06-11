@@ -29,6 +29,7 @@ import {
   Position,
   ReactFlow,
   type Edge,
+  type MiniMapNodeProps,
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
@@ -413,6 +414,7 @@ const TTS_OPTIONS: TtsVoiceConfig[] = [
 
 const TTS_OPTION_IDS = new Set(TTS_OPTIONS.map((option) => option.id));
 const DEFAULT_EMOTION_TTS_ID = "basic_narrator_female";
+const VIDEO_TTS_PLAYBACK_RATE = 1.2;
 const TTS_SAMPLE_CACHE_VERSION = "api-v3";
 const FREE_TTS_SAMPLE_AUDIO_BY_ID: Record<string, string> = {
   basic_narrator_male: "/tts-samples/basic_narrator_male.wav",
@@ -465,7 +467,18 @@ function getTtsSampleAudioUrl(voiceId: string) {
 }
 
 function buildPrompt(title: string, visual: string) {
-  return visual.trim() || title.trim();
+  const cleanTitle = title.trim();
+  const cleanVisual = visual.trim();
+  if (!cleanTitle) {
+    return cleanVisual;
+  }
+  if (!cleanVisual) {
+    return cleanTitle;
+  }
+  if (cleanVisual.toLowerCase().includes(cleanTitle.toLowerCase())) {
+    return cleanVisual;
+  }
+  return `${cleanTitle}. ${cleanVisual}`;
 }
 
 function stripVisibleAspectRatioText(text: string) {
@@ -486,10 +499,13 @@ function stripVisibleAspectRatioText(text: string) {
 }
 
 function buildPromptFromSeed(seedSlide: CanvasSeedSlide) {
-  return stripVisibleAspectRatioText(
+  const seedPrompt = (
     seedSlide.imagePromptDraft?.trim() ||
     seedSlide.imagePrompt?.trim() ||
-    buildPrompt(seedSlide.title, seedSlide.visual),
+    seedSlide.visual
+  ).trim();
+  return stripVisibleAspectRatioText(
+    buildPrompt(seedSlide.title, seedPrompt),
   );
 }
 
@@ -769,6 +785,84 @@ function getSlideIdFromNodeId(nodeId: string) {
   return nodeId.replace(/^(story|image)-/, "");
 }
 
+function StoryboardMiniMapNode({
+  id,
+  x,
+  y,
+  width,
+  height,
+  borderRadius,
+  color,
+  shapeRendering,
+  selected,
+  strokeColor,
+  strokeWidth,
+  onClick,
+}: MiniMapNodeProps) {
+  const safeWidth = Math.max(22, width);
+  const safeHeight = Math.max(16, height);
+  const inset = Math.max(3, Math.min(safeWidth, safeHeight) * 0.08);
+  const stroke = selected ? MINIMAP_VIEWPORT_COLOR : color || strokeColor || "#71717a";
+  const lineWidth = selected ? Math.max(2.5, strokeWidth || 1) : Math.max(1.6, strokeWidth || 1);
+  const isImageNode = id.startsWith("image-");
+
+  return (
+    <g
+      transform={`translate(${x}, ${y})`}
+      onClick={onClick ? (event) => onClick(event, id) : undefined}
+      className={onClick ? "cursor-pointer" : undefined}
+    >
+      <rect
+        x={0}
+        y={0}
+        width={safeWidth}
+        height={safeHeight}
+        rx={borderRadius}
+        ry={borderRadius}
+        fill="rgba(255,255,255,0.38)"
+        stroke={stroke}
+        strokeWidth={lineWidth}
+        shapeRendering={shapeRendering}
+      />
+      {isImageNode ? (
+        <rect
+          x={inset}
+          y={inset}
+          width={Math.max(2, safeWidth - inset * 2)}
+          height={Math.max(2, safeHeight - inset * 2)}
+          rx={Math.min(borderRadius, 4)}
+          ry={Math.min(borderRadius, 4)}
+          fill="transparent"
+          stroke={stroke}
+          strokeWidth={Math.max(1, lineWidth * 0.55)}
+          shapeRendering={shapeRendering}
+        />
+      ) : (
+        <>
+          <line
+            x1={inset}
+            y1={safeHeight * 0.38}
+            x2={safeWidth - inset}
+            y2={safeHeight * 0.38}
+            stroke={stroke}
+            strokeWidth={Math.max(1, lineWidth * 0.55)}
+            shapeRendering={shapeRendering}
+          />
+          <line
+            x1={inset}
+            y1={safeHeight * 0.62}
+            x2={safeWidth * 0.72}
+            y2={safeHeight * 0.62}
+            stroke={stroke}
+            strokeWidth={Math.max(1, lineWidth * 0.55)}
+            shapeRendering={shapeRendering}
+          />
+        </>
+      )}
+    </g>
+  );
+}
+
 function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -878,6 +972,13 @@ function estimateNarrationDurationSec(text: string) {
     return 0;
   }
   return clamp(Math.ceil(compactLength / 5), 10, 36);
+}
+
+function getVideoTtsPlaybackDurationSec(durationSec: number) {
+  if (!Number.isFinite(durationSec) || durationSec <= 0) {
+    return 0;
+  }
+  return durationSec / VIDEO_TTS_PLAYBACK_RATE;
 }
 
 export function StoryboardCanvas({
@@ -1175,11 +1276,12 @@ export function StoryboardCanvas({
     if (!generationSeedSlides?.length) {
       return;
     }
-    const seedPromptByIndex = new Map<number, string>();
+    const seedPromptByIndex = new Map<number, { prompt: string; legacyPrompt: string }>();
     generationSeedSlides.forEach((seedSlide, idx) => {
-      const prompt = (seedSlide.imagePromptDraft || seedSlide.imagePrompt || "").trim();
+      const legacyPrompt = (seedSlide.imagePromptDraft || seedSlide.imagePrompt || "").trim();
+      const prompt = buildPromptFromSeed(seedSlide);
       if (prompt) {
-        seedPromptByIndex.set(idx, prompt);
+        seedPromptByIndex.set(idx, { prompt, legacyPrompt });
       }
     });
     if (!seedPromptByIndex.size) {
@@ -1194,8 +1296,14 @@ export function StoryboardCanvas({
           return;
         }
         const currentPrompt = nextPromptBySlideId[slide.id] || "";
-        if (currentPrompt.trim() !== seedPrompt && isLegacyAutoPrompt(currentPrompt, slide)) {
-          nextPromptBySlideId[slide.id] = seedPrompt;
+        const currentTrimmed = currentPrompt.trim();
+        const isOldSeedPrompt =
+          Boolean(seedPrompt.legacyPrompt) && currentTrimmed === seedPrompt.legacyPrompt;
+        if (
+          currentTrimmed !== seedPrompt.prompt &&
+          (isOldSeedPrompt || isLegacyAutoPrompt(currentPrompt, slide))
+        ) {
+          nextPromptBySlideId[slide.id] = seedPrompt.prompt;
           changed = true;
         }
       });
@@ -1476,7 +1584,9 @@ export function StoryboardCanvas({
       const token = audioTokenRef.current;
       const generatedAudio = readyAudio ?? generatedAudioRef.current[slideId];
       const estimatedDurationSec =
-        generatedAudio?.durationSec || estimateNarrationDurationSec(text);
+        getVideoTtsPlaybackDurationSec(
+          generatedAudio?.durationSec || estimateNarrationDurationSec(text),
+        );
       audioPausedRef.current = false;
       audioPreviewRef.current?.pause();
       audioPreviewRef.current = null;
@@ -1493,6 +1603,7 @@ export function StoryboardCanvas({
           const audio = new Audio(generatedAudio.url);
           audioPreviewRef.current = audio;
           audio.preload = "metadata";
+          audio.playbackRate = VIDEO_TTS_PLAYBACK_RATE;
 
           const finish = () => {
             if (token !== audioTokenRef.current) {
@@ -1501,7 +1612,7 @@ export function StoryboardCanvas({
             }
             const durationSec =
               Number.isFinite(audio.duration) && audio.duration > 0
-                ? audio.duration
+                ? getVideoTtsPlaybackDurationSec(audio.duration)
                 : estimatedDurationSec;
             setAudioDurationBySlideId((prev) => ({
               ...prev,
@@ -1520,7 +1631,7 @@ export function StoryboardCanvas({
             }
             const durationSec =
               Number.isFinite(audio.duration) && audio.duration > 0
-                ? audio.duration
+                ? getVideoTtsPlaybackDurationSec(audio.duration)
                 : estimatedDurationSec;
             setAudioDurationBySlideId((prev) => ({
               ...prev,
@@ -1534,7 +1645,7 @@ export function StoryboardCanvas({
             }
             const durationSec =
               Number.isFinite(audio.duration) && audio.duration > 0
-                ? audio.duration
+                ? getVideoTtsPlaybackDurationSec(audio.duration)
                 : estimatedDurationSec;
             setAudioDurationBySlideId((prev) => ({
               ...prev,
@@ -1542,7 +1653,11 @@ export function StoryboardCanvas({
             }));
             setAudioProgressBySlideId((prev) => ({
               ...prev,
-              [slideId]: clamp(audio.currentTime, 0, durationSec),
+              [slideId]: clamp(
+                getVideoTtsPlaybackDurationSec(audio.currentTime),
+                0,
+                durationSec,
+              ),
             }));
           };
 
@@ -2106,7 +2221,10 @@ export function StoryboardCanvas({
   );
 
   const regenerateSlideImage = useCallback(
-    (slideId: string, page: number) => {
+    (slideId: string, page: number, isTaskBusy = false) => {
+      if (isTaskBusy) {
+        return;
+      }
       if (onRetryGenerationTask) {
         onRetryGenerationTask(page);
         return;
@@ -3205,6 +3323,10 @@ export function StoryboardCanvas({
           generationState?.status === "generating" ||
           generationState?.status === "retrying" ||
           (!storyboardImage && !generationState?.status && generationInProgress);
+        const isImageTaskBusy =
+          generationState?.status === "queued" ||
+          generationState?.status === "generating" ||
+          generationState?.status === "retrying";
         const isGenerationFailed = generationState?.status === "failed";
         const selectedTts = ttsBySlideId[slide.id] ?? DEFAULT_EMOTION_TTS_ID;
         const selectedTtsOption =
@@ -3294,10 +3416,11 @@ export function StoryboardCanvas({
 
                 <div className="px-3 pt-3">
                   <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2">
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>A Track · Visual</span>
-                      {audioDurationLabel ? <span>{audioDurationLabel}</span> : null}
-                    </div>
+                    {audioDurationLabel ? (
+                      <div className="mb-1 flex items-center justify-end text-[11px] text-zinc-500">
+                        <span>{audioDurationLabel}</span>
+                      </div>
+                    ) : null}
                     {storyboardImage && !isGeneratingImage ? (
                       <div
                         className="flex w-full items-center justify-center overflow-hidden rounded bg-white"
@@ -3390,10 +3513,11 @@ export function StoryboardCanvas({
                     <div className="mt-2 flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => regenerateSlideImage(slide.id, slide.page)}
-                        className="nodrag nopan nowheel rounded-md border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
+                        onClick={() => regenerateSlideImage(slide.id, slide.page, isImageTaskBusy)}
+                        disabled={isImageTaskBusy}
+                        className="nodrag nopan nowheel rounded-md border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-zinc-500"
                       >
-                        Redraw
+                        {isImageTaskBusy ? "Generating" : "Redraw"}
                       </button>
                     </div>
 
@@ -3998,8 +4122,9 @@ export function StoryboardCanvas({
             <MiniMap
               pannable
               zoomable
+              nodeComponent={StoryboardMiniMapNode}
               nodeColor={getMiniMapNodeColor}
-              nodeStrokeColor={() => "#ffffff"}
+              nodeStrokeColor={() => "#71717a"}
               nodeBorderRadius={8}
               maskColor="rgba(17,24,39,0.10)"
               maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
@@ -4030,6 +4155,10 @@ export function StoryboardCanvas({
                     generationState?.status === "generating" ||
                     generationState?.status === "retrying" ||
                     (!currentImage && !generationState?.status && generationInProgress);
+                  const isImageTaskBusy =
+                    generationState?.status === "queued" ||
+                    generationState?.status === "generating" ||
+                    generationState?.status === "retrying";
                   const isGenerationFailed = generationState?.status === "failed";
                   const pageContent = [
                     slide.title.trim(),
@@ -4089,7 +4218,7 @@ export function StoryboardCanvas({
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    regenerateSlideImage(slide.id, slide.page);
+                                    regenerateSlideImage(slide.id, slide.page, isImageTaskBusy);
                                   }}
                                   className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
                                 >
@@ -4132,11 +4261,12 @@ export function StoryboardCanvas({
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                regenerateSlideImage(slide.id, slide.page);
+                                regenerateSlideImage(slide.id, slide.page, isImageTaskBusy);
                               }}
-                              className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700"
+                              disabled={isImageTaskBusy}
+                              className="h-7 rounded-md border border-zinc-900 bg-zinc-900 px-2 text-[11px] text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-zinc-500"
                             >
-                              Redraw
+                              {isImageTaskBusy ? "Generating" : "Redraw"}
                             </button>
                           </div>
                         </div>

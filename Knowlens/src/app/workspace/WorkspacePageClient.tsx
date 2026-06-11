@@ -408,6 +408,16 @@ type CreditsPaywallContext = {
   count?: number;
 };
 
+const ACTIVE_GENERATION_TASK_STATUSES = new Set<GenerationTaskUiStatus>([
+  "queued",
+  "generating",
+  "retrying",
+]);
+
+function isActiveGenerationTaskState(state?: { status?: GenerationTaskUiStatus } | null) {
+  return Boolean(state?.status && ACTIVE_GENERATION_TASK_STATUSES.has(state.status));
+}
+
 type GenerationConfirmResponse = {
   ok?: boolean;
   error?: string;
@@ -485,6 +495,7 @@ type ImageGenerationRestoreResponse = {
     id?: string;
     runId?: string | null;
     intent?: string | null;
+    ratio?: string | null;
     status?: string | null;
   } | null;
   tasks?: Array<{
@@ -492,6 +503,7 @@ type ImageGenerationRestoreResponse = {
     index?: number;
     status?: string;
     attempts?: number;
+    aspectRatio?: string | null;
     imageUrl?: string;
     renderUrl?: string;
     rawImageUrl?: string | null;
@@ -560,7 +572,7 @@ const GENERATION_CONFIRM_CREDITS_TIMEOUT_MS = 30000;
 const GENERATION_CONFIRM_ACTIVATE_TIMEOUT_MS = 30000;
 const GENERATION_JOB_POLL_INTERVAL_MS = 2500;
 const GENERATION_JOB_POLL_TIMEOUT_MS = 660000;
-const STEP_RUN_MAX_CONCURRENT_TASKS = 3;
+const STEP_RUN_MAX_CONCURRENT_TASKS = 5;
 const SINGLE_IMAGE_REGENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const BASIC_TTS_CREDITS_PER_1000_CHARS = 5;
 const PRO_TTS_CREDITS_PER_1000_CHARS = 20;
@@ -1584,6 +1596,34 @@ function extractVideoRatio(prompt: string): "16:9" | "9:16" | null {
   }
   if (text.includes("16:9") || text.includes("横版") || text.includes("landscape")) {
     return "16:9";
+  }
+  return null;
+}
+
+function resolveRestoredRatio(input: {
+  intent: string;
+  jobRatio?: string | null;
+  taskRatios?: Array<string | null | undefined>;
+  fallbackText?: string;
+}) {
+  const candidates = [
+    input.jobRatio,
+    ...(input.taskRatios || []),
+    input.fallbackText,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  for (const candidate of candidates) {
+    if (input.intent === "video") {
+      const ratio = extractVideoRatio(candidate);
+      if (ratio) {
+        return ratio;
+      }
+    }
+    if (input.intent === "ppt") {
+      const ratio = extractPptRatio(candidate);
+      if (ratio) {
+        return ratio;
+      }
+    }
   }
   return null;
 }
@@ -4681,6 +4721,20 @@ export default function WorkspacePage() {
           setManualIntent(restoredIntent);
         }
         if (restoredIntent === "ppt" || restoredIntent === "video") {
+          const restoredRatio = resolveRestoredRatio({
+            intent: restoredIntent,
+            jobRatio: payload.job?.ratio,
+            taskRatios: tasks.map((task) => task.aspectRatio),
+            fallbackText: restoredPages
+              .map((page) => [page.visual, page.imagePromptDraft, page.body].filter(Boolean).join(" "))
+              .join(" "),
+          });
+          if (restoredIntent === "video" && (restoredRatio === "16:9" || restoredRatio === "9:16")) {
+            setVideoRatio(restoredRatio);
+          }
+          if (restoredIntent === "ppt" && (restoredRatio === "16:9" || restoredRatio === "4:3")) {
+            setPptRatio(restoredRatio);
+          }
           const restoredImageCount = restoredEntries.reduce(
             (max, item) => Math.max(max, Math.round(Number(item.index || 0))),
             0,
@@ -6156,28 +6210,8 @@ export default function WorkspacePage() {
         pushWorkspaceToast(tr("This image is already retrying.", "这张图片正在重试。"));
         return;
       }
-      if (generationRequestInFlightRef.current) {
-        const message = tr(
-          "Another image is still generating. Please retry after it finishes.",
-          "还有图片正在生成，请稍后再重试。",
-        );
-        setGenerationTaskStateByIndex((prev) => ({
-          ...prev,
-          [index]: {
-            ...(prev[index] ?? {
-              index,
-              attempts: 1,
-              maxAttempts: 1,
-              startedAt: Date.now(),
-            }),
-            status: "failed",
-            error: message,
-            errorCode: "IMAGE_RETRY_BUSY",
-            lastUpdatedAt: Date.now(),
-          },
-        }));
-        setGenerationConfirmError(message);
-        pushWorkspaceToast(message);
+      if (isActiveGenerationTaskState(generationTaskStateByIndex[normalizedIndex])) {
+        pushWorkspaceToast(tr("This image is already generating.", "这张图片正在生成中。"));
         return;
       }
       const nextRunId = createGenerationRunId();
@@ -6191,10 +6225,11 @@ export default function WorkspacePage() {
         delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
       });
     },
-    [chargeImageTaskCredits, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
+    [chargeImageTaskCredits, generationTaskStateByIndex, pushWorkspaceToast, resolveImageGenerationTaskForIndex, runGenerationTasksOrdered, setGenerationRunContext, tr],
   );
   const handleRedrawGenerationTask = useCallback(
     (index: number, copy: string) => {
+      const normalizedIndex = Math.max(1, Math.round(Number(index) || 0));
       const baseTask = resolveImageGenerationTaskForIndex(index);
       if (!baseTask) {
         const message = tr(
@@ -6205,13 +6240,11 @@ export default function WorkspacePage() {
         pushWorkspaceToast(message);
         return;
       }
-      if (generationRequestInFlightRef.current) {
-        const message = tr(
-          "Another image is still generating. Please retry after it finishes.",
-          "还有图片正在生成，请稍后再重试。",
-        );
-        setGenerationConfirmError(message);
-        pushWorkspaceToast(message);
+      if (
+        retryingGenerationTaskIndexesRef.current[normalizedIndex] ||
+        isActiveGenerationTaskState(generationTaskStateByIndex[normalizedIndex])
+      ) {
+        pushWorkspaceToast(tr("This image is already generating.", "这张图片正在生成中。"));
         return;
       }
 
@@ -6271,18 +6304,20 @@ export default function WorkspacePage() {
       });
 
       const nextRunId = createGenerationRunId();
+      retryingGenerationTaskIndexesRef.current[normalizedIndex] = true;
       if (!chargeImageTaskCredits({ runId: nextRunId, taskIndex: index, action: "redraw" })) {
+        delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
         return;
       }
       setGenerationRunContext(nextRunId, null);
-      generationRequestInFlightRef.current = true;
       setGenerationConfirmError(null);
       void runGenerationTasksOrdered([redrawTask], nextRunId, true).finally(() => {
-        generationRequestInFlightRef.current = false;
+        delete retryingGenerationTaskIndexesRef.current[normalizedIndex];
       });
     },
     [
       chargeImageTaskCredits,
+      generationTaskStateByIndex,
       normalizedGenerationConfig.normalizedCount,
       outputLanguage,
       pushWorkspaceToast,
