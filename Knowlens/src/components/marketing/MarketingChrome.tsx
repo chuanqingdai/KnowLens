@@ -16,12 +16,36 @@ type MarketingChromeProps = {
 
 const focusedLandingLinks = [
   {
-    href: "/ai-explainer-videos",
+    href: "/ai-explainer-video",
     label: "AI Explainer Videos",
   },
   {
-    href: "/ai-information-generator",
-    label: "AI Information Generator",
+    href: "/ai-video-generator",
+    label: "AI Video Generator",
+  },
+  {
+    href: "/text-to-video-ai",
+    label: "Text to Video",
+  },
+  {
+    href: "/ai-infographic-generator",
+    label: "AI Infographic Generator",
+  },
+  {
+    href: "/text-to-infographic",
+    label: "Text to Infographic",
+  },
+  {
+    href: "/infographic-maker",
+    label: "Infographic Maker",
+  },
+  {
+    href: "/ai-poster-generator",
+    label: "AI Poster Generator",
+  },
+  {
+    href: "/ai-carousel-generator",
+    label: "AI Carousel Generator",
   },
 ];
 
@@ -233,7 +257,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
                 <div className="rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.14)]">
                   {focusedLandingLinks.map((item) => (
                     <Link
-                      key={item.href}
+                      key={`${item.href}-${item.label}`}
                       href={item.href}
                       className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
                       role="menuitem"
@@ -282,15 +306,15 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
               <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
             </Link>
             <p className="mt-3 max-w-sm text-xs leading-5 text-zinc-500">
-              Turn scripts, ideas, and notes into short visual explainer videos.
+              AI Infographic and AI Video Generator for clear visual content.
             </p>
             <p className="mt-5 text-xs text-zinc-500">© 2026 KnowLens.ai · All rights reserved</p>
           </div>
           <nav>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Features</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Tools</p>
             <div className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
               {focusedLandingLinks.map((item) => (
-                <Link key={item.href} href={item.href} className="hover:text-zinc-950">
+                <Link key={`${item.href}-${item.label}`} href={item.href} className="hover:text-zinc-950">
                   {item.label}
                 </Link>
               ))}

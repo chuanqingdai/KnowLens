@@ -1,2 +1,5 @@
-export { metadata } from "../ai-explainer-video-generator/page";
-export { default } from "../ai-explainer-video-generator/page";
+import { redirect } from "next/navigation";
+
+export default function LegacyAiExplainerVideosPage() {
+  redirect("/ai-explainer-video");
+}

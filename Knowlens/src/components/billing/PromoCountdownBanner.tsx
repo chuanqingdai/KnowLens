@@ -99,7 +99,7 @@ export function PromoCountdownBanner({ variant = "banner", className = "" }: Pro
               GPT-image2 limited-time 70% off for faster creator onboarding.
             </p>
             <p className="mt-1 text-xs leading-5 text-amber-700/90">
-              6 credits per visual output: 1 infographic poster, 1 PPT slide, or 1 video storyboard frame.
+              6 credits per visual output: 1 infographic, 1 visual summary, or 1 short explainer video frame.
             </p>
           </div>
           <div className="flex items-end gap-2">
@@ -121,7 +121,7 @@ export function PromoCountdownBanner({ variant = "banner", className = "" }: Pro
             GPT-image2 limited-time 70% off for faster creator onboarding.
           </p>
           <p className="mt-1 text-xs leading-5 text-amber-700/90">
-            6 credits per visual output: 1 infographic poster, 1 PPT slide, or 1 video storyboard frame.
+            6 credits per visual output: 1 infographic, 1 visual summary, or 1 short explainer video frame.
           </p>
         </div>
         <div className="flex items-end gap-2">

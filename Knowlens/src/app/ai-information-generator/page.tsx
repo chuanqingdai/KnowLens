@@ -3,20 +3,22 @@ import { FocusedLandingPage, type FocusedLandingPageContent } from "@/components
 
 const siteUrl = "https://knowlens.ai";
 const pageUrl = `${siteUrl}/ai-information-generator`;
-const pageTitle = "AI Information Generator for Clear Knowledge Visuals";
+const pageTitle = "AI Infographic Generator & Infographic Maker";
 
 export const metadata: Metadata = {
-  title: `${pageTitle} | KnowLens`,
+  title: "AI Infographic Generator & Infographic Maker | KnowLens",
   description:
-    "Turn notes, topics, and outlines into clear information visualizations for lessons, science explainers, campaigns, and knowledge sharing.",
+    "Create infographics from topics, notes, outlines, and plain text with KnowLens. Turn ideas into visual summaries, posters, carousel-style graphics, and clear knowledge visuals in minutes.",
   keywords: [
-    "AI information generator",
-    "information visualization generator",
     "AI infographic generator",
-    "visual knowledge generator",
-    "educational visual generator",
-    "science visualization maker",
-    "information design AI",
+    "infographic maker",
+    "infographic generator",
+    "text to infographic",
+    "notes to infographic",
+    "topic to infographic",
+    "visual summary generator",
+    "AI poster generator",
+    "AI carousel generator",
   ],
   alternates: {
     canonical: pageUrl,
@@ -27,14 +29,14 @@ export const metadata: Metadata = {
     siteName: "KnowLens.ai",
     title: pageTitle,
     description:
-      "Turn notes, topics, and outlines into information visualizations for teaching, publishing, and everyday knowledge work.",
-    images: [{ url: `${siteUrl}/picture/text-to-poster.jpg`, width: 1003, height: 565, alt: "KnowLens AI information generator preview" }],
+      "Create infographics from topics, notes, outlines, and plain text with KnowLens.",
+    images: [{ url: `${siteUrl}/picture/text-to-poster.jpg`, width: 1003, height: 565, alt: "AI-generated infographic examples for science, education, and visual summaries" }],
   },
   twitter: {
     card: "summary_large_image",
     title: pageTitle,
     description:
-      "Create clear information visualizations from notes, topics, and outlines for lessons, science explainers, campaigns, and knowledge sharing.",
+      "Turn ideas into visual summaries, posters, carousel-style graphics, and clear knowledge visuals in minutes.",
     images: [`${siteUrl}/picture/text-to-poster.jpg`],
   },
 };
@@ -47,7 +49,7 @@ const structuredData = {
   applicationCategory: "DesignApplication",
   operatingSystem: "Web",
   description:
-    "Create clear information visualizations from notes, topics, and outlines for lessons, science explainers, campaigns, and knowledge sharing.",
+    "Create infographics from topics, notes, outlines, and plain text for education, science, social content, and knowledge sharing.",
   offers: {
     "@type": "Offer",
     price: "0",
@@ -55,7 +57,7 @@ const structuredData = {
   },
   audience: {
     "@type": "Audience",
-    audienceType: "Teachers, creators, marketers, and small teams",
+    audienceType: "Students, teachers, content creators, science communicators, and small teams",
   },
 };
 
@@ -64,51 +66,51 @@ const informationLandingContent: Partial<FocusedLandingPageContent> = {
   landingPageType: "information_generator",
   usePublicCases: false,
   hero: {
-    eyebrow: "Polished Information Visuals",
+    eyebrow: "AI Infographic Generator",
     title: pageTitle,
     subtitle:
-      "Start with a topic, a few notes, or a rough outline. KnowLens helps turn scattered information into visual knowledge people can understand at a glance.",
-    badge: "Useful for lessons, science explainers, campaigns, and public communication",
-    primaryCta: "Create an AI Information Image",
-    secondaryCta: "See Examples",
+      "Start with a topic, notes, or plain text. KnowLens turns your ideas into clear infographics, posters, and visual summaries in minutes.",
+    badge: "No design skills needed. Just describe what you want to explain.",
+    primaryCta: "Create an Infographic",
+    secondaryCta: "View Examples",
     exampleTopic:
-      "Create a clean information visualization explaining how plants absorb water and minerals through their roots.",
+      "Create an infographic explaining how plants absorb water and minerals through their roots.",
     image: "/picture/text-to-poster.jpg",
-    imageAlt: "Information visualization examples created from written topics and short notes",
+    imageAlt: "AI-generated infographic examples for science, education, and visual summaries",
   },
   beforeAfter: {
-    title: "From Notes to Clear Information Visualization",
+    title: "From Ideas to Clear Infographics",
     description:
-      "Keep the idea simple, choose the most useful structure, and turn key points into a visual people can scan quickly.",
+      "Start with a topic, notes, or rough outline. KnowLens helps structure your message and turn it into a polished visual.",
     steps: [
       {
-        title: "Source",
-        description: "A topic, lesson note, product idea, campaign message, or short outline.",
+        title: "Add Your Idea",
+        description: "Start with a topic, notes, plain text, or a rough outline.",
       },
       {
-        title: "Structure",
-        description: "Title, sections, key facts, examples, and a clear visual hierarchy.",
+        title: "Shape the Message",
+        description: "KnowLens organizes your idea into key points, sections, and visual structure.",
       },
       {
-        title: "Information Visual",
-        description: "A shareable visual for teaching, publishing, presenting, or explaining complex ideas.",
+        title: "Generate the Visual",
+        description: "Create a polished infographic, poster, or carousel-style visual.",
       },
     ],
   },
   formats: [
-    { title: "Classroom Visuals", description: "Explain a lesson topic with a title, visual flow, and easy-to-scan facts." },
-    { title: "Science Infographics", description: "Turn processes, systems, and cause-effect topics into clearer visuals." },
-    { title: "Social Explainers", description: "Make compact visuals for LinkedIn, X, Instagram, and newsletter snippets." },
-    { title: "Campaign Visuals", description: "Shape a theme, date, offer, or announcement into a simple information graphic." },
-    { title: "Learning Inserts", description: "Create a visual summary that can drop into decks and teaching materials." },
+    { title: "Topic to Infographic", description: "Describe a topic and turn it into a clear visual explanation." },
+    { title: "Notes to Visual Summary", description: "Turn messy notes into structured visual content." },
+    { title: "Text to Infographic", description: "Paste text and generate an infographic-style visual." },
+    { title: "Educational Infographics", description: "Create classroom-ready visuals for concepts, lessons, and study notes." },
+    { title: "Social Visuals", description: "Generate poster and carousel-style visuals for sharing." },
   ],
   examples: [
     {
       title: "Photosynthesis at a Glance",
       image: "/en-picture/biology/biology-infographic-card.jpg",
-      outputType: "Biology",
+      outputType: "Topic to Infographic",
       platform: "Classroom",
-      category: "Biology",
+      category: "Science Infographic",
       description:
         "Photosynthesis is the process plants use to turn sunlight, water, and carbon dioxide into glucose. Chlorophyll captures light energy, roots deliver water, leaves absorb carbon dioxide, and oxygen is released as a byproduct.",
       topic:
@@ -117,9 +119,9 @@ const informationLandingContent: Partial<FocusedLandingPageContent> = {
     {
       title: "How a Total Solar Eclipse Happens",
       image: "/en-picture/astronomy/astronomy-infographic-card.jpg",
-      outputType: "Astronomy",
+      outputType: "Educational Visual",
       platform: "Social",
-      category: "Astronomy",
+      category: "Visual Summary",
       description:
         "A total solar eclipse occurs when the Moon passes directly between the Sun and Earth. The Moon's umbra creates a narrow path of totality, while the penumbra produces a partial eclipse across a wider region.",
       topic:
@@ -128,9 +130,9 @@ const informationLandingContent: Partial<FocusedLandingPageContent> = {
     {
       title: "Plate Tectonics and Earthquakes",
       image: "/en-picture/geography/geography-infographic-card.jpg",
-      outputType: "Earth Science",
+      outputType: "Poster",
       platform: "Lesson",
-      category: "Earth Science",
+      category: "Topic to Infographic",
       description:
         "Plate tectonics explains how Earth's outer shell moves in large pieces. Earthquakes occur when stress builds along faults and rocks suddenly slip, sending seismic waves through the ground.",
       topic:
@@ -138,59 +140,53 @@ const informationLandingContent: Partial<FocusedLandingPageContent> = {
     },
   ],
   personas: [
-    { title: "Students", description: "Turn research notes, class topics, or project findings into clear visual information for reports and presentations.", tag: "Reports · Study visuals" },
-    { title: "Science Communicators", description: "Explain public science topics with a visual that works for outreach tables, community posts, and awareness campaigns.", tag: "Outreach · Public education" },
-    { title: "Teachers", description: "Turn a lesson point into a visual students can revisit after class or use as a quick classroom reference.", tag: "Lessons · Classroom visuals" },
-    { title: "Campus Clubs", description: "Create event notices, topic explainers, and activity visuals without starting from a blank layout.", tag: "Events · Club campaigns" },
-    { title: "Nonprofits", description: "Make accessible visuals for health, environment, safety, and community education messages.", tag: "Awareness · Community guides" },
-    { title: "Small Teams", description: "Summarize a process, product idea, or internal note as a visual people can understand quickly.", tag: "Workflows · Internal notes" },
+    { title: "Students", description: "Turn study notes and concepts into visual study guides.", tag: "Study notes · Visual guides" },
+    { title: "Teachers", description: "Create educational infographics from lesson topics and outlines.", tag: "Lessons · Classroom visuals" },
+    { title: "Content Creators", description: "Turn ideas and explanations into social visuals.", tag: "Social posts · Carousels" },
+    { title: "Science Communicators", description: "Explain complex topics with clear visual summaries.", tag: "Science · Public education" },
+    { title: "Small Teams", description: "Create quick posters and knowledge visuals without design work.", tag: "Posters · Knowledge visuals" },
   ],
   pricing: [
-    { title: "More Visuals", description: "Create more information visuals for lessons, posts, and campaigns." },
+    { title: "More Infographics", description: "Create more visual summaries, posters, and carousel-style graphics." },
     { title: "HD Export", description: "Download cleaner visual files for publishing." },
     { title: "Remove Watermark", description: "Use polished visuals for professional sharing." },
-    { title: "More Projects", description: "Keep separate information visualization ideas organized as you work." },
+    { title: "More Projects", description: "Keep separate infographic ideas organized as you work." },
   ],
   faq: [
     {
-      question: "What is an AI Information Generator?",
+      question: "What is an AI infographic generator?",
       answer:
-        "An AI Information Generator turns notes, topics, outlines, and explanations into clear information visuals that are easier to scan, teach, publish, and share.",
+        "An AI infographic generator turns topics, notes, outlines, or plain text into visual infographics. KnowLens helps structure your message and generate a clear visual summary.",
     },
     {
-      question: "Can I use KnowLens as an AI infographic generator?",
+      question: "Can I use KnowLens as an infographic maker?",
       answer:
-        "Yes. KnowLens helps organize a topic into an infographic-style layout with a strong title, clear sections, key facts, labels, and visual hierarchy.",
+        "Yes. You can use KnowLens to create educational infographics, science visuals, posters, visual summaries, and carousel-style graphics.",
     },
     {
-      question: "What can I turn into an information visualization?",
+      question: "What can I use as input?",
       answer:
-        "You can start with a lesson note, science topic, research summary, campaign message, product idea, event announcement, or short educational explanation.",
+        "You can start with a topic, notes, a short explanation, or plain text. PDF and report uploads are not required for the current workflow.",
     },
     {
-      question: "Is this only for classroom visuals?",
+      question: "Does KnowLens support PDF or report uploads?",
       answer:
-        "No. It works for students, teachers, science communicators, nonprofits, campus clubs, marketers, and teams that need visual knowledge content.",
+        "Not yet. The current version focuses on topic, notes, and text input. PDF and report support may be added later.",
     },
     {
-      question: "Can I create science information visuals?",
+      question: "Is KnowLens only for science infographics?",
       answer:
-        "Yes. It is useful for biology diagrams, astronomy explainers, earth science visuals, health education, environmental topics, and step-by-step science breakdowns.",
+        "No. You can create visuals for education, science, business ideas, product explanations, recipes, study notes, and social content.",
     },
     {
-      question: "Does it help with social media information graphics?",
+      question: "Do I need design experience?",
       answer:
-        "Yes. You can create compact visual explainers for LinkedIn, X, Instagram, newsletters, community posts, and other channels where people need quick context.",
-    },
-    {
-      question: "Do I need graphic design experience?",
-      answer:
-        "No. Start with the message you want to explain. KnowLens helps shape the structure, visual direction, and information hierarchy before you publish.",
+        "No. Start with your idea or notes, and KnowLens helps turn them into a clear visual layout.",
     },
     {
       question: "How is this different from a normal poster maker?",
       answer:
-        "A poster maker usually starts with layout. KnowLens starts with the information itself, then turns the idea into a clearer AI-generated visual explanation.",
+        "A normal poster maker starts with design templates. KnowLens starts with your content, extracts the message, and turns it into structured visual information.",
     },
   ],
 };

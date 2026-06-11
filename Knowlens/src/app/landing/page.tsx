@@ -132,20 +132,20 @@ const previewTallCases = [
 const capabilityFlows = [
   {
     id: "infographic-poster",
-    tabEn: "Infographic Poster",
-    tabZh: "信息图海报",
+    tabEn: "AI Infographic",
+    tabZh: "AI Infographic",
     previewImage: "/picture/text-to-poster.jpg",
   },
   {
-    id: "presentation-slides",
-    tabEn: "Presentation Slides",
-    tabZh: "演示幻灯片",
+    id: "visual-summary",
+    tabEn: "Visual Summary",
+    tabZh: "Visual Summary",
     previewImage: "/picture/text-to-ppt-workflow.jpg",
   },
   {
     id: "explainer-video",
-    tabEn: "Explainer Video",
-    tabZh: "讲解视频",
+    tabEn: "Short Explainer Video",
+    tabZh: "Short Explainer Video",
     previewImage: "/picture/text to video.jpg",
   },
 ];
@@ -153,128 +153,166 @@ const capabilityFlows = [
 const DEFAULT_CAPABILITY_FLOW_ID = "infographic-poster";
 
 const howItWorksTags = [
-  "YouTube",
-  "TikTok",
-  "Instagram",
-  "LinkedIn",
-  "X",
-  "Slides",
+  "AI Infographic Generator",
+  "AI Video Generator",
+  "Infographic Maker",
+  "Visual Summary",
+  "AI Poster",
+  "Carousel-style Visual",
+];
+
+const homepageToolCards = [
+  {
+    title: "Text to Video",
+    description: "Create short educational videos and science explainers from topics, notes, or short scripts.",
+    href: "/text-to-video-ai",
+  },
+  {
+    title: "Infographic Maker",
+    description: "Make educational infographics, visual summaries, posters, and carousel-style visuals from simple text.",
+    href: "/infographic-maker",
+  },
+  {
+    title: "Text to Infographic",
+    description: "Turn plain text, notes, and topics into clear infographics, posters, and visual summaries.",
+    href: "/text-to-infographic",
+  },
+  {
+    title: "AI Poster Generator",
+    description: "Turn topics, notes, and plain text into clear posters, visual summaries, and infographic-style designs.",
+    href: "/ai-poster-generator",
+  },
+  {
+    title: "AI Carousel Generator",
+    description: "Turn text, notes, and topics into multi-slide carousel visuals and infographic-style slides.",
+    href: "/ai-carousel-generator",
+  },
+  {
+    title: "Infographic & Video Tools",
+    description: "Create short explainer videos, infographic-style overlays, and visual summaries from topics, notes, or plain text.",
+    href: "/ai-video-generator",
+  },
+  {
+    title: "AI Infographic Generator",
+    description: "Turn ideas and notes into infographics, posters, and carousel-style visuals.",
+    href: "/ai-infographic-generator",
+  },
 ];
 
 const howItWorksCards = [
   {
     id: "understand",
-    title: "1.Add Your Source",
+    title: "Add Your Idea",
     description:
-      "Paste a topic, script, article, lesson note, research summary, or rough idea. Start with the material you already have, whether it is a YouTube script, a social post idea, a classroom topic, or a business explanation.",
+      "Start with a topic, notes, plain text, a short script, or a rough outline. Give KnowLens the core idea, audience, and context you want people to understand.",
   },
   {
     id: "organize",
-    title: "2.Shape the Visual Story",
+    title: "Shape the Message",
     description:
-      "KnowLens organizes the main points into a clearer structure, highlights the key ideas, and turns scattered text into a visual flow that is easier to explain, teach, and share.",
+      "KnowLens breaks the idea into key points, sections, captions, visual hierarchy, and scene flow so the explanation is easier to scan, teach, and share.",
   },
   {
     id: "generate",
-    title: "3.Generate for Your Platform",
+    title: "Generate the Visual",
     description:
-      "Choose the output that fits your goal: explainer videos for YouTube or TikTok, carousel-style visuals for Instagram or LinkedIn, quick posts for X, or slide decks for teaching and presentations.",
+      "Create a polished infographic, poster, carousel-style visual, visual summary, or short explainer video, then refine the direction before sharing or downloading.",
   },
 ];
 
 const personaUseCases = [
   {
-    id: "youtube-educator",
-    role: "YouTube Educator",
+    id: "students",
+    role: "Students",
     quote:
-      "Turn a rough script or topic into visual explainer scenes that make educational videos easier to plan, structure, and publish.",
-    tags: "Explainer Video · Slides",
+      "Turn class notes, study topics, and short explanations into visual summaries that are easier to review and remember.",
+    tags: "Study notes · Visual summaries",
   },
   {
-    id: "shorts-creator",
-    role: "TikTok / Shorts Creator",
+    id: "teachers",
+    role: "Teachers",
     quote:
-      "Quickly turn one idea into short-form visual content for TikTok, Reels, and YouTube Shorts without starting from a blank canvas.",
-    tags: "Explainer Video · Poster",
+      "Create educational infographics and short visual explainers that make lesson topics clearer for students.",
+    tags: "Educational infographics · Lesson visuals",
   },
   {
-    id: "ai-content-creator",
-    role: "AI Content Creator",
+    id: "content-creators",
+    role: "Content Creators",
     quote:
-      "Complex topics like AI agents, LLMs, and workflows become clearer when they are turned into visual explainers and infographic-style content.",
-    tags: "Poster · Explainer Video",
+      "Turn one idea into social visuals, carousel-style graphics, posters, and short explainer videos for audience-friendly publishing.",
+    tags: "Social visuals · Short explainers",
   },
   {
-    id: "business-writer",
-    role: "Business / Newsletter Writer",
+    id: "science-communicators",
+    role: "Science Communicators",
     quote:
-      "Transform strategy notes, trend breakdowns, and business ideas into visuals that are easier to share in posts, decks, and newsletters.",
-    tags: "Slides · Poster",
+      "Explain science, health, history, technology, and everyday concepts with clear visual structure instead of dense text.",
+    tags: "Science infographics · Knowledge visuals",
   },
   {
-    id: "educator",
-    role: "Educator",
+    id: "small-teams",
+    role: "Small Teams",
     quote:
-      "Lesson notes and learning topics become clearer when they are turned into posters, slide decks, and structured classroom visuals.",
-    tags: "Poster · Slides",
+      "Summarize product ideas, workflows, campaign messages, and internal concepts into clear visual content.",
+    tags: "Team explainers · Visual briefs",
   },
   {
-    id: "product-strategy-team",
-    role: "Product or Strategy Team",
+    id: "marketers",
+    role: "Marketers",
     quote:
-      "Use visuals to explain product ideas, workflows, and internal concepts more clearly across presentations, docs, and team discussions.",
-    tags: "Slides · Poster",
+      "Turn plain text into promotional posters, visual summaries, and carousel-style content without starting from a blank canvas.",
+    tags: "Posters · Carousel visuals",
   },
 ];
 
 const faqItems = [
   {
     id: "q1",
-    question: "What can I use as input?",
+    question: "What is an AI infographic and video generator?",
     answer:
-      "KnowLens currently supports pasted text and topic descriptions. You can paste study notes, lesson outlines, explanations, business drafts, research summaries, product ideas, or simply describe the topic you want to visualize.",
+      "An AI infographic and video generator turns a topic, notes, plain text, or a rough outline into visual content such as infographics, visual summaries, posters, carousel-style visuals, and short explainer videos.",
   },
   {
     id: "q2",
-    question: "Do I need design skills?",
+    question: "Can I use KnowLens as an infographic maker?",
     answer:
-      "No. KnowLens helps organize your text, plan the visual structure, choose an appropriate format, and generate a clear visual draft automatically. You can start from rough notes or a simple topic without preparing a layout yourself.",
+      "Yes. KnowLens works as an AI infographic maker for topics, notes, short explanations, and plain text. It helps organize your message into sections, highlights, and infographic-style visuals.",
   },
   {
     id: "q3",
-    question: "Can I upload PDFs, files, or links?",
+    question: "Can I use KnowLens to generate videos?",
     answer:
-      "Not yet. The current version focuses on text input only so the creation flow stays simple and predictable. Please paste the content directly into the text box, or summarize the topic you want KnowLens to explain visually.",
+      "Yes. KnowLens can help create short explainer video drafts from a topic, notes, or a rough outline. It is useful for educational content, science topics, YouTube Shorts, TikTok, and quick visual explanations.",
   },
   {
     id: "q4",
-    question: "What can KnowLens generate?",
+    question: "What can I use as input?",
     answer:
-      "You can choose one output format each time: Infographic Poster, Presentation Slides, or Explainer Video. Posters are best for one-page explainers, slides are useful for teaching and business communication, and explainer video drafts help plan scenes and narration.",
+      "You can start with a topic, notes, plain text, a short explanation, an idea, or a rough outline. KnowLens currently focuses on text-based input so the creation flow stays simple and predictable.",
   },
   {
     id: "q5",
-    question: "Does one input generate all formats at once?",
+    question: "Does KnowLens support PDF or report uploads?",
     answer:
-      "No. You paste your text first, then choose the format you want to generate. This keeps each result focused. If you need multiple formats, you can create posters, slides, and explainer video drafts separately from the same idea.",
+      "Not yet. KnowLens does not currently support PDF, report, document, white paper, or file uploads. Please paste the key text, notes, or topic directly into the editor.",
   },
   {
     id: "q6",
-    question: "Can I try KnowLens for free?",
+    question: "Is KnowLens only for science infographics?",
     answer:
-      "Yes. Free users can generate sample outputs with watermark. It is a good way to test how KnowLens turns your text into visual learning content before upgrading.",
+      "No. You can use KnowLens for science infographics, educational visuals, business explainers, social media visuals, visual summaries, posters, and short explainer videos.",
   },
   {
     id: "q7",
-    question: "What do paid plans unlock?",
+    question: "Do I need design experience?",
     answer:
-      "Paid plans unlock watermark-free export, HD output, more generations, and broader access to poster, slide, and video generation features. They are designed for users who create visuals regularly for learning, teaching, research, content, or team communication.",
+      "No. KnowLens helps structure your text, choose a visual direction, and generate a polished visual draft. You can start with messy notes or a simple topic.",
   },
   {
     id: "q8",
-    question: "Can I cancel anytime?",
+    question: "How is this different from a normal poster maker?",
     answer:
-      "Yes. You can cancel your subscription anytime from your account settings. Your plan access remains available during the active billing period according to your subscription status.",
+      "A normal poster maker usually starts with templates. KnowLens starts with your idea or notes, then helps turn the content into infographics, visual summaries, carousel-style visuals, posters, or short explainer videos.",
   },
 ];
 
@@ -283,8 +321,8 @@ const planCards = [
     id: "starter",
     nameEn: "Starter",
     nameZh: "Starter",
-    subtitleEn: "Create clean infographics and simple slides without watermark.",
-    subtitleZh: "创建简洁信息图和基础幻灯片，无水印。",
+    subtitleEn: "Create clean infographics and visual summaries without watermark.",
+    subtitleZh: "Create clean infographics and visual summaries without watermark.",
     monthlyPrice: 14.9,
     yearlyPrice: 124.9,
     monthlyEquivalent: 10.43,
@@ -297,12 +335,12 @@ const planCards = [
     featuresEn: [
       "No watermark",
       "Standard infographic generation",
-      "Basic PPT generation",
+      "Visual summary generation",
       "Standard image export",
       "Basic visual styles",
       "Standard queue",
     ],
-    featuresZh: ["无水印", "标准信息图生成", "基础 PPT 生成", "标准图像导出", "基础风格", "标准队列"],
+    featuresZh: ["No watermark", "Standard infographic generation", "Visual summary generation", "Standard image export", "Basic visual styles", "Standard queue"],
     ctaEn: "Subscribe with Stripe",
     ctaZh: "Stripe 订阅",
     highlight: false,
@@ -311,8 +349,8 @@ const planCards = [
     id: "pro",
     nameEn: "Creator",
     nameZh: "Creator",
-    subtitleEn: "Best for creators turning articles, videos, and ideas into visual content.",
-    subtitleZh: "最适合把文章、视频和想法转成视觉内容的创作者。",
+    subtitleEn: "Best for creators turning topics, notes, and ideas into visual content.",
+    subtitleZh: "Best for creators turning topics, notes, and ideas into visual content.",
     monthlyPrice: 29,
     yearlyPrice: 242,
     monthlyEquivalent: 20.17,
@@ -326,12 +364,12 @@ const planCards = [
       "No watermark",
       "HD infographic export",
       "More visual styles",
-      "Visual PPT generation",
-      "Video storyboard generation",
+      "Poster and carousel-style visuals",
+      "Short explainer video generation",
       "Faster generation queue",
       "Commercial usage",
     ],
-    featuresZh: ["无水印", "HD 信息图导出", "更多视觉风格", "视觉化 PPT 生成", "视频分镜生成", "更快队列", "商用授权"],
+    featuresZh: ["No watermark", "HD infographic export", "More visual styles", "Poster and carousel-style visuals", "Short explainer video generation", "Faster generation queue", "Commercial usage"],
     ctaEn: "Subscribe with Stripe",
     ctaZh: "Stripe 订阅",
     highlight: true,
@@ -340,8 +378,8 @@ const planCards = [
     id: "scale",
     nameEn: "Pro",
     nameZh: "Pro",
-    subtitleEn: "For high-volume creators producing HD visuals, presentations, and video-ready content regularly.",
-    subtitleZh: "适合高频产出 HD 视觉、演示文稿和视频内容的用户。",
+    subtitleEn: "For high-volume creators producing HD infographics, posters, and short explainer videos regularly.",
+    subtitleZh: "For high-volume creators producing HD infographics, posters, and short explainer videos regularly.",
     monthlyPrice: 59,
     yearlyPrice: 489.9,
     monthlyEquivalent: 40.83,
@@ -355,13 +393,13 @@ const planCards = [
       "No watermark",
       "Premium HD export",
       "Long infographic generation",
-      "Full visual PPT generation",
-      "Video storyboard generation",
+      "Visual summary generation",
+      "Short explainer video generation",
       "Priority rendering",
       "Batch generation",
       "Commercial usage",
     ],
-    featuresZh: ["无水印", "高级 HD 导出", "长图信息图生成", "完整视觉化 PPT 生成", "视频分镜生成", "优先渲染", "批量生成", "商用授权"],
+    featuresZh: ["No watermark", "Premium HD export", "Long infographic generation", "Visual summary generation", "Short explainer video generation", "Priority rendering", "Batch generation", "Commercial usage"],
     ctaEn: "Subscribe with Stripe",
     ctaZh: "Stripe 订阅",
     highlight: false,
@@ -652,8 +690,8 @@ export default function LandingPage() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description: t(
-      "Paste your content, choose a format, and KnowLens turns it into visual explainer videos, infographics, and slides in minutes.",
-      "粘贴文本或描述一个主题，KnowLens 会将其转换为信息图海报、演示幻灯片和讲解视频。",
+      "Turn topics, notes, and plain text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos with KnowLens.ai.",
+      "Turn topics, notes, and plain text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos with KnowLens.ai.",
     ),
     offers: {
       "@type": "Offer",
@@ -688,7 +726,7 @@ export default function LandingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
  
-        <h1 className="sr-only">{t("KnowLens.ai visual creation platform", "KnowLens.ai 知识可视化创作平台")}</h1>
+        <h1 className="sr-only">{t("AI Infographic and AI Video Generator", "AI Infographic and AI Video Generator")}</h1>
 
         <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
           <div className="mx-auto max-w-[620px] text-center lg:mx-0 lg:text-left">
@@ -698,25 +736,28 @@ export default function LandingPage() {
                   <Star key={index} size={11} fill="currentColor" strokeWidth={1.8} />
                 ))}
               </span>
-              <span className="font-medium">Best Visual Quality</span>
+              <span className="font-medium">AI Infographic & Video Generator</span>
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
-              <span className="block">Turn Text into Explainer Videos,</span>
-              <span className="block">Infographics, and Slides</span>
+              <span className="block">AI Infographic and</span>
+              <span className="block">AI Video Generator</span>
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base lg:mx-0">
-              Paste your content, choose a format, and KnowLens turns it into visual explainer videos, infographics, and slides in minutes.
+              Turn topics, notes, or plain text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos in minutes.
             </p>
             <div className="mt-5 flex items-center justify-center sm:mt-6 lg:justify-start">
               <Link
                 href="/app"
                 onClick={() => trackLandingGenerateClick("hero")}
-                className={`${LANDING_CTA_CLASS} h-12 min-w-[176px] gap-2 px-8 text-[15px] sm:h-[52px]`}
+                className={`${LANDING_CTA_CLASS} h-12 min-w-[148px] gap-2 px-6 text-[15px] sm:h-[52px]`}
               >
-                Generate Free
+                Create Now
                 <ArrowRight size={15} />
               </Link>
             </div>
+            <p className="mt-3 text-xs leading-5 text-zinc-500">
+              No design skills needed.
+            </p>
           </div>
 
           <div className="w-full overflow-hidden rounded-lg lg:justify-self-end">
@@ -724,12 +765,16 @@ export default function LandingPage() {
               <ProgressiveImage
                 src={toOriginal(heroImage)}
                 fallbackSrc={toOriginal(heroImage)}
-                alt="KnowLens Hero"
+                alt="AI-generated infographic and short video examples for education, science, visual summaries, posters, and carousel-style visuals"
+                title="AI Infographic and Video Generator Examples"
                 className="absolute inset-0 block h-full w-full scale-[1.02] object-cover align-top"
                 loading="eager"
                 fetchPriority="high"
               />
             </AspectSkeleton>
+            <p className="mt-2 text-center text-xs leading-5 text-zinc-500">
+              Generated examples: educational infographics, science visuals, visual summaries, posters, and short explainer videos.
+            </p>
           </div>
         </section>
 
@@ -737,14 +782,14 @@ export default function LandingPage() {
           <div className="mx-auto max-w-5xl">
             <h2 className="mt-2 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
               {t(
-                "Choose the Visual Format That Fits Your Content",
-                "Choose the Visual Format That Fits Your Content",
+                "Create Different Types of Infographics & Videos",
+                "Create Different Types of Infographics & Videos",
               )}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "Whether you are making a YouTube explainer, a social post, or a teaching slide deck, KnowLens helps turn your source material into the right visual format.",
-                "Whether you are making a YouTube explainer, a social post, or a teaching slide deck, KnowLens helps turn your source material into the right visual format.",
+                "Choose the right format for your idea, from educational visuals to social media posters, carousel-style graphics, and short explainer videos.",
+                "Choose the right format for your idea, from educational visuals to social media posters, carousel-style graphics, and short explainer videos.",
               )}
             </p>
 
@@ -776,7 +821,7 @@ export default function LandingPage() {
                     <ProgressiveImage
                       src={activeFlowPreviewSrc}
                       fallbackSrc={activeFlowPreviewFallbackSrc}
-                      alt={t(`${activeFlow.tabEn} visual example`, `${activeFlow.tabZh} 案例示意`)}
+                      alt={t(`${activeFlow.tabEn} example generated from text`, `${activeFlow.tabZh} example generated from text`)}
                       className="absolute inset-0 h-full w-full object-contain"
                       loading="eager"
                       fetchPriority="high"
@@ -792,12 +837,12 @@ export default function LandingPage() {
         <section id="pricing" className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="text-center">
             <h2 className="text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
-              {t("See What You Can Create with KnowLens", "See What You Can Create with KnowLens")}
+              {t("AI-Generated Infographic & Video Examples", "AI-Generated Infographic & Video Examples")}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
               {t(
-                "Explore real examples of explainer videos, infographics, social posts, and slides created with KnowLens.",
-                "Explore real examples of explainer videos, infographics, social posts, and slides created with KnowLens.",
+                "Explore visual examples created from topics, notes, and short text prompts.",
+                "Explore visual examples created from topics, notes, and short text prompts.",
               )}
             </p>
           </div>
@@ -815,7 +860,7 @@ export default function LandingPage() {
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
                         fallbackSrc={toOriginal(item.cover)}
-                        alt={t(item.titleEn, item.titleZh)}
+                        alt={t(`${item.titleEn} AI infographic example`, `${item.titleEn} AI infographic example`)}
                         title={t(item.titleEn, item.titleZh)}
                         className="block h-full w-full object-cover align-top"
                         loading={index < previewWideCases.length ? "eager" : "lazy"}
@@ -840,7 +885,7 @@ export default function LandingPage() {
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
                         fallbackSrc={toOriginal(item.cover)}
-                        alt={t(item.titleEn, item.titleZh)}
+                        alt={t(`${item.titleEn} visual summary example`, `${item.titleEn} visual summary example`)}
                         title={t(item.titleEn, item.titleZh)}
                         className="block h-full w-full object-cover align-top"
                         loading={index < previewTallCases.length ? "eager" : "lazy"}
@@ -861,12 +906,12 @@ export default function LandingPage() {
               HOW IT WORKS
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("Create Visual Content in 3 Simple Steps", "Create Visual Content in 3 Simple Steps")}
+              {t("Create an Infographic or Video in 3 Simple Steps", "Create an Infographic or Video in 3 Simple Steps")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "Start with a topic, script, article, or notes. KnowLens helps turn your ideas into videos, infographics, social posts, and slides in minutes.",
-                "Start with a topic, script, article, or notes. KnowLens helps turn your ideas into videos, infographics, social posts, and slides in minutes.",
+                "Start with a topic, notes, or rough outline. KnowLens helps structure your message and turn it into polished visuals or short explainer videos.",
+                "Start with a topic, notes, or rough outline. KnowLens helps structure your message and turn it into polished visuals or short explainer videos.",
               )}
             </p>
 
@@ -890,6 +935,23 @@ export default function LandingPage() {
                 </article>
               ))}
             </div>
+
+            <div className="mt-8 grid gap-3 md:grid-cols-2">
+              {homepageToolCards.map((tool) => (
+                <Link
+                  key={`${tool.href}-${tool.title}`}
+                  href={tool.href}
+                  className="group rounded-xl border border-zinc-200 bg-white/90 p-4 text-left transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-sm"
+                >
+                  <h3 className="text-base font-semibold text-zinc-950">{tool.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-zinc-600">{tool.description}</p>
+                  <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-zinc-950 group-hover:text-zinc-600">
+                    Open tool
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </span>
+                </Link>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -899,12 +961,12 @@ export default function LandingPage() {
               USE CASES
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("Built for Creators, Educators, and Teams", "Built for Creators, Educators, and Teams")}
+              {t("Built for Anyone Who Needs Clear Visual Content", "Built for Anyone Who Needs Clear Visual Content")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
-                "From YouTube explainers to social posts and teaching materials, KnowLens helps turn ideas, scripts, and notes into visual content people can publish, present, and share.",
-                "From YouTube explainers to social posts and teaching materials, KnowLens helps turn ideas, scripts, and notes into visual content people can publish, present, and share.",
+                "Use KnowLens to turn ideas, notes, and explanations into visual summaries, infographics, posters, and short explainer videos for learning, social media, and presentations.",
+                "Use KnowLens to turn ideas, notes, and explanations into visual summaries, infographics, posters, and short explainer videos for learning, social media, and presentations.",
               )}
             </p>
 
@@ -1051,7 +1113,7 @@ export default function LandingPage() {
               Frequently Asked Questions
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-7 text-zinc-600">
-              Everything you need to know before creating your first visual with KnowLens.
+              Answers about KnowLens, AI infographic generation, AI video generation, text to infographic workflows, visual summaries, posters, and short explainer videos.
             </p>
 
             <div className="mt-6 space-y-2">
@@ -1092,10 +1154,10 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 pb-10 pt-2 sm:px-6">
           <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-8 text-center sm:px-10">
             <h3 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
-              Start Creating with KnowLens
+              Create an Infographic or Video with KnowLens
             </h3>
             <p className="mx-auto mt-2 max-w-2xl text-sm leading-7 text-zinc-600">
-              Paste your text, choose one format, and generate your first visual draft in minutes.
+              Start with a topic, notes, or plain text. Generate clear visual summaries, posters, carousel-style visuals, and short explainer videos in minutes.
             </p>
             <div className="mt-5">
               <Link
@@ -1103,7 +1165,7 @@ export default function LandingPage() {
                 onClick={() => trackLandingGenerateClick("footer_cta")}
                 className={`${LANDING_CTA_CLASS} h-11 min-w-[164px] px-6 text-sm`}
               >
-                Generate Free
+                Create an Infographic or Video
               </Link>
             </div>
           </div>
