@@ -16,7 +16,7 @@ type MarketingChromeProps = {
 
 const focusedLandingLinks = [
   {
-    href: "/aI-explainer-videos",
+    href: "/ai-explainer-videos",
     label: "AI Explainer Videos",
   },
   {
