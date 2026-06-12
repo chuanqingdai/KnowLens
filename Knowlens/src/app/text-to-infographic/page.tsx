@@ -52,7 +52,7 @@ export const metadata: Metadata = {
 };
 
 const heroImages = [
-  { src: "/picture/ai-information-generator.jpg?v=20260612-nvidia", alt: "NVIDIA earnings infographic generated from text notes", width: 878, height: 878 },
+  { src: "/picture/ai-infographic-generator.jpg?v=20260612-infographic", alt: "NVIDIA earnings infographic generated from text notes", width: 752, height: 752 },
 ];
 
 const createCards = [

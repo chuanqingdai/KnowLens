@@ -56,7 +56,7 @@ export const metadata: Metadata = {
 };
 
 const heroImage = {
-  src: "/picture/ai-information-generator.jpg?v=20260612-nvidia",
+  src: "/picture/ai-infographic-generator.jpg?v=20260612-infographic",
   alt: "NVIDIA earnings infographic generated from text notes",
 };
 
@@ -232,7 +232,7 @@ export default function AiInfographicGeneratorPage() {
         </div>
 
         <div>
-          <img src={heroImage.src} alt={heroImage.alt} width={878} height={878} className="aspect-square w-full rounded-[1.5rem] object-cover shadow-[0_24px_60px_rgba(15,23,42,0.10)]" loading="eager" />
+          <img src={heroImage.src} alt={heroImage.alt} width={752} height={752} className="aspect-square w-full rounded-[1.5rem] object-cover shadow-[0_24px_60px_rgba(15,23,42,0.10)]" loading="eager" />
         </div>
       </section>
 
