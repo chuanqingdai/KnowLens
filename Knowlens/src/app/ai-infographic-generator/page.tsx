@@ -81,30 +81,69 @@ const audiences = [
 
 const examples = [
   {
-    title: "Photosynthesis at a Glance",
-    description: "An educational infographic that explains how plants turn sunlight into stored energy.",
-    tags: ["Educational Infographic", "Science Infographic"],
+    title: "Seed Germination: From Seed to Sprout",
+    description: "A clear learning visual that shows how water, warmth, and air help a dry seed swell, root downward, and grow its first leaves.",
+    tags: ["Plant Science", "Learning Visual"],
     image: "/en-picture/photosynthesis-infographic-case.jpg",
-    alt: "Photosynthesis educational infographic from notes",
-    topic: "Create an infographic explaining photosynthesis, including sunlight, water, carbon dioxide, glucose, oxygen, and why the process matters.",
+    alt: "Seed germination infographic showing a seed growing roots and first leaves",
+    topic:
+      "Explain seed germination as a clear educational infographic. Cover the dry seed stage, water absorption and swelling, the radicle growing downward, the shoot emerging upward, and why water, warmth, air, and stored nutrients help a new plant begin life.",
+    ratio: "landscape",
   },
   {
-    title: "Solar System Visual Summary",
-    description: "A science visual summary that organizes planets, orbits, and key facts.",
-    tags: ["Science Infographic", "Visual Summary"],
+    title: "How Vaccines Train the Immune System",
+    description: "A medical explainer that breaks vaccine exposure, antigen recognition, antibody response, immune memory, and faster future protection into simple steps.",
+    tags: ["Health Science", "Process Explainer"],
+    image: "/en-picture/printing-press-history-infographic-case.jpg",
+    alt: "Vaccine infographic showing how immune memory develops after vaccination",
+    topic:
+      "Explain how vaccines train the immune system in a clear visual sequence. Include vaccine exposure, antigen recognition, helper T cells, B cells, antibody production, memory B and T cells, and how immune memory helps the body respond faster during future exposure.",
+    ratio: "landscape",
+  },
+  {
+    title: "How an Electric Vehicle Works",
+    description: "A technology infographic that labels the battery pack, motor, inverter, charging path, and regenerative braking system in one scan-friendly layout.",
+    tags: ["Technology", "System Diagram"],
+    image: "/en-picture/inflation-daily-life-infographic-case.jpg",
+    alt: "Electric vehicle infographic showing battery, motor, inverter, charger, and regenerative braking",
+    topic:
+      "Explain how an electric vehicle works with a clean technical infographic. Show how charging fills the battery pack, how the inverter controls power, how the electric motor drives the wheels, and how regenerative braking sends energy back to the battery.",
+    ratio: "landscape",
+  },
+  {
+    title: "How Solar Storms Create Auroras",
+    description: "A vertical science infographic that follows charged particles from the Sun through Earth's magnetosphere to glowing auroras in the upper atmosphere.",
+    tags: ["Space Science", "Visual Summary"],
     image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar system science visual summary",
-    topic: "Create a visual summary of the solar system, including planet order, orbit basics, and simple facts for students.",
+    alt: "Solar storm infographic showing charged particles creating auroras above Earth",
+    topic:
+      "Explain how solar storms create auroras as a vertical science infographic. Cover sunspots and solar flares, charged particles racing through space, Earth's magnetic field guiding particles toward the poles, collisions with oxygen and nitrogen, and why the sky glows green, red, or purple.",
+    ratio: "portrait",
   },
   {
-    title: "Step-by-Step Recipe Poster",
-    description: "A poster-style visual that turns a simple process into clear steps.",
-    tags: ["Poster", "Text to Infographic"],
+    title: "DNA Replication Step by Step",
+    description: "A biology infographic that explains helicase unzipping, base pairing, polymerase building new strands, and the result of two matching DNA molecules.",
     image: "/en-picture/biology/biology-long-infographic.jpg",
-    alt: "Step-by-step recipe poster from text",
-    topic: "Create a step-by-step poster from plain text that explains a simple recipe with clear sections and visual hierarchy.",
+    tags: ["Human Biology", "Step-by-Step"],
+    alt: "DNA replication infographic showing helicase, base pairing, polymerase, and two identical DNA molecules",
+    topic:
+      "Explain DNA replication step by step as an educational infographic. Include helicase separating the double helix, free nucleotides pairing with template bases, DNA polymerase building new strands, semiconservative replication, and how one DNA molecule becomes two identical copies.",
+    ratio: "portrait",
+  },
+  {
+    title: "How a Volcano Erupts",
+    description: "A dramatic earth science visual that shows magma rising, pressure building, eruption through the vent, ash cloud formation, and the eruption cycle.",
+    image: "/en-picture/geography/geography-long-infographic.jpg",
+    tags: ["Earth Science", "Cycle Diagram"],
+    alt: "Volcano eruption infographic showing magma rising, pressure building, eruption, and ash cloud formation",
+    topic:
+      "Explain how a volcano erupts in a vertical earth science infographic. Show magma rising from deep underground, gas and heat increasing pressure in the magma chamber, magma bursting through the vent, lava and ash moving outward, and the ash cloud forming above the volcano.",
+    ratio: "portrait",
   },
 ];
+
+const landscapeExamples = examples.filter((item) => item.ratio === "landscape");
+const portraitExamples = examples.filter((item) => item.ratio === "portrait");
 
 const faqItems = [
   ["What is an AI infographic generator?", "It converts topics, notes, or text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos."],
@@ -248,9 +287,24 @@ export default function AiInfographicGeneratorPage() {
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Examples Made with KnowLens" description="Explore infographic and visual summary examples created from topics, notes, and text prompts." />
         <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {examples.map((item) => (
+          {landscapeExamples.map((item) => (
             <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <img src={item.image} alt={item.alt} width={640} height={820} className="h-auto w-full bg-zinc-100 object-contain" loading="lazy" />
+              <img src={item.image} alt={item.alt} width={1672} height={941} className="aspect-video w-full bg-zinc-100 object-cover" loading="lazy" />
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-5 md:grid-cols-3">
+          {portraitExamples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <div className="bg-zinc-100">
+                <img src={item.image} alt={item.alt} width={941} height={1672} className="aspect-[9/16] w-full object-cover" loading="lazy" />
+              </div>
               <div className="p-4">
                 <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
                 <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
