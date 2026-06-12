@@ -9,8 +9,10 @@ import {
 import {
   buildGenerationTaskStatusSummary,
   getProjectByIdForUser,
+  listOpsEvents,
   listProjectsByUser,
   logGenerationOpsEvent,
+  parseOpsEventDetailsJson,
 } from "@/lib/server/store";
 import {
   getWorkspaceProjectCover,
@@ -55,6 +57,34 @@ type ProjectPageWithImageHistory = WorkspaceProjectPageRow & {
 
 function normalizeText(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function extractOriginalInputFromDetails(details: Record<string, unknown> | null) {
+  if (!details) {
+    return "";
+  }
+  return [
+    details.originalInput,
+    details.rawInput,
+    details.prompt,
+    details.input,
+  ].map((item) => normalizeText(item)).find(Boolean) || "";
+}
+
+async function resolveProjectOriginalInput(projectId: string) {
+  const events = await listOpsEvents({
+    projectId,
+    category: "project",
+    action: "workspace_project_started",
+    limit: 20,
+  });
+  for (const event of events) {
+    const originalInput = extractOriginalInputFromDetails(parseOpsEventDetailsJson(event.detailsJson));
+    if (originalInput) {
+      return originalInput.slice(0, 6000);
+    }
+  }
+  return "";
 }
 
 function latestIso(values: Array<string | null | undefined>) {
@@ -166,6 +196,7 @@ function aggregateStatus(input: {
 export async function resolveProjectDetail(input: {
   userEmail: string;
   projectId: string;
+  includeOriginalInput?: boolean;
 }) {
   const project = (await getProjectByIdForUser(input.userEmail, input.projectId)) as ProjectRow | null;
   const projectId = normalizeText(project?.id || input.projectId);
@@ -292,11 +323,13 @@ export async function resolveProjectDetail(input: {
     normalizeText(project?.title) ||
     normalizeText(pagesWithImageHistory.find((page) => page.title)?.title) ||
     "Untitled project";
+  const originalInput = input.includeOriginalInput ? await resolveProjectOriginalInput(projectId) : "";
 
   return {
     project: {
       id: projectId,
       title,
+      originalInput,
       status,
       storedStatus: normalizeText(project?.status, ""),
       format: outputType,

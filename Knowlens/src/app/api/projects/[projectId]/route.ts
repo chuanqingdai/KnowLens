@@ -42,6 +42,7 @@ export async function GET(
   const detail = await resolveProjectDetail({
     userEmail: email,
     projectId: normalizeProjectId(projectId),
+    includeOriginalInput: true,
   });
   if (!detail) {
     return NextResponse.json(

@@ -477,6 +477,7 @@ type ImageGenerationRestoreResponse = {
     title?: string;
     status?: string;
     format?: string | null;
+    originalInput?: string;
     cover?: string;
     coverImageUrl?: string;
     updatedAt?: string;
@@ -2665,6 +2666,7 @@ export default function WorkspacePage() {
   const [sessionPrefsScopeKey] = useState(() => buildWorkspaceSessionScopeKey(initialEntry));
   const [sessionPrefs] = useState(() => readWorkspaceSessionPrefs(sessionPrefsScopeKey));
   const [topicContextPrompt, setTopicContextPrompt] = useState(() => initialEntry.prompt);
+  const [workspaceOriginalPrompt, setWorkspaceOriginalPrompt] = useState(() => initialEntry.prompt);
   const [workspaceProjectTitle, setWorkspaceProjectTitle] = useState(() => initialEntry.project?.projectTitle || "");
   const [creditVersion, setCreditVersion] = useState(0);
   const credits = useMemo(() => {
@@ -2752,7 +2754,7 @@ export default function WorkspacePage() {
     if (detected.intent === "ppt" || detected.intent === "video" || detected.intent === "poster") {
       return detected.intent;
     }
-    return "video";
+    return "poster";
   });
   const [posterSizeId, setPosterSizeId] = useState<string | null>(() =>
     normalizePosterSizeId(
@@ -3105,14 +3107,18 @@ export default function WorkspacePage() {
           return;
         }
         const projectTitle = payload.project?.title?.trim() || "";
-        if (!projectTitle) {
+        const originalInput = payload.project?.originalInput?.trim() || "";
+        if (originalInput) {
+          setWorkspaceOriginalPrompt(originalInput);
+        }
+        if (!projectTitle && !originalInput) {
           return;
         }
         if (!workspaceProjectTitle) {
           setWorkspaceProjectTitle(projectTitle);
         }
         if (!topicContextPrompt.trim()) {
-          setTopicContextPrompt(projectTitle);
+          setTopicContextPrompt(originalInput || projectTitle);
         }
       })
       .catch(() => {
@@ -3152,7 +3158,7 @@ export default function WorkspacePage() {
     router.push("/membership");
   }, [pathname, router]);
 
-  const entryPrompt = initialEntry.prompt;
+  const entryPrompt = workspaceOriginalPrompt;
   const contextPrompt = topicContextPrompt;
   const entrySources = initialEntry.sources;
   const sourcePromptContext = useMemo(() => buildSourceEvidencePack(entrySources), [entrySources]);
@@ -4501,10 +4507,14 @@ export default function WorkspacePage() {
         }
         const restoredProjectFormat = (payload.project?.format || "").trim();
         const restoredProjectTitle = (payload.project?.title || "").trim();
+        const restoredOriginalInput = payload.project?.originalInput?.trim() || "";
+        if (restoredOriginalInput) {
+          setWorkspaceOriginalPrompt(restoredOriginalInput);
+        }
         if (restoredProjectTitle) {
           setWorkspaceProjectTitle(restoredProjectTitle);
           if (!topicContextPrompt.trim()) {
-            setTopicContextPrompt(restoredProjectTitle);
+            setTopicContextPrompt(restoredOriginalInput || restoredProjectTitle);
           }
         }
         const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];

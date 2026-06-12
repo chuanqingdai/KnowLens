@@ -138,6 +138,11 @@ function mapTransitionToFfmpegXfade(transition: SceneTransition) {
   return "fade";
 }
 
+function buildVideoNormalizeFilter(fps: number) {
+  const safeFps = Math.max(1, Math.round(fps || DEFAULT_FPS));
+  return `fps=${safeFps},settb=AVTB,setpts=PTS-STARTPTS,setsar=1,format=yuv420p`;
+}
+
 function countTransitionsByType(transitions: SceneTransition[]) {
   return transitions.reduce<Record<string, number>>((summary, transition) => {
     const key = transition.type;
@@ -624,10 +629,11 @@ async function concatSegments(segmentPaths: string[], outputPath: string) {
     throw new Error("No rendered video segments to concatenate.");
   }
   const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const videoNormalizeFilter = buildVideoNormalizeFilter(DEFAULT_FPS);
   const normalizedInputs = segmentPaths
     .map((_, index) => {
       return (
-        `[${index}:v]setpts=PTS-STARTPTS[v${index}];` +
+        `[${index}:v]${videoNormalizeFilter}[v${index}];` +
         `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`
       );
     })
@@ -685,6 +691,7 @@ async function concatSegmentsWithTransitions(input: {
   }
 
   const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const videoNormalizeFilter = buildVideoNormalizeFilter(fps);
   const transitionDurations = transitions.map((transition, index) => {
     const requested = Math.max(
       MIN_VISIBLE_TRANSITION_DURATION_SEC,
@@ -701,7 +708,7 @@ async function concatSegmentsWithTransitions(input: {
       outgoingTransitionSec > 0
         ? `,tpad=stop_mode=clone:stop_duration=${outgoingTransitionSec.toFixed(3)}`
         : "";
-    return `[${index}:v]fps=${fps},settb=AVTB,setpts=PTS-STARTPTS,setsar=1,format=yuv420p${padFilter},fps=${fps},settb=AVTB,setpts=PTS-STARTPTS[tv${index}]`;
+    return `[${index}:v]${videoNormalizeFilter}${padFilter},${videoNormalizeFilter}[tv${index}]`;
   });
   const audioInputs = segmentPaths.map((_, index) => {
     return `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`;
@@ -723,7 +730,7 @@ async function concatSegmentsWithTransitions(input: {
       `[${currentVideoLabel}][${nextVideoLabel}]xfade=transition=${transitionName}:duration=${durationSec.toFixed(
         3,
       )}:offset=${offsetSec.toFixed(3)}[${rawOutputLabel}]`,
-      `[${rawOutputLabel}]fps=${fps},settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[${outputLabel}]`,
+      `[${rawOutputLabel}]${videoNormalizeFilter}[${outputLabel}]`,
     );
     currentVideoLabel = outputLabel;
     currentVideoDurationSec =
@@ -738,7 +745,7 @@ async function concatSegmentsWithTransitions(input: {
     ...videoInputs,
     ...audioInputs,
     ...transitionFilters,
-    `[${currentVideoLabel}]format=yuv420p[v]`,
+    `[${currentVideoLabel}]${videoNormalizeFilter}[v]`,
     `${audioConcatInputs}concat=n=${segmentPaths.length}:v=0:a=1[a]`,
   ].join(";");
 

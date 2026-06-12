@@ -399,7 +399,7 @@ export function buildTuziImagePrompt(input: {
   const mediumGuidance = (() => {
     if (pageRole === "cover" && textStrategyMode === "minimal") {
       return outputType === "video"
-        ? "Independent video cover frame: one large title only, one simple hero subject, strong clean cover composition, cinematic educational mood."
+        ? "Independent video cover frame: high-click YouTube science thumbnail style, one large title only, one simple hero subject, strong contrast, vivid accent color, dynamic crop, clean background, readable at a glance."
         : "Independent presentation cover image: one large title only, one simple hero subject, clean premium cover composition, generous whitespace.";
     }
     if (outputType === "ppt") {
@@ -409,7 +409,7 @@ export function buildTuziImagePrompt(input: {
     }
     if (outputType === "video") {
       return index === 1
-        ? "Video storyboard frame 1: make it work like a premium YouTube thumbnail, high contrast, strong subject, clear question/conflict, minimal on-screen text."
+        ? "Video storyboard frame 1: make it work like a premium YouTube thumbnail, high contrast, strong subject, clear question/conflict, vivid color accents, large readable title-only text, minimal clutter."
         : "Video storyboard frame: 6-10 second viewing, visual action first, one clear idea, cinematic educational composition, and no small unreadable text.";
     }
     return index === 1 && total > 1

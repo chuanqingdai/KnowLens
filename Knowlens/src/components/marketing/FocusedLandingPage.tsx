@@ -86,6 +86,7 @@ const MAX_EXAMPLE_CARDS = 6;
 export const explainerVideoLandingContent: FocusedLandingPageContent = {
   pageVariant: "focused_explainer_video",
   landingPageType: "explainer_video_creator",
+  usePublicCases: false,
   hero: {
     eyebrow: "CREATOR-READY VISUAL QUALITY",
     title: "AI Explainer Videos for YouTube and TikTok Creators",

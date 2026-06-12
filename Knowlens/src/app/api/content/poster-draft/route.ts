@@ -550,7 +550,7 @@ function buildSmallSchemaDraftPrompt(input: {
         `Source: ${sourceText}`,
         "Schema:",
         '{"outlineItems":["frame title"],"storyboardDrafts":[{"index":1,"title":"cover title","durationSec":6,"narration":"","visual":"one dominant subject and one action","onScreenText":"","isCover":true}]}',
-        `Rules: outlineItems length and storyboardDrafts length must equal the requested count. ${coverRule} Body frames must use concise narration from the source. Titles should be attractive educational video chapter headlines, concrete and credible, not clickbait; target Chinese 10-24 chars or English 4-12 words. Visuals must have one dominant subject, one action/change, 1-3 elements, and no small text. Do not output imagePrompt or imagePromptDraft for video.`,
+        `Rules: outlineItems length and storyboardDrafts length must equal the requested count. ${coverRule} Body frames must use concise narration from the source. Titles should be high-click educational video headlines, concrete and credible, not misleading clickbait. Prefer a curiosity gap, surprising contrast, question, consequence, or "why/how" angle with the important words first; target Chinese 14-30 chars or English 8-16 words. The cover title should feel like a YouTube science thumbnail title, not a chapter label. Visuals must have one dominant subject, one action/change, 1-3 elements, and no small text. Do not output imagePrompt or imagePromptDraft for video.`,
       ].join("\n"),
     };
   }
@@ -1518,9 +1518,15 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function toConciseDraftTitle(value: string, topic: string, outputLanguage: OutputLanguage) {
-  const maxZhChars = 24;
-  const maxEnWords = 12;
+function toConciseDraftTitle(
+  value: string,
+  topic: string,
+  outputLanguage: OutputLanguage,
+  options?: { mode?: "standard" | "video" },
+) {
+  const videoMode = options?.mode === "video";
+  const maxZhChars = videoMode ? 30 : 24;
+  const maxEnWords = videoMode ? 16 : 12;
   let candidate = normalizeWhitespace(
     stripPromptCommandPrefix(stripListPrefix(value), outputLanguage),
   )
@@ -2861,7 +2867,7 @@ function normalizeSlideDrafts(
         return null;
       }
       const titleCandidate = rawTitle;
-      const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage) || titleCandidate;
+      const title = toConciseDraftTitle(titleCandidate, topic, outputLanguage, { mode: "video" }) || titleCandidate;
       const mainPoint = normalizeTextItem(row.mainPoint);
       const body = normalizeTextItem(row.body);
       const support = normalizeTextItem(row.supportNote);

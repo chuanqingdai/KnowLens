@@ -256,7 +256,7 @@ function buildVideoScenePromptDraft(input: {
       [
         input.title ? `Cover title: ${input.title}` : "",
         sceneBasis,
-        "one dominant hero subject, clean background, title-only cover, no small labels",
+        "high-click YouTube science thumbnail style: one dominant hero subject, dramatic scale or before/after tension, bold readable title-only text, high contrast, vivid color accents, clean background, no clutter, no small labels",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -770,7 +770,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
             : "mechanism";
     const visualDesign: VisualDesign = {
       layout: isIndependentCover
-          ? "Independent cover visual with one simple hero subject and one large title only."
+          ? "High-click YouTube-style cover frame with one simple hero subject, strong contrast, large title-only text, and no clutter."
         : normalizedDirection === "video"
         ? "Short-view frame with one focal action and minimal text."
           : isDataLikeSlide
@@ -783,7 +783,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         : rawSlideVisual || sanitizeBrandSensitiveVisualText(input.visualizationTypeHint) || "Knowledge explainer visual",
       composition: cleanText([
         isIndependentCover
-          ? "Title-only independent cover composition with exactly one main subject element, clean background, and one large title text only."
+          ? "Title-only cover composition with exactly one main subject, strong foreground/background separation, dynamic crop, vivid accent color, and one large title text only."
           : pageRole === "cover"
           ? "Opening visual treatment."
           : pageRole === "system-model"
@@ -827,7 +827,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
         ? [
             ...negativeRules,
           "Cover image must contain only the supplied title as large prominent text. No subtitle, small captions, labels, numbers, notes, charts, interface text, or logo marks.",
-          "Use only one simple hero subject element; avoid clutter, detailed data, and multi-panel information layout.",
+          "Use only one simple hero subject element; avoid clutter, detailed data, multi-panel information layout, fake metrics, misleading shock imagery, and tiny text.",
         ]
       : isDataLikeSlide
       ? [
@@ -847,7 +847,7 @@ export function buildGenerationTasksFromDraft(input: BuildGenerationTasksInput):
     const visualHint = cleanText([sanitizePromptLine(rawSlideVisual), imagePromptDraft].join(" | "));
     const composedPrompt = buildTuziImagePrompt({
       draftContent: isIndependentCover
-        ? cleanText([contentTitle, "Independent title-only cover image. Use this title as the only on-image text. One simple hero subject."].join("\n"))
+        ? cleanText([contentTitle, "Independent title-only cover image. Use this title as the only on-image text. One high-contrast hero subject, dynamic YouTube thumbnail composition, simple and accurate."].join("\n"))
         : normalizedDirection === "video"
           ? videoImageSignal
           : cleanText([contentTitle, sanitizePromptLine(visualBrief)].join("\n")),

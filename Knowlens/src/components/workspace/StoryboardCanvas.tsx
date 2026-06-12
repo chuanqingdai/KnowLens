@@ -23,11 +23,15 @@ import {
 } from "lucide-react";
 
 import {
+  Background,
   Controls,
+  MiniMap,
+  Panel,
   PanOnScrollMode,
   Position,
   ReactFlow,
   type Edge,
+  type MiniMapNodeProps,
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
@@ -43,6 +47,7 @@ type SaveState = "saved" | "saving" | "error";
 
 const STORYBOARD_CTA_CLASS =
   "inline-flex items-center rounded-full border border-transparent bg-zinc-900 px-3 py-2 text-xs text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)]";
+const MINIMAP_VIEWPORT_COLOR = "#6D5DF6";
 type StoryboardCanvasProps = {
   onSaveStateChange?: (saveState: SaveState, hasUnsavedChanges: boolean) => void;
   canvasModeExternal?: CanvasMode;
@@ -840,6 +845,84 @@ function getSlideIdFromNodeId(nodeId: string) {
   return nodeId.replace(/^(story|image)-/, "");
 }
 
+function extractStoryboardMiniMapIndexFromNodeId(nodeId: string) {
+  const match = nodeId.match(/^image-slide-(\d+)(?:$|-)/);
+  if (!match) {
+    return null;
+  }
+  const index = Number.parseInt(match[1], 10);
+  return Number.isFinite(index) ? index : null;
+}
+
+function StoryboardMiniMapNode({
+  id,
+  x,
+  y,
+  width,
+  height,
+  borderRadius,
+  color,
+  shapeRendering,
+  selected,
+  strokeColor,
+  strokeWidth,
+  onClick,
+}: MiniMapNodeProps) {
+  const sceneIndex = extractStoryboardMiniMapIndexFromNodeId(id);
+  const safeWidth = Math.max(24, width);
+  const safeHeight = Math.max(18, height);
+  const inset = Math.max(3, safeWidth * 0.06);
+  const labelFontSize = Math.max(9, Math.min(15, safeWidth * 0.14));
+  const imageBandHeight = Math.max(8, Math.min(15, safeHeight * 0.24));
+  const showLabel = safeWidth >= 30 && safeHeight >= 26 && sceneIndex != null;
+
+  return (
+    <g
+      transform={`translate(${x}, ${y})`}
+      onClick={onClick ? (event) => onClick(event, id) : undefined}
+      className={onClick ? "cursor-pointer" : undefined}
+    >
+      <rect
+        x={0}
+        y={0}
+        width={safeWidth}
+        height={safeHeight}
+        rx={borderRadius}
+        ry={borderRadius}
+        fill="rgba(255,255,255,0.42)"
+        stroke={selected ? MINIMAP_VIEWPORT_COLOR : color || strokeColor || "#71717a"}
+        strokeWidth={selected ? Math.max(2.5, strokeWidth || 1) : Math.max(1.5, strokeWidth || 1)}
+        shapeRendering={shapeRendering}
+      />
+      <rect
+        x={inset}
+        y={Math.max(3, safeHeight * 0.08)}
+        width={safeWidth - inset * 2}
+        height={imageBandHeight}
+        rx={Math.min(borderRadius, 4)}
+        ry={Math.min(borderRadius, 4)}
+        fill={selected ? MINIMAP_VIEWPORT_COLOR : color || "#71717a"}
+        opacity={0.82}
+        shapeRendering={shapeRendering}
+      />
+      {showLabel ? (
+        <text
+          x={safeWidth / 2}
+          y={Math.max(imageBandHeight + labelFontSize + 4, safeHeight / 2 + labelFontSize * 0.22)}
+          fill={selected ? MINIMAP_VIEWPORT_COLOR : color || "#27272a"}
+          fontSize={labelFontSize}
+          fontWeight={700}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          pointerEvents="none"
+        >
+          {sceneIndex}
+        </text>
+      ) : null}
+    </g>
+  );
+}
+
 function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1216,6 +1299,25 @@ export function StoryboardCanvas({
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
   const isCanvasInteractive = canvasMode === "free";
+  const getStoryboardMiniMapNodeColor = useCallback((node: Node) => {
+    const slideId = getSlideIdFromNodeId(node.id);
+    const slide = slides.find((item) => item.id === slideId);
+    const generationState = slide ? generationTaskStateByIndex?.[slide.page] : undefined;
+    if (selectedSlideId && slideId === selectedSlideId) {
+      return MINIMAP_VIEWPORT_COLOR;
+    }
+    if (generationState?.status === "failed") {
+      return "#ef4444";
+    }
+    if (
+      generationState?.status === "queued" ||
+      generationState?.status === "generating" ||
+      generationState?.status === "retrying"
+    ) {
+      return "#8B5CF6";
+    }
+    return "#18181b";
+  }, [generationTaskStateByIndex, selectedSlideId, slides]);
   const selectedSlideIndex = useMemo(() => {
     if (!slides.length) {
       return -1;
@@ -3991,7 +4093,7 @@ export function StoryboardCanvas({
 
         {canvasMode === "free" && (storyboardPreviewReady || isPreviewing || isPreparingPreviewAudio) ? (
           <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
-          <div className="pointer-events-auto inline-flex items-center rounded-full bg-white/95 px-2 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur">
+          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/95 px-2 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur">
             <button
               type="button"
               onClick={() => {
@@ -4026,6 +4128,18 @@ export function StoryboardCanvas({
                     : "Pause"
                   : "Preview Video"}
             </button>
+            {isPreviewing || isPreparingPreviewAudio ? (
+              <button
+                type="button"
+                onClick={stopPreview}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                aria-label="Cancel preview and return to canvas"
+                title="Cancel preview"
+              >
+                <X size={13} />
+                Cancel
+              </button>
+            ) : null}
           </div>
         </div>
         ) : null}
@@ -4058,9 +4172,35 @@ export function StoryboardCanvas({
           onPaneClick={() => setSelectedSlideId(null)}
         >
           {canvasMode === "free" ? (
-            <Controls
-            style={{ background: "#ffffff", border: "1px solid #e4e4e7", color: "#27272a" }}
-            />
+            <>
+              <Panel
+                position="bottom-right"
+                className="pointer-events-none !bottom-[142px] !right-3 hidden rounded-xl border border-zinc-200/90 bg-white/92 px-3 py-2 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur md:block"
+              >
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Canvas Map</div>
+                <div className="mt-1 text-xs font-semibold text-zinc-900">
+                  {slides.length} image module{slides.length > 1 ? "s" : ""}
+                </div>
+              </Panel>
+              <MiniMap
+                pannable
+                zoomable
+                nodeComponent={StoryboardMiniMapNode}
+                nodeColor={getStoryboardMiniMapNodeColor}
+                nodeStrokeColor={() => "rgba(255,255,255,0.95)"}
+                nodeBorderRadius={12}
+                maskColor="rgba(17,24,39,0.16)"
+                maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
+                maskStrokeWidth={2.5}
+                className="!bottom-3 !right-3 !hidden !h-[132px] !w-[216px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)] md:!block"
+              />
+              <Controls
+                showInteractive={false}
+                className="!bottom-3 !left-3"
+                style={{ background: "#ffffff", border: "1px solid #e4e4e7", color: "#27272a" }}
+              />
+              <Background color="#e5e7eb" gap={26} />
+            </>
           ) : null}
         </ReactFlow>
 

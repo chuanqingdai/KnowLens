@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import LandingPage from "./landing/page";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "AI Infographic and AI Video Generator | KnowLens.ai",
@@ -18,4 +18,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default LandingPage;
+export default function HomePage() {
+  redirect("/ai-infographic-generator");
+}
