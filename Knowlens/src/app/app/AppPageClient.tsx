@@ -1217,6 +1217,11 @@ export default function Home() {
       return;
     }
     try {
+      const promptFromQuery = new URLSearchParams(window.location.search).get("prompt")?.trim() ?? "";
+      if (promptFromQuery) {
+        setComposeInput(promptFromQuery.slice(0, MAX_COMPOSE_TEXT_CHARS));
+        return;
+      }
       const raw = window.sessionStorage.getItem(HOME_DRAFT_KEY);
       if (!raw) {
         return;

@@ -56,8 +56,8 @@ export const metadata: Metadata = {
 };
 
 const heroImage = {
-  src: "/picture/ai-information-generator.jpg",
-  alt: "AI information generator examples showing volcanoes, language models, data dashboards, the solar system, and an ocean food chain",
+  src: "/picture/ai-information-generator.jpg?v=20260612-nvidia",
+  alt: "NVIDIA earnings infographic generated from text notes",
 };
 
 const features = [
@@ -211,7 +211,7 @@ export default function AiInfographicGeneratorPage() {
       <section className="mx-auto grid w-full max-w-6xl gap-8 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)] lg:items-center lg:pt-16">
         <div className="text-center lg:text-left">
           <h1 className="text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
-            AI Infographic Generator
+            Create Clear AI Infographics
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600 lg:mx-0">
             Turn topics, notes, or plain text into clear, structured infographics with readable labels, sections, and visual hierarchy.
@@ -227,12 +227,12 @@ export default function AiInfographicGeneratorPage() {
           </div>
           <div className="mt-5 inline-flex items-center gap-2 text-sm text-zinc-600">
             <BadgeCheck size={16} className="text-emerald-600" aria-hidden="true" />
-            Start with text, notes, or a topic.
+            No professional skills needed.
           </div>
         </div>
 
         <div>
-          <img src={heroImage.src} alt={heroImage.alt} width={1003} height={565} className="aspect-[16/9] w-full rounded-[1.5rem] object-cover shadow-[0_24px_60px_rgba(15,23,42,0.10)]" loading="eager" />
+          <img src={heroImage.src} alt={heroImage.alt} width={878} height={878} className="aspect-square w-full rounded-[1.5rem] object-cover shadow-[0_24px_60px_rgba(15,23,42,0.10)]" loading="eager" />
         </div>
       </section>
 
@@ -246,7 +246,7 @@ export default function AiInfographicGeneratorPage() {
                 <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
                 <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
+                <Link href={`/app?prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
               </div>
             </article>
           ))}
@@ -261,7 +261,7 @@ export default function AiInfographicGeneratorPage() {
                 <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
                 <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
+                <Link href={`/app?prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
               </div>
             </article>
           ))}

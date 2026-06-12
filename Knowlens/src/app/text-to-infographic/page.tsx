@@ -52,9 +52,7 @@ export const metadata: Metadata = {
 };
 
 const heroImages = [
-  { src: "/en-picture/photosynthesis-infographic-case.jpg", alt: "Photosynthesis infographic created from text notes", width: 1003, height: 565 },
-  { src: "/en-picture/astronomy/astronomy-long-infographic.jpg", alt: "Solar system infographic created from a short topic", width: 720, height: 1120 },
-  { src: "/en-picture/biology/biology-long-infographic.jpg", alt: "Study notes visual summary created from text", width: 720, height: 1120 },
+  { src: "/picture/ai-information-generator.jpg?v=20260612-nvidia", alt: "NVIDIA earnings infographic generated from text notes", width: 878, height: 878 },
 ];
 
 const createCards = [
@@ -83,60 +81,69 @@ const audiences = [
 
 const examples = [
   {
-    title: "Photosynthesis at a Glance",
-    description: "An educational infographic that explains how plants turn sunlight into energy.",
-    tags: ["Educational Infographic", "Science Visual"],
+    title: "Seed Germination Steps",
+    description: "A 16:9 learning visual that explains how a seed absorbs water, grows roots, and sends up its first leaves.",
+    tags: ["Plant Science", "Learning Visual"],
     image: "/en-picture/photosynthesis-infographic-case.jpg",
-    alt: "Photosynthesis infographic created from text notes",
+    alt: "Seed germination infographic created from text notes",
     prompt:
-      "Explain photosynthesis as a clear infographic. Include sunlight, water, carbon dioxide, glucose, oxygen, chlorophyll, and why plants matter in the food chain.",
+      "Explain seed germination as a clear infographic. Include the dry seed stage, water absorption, swelling, root growth, shoot growth, first leaves, and why water, warmth, air, and stored nutrients help a new plant begin life.",
+    ratio: "landscape",
   },
   {
-    title: "Solar System Visual Summary",
-    description: "A science infographic that organizes planets, orbits, and simple space facts.",
-    tags: ["Science Infographic", "Visual Summary"],
+    title: "How Vaccines Train Immunity",
+    description: "A 16:9 health science visual that turns immune response steps into a simple sequence.",
+    tags: ["Health Science", "Process Visual"],
+    image: "/en-picture/printing-press-history-infographic-case.jpg",
+    alt: "Vaccine immune system infographic created from a short topic",
+    prompt:
+      "Explain how vaccines train the immune system as a clear infographic. Include vaccine exposure, antigen recognition, antibody production, immune memory, memory B cells, memory T cells, and faster protection during future exposure.",
+    ratio: "landscape",
+  },
+  {
+    title: "How an Electric Vehicle Works",
+    description: "A 16:9 technical infographic that labels charging, the battery pack, inverter, motor, and regenerative braking.",
+    tags: ["Technology", "System Diagram"],
+    image: "/en-picture/inflation-daily-life-infographic-case.jpg",
+    alt: "Electric vehicle system infographic created from text",
+    prompt:
+      "Explain how an electric vehicle works as a clean infographic. Include charging, the battery pack, inverter, electric motor, wheel power, and regenerative braking that sends energy back to the battery.",
+    ratio: "landscape",
+  },
+  {
+    title: "How Solar Storms Create Auroras",
+    description: "A vertical science infographic that follows charged particles from the Sun to glowing auroras.",
+    tags: ["Space Science", "Visual Summary"],
     image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar system infographic created from a short topic",
+    alt: "Solar storm infographic created from a short topic",
     prompt:
-      "Create a beginner-friendly infographic about the solar system. Show the planet order, orbit basics, inner and outer planets, and memorable facts for learners.",
+      "Explain how solar storms create auroras as a clear vertical infographic. Include solar flares, charged particles, Earth's magnetic field, polar regions, atmospheric collisions, and why auroras glow green, red, or purple.",
+    ratio: "portrait",
   },
   {
-    title: "Study Notes Summary",
-    description: "A structured visual summary created from messy study notes.",
-    tags: ["Study Guide", "Visual Summary"],
+    title: "DNA Replication Step by Step",
+    description: "A vertical biology infographic that explains helicase, base pairing, polymerase, and matching DNA copies.",
+    tags: ["Biology", "Step-by-Step"],
     image: "/en-picture/biology/biology-long-infographic.jpg",
-    alt: "Study notes visual summary created from text",
+    alt: "DNA replication infographic created from text",
     prompt:
-      "Turn study notes about cell structure into a visual summary. Explain the nucleus, mitochondria, ribosomes, membrane, and how each part supports the cell.",
+      "Explain DNA replication step by step as a clear infographic. Include helicase unzipping the double helix, template strands, free nucleotide base pairing, DNA polymerase building new strands, and two identical DNA molecules.",
+    ratio: "portrait",
   },
   {
-    title: "Earth Science Overview",
-    description: "A poster-style visual that explains landforms with simple sections.",
-    tags: ["Science Infographic", "Poster"],
+    title: "Why Volcanoes Erupt",
+    description: "A vertical earth science visual that explains magma, pressure, vents, ash clouds, and lava flow.",
+    tags: ["Earth Science", "Cycle Diagram"],
     image: "/en-picture/geography/geography-long-infographic.jpg",
-    alt: "Earth science infographic created from plain text",
+    alt: "Volcano eruption infographic created from plain text",
     prompt:
-      "Create an earth science infographic explaining landforms, weathering, erosion, deposition, and how landscapes change over time.",
-  },
-  {
-    title: "History Timeline Summary",
-    description: "A clear visual layout for turning events into an easy timeline.",
-    tags: ["Timeline", "Visual Summary"],
-    image: "/en-picture/history/history-infographic-card.jpg",
-    alt: "History timeline visual summary created from notes",
-    prompt:
-      "Create a history timeline visual summary that explains a major invention, why it mattered, and how it changed communication, learning, and daily life.",
-  },
-  {
-    title: "Everyday Economics Visual",
-    description: "A simple visual summary for explaining a practical business concept.",
-    tags: ["Knowledge Visual", "Visual Summary"],
-    image: "/en-picture/economics/economics-infographic-card.jpg",
-    alt: "Economics visual summary created from a short explanation",
-    prompt:
-      "Create an infographic explaining inflation in everyday life. Show prices, purchasing power, wages, savings, and why people notice inflation in daily spending.",
+      "Explain why volcanoes erupt as a clear earth science infographic. Include magma formation, gas pressure, the magma chamber, the vent, lava flow, ash clouds, and how eruptions reshape the land.",
+    ratio: "portrait",
   },
 ];
+
+const landscapeExamples = examples.filter((item) => item.ratio === "landscape");
+const portraitExamples = examples.filter((item) => item.ratio === "portrait");
 
 const whyItems = [
   ["Starts from Your Text", "Begin with plain text, notes, a topic, or an outline instead of a blank canvas."],
@@ -232,14 +239,8 @@ export default function TextToInfographicPage() {
           <p className="mt-2 text-sm text-zinc-500">Built for learning, science explainers, social posts, and clear visual communication.</p>
         </div>
 
-        <div className="rounded-[2rem] border border-zinc-200 bg-white p-3 shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
-          <img src={heroImages[0].src} alt={heroImages[0].alt} width={heroImages[0].width} height={heroImages[0].height} className="aspect-[16/9] w-full rounded-xl bg-zinc-100 object-cover" loading="eager" />
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            {heroImages.slice(1).map((image) => (
-              <img key={image.src} src={image.src} alt={image.alt} width={image.width} height={image.height} className="aspect-[9/12] w-full rounded-xl bg-zinc-100 object-cover object-top" loading="eager" />
-            ))}
-          </div>
-          <p className="mt-3 text-center text-xs leading-5 text-zinc-500">Examples created from short text prompts, notes, and topics.</p>
+        <div>
+          <img src={heroImages[0].src} alt={heroImages[0].alt} width={heroImages[0].width} height={heroImages[0].height} className="aspect-square w-full rounded-[1.5rem] object-cover shadow-[0_24px_60px_rgba(15,23,42,0.10)]" loading="eager" />
         </div>
       </section>
 
@@ -303,9 +304,29 @@ export default function TextToInfographicPage() {
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Text-to-Infographic Examples" description="Explore examples created from topics, notes, short explanations, and plain text prompts." />
         <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {examples.map((item) => (
+          {landscapeExamples.map((item) => (
             <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <img src={item.image} alt={item.alt} width={640} height={820} className="h-auto w-full bg-zinc-100 object-contain" loading="lazy" />
+              <img src={item.image} alt={item.alt} width={1672} height={941} className="aspect-[16/9] w-full bg-zinc-100 object-cover" loading="lazy" />
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">
+                  {item.tags.map((tag) => (
+                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
+                  ))}
+                </div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.prompt)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
+                  Create Similar
+                  <ArrowRight size={14} aria-hidden="true" />
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-5 md:grid-cols-3">
+          {portraitExamples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <img src={item.image} alt={item.alt} width={941} height={1672} className="aspect-[9/16] w-full bg-zinc-100 object-cover" loading="lazy" />
               <div className="p-4">
                 <div className="flex flex-wrap gap-2">
                   {item.tags.map((tag) => (

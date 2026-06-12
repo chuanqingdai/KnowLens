@@ -14,38 +14,53 @@ type MarketingChromeProps = {
   showLocaleSwitch?: boolean;
 };
 
-const focusedLandingLinks = [
+const toolLinkGroups = [
   {
-    href: "/ai-explainer-video",
-    label: "AI Explainer Videos",
+    title: "Infographic Tools",
+    links: [
+      {
+        href: "/ai-infographic-generator",
+        label: "AI Infographic Generator",
+      },
+      {
+        href: "/text-to-infographic",
+        label: "Text to Infographic",
+      },
+      {
+        href: "/infographic-maker",
+        label: "Infographic Maker",
+      },
+    ],
   },
   {
-    href: "/ai-video-generator",
-    label: "AI Video Generator",
+    title: "Video Tools",
+    links: [
+      {
+        href: "/ai-explainer-video",
+        label: "AI Explainer Videos",
+      },
+      {
+        href: "/ai-video-generator",
+        label: "AI Video Generator",
+      },
+      {
+        href: "/text-to-video-ai",
+        label: "Text to Video",
+      },
+    ],
   },
   {
-    href: "/text-to-video-ai",
-    label: "Text to Video",
-  },
-  {
-    href: "/ai-infographic-generator",
-    label: "AI Infographic Generator",
-  },
-  {
-    href: "/text-to-infographic",
-    label: "Text to Infographic",
-  },
-  {
-    href: "/infographic-maker",
-    label: "Infographic Maker",
-  },
-  {
-    href: "/ai-poster-generator",
-    label: "AI Poster Generator",
-  },
-  {
-    href: "/ai-carousel-generator",
-    label: "AI Carousel Generator",
+    title: "Visual Content Tools",
+    links: [
+      {
+        href: "/ai-poster-generator",
+        label: "AI Poster Generator",
+      },
+      {
+        href: "/ai-carousel-generator",
+        label: "AI Carousel Generator",
+      },
+    ],
   },
 ];
 
@@ -111,6 +126,11 @@ function canUseOneTapNow() {
   return !isIOS && !isSafariLike && navigator.cookieEnabled;
 }
 
+function normalizeMarketingPath(path: string) {
+  const normalized = path.split(/[?#]/)[0]?.replace(/\/+$/, "");
+  return normalized || "/";
+}
+
 export function MarketingChrome({ children, showLocaleSwitch = false }: MarketingChromeProps) {
   const { t } = useLocale();
   const router = useRouter();
@@ -121,6 +141,15 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+  const currentMarketingPath = normalizeMarketingPath(pathname || "/");
+
+  function handleToolLinkClick(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (normalizeMarketingPath(href) !== currentMarketingPath || typeof window === "undefined") {
+      return;
+    }
+    event.preventDefault();
+    window.location.reload();
+  }
 
   useEffect(() => {
     if (typeof window === "undefined" || !isLanding || !oneTapClientId) {
@@ -250,20 +279,26 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
                 className="inline-flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                 aria-haspopup="menu"
               >
-                Features
+                Tools
                 <ChevronDown size={13} className="text-zinc-500 transition group-hover:rotate-180" aria-hidden="true" />
               </button>
-              <div className="invisible absolute right-0 top-full z-50 w-56 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-                <div className="rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.14)]">
-                  {focusedLandingLinks.map((item) => (
-                    <Link
-                      key={`${item.href}-${item.label}`}
-                      href={item.href}
-                      className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-                      role="menuitem"
-                    >
-                      {item.label}
-                    </Link>
+              <div className="invisible absolute right-0 top-full z-50 w-[720px] max-w-[calc(100vw-2rem)] pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                <div className="grid gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.14)] md:grid-cols-3">
+                  {toolLinkGroups.map((group) => (
+                    <div key={group.title} className="rounded-lg p-1">
+                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{group.title}</p>
+                      {group.links.map((item) => (
+                        <Link
+                          key={`${item.href}-${item.label}`}
+                          href={item.href}
+                          onClick={(event) => handleToolLinkClick(event, item.href)}
+                          className="block rounded-lg px-2 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+                          role="menuitem"
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -291,55 +326,65 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
       <main className="relative z-10 flex-1">{children}</main>
 
       <footer className="relative z-10 border-t border-zinc-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-9 sm:px-6 md:grid-cols-[1.3fr_1fr_1fr]">
-          <div>
-            <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
-                <img
-                  src="/logo.png?v=202605241930"
-                  alt="KnowLens.ai"
-                  width={30}
-                  height={30}
-                  className="h-[30px] w-[30px] object-contain"
-                />
-              </span>
-              <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
-            </Link>
-            <p className="mt-3 max-w-sm text-xs leading-5 text-zinc-500">
-              AI Infographic and AI Video Generator for clear visual content.
-            </p>
-            <p className="mt-5 text-xs text-zinc-500">© 2026 KnowLens.ai · All rights reserved</p>
-          </div>
-          <nav>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Tools</p>
-            <div className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
-              {focusedLandingLinks.map((item) => (
-                <Link key={`${item.href}-${item.label}`} href={item.href} className="hover:text-zinc-950">
-                  {item.label}
+        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+          <div className="grid gap-9 lg:grid-cols-[minmax(260px,0.95fr)_minmax(0,2.05fr)]">
+            <div>
+              <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
+                  <img
+                    src="/logo.png?v=202605241930"
+                    alt="KnowLens.ai"
+                    width={30}
+                    height={30}
+                    className="h-[30px] w-[30px] object-contain"
+                  />
+                </span>
+                <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
+              </Link>
+              <p className="mt-3 max-w-md text-sm leading-6 text-zinc-600">
+                Create clear AI infographics, short visual explainers, and structured knowledge visuals from text.
+              </p>
+              <nav className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
+                <Link href="/about" className="hover:text-zinc-950">
+                  {t("About", "About")}
                 </Link>
-              ))}
+                <Link href="/privacy" className="hover:text-zinc-950">
+                  {t("Privacy", "Privacy")}
+                </Link>
+                <Link href="/terms" className="hover:text-zinc-950">
+                  {t("Terms", "Terms")}
+                </Link>
+                <Link href="/payment-terms" className="hover:text-zinc-950">
+                  {t("Payment Terms", "Payment Terms")}
+                </Link>
+                <Link href="/contact" className="hover:text-zinc-950">
+                  {t("Contact", "Contact")}
+                </Link>
+              </nav>
+              <p className="mt-5 text-xs text-zinc-500">© 2026 KnowLens.ai · All rights reserved</p>
             </div>
-          </nav>
-          <nav>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Company & Legal</p>
-            <div className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
-              <Link href="/about" className="hover:text-zinc-950">
-                {t("About", "About")}
-              </Link>
-              <Link href="/privacy" className="hover:text-zinc-950">
-                {t("Privacy", "Privacy")}
-              </Link>
-              <Link href="/terms" className="hover:text-zinc-950">
-                {t("Terms", "Terms")}
-              </Link>
-              <Link href="/payment-terms" className="hover:text-zinc-950">
-                {t("Payment Terms", "Payment Terms")}
-              </Link>
-              <Link href="/contact" className="hover:text-zinc-950">
-                {t("Contact", "Contact")}
-              </Link>
-            </div>
-          </nav>
+            <nav>
+              <div className="grid gap-6 text-sm text-zinc-600 sm:grid-cols-3">
+                {toolLinkGroups.map((group) => (
+                  <div key={group.title}>
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{group.title}</p>
+                    <div className="flex flex-col gap-2.5">
+                      {group.links.map((item) => (
+                        <Link
+                          key={`${item.href}-${item.label}`}
+                          href={item.href}
+                          onClick={(event) => handleToolLinkClick(event, item.href)}
+                          className="hover:text-zinc-950"
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </nav>
+          </div>
         </div>
       </footer>
     </div>
