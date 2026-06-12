@@ -32,7 +32,6 @@ import {
   SendHorizontal,
   ExternalLink,
   Share2,
-  TrendingUp,
   UserCircle2,
   Upload,
   X,
@@ -65,7 +64,6 @@ import { readAttributionPayload } from "@/lib/attribution";
 const navItems = [
   { key: "home", label: "Home", icon: HomeIcon, href: "/app" },
   { key: "projects", label: "Projects", icon: FolderOpen, href: "/projects" },
-  { key: "growth-studio", label: "Growth Studio", icon: TrendingUp, href: "/growth-studio" },
   { key: "profile", label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 
@@ -2340,8 +2338,8 @@ export default function Home() {
             <div className="mb-6 flex flex-col items-center text-center">
               <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
               <h1 className="mt-1 max-w-[14ch] text-center text-[clamp(1.55rem,4.15vw,2.45rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900 sm:max-w-none sm:text-[clamp(1.65rem,4.15vw,2.55rem)]">
-                <span className="block sm:inline">Turn Text into Visual</span>{" "}
-                <span className="block sm:inline">Learning Content</span>
+                <span className="block sm:inline">Turn Text into Clear</span>{" "}
+                <span className="block sm:inline">Infographics</span>
               </h1>
             </div>
 

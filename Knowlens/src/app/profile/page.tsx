@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BadgeCheck, FolderOpen, Home as HomeIcon, Menu, ReceiptText, TrendingUp, UserCircle2, Zap } from "lucide-react";
+import { BadgeCheck, FolderOpen, Home as HomeIcon, Menu, ReceiptText, UserCircle2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
@@ -9,7 +9,6 @@ import { SidebarNav } from "@/components/app-shell/SidebarNav";
 const navItems = [
   { label: "Home", icon: HomeIcon, href: "/app" },
   { label: "Projects", icon: FolderOpen, href: "/projects" },
-  { label: "Growth Studio", icon: TrendingUp, href: "/growth-studio" },
   { label: "Profile", icon: UserCircle2, href: "/profile" },
 ];
 

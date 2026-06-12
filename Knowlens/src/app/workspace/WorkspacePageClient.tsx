@@ -2762,7 +2762,7 @@ export default function WorkspacePage() {
     if (detected.intent === "ppt" || detected.intent === "video" || detected.intent === "poster") {
       return detected.intent;
     }
-    return "video";
+    return "poster";
   });
   const [posterSizeId, setPosterSizeId] = useState<string | null>(() =>
     normalizePosterSizeId(

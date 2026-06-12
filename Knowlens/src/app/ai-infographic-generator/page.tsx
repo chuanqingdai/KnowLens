@@ -55,11 +55,10 @@ export const metadata: Metadata = {
   },
 };
 
-const heroImages = [
-  { src: "/picture/text-to-poster.jpg", alt: "Examples of structured infographics created from topics, notes, and plain text with KnowLens" },
-  { src: "/en-picture/photosynthesis-infographic-case.jpg", alt: "Seed germination educational infographic created from a topic" },
-  { src: "/en-picture/astronomy/astronomy-long-infographic.jpg", alt: "Solar storms visual summary infographic created from notes" },
-];
+const heroImage = {
+  src: "/picture/ai-information-generator.jpg",
+  alt: "AI information generator examples showing volcanoes, language models, data dashboards, the solar system, and an ocean food chain",
+};
 
 const features = [
   ["Educational Infographics", "Turn lesson topics, study notes, and short explanations into classroom-ready visuals.", BookOpen],
@@ -85,12 +84,12 @@ const differencePoints = [
 ] as const;
 
 const audiences = [
-  ["Students", "Create visual study guides from notes and topics.", "Study guides"],
-  ["Teachers", "Turn lesson topics into classroom-ready infographics.", "Lesson visuals"],
-  ["Science Communicators", "Explain complex topics visually.", "Science communication"],
-  ["Content Creators", "Create shareable short visual summaries.", "Social content"],
-  ["Small Teams", "Make quick visual outputs without design expertise.", "Team visuals"],
-  ["Marketers", "Turn product or campaign text into visual content.", "Campaign visuals"],
+  ["Students", "Turn class notes, definitions, and difficult concepts into visual study guides that are easier to review before exams or presentations.", "Study guides"],
+  ["Teachers", "Convert lesson topics into classroom-ready infographics with clear sections, labels, and examples students can understand at a glance.", "Lesson visuals"],
+  ["Science Communicators", "Explain complex science, health, environment, and technology topics with structured visuals that make cause and effect easier to follow.", "Science communication"],
+  ["Content Creators", "Repurpose one idea into a compact visual summary for posts, newsletters, blogs, and social media threads.", "Social content"],
+  ["Small Teams", "Create quick knowledge visuals for product notes, internal updates, process explanations, and team communication without waiting on design support.", "Team visuals"],
+  ["Marketers", "Turn product ideas, campaign messages, feature benefits, or customer education topics into clean visuals for sharing and explaining.", "Campaign visuals"],
 ] as const;
 
 const examples = [
@@ -211,11 +210,7 @@ export default function AiInfographicGeneratorPage() {
 
       <section className="mx-auto grid w-full max-w-6xl gap-8 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)] lg:items-center lg:pt-16">
         <div className="text-center lg:text-left">
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm">
-            <Sparkles size={14} className="text-blue-600" aria-hidden="true" />
-            AI Infographic Generator
-          </div>
-          <h1 className="mt-6 text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
+          <h1 className="text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
             AI Infographic Generator
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600 lg:mx-0">
@@ -232,21 +227,44 @@ export default function AiInfographicGeneratorPage() {
           </div>
           <div className="mt-5 inline-flex items-center gap-2 text-sm text-zinc-600">
             <BadgeCheck size={16} className="text-emerald-600" aria-hidden="true" />
-            No design skills needed. Paste your text or describe what you want to explain.
+            Start with text, notes, or a topic.
           </div>
-          <p className="mt-2 text-sm text-zinc-500">Built for educational visuals, science infographics, visual summaries, and knowledge sharing.</p>
         </div>
 
-        <div className="rounded-[2rem] border border-zinc-200 bg-white p-3 shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
-          <div className="grid gap-3">
-            <img src={heroImages[0].src} alt={heroImages[0].alt} width={1003} height={565} className="aspect-[16/9] w-full rounded-xl bg-zinc-100 object-cover" loading="eager" />
-            <div className="grid grid-cols-2 gap-3">
-              {heroImages.slice(1).map((image) => (
-                <img key={image.src} src={image.src} alt={image.alt} width={480} height={320} className="aspect-[16/9] w-full rounded-xl bg-zinc-100 object-cover" loading="eager" />
-              ))}
-            </div>
-          </div>
-          <p className="mt-3 text-center text-xs leading-5 text-zinc-500">Examples created from topics, notes, and plain text.</p>
+        <div>
+          <img src={heroImage.src} alt={heroImage.alt} width={1003} height={565} className="aspect-[16/9] w-full rounded-[1.5rem] object-cover shadow-[0_24px_60px_rgba(15,23,42,0.10)]" loading="eager" />
+        </div>
+      </section>
+
+      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <SectionHeading title="AI Infographic Examples" description="Explore infographics, posters, and visual summaries created from topics, notes, and short text prompts." />
+        <div className="mt-8 grid gap-5 md:grid-cols-3">
+          {landscapeExamples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <img src={item.image} alt={item.alt} width={1672} height={941} className="aspect-[16/9] w-full bg-zinc-100 object-cover" loading="lazy" />
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-5 md:grid-cols-3">
+          {portraitExamples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <div className="bg-zinc-100">
+                <img src={item.image} alt={item.alt} width={941} height={1672} className="aspect-[9/16] w-full object-cover" loading="lazy" />
+              </div>
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -310,38 +328,6 @@ export default function AiInfographicGeneratorPage() {
               <h3 className="text-lg font-semibold text-zinc-950">{title}</h3>
               <p className="mt-2 text-sm leading-6 text-zinc-600">{description}</p>
               <p className="mt-4 text-xs font-semibold text-emerald-700">{tag}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <SectionHeading title="AI Infographic Examples" description="Explore infographics, posters, and visual summaries created from topics, notes, and short text prompts." />
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {landscapeExamples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <img src={item.image} alt={item.alt} width={1672} height={941} className="aspect-[16/9] w-full bg-zinc-100 object-cover" loading="lazy" />
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div className="mt-5 grid gap-5 md:grid-cols-3">
-          {portraitExamples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <div className="bg-zinc-100">
-                <img src={item.image} alt={item.alt} width={941} height={1672} className="aspect-[9/16] w-full object-cover" loading="lazy" />
-              </div>
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">Create Similar<ArrowRight size={14} /></Link>
-              </div>
             </article>
           ))}
         </div>
