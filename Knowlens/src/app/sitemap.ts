@@ -1,4 +1,7 @@
 import type { MetadataRoute } from "next";
+import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { buildPublishedCaseImageSeo } from "@/lib/infographic-seo-backfill";
+import { listPublishedCases } from "@/lib/server/published-cases";
 
 const siteUrl = "https://knowlens.ai";
 
@@ -11,12 +14,47 @@ const publicRoutes = [
   "/terms",
 ];
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  return publicRoutes.map((route) => ({
+  const staticEntries: MetadataRoute.Sitemap = publicRoutes.map((route) => ({
     url: `${siteUrl}${route === "/" ? "" : route}`,
     lastModified: now,
     changeFrequency: route === "/" || route === "/app" ? "daily" : "weekly",
     priority: route === "/" || route === "/app" ? 1 : 0.8,
   }));
+
+  try {
+    const cases = await listPublishedCases({ limit: 200, includeAssets: true, includeLatestVideoExportAssets: false });
+    const biologyEntries: MetadataRoute.Sitemap = getBiologyInfographicTemplates().map((template) => ({
+      url: template.canonicalUrl,
+      lastModified: new Date(template.updatedAt),
+      changeFrequency: "monthly",
+      priority: 0.7,
+      images: [template.previewImageUrl],
+    }));
+    const caseEntries = cases
+      .filter((item) => item.outputType !== "video")
+      .map((item) => {
+        const seo = buildPublishedCaseImageSeo(item);
+        return {
+          url: seo.canonicalUrl,
+          lastModified: item.updatedAt ? new Date(item.updatedAt) : now,
+          changeFrequency: "weekly" as const,
+          priority: item.featured ? 0.8 : 0.7,
+          images: seo.previewImageUrl && !seo.needsAssetTransfer ? [seo.previewImageUrl] : undefined,
+        };
+      });
+    return [...staticEntries, ...biologyEntries, ...caseEntries];
+  } catch {
+    return [
+      ...staticEntries,
+      ...getBiologyInfographicTemplates().map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly" as const,
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      })),
+    ];
+  }
 }

@@ -8,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://knowlens.ai/sitemap.xml",
+    sitemap: ["https://knowlens.ai/sitemap.xml", "https://knowlens.ai/infographic-sitemap.xml"],
     host: siteUrl,
   };
 }

@@ -157,12 +157,11 @@ export default function InfographicExamplesPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
 
       <section className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 pb-10 pt-10 text-center sm:px-6 lg:pt-16">
-        <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm">
-          <Sparkles size={14} className="text-blue-600" aria-hidden="true" />
-          Infographic Examples
-        </div>
+        <p className="inline-flex rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 shadow-sm">
+          CURATED VISUAL IDEAS
+        </p>
         <h1 className="mx-auto mt-6 max-w-5xl text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
-          Infographic Examples
+          Infographic Examples for Visual Inspiration
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600">
           Explore infographics, visual summaries, posters, and carousel-style visuals created from topics, notes, and plain text.
@@ -178,7 +177,17 @@ export default function InfographicExamplesPage() {
         </div>
         <div className="mt-5 inline-flex items-center gap-2 text-sm text-zinc-600">
           <BadgeCheck size={16} className="text-emerald-600" aria-hidden="true" />
-          See how ideas become clear visual explanations in seconds.
+          Start with your own text or notes.
+        </div>
+        <div className="mt-8 w-full max-w-[760px]">
+          <img
+            src="/picture/science-infographic.jpg"
+            alt="Musculoskeletal system science infographic with labeled anatomy"
+            width={1003}
+            height={565}
+            className="mx-auto h-auto w-full rounded-[1.5rem] object-contain shadow-[0_20px_55px_rgba(15,23,42,0.14)]"
+            loading="eager"
+          />
         </div>
       </section>
 

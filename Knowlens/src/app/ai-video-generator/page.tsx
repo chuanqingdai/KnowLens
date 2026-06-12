@@ -237,10 +237,10 @@ export default function AiVideoGeneratorPage() {
         <div className="mx-auto max-w-4xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm">
             <Sparkles size={14} className="text-blue-600" aria-hidden="true" />
-            AI Video Generator
+            TEXT TO VISUAL MOTION
           </div>
           <h1 className="mx-auto mt-6 max-w-5xl text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
-            AI Video Generator for Science & Educational Content
+            AI Video Generator for Short Stories
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600">
             Turn topics, notes, or plain text into short explainer videos with infographic overlays and visual summaries in minutes.

@@ -215,10 +215,10 @@ export default function TextToInfographicPage() {
         <div className="text-center lg:text-left">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm">
             <Sparkles size={14} className="text-blue-600" aria-hidden="true" />
-            Text to Infographic
+            TURN TEXT INTO VISUALS
           </div>
           <h1 className="mt-6 text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
-            Text to Infographic Generator
+            Text to Infographic Made Simple
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600 lg:mx-0">
             Turn plain text, notes, topics, or outlines into clear infographics, visual summaries, posters, and carousel-style visuals in minutes.

@@ -1,8 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
+import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PublishedPptViewer } from "@/components/featured/PublishedPptViewer";
 import { PublishedVideoPlayer } from "@/components/featured/PublishedVideoPlayer";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
+import { buildPublishedCaseImageSeo, buildPublishedCaseJsonLd } from "@/lib/infographic-seo-backfill";
 import { getPublishedCaseBySlug, type PublishedCaseAssetRow, type PublishedCaseOutputType } from "@/lib/server/published-cases";
 
 type CasePageProps = {
@@ -67,12 +70,41 @@ function formatScriptLabel(input: {
   return input.asset.pageIndex > 1 ? `Poster ${input.asset.pageIndex}` : "Poster";
 }
 
+export async function generateMetadata({ params }: Pick<CasePageProps, "params">): Promise<Metadata> {
+  const { slug } = await params;
+  const item = await getPublishedCaseBySlug(slug, false, { includeLatestVideoExportAsset: true });
+  if (!item) {
+    return {};
+  }
+  const seo = buildPublishedCaseImageSeo(item);
+  return {
+    title: seo.seoTitle,
+    description: seo.metaDescription,
+    alternates: { canonical: seo.canonicalUrl },
+    robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large" } },
+    openGraph: {
+      title: seo.seoTitle,
+      description: seo.metaDescription,
+      url: seo.canonicalUrl,
+      images: seo.previewImageUrl ? [{ url: seo.previewImageUrl, alt: seo.imageAlt }] : [],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: seo.seoTitle,
+      description: seo.metaDescription,
+      images: seo.previewImageUrl ? [seo.previewImageUrl] : [],
+    },
+  };
+}
+
 export default async function PublishedCasePage({ params, searchParams }: CasePageProps) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
   const item = await getPublishedCaseBySlug(slug, false, { includeLatestVideoExportAsset: true });
   if (!item) {
     notFound();
   }
+  const seo = buildPublishedCaseImageSeo(item, query.asset);
+  const jsonLd = buildPublishedCaseJsonLd(seo);
 
   const assets = item.assets || [];
   const imageAssets = assets.filter(isImageAsset);
@@ -100,6 +132,7 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
 
   return (
     <MarketingChrome>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <main className="px-4 py-8 text-zinc-900 sm:px-6 lg:px-12">
         <div className="mx-auto w-full max-w-6xl">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -107,12 +140,10 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
                 KnowLens.ai · {formatType(hasPublishedVideo ? "video" : item.outputType)}
               </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{item.title}</h1>
-              {item.description ? (
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-              ) : null}
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{seo.h1}</h1>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">{seo.visibleDescription}</p>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">{item.category}</span>
+                <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">{seo.categoryName}</span>
                 <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">@{item.authorLabel}</span>
                 {isPpt && !hasPublishedVideo && imageAssets.length ? (
                   <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
@@ -120,6 +151,14 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
                   </span>
                 ) : null}
               </div>
+              {!isVideo ? (
+                <Link
+                  href={`/app?prompt=${encodeURIComponent(seo.createSimilarPrompt)}`}
+                  className="mt-4 inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700"
+                >
+                  Create similar infographic
+                </Link>
+              ) : null}
             </div>
           </div>
 

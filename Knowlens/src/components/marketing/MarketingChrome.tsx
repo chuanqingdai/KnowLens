@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { usePathname, useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 type MarketingChromeProps = {
   children: React.ReactNode;
   showLocaleSwitch?: boolean;
+  infographicOnly?: boolean;
 };
 
 const toolLinkGroups = [
@@ -29,6 +30,30 @@ const toolLinkGroups = [
       {
         href: "/infographic-maker",
         label: "Infographic Maker",
+      },
+      {
+        href: "/science-infographic-generator",
+        label: "Science Infographic Generator",
+      },
+      {
+        href: "/biology-infographic-generator",
+        label: "Biology Infographic Generator",
+      },
+      {
+        href: "/earth-science-infographic-generator",
+        label: "Earth Science Infographic Generator",
+      },
+      {
+        href: "/process-infographic-generator",
+        label: "Process Infographic Generator",
+      },
+      {
+        href: "/recipe-infographic-maker",
+        label: "Recipe Infographic Maker",
+      },
+      {
+        href: "/infographic-examples",
+        label: "Infographic Examples",
       },
     ],
   },
@@ -131,7 +156,7 @@ function normalizeMarketingPath(path: string) {
   return normalized || "/";
 }
 
-export function MarketingChrome({ children, showLocaleSwitch = false }: MarketingChromeProps) {
+export function MarketingChrome({ children, showLocaleSwitch = false, infographicOnly = false }: MarketingChromeProps) {
   const { t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
@@ -139,17 +164,58 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
   const [oneTapReady, setOneTapReady] = useState(false);
   const [oneTapTriggered, setOneTapTriggered] = useState(false);
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const toolsMenuCloseTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const currentMarketingPath = normalizeMarketingPath(pathname || "/");
+  const visibleToolLinkGroups = useMemo(
+    () => (infographicOnly ? toolLinkGroups.filter((group) => group.title !== "Video Tools") : toolLinkGroups),
+    [infographicOnly],
+  );
 
   function handleToolLinkClick(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    setToolsMenuOpen(false);
     if (normalizeMarketingPath(href) !== currentMarketingPath || typeof window === "undefined") {
       return;
     }
     event.preventDefault();
     window.location.reload();
   }
+
+  function openToolsMenu() {
+    if (toolsMenuCloseTimer.current) {
+      window.clearTimeout(toolsMenuCloseTimer.current);
+      toolsMenuCloseTimer.current = null;
+    }
+    setToolsMenuOpen(true);
+  }
+
+  function scheduleToolsMenuClose() {
+    if (toolsMenuCloseTimer.current) {
+      window.clearTimeout(toolsMenuCloseTimer.current);
+    }
+    toolsMenuCloseTimer.current = window.setTimeout(() => {
+      setToolsMenuOpen(false);
+      toolsMenuCloseTimer.current = null;
+    }, 220);
+  }
+
+  function toggleToolsMenu() {
+    if (toolsMenuCloseTimer.current) {
+      window.clearTimeout(toolsMenuCloseTimer.current);
+      toolsMenuCloseTimer.current = null;
+    }
+    setToolsMenuOpen((open) => !open);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toolsMenuCloseTimer.current) {
+        window.clearTimeout(toolsMenuCloseTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !isLanding || !oneTapClientId) {
@@ -273,18 +339,35 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
           </Link>
           <div className="flex items-center gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
-            <div className="group relative hidden py-2 sm:block">
+            <div
+              className="relative hidden py-2 sm:block"
+              onMouseEnter={openToolsMenu}
+              onMouseLeave={scheduleToolsMenuClose}
+              onFocus={openToolsMenu}
+            >
               <button
                 type="button"
+                onClick={toggleToolsMenu}
                 className="inline-flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                 aria-haspopup="menu"
+                aria-expanded={toolsMenuOpen}
               >
                 Tools
-                <ChevronDown size={13} className="text-zinc-500 transition group-hover:rotate-180" aria-hidden="true" />
+                <ChevronDown
+                  size={13}
+                  className={`text-zinc-500 transition ${toolsMenuOpen ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
               </button>
-              <div className="invisible absolute right-0 top-full z-50 w-[720px] max-w-[calc(100vw-2rem)] pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+              <div
+                className={`absolute right-0 top-[calc(100%-0.25rem)] z-50 w-[720px] max-w-[calc(100vw-2rem)] pt-4 transition ${
+                  toolsMenuOpen ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
+                }`}
+                onMouseEnter={openToolsMenu}
+                onMouseLeave={scheduleToolsMenuClose}
+              >
                 <div className="grid gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.14)] md:grid-cols-3">
-                  {toolLinkGroups.map((group) => (
+                  {visibleToolLinkGroups.map((group) => (
                     <div key={group.title} className="rounded-lg p-1">
                       <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{group.title}</p>
                       {group.links.map((item) => (
@@ -365,7 +448,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
             </div>
             <nav>
               <div className="grid gap-6 text-sm text-zinc-600 sm:grid-cols-3">
-                {toolLinkGroups.map((group) => (
+                {visibleToolLinkGroups.map((group) => (
                   <div key={group.title}>
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{group.title}</p>
                     <div className="flex flex-col gap-2.5">

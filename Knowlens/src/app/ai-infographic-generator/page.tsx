@@ -210,8 +210,11 @@ export default function AiInfographicGeneratorPage() {
 
       <section className="mx-auto grid w-full max-w-6xl gap-8 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)] lg:items-center lg:pt-16">
         <div className="text-center lg:text-left">
-          <h1 className="text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
-            Create Clear AI Infographics
+          <p className="inline-flex rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 shadow-sm">
+            STRUCTURED KNOWLEDGE VISUALS
+          </p>
+          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
+            AI Infographic Generator for Clear Visuals
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600 lg:mx-0">
             Turn topics, notes, or plain text into clear, structured infographics with readable labels, sections, and visual hierarchy.

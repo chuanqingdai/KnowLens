@@ -88,10 +88,10 @@ export const explainerVideoLandingContent: FocusedLandingPageContent = {
   landingPageType: "explainer_video_creator",
   usePublicCases: false,
   hero: {
-    eyebrow: "CREATOR-READY VISUAL QUALITY",
-    title: "AI Explainer Videos for YouTube and TikTok Creators",
+    eyebrow: "EXPLAIN IDEAS VISUALLY",
+    title: "AI Explainer Videos for Clear Ideas",
     subtitle:
-      "Paste a script, article, or topic. KnowLens turns it into a short science explainer video with visual scenes, subtitles, and a clear creator-friendly structure.",
+      "Paste a script, topic, or notes. KnowLens turns it into a short science explainer video with visual scenes, subtitles, and a clear creator-friendly structure.",
     badge: "Best for YouTube Shorts, TikTok, and educational explainers",
     primaryCta: "Generate Your First Video",
     secondaryCta: "See Examples",

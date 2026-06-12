@@ -202,10 +202,10 @@ export default function AiPosterGeneratorPage() {
         <div className="text-center lg:text-left">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm">
             <Sparkles size={14} className="text-blue-600" aria-hidden="true" />
-            AI Poster Generator
+            BOLD VISUAL OUTPUTS
           </div>
           <h1 className="mt-6 text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
-            AI Poster Generator
+            AI Poster Generator for Clear Posters
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600 lg:mx-0">
             Turn topics, notes, or plain text into clear visual posters, infographic-style designs, and social media graphics in minutes.
