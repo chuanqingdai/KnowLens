@@ -131,6 +131,11 @@ export default function TextToVideoAiPage() {
         </div>
       </section>
 
+      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <SectionHeading title="Text-to-Video Examples" description="Explore short educational video ideas generated from topics, notes, and text prompts." />
+        <div className="mt-8 grid gap-5 md:grid-cols-3">{examples.map((item) => <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"><FrameImage src={item.image} alt={item.alt} /><div className="p-4"><div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div><h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p><Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-blue-700">Create Similar<ArrowRight size={14} /></Link></div></article>)}</div>
+      </section>
+
       <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="What You Can Create" description="Transform text into educational or science explainer videos with visual summaries." />
         <div className="mt-8 grid gap-4 md:grid-cols-2">{featureCards.map((item) => <article key={item.title} className="grid gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:grid-cols-[160px_minmax(0,1fr)]"><FrameImage src={item.image} alt={item.alt} /><div><h3 className="text-lg font-semibold text-zinc-950">{item.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p></div></article>)}</div>
@@ -147,12 +152,7 @@ export default function TextToVideoAiPage() {
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">{audiences.map(({ title, description, tag, Icon }) => <article key={title} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"><span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100"><Icon size={19} /></span><h3 className="mt-4 text-lg font-semibold text-zinc-950">{title}</h3><p className="mt-2 text-sm leading-6 text-zinc-600">{description}</p><p className="mt-4 text-xs font-semibold text-blue-700">{tag}</p></article>)}</div>
       </section>
 
-      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <SectionHeading title="Text-to-Video Examples" description="Explore short educational video ideas generated from topics, notes, and text prompts." />
-        <div className="mt-8 grid gap-5 md:grid-cols-3">{examples.map((item) => <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"><FrameImage src={item.image} alt={item.alt} /><div className="p-4"><div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div><h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p><Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-blue-700">Create Similar<ArrowRight size={14} /></Link></div></article>)}</div>
-      </section>
-
-      <section className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6">
+            <section className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6">
         <SectionHeading title="FAQ" description="Common questions about turning text into short educational videos." />
         <div className="mt-8 divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white">{faqItems.map(([question, answer]) => <details key={question} className="group p-5"><summary className="cursor-pointer list-none text-base font-semibold text-zinc-950">{question}</summary><p className="mt-3 text-sm leading-6 text-zinc-600">{answer}</p></details>)}</div>
       </section>

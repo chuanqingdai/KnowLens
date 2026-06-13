@@ -13,10 +13,12 @@ import {
 } from "@/lib/server/image2";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 360;
 
 const batchId = "process-infographic-tuzi-100";
 const batchTopic = "Process Infographic";
+const batchSize = 20;
+const providerTimeoutMs = 360_000;
 const publicDir = path.join(process.cwd(), "public/images/infographic/process");
 const manifestPath = path.join(process.cwd(), "src/lib/process-infographic-generated-images.json");
 
@@ -33,7 +35,7 @@ type BatchGenerationJob = {
   totalRequested: 100;
   aspectRatioPlan: { "16:9": 5; "9:16": 95 };
   provider: "tuzi";
-  batchSize: 5;
+  batchSize: 20;
   forceFreshGeneration: true;
   disableImageCache: true;
   status: "pending" | "generating_topics" | "generating_images" | "saving_images" | "creating_records" | "updating_sitemap" | "completed" | "partial_completed" | "failed";
@@ -74,7 +76,7 @@ function createJob(now: string): BatchGenerationJob {
     totalRequested: 100,
     aspectRatioPlan: { "16:9": 5, "9:16": 95 },
     provider: "tuzi",
-    batchSize: 5,
+    batchSize,
     forceFreshGeneration: true,
     disableImageCache: true,
     status: "pending",
@@ -99,7 +101,7 @@ async function readManifest(): Promise<Manifest> {
       batchTopic: parsed.batchTopic || batchTopic,
       generationProvider: "tuzi",
       updatedAt: parsed.updatedAt || now,
-      job: { ...createJob(now), ...(parsed.job || {}) },
+      job: { ...createJob(now), ...(parsed.job || {}), batchSize },
       templates: parsed.templates || {},
       errors: Array.isArray(parsed.errors) ? parsed.errors : [],
       sourceUrls: parsed.sourceUrls || {},
@@ -244,7 +246,7 @@ export async function POST(req: NextRequest) {
   }
   const body = (await req.json().catch(() => ({}))) as { offset?: number; limit?: number; force?: boolean };
   const offset = Math.max(0, Math.round(Number(body.offset || 0)));
-  const limit = Math.max(1, Math.min(5, Math.round(Number(body.limit || 5))));
+  const limit = Math.max(1, Math.min(batchSize, Math.round(Number(body.limit || batchSize))));
   const force = Boolean(body.force);
   const config = buildImage2ProviderConfig("tuzi");
   if (!config) {
@@ -258,10 +260,10 @@ export async function POST(req: NextRequest) {
   const updatedRecords: ManifestRecord[] = [];
   const errors: Array<{ slug: string; title: string; itemIndex: number; reason: string }> = [];
 
-  for (const template of templates) {
+  await Promise.all(templates.map(async (template) => {
     if (!force && manifest.templates[template.slug]?.generationStatus === "success") {
       updatedRecords.push(manifest.templates[template.slug]);
-      continue;
+      return;
     }
 
     let attempt = 0;
@@ -277,7 +279,7 @@ export async function POST(req: NextRequest) {
           aspectRatio: template.aspectRatio,
           size: resolveImage2Size(template.aspectRatio),
           extraBody: meta.extraBody,
-          timeoutMs: 90_000,
+          timeoutMs: providerTimeoutMs,
         });
         if (!result.ok) {
           throw new Error(`${result.errorCode}: ${result.errorMessage}${result.detail ? ` (${result.detail})` : ""}`);
@@ -320,8 +322,8 @@ export async function POST(req: NextRequest) {
         manifest.errors.push({ slug: template.slug, title: template.title, itemIndex, reason, updatedAt: new Date().toISOString() });
       }
     }
-    await writeManifest(manifest);
-  }
+  }));
+  await writeManifest(manifest);
 
   return NextResponse.json({
     ok: errors.length === 0,

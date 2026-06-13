@@ -13,10 +13,12 @@ import {
 } from "@/lib/server/image2";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 360;
 
 const batchId = "biology-infographic-tuzi-100";
 const batchTopic = "Biology Infographic";
+const batchSize = 20;
+const providerTimeoutMs = 360_000;
 const publicDir = path.join(process.cwd(), "public/images/infographic/biology");
 const manifestPath = path.join(process.cwd(), "src/lib/biology-infographic-generated-images.json");
 
@@ -197,7 +199,7 @@ export async function POST(req: NextRequest) {
   }
   const body = (await req.json().catch(() => ({}))) as { offset?: number; limit?: number; force?: boolean };
   const offset = Math.max(0, Math.round(Number(body.offset || 0)));
-  const limit = Math.max(1, Math.min(5, Math.round(Number(body.limit || 5))));
+  const limit = Math.max(1, Math.min(batchSize, Math.round(Number(body.limit || batchSize))));
   const force = Boolean(body.force);
   const config = buildImage2ProviderConfig("tuzi");
   if (!config) {
@@ -213,16 +215,17 @@ export async function POST(req: NextRequest) {
   const updatedRecords: ManifestRecord[] = [];
   const errors: Array<{ slug: string; title: string; reason: string }> = [];
 
-  for (const template of templates) {
+  await Promise.all(templates.map(async (template) => {
     if (!force && manifest.templates[template.slug]?.generationStatus === "success") {
       updatedRecords.push(manifest.templates[template.slug]);
-      continue;
+      return;
     }
     try {
       const result = await requestImage2Generation(config, {
         prompt: buildProviderPrompt(template),
         aspectRatio: template.aspectRatio,
         size: resolveImage2Size(template.aspectRatio),
+        timeoutMs: providerTimeoutMs,
       });
       if (!result.ok) {
         throw new Error(`${result.errorCode}: ${result.errorMessage}${result.detail ? ` (${result.detail})` : ""}`);
@@ -252,8 +255,8 @@ export async function POST(req: NextRequest) {
       errors.push({ slug: template.slug, title: template.title, reason });
       manifest.errors.push({ slug: template.slug, title: template.title, reason, updatedAt: new Date().toISOString() });
     }
-    await writeManifest(manifest);
-  }
+  }));
+  await writeManifest(manifest);
 
   return NextResponse.json({
     ok: errors.length === 0,

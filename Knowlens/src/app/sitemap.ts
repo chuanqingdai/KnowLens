@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { getHistoryInfographicTemplates } from "@/lib/history-infographic-templates";
 import { buildPublishedCaseImageSeo } from "@/lib/infographic-seo-backfill";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
@@ -35,7 +36,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       images: [template.previewImageUrl],
     }));
     const processEntries: MetadataRoute.Sitemap = getProcessInfographicTemplates()
-      .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+      .filter((template) => template.generationStatus === "success")
       .map((template) => ({
         url: template.canonicalUrl,
         lastModified: new Date(template.updatedAt),
@@ -44,7 +45,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         images: [template.previewImageUrl],
       }));
     const recipeEntries: MetadataRoute.Sitemap = getRecipeInfographicTemplates()
-      .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+      .filter((template) => template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
+    const historyEntries: MetadataRoute.Sitemap = getHistoryInfographicTemplates()
+      .filter((template) => template.generationStatus === "success")
       .map((template) => ({
         url: template.canonicalUrl,
         lastModified: new Date(template.updatedAt),
@@ -64,7 +74,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           images: seo.previewImageUrl && !seo.needsAssetTransfer ? [seo.previewImageUrl] : undefined,
         };
       });
-    return [...staticEntries, ...biologyEntries, ...processEntries, ...recipeEntries, ...caseEntries];
+    return [...staticEntries, ...biologyEntries, ...processEntries, ...recipeEntries, ...historyEntries, ...caseEntries];
   } catch {
     return [
       ...staticEntries,
@@ -76,7 +86,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         images: [template.previewImageUrl],
       })),
       ...getProcessInfographicTemplates()
-        .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+        .filter((template) => template.generationStatus === "success")
         .map((template) => ({
           url: template.canonicalUrl,
           lastModified: new Date(template.updatedAt),
@@ -85,7 +95,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           images: [template.previewImageUrl],
         })),
       ...getRecipeInfographicTemplates()
-        .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+        .filter((template) => template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
+      ...getHistoryInfographicTemplates()
+        .filter((template) => template.generationStatus === "success")
         .map((template) => ({
           url: template.canonicalUrl,
           lastModified: new Date(template.updatedAt),

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { getHistoryInfographicTemplates } from "@/lib/history-infographic-templates";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
 
@@ -16,10 +17,13 @@ export function GET() {
   const templates = [
     ...getBiologyInfographicTemplates(),
     ...getProcessInfographicTemplates().filter(
-      (template) => template.generationProvider === "tuzi" && template.generationStatus === "success",
+      (template) => template.generationStatus === "success",
     ),
     ...getRecipeInfographicTemplates().filter(
-      (template) => template.generationProvider === "tuzi" && template.generationStatus === "success",
+      (template) => template.generationStatus === "success",
+    ),
+    ...getHistoryInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
     ),
   ];
   const urls = templates

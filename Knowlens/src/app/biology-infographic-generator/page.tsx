@@ -360,6 +360,25 @@ export default function BiologyInfographicGeneratorPage() {
         </div>
       </section>
 
+      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <SectionHeading
+          title="Biology Infographic Examples"
+          description="Explore biology infographics and visual summaries created from topics, notes, and short text prompts."
+        />
+        <div className="mt-8 grid gap-5 md:grid-cols-2">
+          {portraitExamples.map((item) => (
+            <ExampleCard key={item.title} item={item} />
+          ))}
+        </div>
+        {landscapeExamples.length > 0 ? (
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            {landscapeExamples.map((item) => (
+              <ExampleCard key={item.title} item={item} />
+            ))}
+          </div>
+        ) : null}
+      </section>
+
       <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
@@ -457,26 +476,7 @@ export default function BiologyInfographicGeneratorPage() {
         </div>
       </section>
 
-      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <SectionHeading
-          title="Biology Infographic Examples"
-          description="Explore biology infographics and visual summaries created from topics, notes, and short text prompts."
-        />
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {portraitExamples.map((item) => (
-            <ExampleCard key={item.title} item={item} />
-          ))}
-        </div>
-        {landscapeExamples.length > 0 ? (
-          <div className="mt-6 grid gap-5 md:grid-cols-2">
-            {landscapeExamples.map((item) => (
-              <ExampleCard key={item.title} item={item} />
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+            <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading
           title="Designed for Readable Biology Infographics"
           description="KnowLens is built for visual explanation, not generic AI art."

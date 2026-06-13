@@ -585,64 +585,6 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
         ) : null}
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6" id="before-after">
-        <SectionHeading title={content.beforeAfter.title} description={content.beforeAfter.description} />
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {content.beforeAfter.steps.map((step, index) => (
-            <div key={step.title} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 text-sm font-semibold text-white">
-                {index + 1}
-              </span>
-              <h3 className="mt-4 text-lg font-semibold text-zinc-950">{step.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-zinc-600">{step.description}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => startGeneration(content, content.hero.exampleTopic, "before_after")}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white hover:bg-zinc-800"
-          >
-            {content.landingPageType === "information_generator" ? "Try with Your Topic" : "Try This Topic"}
-            <ArrowRight size={15} aria-hidden="true" />
-          </button>
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <SectionHeading
-          title={
-            content.landingPageType === "information_generator"
-              ? "Create Different Types of Infographics"
-              : "Create Once. Adapt for Every Channel."
-          }
-          description={
-            content.landingPageType === "information_generator"
-              ? "Choose the right visual structure for your idea, from educational visuals to social media posters and carousel-style graphics."
-              : "Turn one script or topic into short explainer videos for the channels your audience already watches."
-          }
-        />
-        <div className="mt-8 grid gap-4 md:grid-cols-5">
-          {content.formats.map((format) => {
-            return (
-              <button
-                key={format.title}
-                type="button"
-                onClick={() => sendLandingEvent(content, "format_selected", { selected_format: format.title })}
-                className="flex min-h-[13.25rem] flex-col rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md"
-              >
-                <div className="flex h-10 items-center">
-                  <PlatformLogo title={format.title} />
-                </div>
-                <h3 className="mt-3 text-sm font-semibold text-zinc-950">{format.title}</h3>
-                <p className="mt-2 text-xs leading-5 text-zinc-600">{format.description}</p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading
           title={
@@ -707,7 +649,65 @@ export function FocusedLandingPage({ content: providedContent }: { content?: Par
         </div>
       </section>
 
+      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6" id="before-after">
+        <SectionHeading title={content.beforeAfter.title} description={content.beforeAfter.description} />
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {content.beforeAfter.steps.map((step, index) => (
+            <div key={step.title} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 text-sm font-semibold text-white">
+                {index + 1}
+              </span>
+              <h3 className="mt-4 text-lg font-semibold text-zinc-950">{step.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">{step.description}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => startGeneration(content, content.hero.exampleTopic, "before_after")}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white hover:bg-zinc-800"
+          >
+            {content.landingPageType === "information_generator" ? "Try with Your Topic" : "Try This Topic"}
+            <ArrowRight size={15} aria-hidden="true" />
+          </button>
+        </div>
+      </section>
+
       <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <SectionHeading
+          title={
+            content.landingPageType === "information_generator"
+              ? "Create Different Types of Infographics"
+              : "Create Once. Adapt for Every Channel."
+          }
+          description={
+            content.landingPageType === "information_generator"
+              ? "Choose the right visual structure for your idea, from educational visuals to social media posters and carousel-style graphics."
+              : "Turn one script or topic into short explainer videos for the channels your audience already watches."
+          }
+        />
+        <div className="mt-8 grid gap-4 md:grid-cols-5">
+          {content.formats.map((format) => {
+            return (
+              <button
+                key={format.title}
+                type="button"
+                onClick={() => sendLandingEvent(content, "format_selected", { selected_format: format.title })}
+                className="flex min-h-[13.25rem] flex-col rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md"
+              >
+                <div className="flex h-10 items-center">
+                  <PlatformLogo title={format.title} />
+                </div>
+                <h3 className="mt-3 text-sm font-semibold text-zinc-950">{format.title}</h3>
+                <p className="mt-2 text-xs leading-5 text-zinc-600">{format.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+            <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading
           title={
             content.landingPageType === "information_generator"

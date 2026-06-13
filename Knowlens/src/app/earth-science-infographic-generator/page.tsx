@@ -401,6 +401,98 @@ export default function EarthScienceInfographicGeneratorPage() {
           </div>
         </section>
 
+        <section id="examples" className="scroll-mt-20">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
+              Earth Science Infographic Examples
+            </h2>
+            <p className="mt-4 text-base leading-7 text-zinc-600">
+              Explore Earth Science infographics and visual summaries created from topics, notes, and short text
+              prompts.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+            {horizontalExamples.map((example) => (
+              <article
+                key={example.title}
+                className="overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-white shadow-sm"
+              >
+                <div className="bg-zinc-50 p-3">
+                  <img
+                    src={example.image}
+                    alt={example.alt}
+                    width={example.width}
+                    height={example.height}
+                    className="h-auto w-full rounded-xl object-contain"
+                  />
+                </div>
+                <div className="p-5">
+                  <div className="flex flex-wrap gap-2">
+                    {example.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <h3 className="mt-4 text-xl font-semibold tracking-tight text-zinc-950">{example.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-zinc-600">{example.description}</p>
+                  <Link
+                    href={createSimilarHref(example.prompt)}
+                    className="mt-5 inline-flex items-center text-sm font-semibold text-zinc-950 hover:text-emerald-700"
+                  >
+                    Create Similar
+                    <ArrowRight size={15} className="ml-2" />
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-5 md:grid-cols-2">
+            {verticalExamples.map((example) => (
+              <article
+                key={example.title}
+                className="grid overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-white shadow-sm md:grid-cols-[0.82fr_1fr]"
+              >
+                <div className="bg-zinc-50 p-3">
+                  <img
+                    src={example.image}
+                    alt={example.alt}
+                    width={example.width}
+                    height={example.height}
+                    className="h-auto w-full rounded-xl object-contain"
+                  />
+                </div>
+                <div className="flex flex-col justify-center p-5">
+                  <div className="flex flex-wrap gap-2">
+                    {example.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <h3 className="mt-4 text-xl font-semibold tracking-tight text-zinc-950">{example.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-zinc-600">{example.description}</p>
+                  <Link
+                    href={createSimilarHref(example.prompt)}
+                    className="mt-5 inline-flex items-center text-sm font-semibold text-zinc-950 hover:text-emerald-700"
+                  >
+                    Create Similar
+                    <ArrowRight size={15} className="ml-2" />
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
@@ -534,99 +626,7 @@ export default function EarthScienceInfographicGeneratorPage() {
           </div>
         </section>
 
-        <section id="examples" className="scroll-mt-20">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-              Earth Science Infographic Examples
-            </h2>
-            <p className="mt-4 text-base leading-7 text-zinc-600">
-              Explore Earth Science infographics and visual summaries created from topics, notes, and short text
-              prompts.
-            </p>
-          </div>
-
-          <div className="mt-10 grid gap-5 lg:grid-cols-3">
-            {horizontalExamples.map((example) => (
-              <article
-                key={example.title}
-                className="overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-white shadow-sm"
-              >
-                <div className="bg-zinc-50 p-3">
-                  <img
-                    src={example.image}
-                    alt={example.alt}
-                    width={example.width}
-                    height={example.height}
-                    className="h-auto w-full rounded-xl object-contain"
-                  />
-                </div>
-                <div className="p-5">
-                  <div className="flex flex-wrap gap-2">
-                    {example.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <h3 className="mt-4 text-xl font-semibold tracking-tight text-zinc-950">{example.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-zinc-600">{example.description}</p>
-                  <Link
-                    href={createSimilarHref(example.prompt)}
-                    className="mt-5 inline-flex items-center text-sm font-semibold text-zinc-950 hover:text-emerald-700"
-                  >
-                    Create Similar
-                    <ArrowRight size={15} className="ml-2" />
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="mt-5 grid gap-5 md:grid-cols-2">
-            {verticalExamples.map((example) => (
-              <article
-                key={example.title}
-                className="grid overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-white shadow-sm md:grid-cols-[0.82fr_1fr]"
-              >
-                <div className="bg-zinc-50 p-3">
-                  <img
-                    src={example.image}
-                    alt={example.alt}
-                    width={example.width}
-                    height={example.height}
-                    className="h-auto w-full rounded-xl object-contain"
-                  />
-                </div>
-                <div className="flex flex-col justify-center p-5">
-                  <div className="flex flex-wrap gap-2">
-                    {example.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <h3 className="mt-4 text-xl font-semibold tracking-tight text-zinc-950">{example.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-zinc-600">{example.description}</p>
-                  <Link
-                    href={createSimilarHref(example.prompt)}
-                    className="mt-5 inline-flex items-center text-sm font-semibold text-zinc-950 hover:text-emerald-700"
-                  >
-                    Create Similar
-                    <ArrowRight size={15} className="ml-2" />
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section>
+                <section>
           <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
               Designed for Readable Earth Science Infographics

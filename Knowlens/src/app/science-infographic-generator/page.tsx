@@ -289,6 +289,54 @@ export default function ScienceInfographicGeneratorPage() {
         </div>
       </section>
 
+      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <SectionHeading title="Science Infographic Examples" description="Explore science infographics and visual summaries created from topics, notes, and short text prompts." />
+        <div className="mt-8 grid gap-5 md:grid-cols-3">
+          {portraitExamples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <div className="bg-zinc-50 p-3">
+                <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
+              </div>
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">
+                  {item.tags.map((tag) => (
+                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
+                  ))}
+                </div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={promptHref(item.topic)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
+                  Create Similar
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="mt-6 grid gap-5 md:grid-cols-3">
+          {landscapeExamples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <div className="bg-zinc-50 p-3">
+                <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
+              </div>
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">
+                  {item.tags.map((tag) => (
+                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
+                  ))}
+                </div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={promptHref(item.topic)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
+                  Create Similar
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">What is a Science Infographic Generator?</h2>
@@ -360,55 +408,7 @@ export default function ScienceInfographicGeneratorPage() {
         </div>
       </section>
 
-      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <SectionHeading title="Science Infographic Examples" description="Explore science infographics and visual summaries created from topics, notes, and short text prompts." />
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {portraitExamples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <div className="bg-zinc-50 p-3">
-                <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
-              </div>
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">
-                  {item.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
-                  ))}
-                </div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={promptHref(item.topic)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
-                  Create Similar
-                  <ArrowRight size={14} />
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div className="mt-6 grid gap-5 md:grid-cols-3">
-          {landscapeExamples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <div className="bg-zinc-50 p-3">
-                <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
-              </div>
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">
-                  {item.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
-                  ))}
-                </div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={promptHref(item.topic)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
-                  Create Similar
-                  <ArrowRight size={14} />
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+            <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Designed for Readable Science Infographics" description="KnowLens is built for visual explanation, not generic AI art." />
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           {whyPoints.map(([title, description]) => (

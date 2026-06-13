@@ -271,7 +271,7 @@ export default function AiInfographicGeneratorPage() {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
+            <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">What is an AI Infographic Generator?</h2>
           <p className="mt-3 text-sm leading-7 text-zinc-600 sm:text-base">

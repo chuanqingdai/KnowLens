@@ -227,6 +227,30 @@ export default function AiCarouselGeneratorPage() {
         </div>
       </section>
 
+      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <SectionHeading title="Carousel Examples" description="Explore carousel previews created from text, notes, short explanations, and topics." />
+        <div className="mt-8 grid gap-5 md:grid-cols-3">
+          {examples.map((item) => (
+            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <img src={item.image} alt={item.alt} width={640} height={820} className="h-auto w-full bg-zinc-100 object-contain" loading="lazy" />
+              <div className="p-4">
+                <div className="flex flex-wrap gap-2">
+                  {item.tags.map((tag) => (
+                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
+                  ))}
+                </div>
+                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.prompt)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
+                  Create Similar
+                  <ArrowRight size={14} aria-hidden="true" />
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">What is KnowLens?</h2>
@@ -284,31 +308,7 @@ export default function AiCarouselGeneratorPage() {
         </div>
       </section>
 
-      <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <SectionHeading title="Carousel Examples" description="Explore carousel previews created from text, notes, short explanations, and topics." />
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {examples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <img src={item.image} alt={item.alt} width={640} height={820} className="h-auto w-full bg-zinc-100 object-contain" loading="lazy" />
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">
-                  {item.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
-                  ))}
-                </div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.prompt)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
-                  Create Similar
-                  <ArrowRight size={14} aria-hidden="true" />
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6">
+            <section className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6">
         <SectionHeading title="Frequently Asked Questions" description="Common questions about creating carousel-style visuals with KnowLens." />
         <div className="mt-8 divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-white">
           {faqItems.map(([question, answer]) => (
