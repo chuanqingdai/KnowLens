@@ -165,7 +165,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
   const [oneTapTriggered, setOneTapTriggered] = useState(false);
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
-  const toolsMenuCloseTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const toolsMenuCloseTimer = useRef<number | null>(null);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const currentMarketingPath = normalizeMarketingPath(pathname || "/");

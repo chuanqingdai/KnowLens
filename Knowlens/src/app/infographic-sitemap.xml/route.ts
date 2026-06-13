@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
+import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
 
 function escapeXml(value: string) {
   return value
@@ -11,7 +13,16 @@ function escapeXml(value: string) {
 }
 
 export function GET() {
-  const urls = getBiologyInfographicTemplates()
+  const templates = [
+    ...getBiologyInfographicTemplates(),
+    ...getProcessInfographicTemplates().filter(
+      (template) => template.generationProvider === "tuzi" && template.generationStatus === "success",
+    ),
+    ...getRecipeInfographicTemplates().filter(
+      (template) => template.generationProvider === "tuzi" && template.generationStatus === "success",
+    ),
+  ];
+  const urls = templates
     .map((template) => {
       return [
         "  <url>",

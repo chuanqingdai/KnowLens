@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
 import { buildPublishedCaseImageSeo } from "@/lib/infographic-seo-backfill";
+import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
+import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
 import { listPublishedCases } from "@/lib/server/published-cases";
 
 const siteUrl = "https://knowlens.ai";
@@ -32,6 +34,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
       images: [template.previewImageUrl],
     }));
+    const processEntries: MetadataRoute.Sitemap = getProcessInfographicTemplates()
+      .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
+    const recipeEntries: MetadataRoute.Sitemap = getRecipeInfographicTemplates()
+      .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
     const caseEntries = cases
       .filter((item) => item.outputType !== "video")
       .map((item) => {
@@ -44,7 +64,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           images: seo.previewImageUrl && !seo.needsAssetTransfer ? [seo.previewImageUrl] : undefined,
         };
       });
-    return [...staticEntries, ...biologyEntries, ...caseEntries];
+    return [...staticEntries, ...biologyEntries, ...processEntries, ...recipeEntries, ...caseEntries];
   } catch {
     return [
       ...staticEntries,
@@ -55,6 +75,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
         images: [template.previewImageUrl],
       })),
+      ...getProcessInfographicTemplates()
+        .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
+      ...getRecipeInfographicTemplates()
+        .filter((template) => template.generationProvider === "tuzi" && template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
     ];
   }
 }

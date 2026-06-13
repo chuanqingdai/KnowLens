@@ -225,7 +225,10 @@ function markPrimaryFailure() {
   }
 }
 
-function normalizeProviderFetchTimeoutMs() {
+function normalizeProviderFetchTimeoutMs(timeoutMs?: number) {
+  if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs)) {
+    return Math.max(30_000, Math.min(360_000, Math.round(timeoutMs)));
+  }
   if (!Number.isFinite(PROVIDER_FETCH_TIMEOUT_MS)) {
     return 360_000;
   }
@@ -522,6 +525,7 @@ async function callImage2Endpoint(input: {
   model: string;
   prompt: string;
   size: string;
+  extraBody?: Record<string, unknown>;
   signal: AbortSignal;
 }) {
   return fetch(input.endpoint, {
@@ -548,6 +552,7 @@ async function callImage2Endpoint(input: {
       quality: "standard",
       n: 1,
       response_format: "url",
+      ...(input.extraBody || {}),
     }),
     signal: input.signal,
   });
@@ -559,6 +564,7 @@ async function callGenerationsFallback(input: {
   model: string;
   prompt: string;
   size: string;
+  extraBody?: Record<string, unknown>;
   signal: AbortSignal;
 }): Promise<Image2ProviderResult> {
   const fallbackResponse = await callImage2Endpoint({
@@ -567,6 +573,7 @@ async function callGenerationsFallback(input: {
     model: input.model,
     prompt: input.prompt,
     size: input.size,
+    extraBody: input.extraBody,
     signal: input.signal,
   });
   const fallbackText = await fallbackResponse.text();
@@ -1370,13 +1377,15 @@ async function requestPrimaryImage2Generation(
   input: {
     prompt: string;
     size?: string;
+    extraBody?: Record<string, unknown>;
+    timeoutMs?: number;
   },
 ): Promise<Image2ProviderResult> {
   const retryDelaysMs = [500, 1200];
   const maxAttempts = retryDelaysMs.length + 1;
   let lastFailure: Image2ProviderFailure | null = null;
   const canTryGenerationsFallback = resolveGenerationsEndpoint(config.endpoint) !== config.endpoint;
-  const providerFetchTimeoutMs = normalizeProviderFetchTimeoutMs();
+  const providerFetchTimeoutMs = normalizeProviderFetchTimeoutMs(input.timeoutMs);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
@@ -1388,6 +1397,7 @@ async function requestPrimaryImage2Generation(
         model: config.model,
         prompt: input.prompt,
         size: input.size || IMAGE2_SUPPORTED_SIZES.square,
+        extraBody: input.extraBody,
         signal: controller.signal,
       });
 
@@ -1403,6 +1413,7 @@ async function requestPrimaryImage2Generation(
             model: config.model,
             prompt: input.prompt,
             size: input.size || IMAGE2_SUPPORTED_SIZES.square,
+            extraBody: input.extraBody,
             signal: controller.signal,
           });
           if (fallbackResult.ok) {
@@ -1433,6 +1444,7 @@ async function requestPrimaryImage2Generation(
             model: config.model,
             prompt: input.prompt,
             size: input.size || IMAGE2_SUPPORTED_SIZES.square,
+            extraBody: input.extraBody,
             signal: controller.signal,
           });
           if (fallbackResult.ok) {
@@ -1548,6 +1560,8 @@ export async function requestImage2Generation(
     prompt: string;
     size?: string;
     aspectRatio?: string;
+    extraBody?: Record<string, unknown>;
+    timeoutMs?: number;
   },
 ): Promise<Image2ProviderResult> {
   const fallbackAspectRatio = resolveFallbackAspectRatio({

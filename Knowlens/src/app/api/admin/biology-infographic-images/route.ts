@@ -154,7 +154,7 @@ function buildRecord(template: BiologyInfographicTemplate, image: {
   imageHeight: number;
   imageSizeBytes: number;
   updatedAt: string;
-}) {
+}): ManifestRecord {
   return {
     ...template,
     batchId,
