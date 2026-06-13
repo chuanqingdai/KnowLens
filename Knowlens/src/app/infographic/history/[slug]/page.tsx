@@ -12,26 +12,6 @@ type PageProps = {
   params: Promise<{ slug: string }>;
 };
 
-function formatHistoryPrompt(prompt: string) {
-  const markers = ["Content focus:", "Knowledge points:", "Image description:", "Visible description:"];
-  const markerPositions = markers
-    .map((marker) => ({ marker, index: prompt.indexOf(marker) }))
-    .filter((item) => item.index >= 0)
-    .sort((a, b) => a.index - b.index);
-
-  const introEnd = markerPositions[0]?.index ?? prompt.length;
-  const intro = prompt.slice(0, introEnd).trim();
-  const sections = markerPositions.map((item, index) => {
-    const nextIndex = markerPositions[index + 1]?.index ?? prompt.length;
-    return {
-      label: item.marker.replace(":", ""),
-      text: prompt.slice(item.index + item.marker.length, nextIndex).trim(),
-    };
-  });
-
-  return { intro, sections };
-}
-
 export function generateStaticParams() {
   return getHistoryInfographicTemplates().map((template) => ({ slug: template.slug }));
 }
@@ -89,7 +69,6 @@ export default async function HistoryInfographicTemplatePage({ params }: PagePro
     .filter(Boolean)
     .slice(0, 6);
   const createSimilarHref = `/app?prompt=${encodeURIComponent(template.createSimilarPrompt)}`;
-  const formattedPrompt = formatHistoryPrompt(template.contentPrompt);
   const jsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -199,35 +178,6 @@ export default async function HistoryInfographicTemplatePage({ params }: PagePro
                   </div>
                 ))}
               </dl>
-            </article>
-
-            <article className="border-t border-zinc-200 pt-5">
-              <h2 className="text-lg font-semibold tracking-tight">Image prompt</h2>
-              <div className="mt-4 space-y-4 text-sm leading-7 text-zinc-700">
-                {formattedPrompt.intro ? <p>{formattedPrompt.intro}</p> : null}
-                {formattedPrompt.sections.map((section) => (
-                  <div key={section.label} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">{section.label}</p>
-                    {section.label === "Knowledge points" ? (
-                      <ul className="mt-3 space-y-2">
-                        {section.text
-                          .replace(/\.$/, "")
-                          .split(";")
-                          .map((point) => point.trim())
-                          .filter(Boolean)
-                          .map((point) => (
-                            <li key={point} className="flex gap-2">
-                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" />
-                              <span>{point}</span>
-                            </li>
-                          ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-2">{section.text}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
             </article>
 
             <article className="border-t border-zinc-200 pt-5">

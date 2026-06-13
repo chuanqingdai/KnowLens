@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAstronomyInfographicTemplates } from "@/lib/astronomy-infographic-templates";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { getComparisonInfographicTemplates } from "@/lib/comparison-infographic-templates";
 import { getEarthScienceInfographicTemplates } from "@/lib/earth-science-infographic-templates";
+import { getFinanceInfographicTemplates } from "@/lib/finance-infographic-templates";
 import { getHistoryInfographicTemplates } from "@/lib/history-infographic-templates";
+import { getIndustryReportTemplates } from "@/lib/industry-report-templates";
 import { getInsuranceInfographicTemplates } from "@/lib/insurance-infographic-templates";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
@@ -39,6 +42,15 @@ export function GET() {
       (template) => template.generationStatus === "success",
     ),
     ...getInsuranceInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getFinanceInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getComparisonInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getIndustryReportTemplates().filter(
       (template) => template.generationStatus === "success",
     ),
   ];

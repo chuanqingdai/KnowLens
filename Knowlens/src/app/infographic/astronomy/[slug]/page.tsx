@@ -183,11 +183,6 @@ export default async function AstronomyInfographicTemplatePage({ params }: PageP
             </article>
 
             <article className="border-t border-zinc-200 pt-5">
-              <h2 className="text-lg font-semibold tracking-tight">Image prompt</h2>
-              <p className="mt-4 text-sm leading-7 text-zinc-700">{template.contentPrompt}</p>
-            </article>
-
-            <article className="border-t border-zinc-200 pt-5">
               <h2 className="text-lg font-semibold tracking-tight">Key learning points</h2>
               <ul className="mt-4 space-y-3 text-sm text-zinc-700">
                 {template.knowledgePoints.map((point) => (

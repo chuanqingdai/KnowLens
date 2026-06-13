@@ -1,9 +1,12 @@
 import type { MetadataRoute } from "next";
 import { getAstronomyInfographicTemplates } from "@/lib/astronomy-infographic-templates";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { getComparisonInfographicTemplates } from "@/lib/comparison-infographic-templates";
 import { getEarthScienceInfographicTemplates } from "@/lib/earth-science-infographic-templates";
+import { getFinanceInfographicTemplates } from "@/lib/finance-infographic-templates";
 import { getHistoryInfographicTemplates } from "@/lib/history-infographic-templates";
 import { buildPublishedCaseImageSeo } from "@/lib/infographic-seo-backfill";
+import { getIndustryReportTemplates } from "@/lib/industry-report-templates";
 import { getInsuranceInfographicTemplates } from "@/lib/insurance-infographic-templates";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
@@ -102,6 +105,33 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
         images: [template.previewImageUrl],
       }));
+    const financeEntries: MetadataRoute.Sitemap = getFinanceInfographicTemplates()
+      .filter((template) => template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
+    const comparisonEntries: MetadataRoute.Sitemap = getComparisonInfographicTemplates()
+      .filter((template) => template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
+    const industryReportEntries: MetadataRoute.Sitemap = getIndustryReportTemplates()
+      .filter((template) => template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
     const caseEntries = cases
       .filter((item) => item.outputType !== "video")
       .map((item) => {
@@ -124,6 +154,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ...astronomyEntries,
       ...sexEducationEntries,
       ...insuranceEntries,
+      ...financeEntries,
+      ...comparisonEntries,
+      ...industryReportEntries,
       ...caseEntries,
     ];
   } catch {
@@ -191,6 +224,33 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           images: [template.previewImageUrl],
         })),
       ...getInsuranceInfographicTemplates()
+        .filter((template) => template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
+      ...getFinanceInfographicTemplates()
+        .filter((template) => template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
+      ...getComparisonInfographicTemplates()
+        .filter((template) => template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
+      ...getIndustryReportTemplates()
         .filter((template) => template.generationStatus === "success")
         .map((template) => ({
           url: template.canonicalUrl,
