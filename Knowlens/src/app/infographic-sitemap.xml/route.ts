@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
+import { getAstronomyInfographicTemplates } from "@/lib/astronomy-infographic-templates";
 import { getBiologyInfographicTemplates } from "@/lib/biology-infographic-templates";
+import { getEarthScienceInfographicTemplates } from "@/lib/earth-science-infographic-templates";
 import { getHistoryInfographicTemplates } from "@/lib/history-infographic-templates";
+import { getInsuranceInfographicTemplates } from "@/lib/insurance-infographic-templates";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
+import { getSexEducationInfographicTemplates } from "@/lib/sex-education-infographic-templates";
 
 function escapeXml(value: string) {
   return value
@@ -23,6 +27,18 @@ export function GET() {
       (template) => template.generationStatus === "success",
     ),
     ...getHistoryInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getEarthScienceInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getAstronomyInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getSexEducationInfographicTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getInsuranceInfographicTemplates().filter(
       (template) => template.generationStatus === "success",
     ),
   ];

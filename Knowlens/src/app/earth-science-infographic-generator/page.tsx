@@ -159,62 +159,73 @@ const useCases = [
 
 const horizontalExamples = [
   {
-    title: "Inside the Earth",
+    title: "Watershed Infographic",
     description:
-      "A classroom Earth Science infographic that explains Earth layers, plate motion, volcano formation, and magnetic fields.",
-    image: heroImage,
-    width: 1003,
-    height: 565,
-    alt: "Inside the Earth Earth Science infographic with crust mantle core and plate motion labels",
-    tags: ["Earth Science Infographic", "Earth Systems"],
-    prompt: "Create an Earth Science infographic explaining Earth's layers, plate motion, and core structure.",
+      "A hydrology visual that maps drainage boundaries, runoff, groundwater flow, streams, and connected river systems.",
+    image: "/images/infographic/earth-science/earth-science-watershed-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Watershed infographic showing drainage boundaries runoff groundwater flow and river connections",
+    tags: ["Hydrology", "16:9"],
+    prompt: "Create an Earth Science infographic explaining watersheds, drainage basins, runoff, groundwater flow, and river connections.",
   },
   {
-    title: "Plate Tectonics and Earthquakes",
+    title: "Global Wind Patterns",
     description:
-      "A geology visual that shows how tectonic plates move, build stress, and connect with earthquake activity.",
-    image: "/en-picture/plate-tectonics-earthquake-infographic-case.jpg",
-    width: 1200,
-    height: 675,
-    alt: "Plate tectonics and earthquakes Earth Science visual summary with readable labels",
-    tags: ["Geology Visual", "Classroom Visual"],
-    prompt: "Explain plate tectonics and earthquakes with simple diagrams, labels, and cause-effect sections.",
+      "An atmosphere infographic that explains trade winds, westerlies, polar easterlies, pressure belts, and global circulation.",
+    image: "/images/infographic/earth-science/earth-science-global-wind-patterns-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Global wind patterns infographic with trade winds westerlies polar easterlies and circulation bands",
+    tags: ["Atmosphere", "16:9"],
+    prompt: "Create an Earth Science infographic explaining global wind patterns, trade winds, westerlies, polar easterlies, and pressure belts.",
   },
   {
-    title: "Ocean Circulation Overview",
+    title: "Precipitation Types",
     description:
-      "An ocean system infographic that organizes surface currents, deep currents, temperature flow, and global circulation.",
-    image: "/picture/ocean-circulation-infographic-case.jpg",
-    width: 1200,
-    height: 675,
-    alt: "Ocean circulation Earth Science infographic with current and temperature labels",
-    tags: ["Ocean System", "Visual Summary"],
-    prompt: "Make an Earth Science infographic explaining ocean circulation and global current patterns.",
+      "A weather visual that compares rain, snow, sleet, freezing rain, and hail using cloud and temperature-layer cues.",
+    image: "/images/infographic/earth-science/earth-science-precipitation-types-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Precipitation types infographic comparing rain snow sleet freezing rain and hail",
+    tags: ["Weather", "16:9"],
+    prompt: "Create an Earth Science infographic comparing precipitation types including rain, snow, sleet, freezing rain, and hail.",
   },
 ];
 
 const verticalExamples = [
   {
-    title: "Volcano Eruption Structure",
+    title: "Climate Change Basics",
     description:
-      "A geology infographic that explains magma chambers, eruption pressure, ash clouds, lava flow, and volcano structure.",
-    image: "/en-picture/geography/geography-long-infographic.jpg",
-    width: 941,
-    height: 1672,
-    alt: "Volcano eruption geology infographic with magma chamber ash cloud and lava flow labels",
-    tags: ["Geology Visual", "Natural Hazard"],
-    prompt: "Create a geology infographic explaining volcano structure, eruption pressure, lava flow, and ash clouds.",
+      "A climate science infographic that organizes greenhouse gases, warming trends, feedback loops, and major climate impacts.",
+    image: "/images/infographic/earth-science/earth-science-climate-change-basics-infographic.webp",
+    width: 948,
+    height: 1659,
+    alt: "Climate change basics infographic with greenhouse gases warming trends feedback loops and climate impacts",
+    tags: ["Climate", "9:16"],
+    prompt: "Create an Earth Science infographic explaining climate change basics, greenhouse gases, warming trends, feedback loops, and climate impacts.",
   },
   {
-    title: "Tectonic Plate Boundary Guide",
+    title: "Earth Energy Balance",
     description:
-      "A plate boundary infographic that compares Earth surface motion, landform change, and earthquake-related processes.",
-    image: "/en-picture/geography/geography-infographic-card.jpg",
-    width: 941,
-    height: 1672,
-    alt: "Tectonic plate boundary Earth Science infographic with landform and earthquake labels",
-    tags: ["Earth Systems", "Geology Visual"],
-    prompt: "Create a classroom Earth Science visual comparing tectonic plate boundaries and related landforms.",
+      "A structured guide to incoming sunlight, reflection, absorption, outgoing heat, and atmosphere interactions.",
+    image: "/images/infographic/earth-science/earth-science-earth-energy-balance-infographic.webp",
+    width: 948,
+    height: 1659,
+    alt: "Earth energy balance infographic showing sunlight reflection absorption outgoing heat and atmosphere interactions",
+    tags: ["Climate System", "9:16"],
+    prompt: "Create an Earth Science infographic explaining Earth energy balance, incoming sunlight, albedo, absorption, outgoing heat, and greenhouse effects.",
+  },
+  {
+    title: "Geothermal Energy",
+    description:
+      "A renewable energy process infographic that shows underground heat, wells, turbines, and electricity generation steps.",
+    image: "/images/infographic/earth-science/earth-science-geothermal-energy-infographic.webp",
+    width: 948,
+    height: 1659,
+    alt: "Geothermal energy infographic showing underground heat wells turbines and power generation",
+    tags: ["Renewable Energy", "9:16"],
+    prompt: "Create an Earth Science infographic explaining geothermal energy, underground heat, production wells, turbines, and power generation.",
   },
 ];
 
@@ -296,6 +307,31 @@ const faqs = [
 ];
 
 const relatedTools = [
+  {
+    title: "Science Infographic Generator",
+    description: "Create structured visuals for biology, astronomy, earth science, and classroom science topics.",
+    href: "/science-infographic-generator",
+  },
+  {
+    title: "Biology Infographic Generator",
+    description: "Turn life science topics, human body systems, cells, and ecosystems into readable visuals.",
+    href: "/biology-infographic-generator",
+  },
+  {
+    title: "Educational Infographic Maker",
+    description: "Create classroom-ready study guides, lesson visuals, and learning summaries.",
+    href: "/educational-infographic-maker",
+  },
+  {
+    title: "Process Infographic Generator",
+    description: "Turn cycles, workflows, and step-by-step explanations into clear process visuals.",
+    href: "/process-infographic-generator",
+  },
+  {
+    title: "Recipe Infographic Maker",
+    description: "Create cooking step visuals and recipe cards from ingredients and instructions.",
+    href: "/recipe-infographic-maker",
+  },
   {
     title: "Infographic Examples",
     description: "Browse science and education examples before creating your own Earth Science visual.",
@@ -452,11 +488,11 @@ export default function EarthScienceInfographicGeneratorPage() {
             ))}
           </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <div className="mt-5 grid gap-5 md:grid-cols-3">
             {verticalExamples.map((example) => (
               <article
                 key={example.title}
-                className="grid overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-white shadow-sm md:grid-cols-[0.82fr_1fr]"
+                className="overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-white shadow-sm"
               >
                 <div className="bg-zinc-50 p-3">
                   <img
@@ -467,7 +503,7 @@ export default function EarthScienceInfographicGeneratorPage() {
                     className="h-auto w-full rounded-xl object-contain"
                   />
                 </div>
-                <div className="flex flex-col justify-center p-5">
+                <div className="p-5">
                   <div className="flex flex-wrap gap-2">
                     {example.tags.map((tag) => (
                       <span
@@ -708,7 +744,7 @@ export default function EarthScienceInfographicGeneratorPage() {
                 <h3 className="text-base font-semibold text-zinc-950">{tool.title}</h3>
                 <p className="mt-3 text-sm leading-6 text-zinc-600">{tool.description}</p>
                 <span className="mt-5 inline-flex items-center text-sm font-semibold text-emerald-700">
-                  Browse examples
+                  Open tool
                   <ArrowRight size={15} className="ml-2" />
                 </span>
               </Link>

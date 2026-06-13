@@ -156,6 +156,8 @@ function normalizeMarketingPath(path: string) {
   return normalized || "/";
 }
 
+const toolsMenuCloseDelayMs = 420;
+
 export function MarketingChrome({ children, showLocaleSwitch = false, infographicOnly = false }: MarketingChromeProps) {
   const { t } = useLocale();
   const router = useRouter();
@@ -198,15 +200,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
     toolsMenuCloseTimer.current = window.setTimeout(() => {
       setToolsMenuOpen(false);
       toolsMenuCloseTimer.current = null;
-    }, 220);
-  }
-
-  function toggleToolsMenu() {
-    if (toolsMenuCloseTimer.current) {
-      window.clearTimeout(toolsMenuCloseTimer.current);
-      toolsMenuCloseTimer.current = null;
-    }
-    setToolsMenuOpen((open) => !open);
+    }, toolsMenuCloseDelayMs);
   }
 
   useEffect(() => {
@@ -324,7 +318,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
       />
 
       <header className="sticky top-0 z-40 border-b border-zinc-200/80 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-2 px-3 sm:px-6">
           <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
               <img
@@ -335,19 +329,19 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
                 className="h-[30px] w-[30px] object-contain"
               />
             </span>
-            <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
+            <span className="hidden text-sm font-semibold tracking-tight min-[380px]:inline">KnowLens.ai</span>
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
             <div
-              className="relative hidden py-2 sm:block"
+              className="group relative hidden py-2 sm:block"
               onMouseEnter={openToolsMenu}
               onMouseLeave={scheduleToolsMenuClose}
               onFocus={openToolsMenu}
             >
               <button
                 type="button"
-                onClick={toggleToolsMenu}
+                onClick={openToolsMenu}
                 className="inline-flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                 aria-haspopup="menu"
                 aria-expanded={toolsMenuOpen}
@@ -360,12 +354,16 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
                 />
               </button>
               <div
-                className={`absolute right-0 top-[calc(100%-0.25rem)] z-50 w-[720px] max-w-[calc(100vw-2rem)] pt-4 transition ${
+                data-marketing-tools-menu="true"
+                role="menu"
+                aria-label="KnowLens tools"
+                className={`absolute right-0 top-[calc(100%-0.5rem)] z-50 w-[720px] max-w-[calc(100vw-1.5rem)] pt-3 transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 ${
                   toolsMenuOpen ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
                 }`}
                 onMouseEnter={openToolsMenu}
                 onMouseLeave={scheduleToolsMenuClose}
               >
+                <div className="absolute inset-x-0 top-0 h-3" aria-hidden="true" />
                 <div className="grid gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.14)] md:grid-cols-3">
                   {visibleToolLinkGroups.map((group) => (
                     <div key={group.title} className="rounded-lg p-1">
@@ -388,18 +386,20 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
             </div>
             <Link
               href="/membership"
-              className="inline-flex h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
+              className="hidden h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100 min-[430px]:inline-flex"
             >
               Pricing
             </Link>
             <button
               type="button"
+              aria-label="Generate Free"
               onClick={() => {
                 router.push("/app");
               }}
-              className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
+              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-zinc-900 px-2.5 text-xs font-medium text-white hover:bg-zinc-700 sm:px-3"
             >
-              Generate Free
+              <span aria-hidden="true" className="hidden min-[360px]:inline">Generate Free</span>
+              <span aria-hidden="true" className="min-[360px]:hidden">Generate</span>
               <ArrowRight size={13} />
             </button>
           </div>

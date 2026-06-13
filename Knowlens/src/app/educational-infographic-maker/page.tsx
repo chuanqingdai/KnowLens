@@ -303,9 +303,29 @@ const faqs = [
 
 const relatedTools = [
   {
+    title: "AI Infographic Generator",
+    description: "Turn topics, notes, and plain text into structured infographics with clear visual hierarchy.",
+    href: "/ai-infographic-generator",
+  },
+  {
+    title: "Science Infographic Generator",
+    description: "Create structured science visuals for biology, astronomy, earth science, and classroom topics.",
+    href: "/science-infographic-generator",
+  },
+  {
+    title: "Biology Infographic Generator",
+    description: "Turn cells, body systems, ecosystems, and life science topics into readable visuals.",
+    href: "/biology-infographic-generator",
+  },
+  {
     title: "Earth Science Infographic Generator",
     description: "Create structured Earth Science visuals for natural systems, geology, weather, and classroom topics.",
     href: "/earth-science-infographic-generator",
+  },
+  {
+    title: "Process Infographic Generator",
+    description: "Create step-by-step visuals for workflows, tutorials, and classroom explanations.",
+    href: "/process-infographic-generator",
   },
   {
     title: "Infographic Examples",
@@ -708,7 +728,7 @@ export default function EducationalInfographicMakerPage() {
               Explore more ways to turn learning ideas into structured infographic-style visuals.
             </p>
           </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {relatedTools.map((tool) => (
               <Link
                 key={tool.title}

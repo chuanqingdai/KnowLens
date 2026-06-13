@@ -307,9 +307,29 @@ const faqs = [
 
 const relatedTools = [
   {
+    title: "AI Infographic Generator",
+    description: "Turn topics, notes, and plain text into structured infographics with clear sections.",
+    href: "/ai-infographic-generator",
+  },
+  {
+    title: "Infographic Maker",
+    description: "Create clear infographics from ideas and notes without design skills.",
+    href: "/infographic-maker",
+  },
+  {
     title: "Educational Infographic Maker",
     description: "Create structured learning visuals, study guides, and classroom-ready infographics.",
     href: "/educational-infographic-maker",
+  },
+  {
+    title: "Recipe Infographic Maker",
+    description: "Turn ingredients and cooking steps into visual recipe cards and process guides.",
+    href: "/recipe-infographic-maker",
+  },
+  {
+    title: "Text to Infographic",
+    description: "Convert plain text, notes, and short explanations into infographic-style visuals.",
+    href: "/text-to-infographic",
   },
   {
     title: "Infographic Examples",
@@ -708,7 +728,7 @@ export default function ProcessInfographicGeneratorPage() {
               Explore more ways to turn ideas, steps, and learning topics into structured infographic-style visuals.
             </p>
           </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {relatedTools.map((tool) => (
               <Link
                 key={tool.title}

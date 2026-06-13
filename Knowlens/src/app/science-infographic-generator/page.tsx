@@ -111,70 +111,70 @@ const useCases = [
 
 const examples = [
   {
-    title: "How Solar Storms Create Auroras",
-    description: "An astronomy visual summary showing charged particles moving from the Sun toward Earth's magnetic field.",
-    tags: ["Astronomy Infographic", "Visual Summary"],
-    image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar storms science visual summary infographic created with KnowLens",
-    width: 941,
-    height: 1672,
+    title: "Photosynthesis Process",
+    description: "A biology infographic showing sunlight, water, carbon dioxide, chloroplasts, glucose, and oxygen outputs.",
+    tags: ["Biology Infographic", "16:9"],
+    image: "/images/infographic/biology/biology-photosynthesis-process-infographic.webp",
+    alt: "Photosynthesis process infographic with sunlight water carbon dioxide chloroplasts glucose and oxygen",
+    width: 1659,
+    height: 948,
     topic:
-      "Create a science infographic explaining how solar storms create auroras. Show solar flares, charged particles traveling through space, Earth's magnetosphere guiding particles toward the poles, collisions with oxygen and nitrogen, and why the sky glows in different colors.",
+      "Create a science infographic explaining photosynthesis with sunlight, water, carbon dioxide, chloroplasts, glucose, oxygen, and why the process matters.",
   },
   {
-    title: "DNA Replication Poster",
-    description: "A poster-style science infographic explaining how DNA replication works step by step.",
-    tags: ["Biology Infographic", "Science Poster"],
-    image: "/en-picture/biology/biology-long-infographic.jpg",
-    alt: "DNA replication science infographic with readable labels",
-    width: 941,
-    height: 1672,
+    title: "Solar System Structure",
+    description: "An astronomy visual that organizes the Sun, inner planets, outer planets, orbits, and relative space relationships.",
+    tags: ["Astronomy Infographic", "16:9"],
+    image: "/images/infographic/astronomy/astronomy-solar-system-structure-infographic.webp",
+    alt: "Solar system structure infographic with the Sun planets orbits and space relationships",
+    width: 1659,
+    height: 948,
     topic:
-      "Turn DNA replication into a clear science infographic. Include helicase unzipping the double helix, template strands, base pairing rules, DNA polymerase building new strands, semiconservative replication, and the result of two matching DNA molecules.",
+      "Create a science infographic explaining solar system structure with the Sun, inner planets, outer planets, orbital order, and key differences.",
   },
   {
-    title: "Volcano Formation",
-    description: "An earth science visual explaining how volcanoes form, build pressure, and erupt.",
-    tags: ["Earth Science Infographic", "Science Visual"],
-    image: "/en-picture/geography/geography-long-infographic.jpg",
-    alt: "Volcano science infographic created from a short explanation",
-    width: 941,
-    height: 1672,
+    title: "Global Wind Patterns",
+    description: "An earth science infographic explaining trade winds, westerlies, polar easterlies, pressure belts, and circulation bands.",
+    tags: ["Earth Science", "16:9"],
+    image: "/images/infographic/earth-science/earth-science-global-wind-patterns-infographic.webp",
+    alt: "Global wind patterns infographic with trade winds westerlies polar easterlies and circulation bands",
+    width: 1659,
+    height: 948,
     topic:
-      "Explain how volcanoes form and erupt as an earth science infographic. Include magma formation, pressure building inside a magma chamber, vents, lava flow, ash clouds, eruption types, and how volcanic landforms change over time.",
+      "Create an earth science infographic explaining global wind patterns, pressure belts, trade winds, westerlies, polar easterlies, and Earth rotation.",
   },
   {
-    title: "Seed Germination at a Glance",
-    description: "A biology infographic explaining how a dry seed absorbs water, grows roots, and develops first leaves.",
-    tags: ["Biology Infographic", "Educational Visual"],
-    image: "/en-picture/photosynthesis-infographic-case.jpg",
-    alt: "Seed germination science infographic created from notes",
-    width: 1672,
-    height: 941,
+    title: "Human Respiratory System",
+    description: "A biology guide showing airflow through the nose, trachea, bronchi, lungs, alveoli, and gas exchange.",
+    tags: ["Biology Infographic", "9:16"],
+    image: "/images/infographic/biology/biology-human-respiratory-system-infographic.webp",
+    alt: "Human respiratory system infographic with airflow trachea bronchi lungs alveoli and gas exchange",
+    width: 948,
+    height: 1659,
     topic:
-      "Explain seed germination as a clear science infographic for students. Include dry seed, water absorption, swelling, root growth, shoot growth, first leaves, and why water, warmth, and air matter.",
+      "Create a science infographic explaining the human respiratory system with airflow, trachea, bronchi, lungs, alveoli, oxygen, carbon dioxide, and gas exchange.",
   },
   {
-    title: "How Solar Eclipses Happen",
-    description: "An astronomy infographic showing how the Sun, Moon, and Earth align to create an eclipse shadow.",
-    tags: ["Astronomy Infographic", "Classroom Visual"],
-    image: "/en-picture/landscape/1117c95b-ae2a-46e1-9e1a-d86cf24389ff-16x9.png",
-    alt: "Solar eclipse astronomy infographic created with KnowLens",
-    width: 1600,
-    height: 900,
+    title: "Moon Phases",
+    description: "An astronomy infographic that explains the repeating lunar phase cycle and the Sun-Earth-Moon relationship.",
+    tags: ["Astronomy Infographic", "9:16"],
+    image: "/images/infographic/astronomy/astronomy-moon-phases-infographic.webp",
+    alt: "Moon phases infographic showing the lunar phase cycle and Sun Earth Moon relationship",
+    width: 948,
+    height: 1659,
     topic:
-      "Create an astronomy infographic explaining how solar eclipses happen. Include the Sun, Moon, Earth, alignment, shadow path, umbra, penumbra, and why eclipses are only visible from some locations.",
+      "Create a science infographic explaining moon phases, the lunar cycle, sunlight direction, Earth-Moon positions, and why the Moon appears to change shape.",
   },
   {
-    title: "How Roots Absorb Water and Minerals",
-    description: "A biology infographic showing root hairs, osmosis, mineral ion uptake, xylem transport, and upward movement through a plant.",
-    tags: ["Biology Infographic", "Classroom Visual"],
-    image: "/en-picture/plate-tectonics-earthquake-infographic-case.jpg",
-    alt: "Root absorption science infographic explaining how roots absorb water and minerals",
-    width: 1672,
-    height: 941,
+    title: "Climate Change Basics",
+    description: "An earth science visual explaining greenhouse gases, warming trends, feedback loops, and climate impacts.",
+    tags: ["Earth Science", "9:16"],
+    image: "/images/infographic/earth-science/earth-science-climate-change-basics-infographic.webp",
+    alt: "Climate change basics infographic with greenhouse gases warming trends feedback loops and climate impacts",
+    width: 948,
+    height: 1659,
     topic:
-      "Explain how roots absorb water and minerals as a classroom biology infographic. Include root hairs, osmosis, mineral ions, active transport, xylem, and how water and nutrients move upward through the plant.",
+      "Create a science infographic explaining climate change basics, greenhouse gases, warming trends, feedback loops, and major climate impacts.",
   },
 ] as const;
 
@@ -292,7 +292,7 @@ export default function ScienceInfographicGeneratorPage() {
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Science Infographic Examples" description="Explore science infographics and visual summaries created from topics, notes, and short text prompts." />
         <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {portraitExamples.map((item) => (
+          {landscapeExamples.map((item) => (
             <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
               <div className="bg-zinc-50 p-3">
                 <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
@@ -314,7 +314,7 @@ export default function ScienceInfographicGeneratorPage() {
           ))}
         </div>
         <div className="mt-6 grid gap-5 md:grid-cols-3">
-          {landscapeExamples.map((item) => (
+          {portraitExamples.map((item) => (
             <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
               <div className="bg-zinc-50 p-3">
                 <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />

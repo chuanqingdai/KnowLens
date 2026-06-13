@@ -129,19 +129,6 @@ function RecipeVisual({ example, compact = false }: { example: RecipeExample; co
   );
 }
 
-const heroExample: RecipeExample = {
-  title: "Pancake Morning",
-  description:
-    "A breakfast recipe infographic that organizes batter ingredients, pan steps, flipping, and serving notes.",
-  tags: ["Recipe Infographic", "Step-by-Step Visual"],
-  prompt: "Turn this pancake recipe into a step-by-step recipe infographic.",
-  ingredients: ["Flour", "Egg", "Milk", "Butter", "Maple"],
-  steps: ["Mix batter until smooth.", "Pour onto a warm pan.", "Flip when bubbles appear.", "Serve with toppings."],
-  note: "Best for quick breakfast guides and food blog visuals.",
-  accent: "#fef3c7",
-  layout: "tall",
-};
-
 const visualTypes = [
   {
     title: "Step-by-Step Recipe Infographics",
@@ -239,74 +226,88 @@ const useCases = [
 
 const wideExamples: RecipeExample[] = [
   {
-    title: "Avocado Toast with Poached Egg",
+    title: "Pizza Margherita Recipe Process",
     description:
-      "A recipe infographic that shows avocado toast ingredients, poached egg timing, assembly steps, and serving notes.",
-    tags: ["Recipe Infographic", "Cooking Steps"],
-    prompt: "Create a recipe infographic for avocado toast with poached egg, ingredients, timing, and steps.",
-    image: heroImage,
-    width: 1003,
-    height: 565,
-    alt: "Avocado toast with poached egg recipe infographic showing ingredients timing nutrition and cooking steps",
-    ingredients: ["Avocado", "Sourdough", "Eggs", "Lemon", "Olive Oil"],
-    steps: ["Toast bread.", "Mash avocado.", "Poach eggs.", "Top and serve."],
-    note: "Useful for brunch recipe cards and step-by-step food blog visuals.",
+      "A pizza workflow infographic that organizes dough, tomato sauce, mozzarella, basil, baking, and serving steps.",
+    tags: ["Pizza Recipe", "16:9"],
+    prompt: "Create a recipe process infographic for Pizza Margherita with dough, tomato sauce, mozzarella, basil, baking, and serving steps.",
+    image: "/images/infographic/recipe/recipe-pizza-margherita-recipe-process-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Pizza Margherita recipe process infographic with dough tomato sauce mozzarella basil and baking steps",
+    ingredients: ["Dough", "Tomato", "Mozzarella", "Basil", "Olive Oil"],
+    steps: ["Shape dough.", "Add sauce.", "Top with cheese.", "Bake and serve."],
+    note: "Useful for Italian recipe cards and step-by-step cooking visuals.",
     accent: "#dcfce7",
     layout: "wide",
   },
   {
-    title: "Homemade Lemonade",
+    title: "Spaghetti Carbonara Recipe Process",
     description:
-      "A drink recipe visual guide that organizes lemons, sugar, water, mixing, chilling, and serving.",
-    tags: ["Visual Recipe Guide", "Drink Recipe"],
-    prompt: "Create a step-by-step visual guide for making homemade lemonade.",
-    ingredients: ["Lemon", "Sugar", "Water", "Ice", "Mint"],
-    steps: ["Juice lemons.", "Stir with sugar.", "Add cold water.", "Serve over ice."],
-    note: "Designed for simple drink guides and summer recipe posts.",
+      "A pasta recipe visual showing spaghetti, eggs, cheese, pancetta, pepper, sauce timing, and final plating.",
+    tags: ["Pasta Recipe", "16:9"],
+    prompt: "Create a recipe process infographic for Spaghetti Carbonara with pasta, eggs, cheese, pancetta, pepper, sauce timing, and plating.",
+    image: "/images/infographic/recipe/recipe-spaghetti-carbonara-recipe-process-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Spaghetti Carbonara recipe process infographic with pasta eggs cheese pancetta and sauce timing",
+    ingredients: ["Spaghetti", "Eggs", "Cheese", "Pancetta", "Pepper"],
+    steps: ["Boil pasta.", "Cook pancetta.", "Mix sauce.", "Toss and plate."],
+    note: "Designed for pasta recipe guides with clear timing cues.",
     accent: "#fef9c3",
     layout: "wide",
   },
   {
-    title: "Quick Breakfast Bowl",
+    title: "Lasagna Recipe Process",
     description:
-      "A cooking steps infographic that explains layering grains, fruit, yogurt, toppings, and serving ideas.",
-    tags: ["Meal Idea", "Step-by-Step Visual"],
-    prompt: "Make a cooking steps infographic for preparing a quick breakfast bowl.",
-    ingredients: ["Oats", "Yogurt", "Fruit", "Seeds", "Honey"],
-    steps: ["Add base.", "Layer yogurt.", "Top with fruit.", "Finish with seeds."],
-    note: "Good for meal ideas, prep notes, and quick reference visuals.",
+      "A layered recipe infographic that explains sauce, pasta sheets, cheese filling, assembly, baking, and resting.",
+    tags: ["Baked Pasta", "16:9"],
+    prompt: "Create a recipe process infographic for lasagna with meat sauce, pasta sheets, cheese filling, layering, baking, and resting steps.",
+    image: "/images/infographic/recipe/recipe-lasagna-recipe-process-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Lasagna recipe process infographic showing sauce pasta sheets cheese layers baking and resting",
+    ingredients: ["Pasta Sheets", "Sauce", "Ricotta", "Mozzarella", "Herbs"],
+    steps: ["Make sauce.", "Layer pasta.", "Add cheese.", "Bake and rest."],
+    note: "Good for baked pasta guides and family recipe posts.",
     accent: "#dcfce7",
+    layout: "wide",
+  },
+  {
+    title: "Risotto Milanese Recipe Process",
+    description:
+      "A risotto visual guide covering onion, rice toasting, saffron broth, gradual stirring, butter, and cheese finish.",
+    tags: ["Rice Recipe", "16:9"],
+    prompt: "Create a recipe process infographic for Risotto Milanese with onion, rice toasting, saffron broth, gradual stirring, butter, and cheese.",
+    image: "/images/infographic/recipe/recipe-risotto-milanese-recipe-process-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "Risotto Milanese recipe process infographic with saffron broth rice stirring butter and cheese",
+    ingredients: ["Arborio Rice", "Saffron", "Broth", "Butter", "Parmesan"],
+    steps: ["Toast rice.", "Add broth.", "Stir slowly.", "Finish creamy."],
+    note: "Useful for process-heavy recipes where timing matters.",
+    accent: "#fef3c7",
+    layout: "wide",
+  },
+  {
+    title: "French Ratatouille Recipe Process",
+    description:
+      "A vegetable recipe infographic showing eggplant, zucchini, peppers, tomatoes, herbs, simmering, and serving.",
+    tags: ["Vegetable Recipe", "16:9"],
+    prompt: "Create a recipe process infographic for French ratatouille with eggplant, zucchini, peppers, tomatoes, herbs, simmering, and serving.",
+    image: "/images/infographic/recipe/recipe-french-ratatouille-recipe-process-infographic.webp",
+    width: 1659,
+    height: 948,
+    alt: "French ratatouille recipe process infographic with eggplant zucchini peppers tomatoes herbs and simmering steps",
+    ingredients: ["Eggplant", "Zucchini", "Peppers", "Tomato", "Herbs"],
+    steps: ["Chop vegetables.", "Saute base.", "Simmer gently.", "Serve warm."],
+    note: "Works well for vegetable recipe cards and healthy meal visuals.",
+    accent: "#bbf7d0",
     layout: "wide",
   },
 ];
 
-const tallExamples: RecipeExample[] = [
-  heroExample,
-  {
-    title: "Fresh Salad Prep",
-    description:
-      "A salad recipe infographic that shows washing, chopping, combining, dressing, and serving steps.",
-    tags: ["Recipe Infographic", "Meal Idea"],
-    prompt: "Make a recipe infographic for a simple salad with ingredients and preparation steps.",
-    ingredients: ["Greens", "Tomato", "Cucumber", "Cheese", "Dressing"],
-    steps: ["Wash greens.", "Chop vegetables.", "Combine in a bowl.", "Add dressing last."],
-    note: "Keeps preparation steps clear for beginner-friendly recipes.",
-    accent: "#bbf7d0",
-    layout: "tall",
-  },
-  {
-    title: "Dessert Baking Notes",
-    description:
-      "A baking process visual that organizes mixing, baking, cooling, decorating, and serving notes.",
-    tags: ["Cooking Steps", "Food Blog Graphic"],
-    prompt: "Turn these baking notes into a clear dessert recipe visual.",
-    ingredients: ["Flour", "Cocoa", "Sugar", "Egg", "Cream"],
-    steps: ["Mix dry ingredients.", "Fold in wet mixture.", "Bake until set.", "Cool before serving."],
-    note: "Useful for dessert recipes and structured baking notes.",
-    accent: "#fce7f3",
-    layout: "tall",
-  },
-];
+const tallExamples: RecipeExample[] = [];
 
 const whyKnowLens = [
   {
@@ -385,6 +386,11 @@ const faqs = [
 
 const relatedTools = [
   {
+    title: "AI Infographic Generator",
+    description: "Create structured infographics from topics, notes, and plain text.",
+    href: "/ai-infographic-generator",
+  },
+  {
     title: "Process Infographic Generator",
     description: "Turn ordered steps, workflows, and how-to instructions into structured infographic-style visuals.",
     href: "/process-infographic-generator",
@@ -393,6 +399,16 @@ const relatedTools = [
     title: "Educational Infographic Maker",
     description: "Create structured learning visuals, study guides, and classroom-ready infographics.",
     href: "/educational-infographic-maker",
+  },
+  {
+    title: "Text to Infographic",
+    description: "Convert cooking notes, instructions, and short explanations into visual summaries.",
+    href: "/text-to-infographic",
+  },
+  {
+    title: "Infographic Maker",
+    description: "Make clear infographic-style visuals without starting from a blank design canvas.",
+    href: "/infographic-maker",
   },
   {
     title: "Infographic Examples",
@@ -549,34 +565,36 @@ export default function RecipeInfographicMakerPage() {
             ))}
           </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {tallExamples.map((example) => (
-              <article key={example.title} className="rounded-[1.5rem] border border-zinc-200 bg-white p-3 shadow-sm">
-                <RecipeVisual example={example} compact />
-                <div className="p-3">
-                  <div className="flex flex-wrap gap-2">
-                    {example.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
-                      >
-                        {tag}
-                      </span>
-                    ))}
+          {tallExamples.length > 0 ? (
+            <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {tallExamples.map((example) => (
+                <article key={example.title} className="rounded-[1.5rem] border border-zinc-200 bg-white p-3 shadow-sm">
+                  <RecipeVisual example={example} compact />
+                  <div className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {example.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <h3 className="mt-4 text-xl font-semibold tracking-tight text-zinc-950">{example.title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-zinc-600">{example.description}</p>
+                    <Link
+                      href={createSimilarHref(example.prompt)}
+                      className="mt-5 inline-flex items-center text-sm font-semibold text-zinc-950 hover:text-emerald-700"
+                    >
+                      Create Similar
+                      <ArrowRight size={15} className="ml-2" />
+                    </Link>
                   </div>
-                  <h3 className="mt-4 text-xl font-semibold tracking-tight text-zinc-950">{example.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-zinc-600">{example.description}</p>
-                  <Link
-                    href={createSimilarHref(example.prompt)}
-                    className="mt-5 inline-flex items-center text-sm font-semibold text-zinc-950 hover:text-emerald-700"
-                  >
-                    Create Similar
-                    <ArrowRight size={15} className="ml-2" />
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">

@@ -5,6 +5,10 @@ import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 
 const siteUrl = "https://knowlens.ai";
 const pageUrl = `${siteUrl}/infographic-maker`;
+const heroImage = {
+  src: "/picture/earth-science-infographic-generator.jpg",
+  alt: "Earth science infographic example showing Earth's layers, plate motion, volcano formation, and magnetic field",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -38,10 +42,10 @@ export const metadata: Metadata = {
       "Turn topics, notes, or plain text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos.",
     images: [
       {
-        url: `${siteUrl}/picture/text-to-poster.jpg`,
+        url: `${siteUrl}${heroImage.src}`,
         width: 1003,
         height: 565,
-        alt: "AI-generated infographic examples made from topics and notes",
+        alt: heroImage.alt,
       },
     ],
   },
@@ -50,24 +54,9 @@ export const metadata: Metadata = {
     title: "Infographic Maker Online | AI Infographic Maker | KnowLens.ai",
     description:
       "Create infographics, posters, visual summaries, carousel-style visuals, and short explainer videos from topics, notes, or plain text.",
-    images: [`${siteUrl}/picture/text-to-poster.jpg`],
+    images: [`${siteUrl}${heroImage.src}`],
   },
 };
-
-const heroImages = [
-  {
-    src: "/en-picture/photosynthesis-infographic-case.jpg",
-    alt: "Photosynthesis educational infographic generated with AI",
-  },
-  {
-    src: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar system science infographic generated with AI",
-  },
-  {
-    src: "/en-picture/biology/biology-infographic-card.jpg",
-    alt: "Biology visual summary generated from study notes",
-  },
-];
 
 const features = [
   {
@@ -276,29 +265,14 @@ export default function InfographicMakerPage() {
         </div>
 
         <div className="mt-10 w-full max-w-4xl rounded-[2rem] border border-zinc-200 bg-white p-3 shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
-          <div className="grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
-            <img
-              src={heroImages[0].src}
-              alt={heroImages[0].alt}
-              width={1003}
-              height={565}
-              className="aspect-video w-full rounded-xl bg-zinc-100 object-cover"
-              loading="eager"
-            />
-            <div className="grid gap-3">
-              {heroImages.slice(1).map((image) => (
-                <img
-                  key={image.src}
-                  src={image.src}
-                  alt={image.alt}
-                  width={480}
-                  height={360}
-                  className="aspect-video w-full rounded-xl bg-zinc-100 object-cover"
-                  loading="eager"
-                />
-              ))}
-            </div>
-          </div>
+          <img
+            src={heroImage.src}
+            alt={heroImage.alt}
+            width={1003}
+            height={565}
+            className="aspect-video w-full rounded-xl bg-zinc-100 object-cover"
+            loading="eager"
+          />
           <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
             Examples generated from topics, notes, and short text prompts.
           </p>

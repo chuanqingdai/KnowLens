@@ -53,88 +53,76 @@ export const metadata: Metadata = {
 
 const examples = [
   {
-    title: "Seed Germination at a Glance",
+    title: "Photosynthesis Process",
     description:
-      "An educational infographic that explains seed germination stages with simple labels, a clear sequence, and a classroom-ready structure.",
-    tags: ["Educational Infographic", "Science Visual"],
-    image: "/en-picture/photosynthesis-infographic-case.jpg",
-    alt: "Seed germination educational infographic created with KnowLens",
-    width: 1672,
-    height: 941,
+      "A biology infographic that connects sunlight, water, carbon dioxide, chloroplasts, glucose, and oxygen in one clear visual.",
+    tags: ["Biology Infographic", "16:9"],
+    image: "/images/infographic/biology/biology-photosynthesis-process-infographic.webp",
+    alt: "Photosynthesis process infographic with sunlight water carbon dioxide chloroplasts glucose and oxygen",
+    width: 1659,
+    height: 948,
     topic:
-      "Explain seed germination in 5 stages for middle school students. Include dry seed, water absorption, swelling, root growth, shoot growth, first leaves, and why water, warmth, and air matter.",
+      "Create a biology infographic explaining photosynthesis with sunlight, water, carbon dioxide, chloroplasts, glucose, oxygen, and why the process matters.",
   },
   {
-    title: "Solar Storms Visual Summary",
+    title: "Pizza Margherita Recipe Process",
     description:
-      "A science visual summary that organizes solar storm causes, charged particles, Earth's magnetic field, and aurora colors into a readable layout.",
-    tags: ["Science Infographic", "Visual Summary"],
-    image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar storms visual summary infographic created with KnowLens",
-    width: 941,
-    height: 1672,
+      "A recipe process infographic showing dough, tomato sauce, mozzarella, basil, baking, and serving steps.",
+    tags: ["Recipe Infographic", "16:9"],
+    image: "/images/infographic/recipe/recipe-pizza-margherita-recipe-process-infographic.webp",
+    alt: "Pizza Margherita recipe process infographic with dough tomato sauce mozzarella basil and baking steps",
+    width: 1659,
+    height: 948,
     topic:
-      "Create an infographic about solar storms, including solar flares, charged particles, Earth's magnetosphere, auroras, and key facts students should remember.",
+      "Create a recipe process infographic for Pizza Margherita with dough, tomato sauce, mozzarella, basil, baking, and serving steps.",
   },
   {
-    title: "DNA Replication Poster",
+    title: "Global Wind Patterns",
     description:
-      "A poster-style infographic that explains helicase, base pairing, DNA polymerase, and two matching DNA molecules step by step.",
-    tags: ["Science Poster", "Educational Visual"],
-    image: "/en-picture/biology/biology-long-infographic.jpg",
-    alt: "DNA replication poster-style infographic created with KnowLens",
-    width: 941,
-    height: 1672,
+      "An earth science visual that explains trade winds, westerlies, polar easterlies, pressure belts, and circulation bands.",
+    tags: ["Earth Science", "16:9"],
+    image: "/images/infographic/earth-science/earth-science-global-wind-patterns-infographic.webp",
+    alt: "Global wind patterns infographic with trade winds westerlies polar easterlies and circulation bands",
+    width: 1659,
+    height: 948,
     topic:
-      "Turn these notes about DNA replication into a poster-style infographic. Include helicase, template strands, base pairing, DNA polymerase, semiconservative replication, and the final result.",
+      "Create an earth science infographic explaining global wind patterns, pressure belts, trade winds, westerlies, polar easterlies, and Earth rotation.",
   },
   {
-    title: "Volcano Eruption Structure",
+    title: "Human Respiratory System",
     description:
-      "An earth science visual summary showing magma chambers, pressure, vents, ash clouds, lava flow, and eruption stages.",
-    tags: ["Science Infographic", "Visual Summary"],
-    image: "/en-picture/geography/geography-long-infographic.jpg",
-    alt: "Volcano eruption visual summary infographic created with KnowLens",
-    width: 941,
-    height: 1672,
+      "A biology study visual showing airflow through the nose, trachea, bronchi, lungs, alveoli, and gas exchange.",
+    tags: ["Biology Infographic", "9:16"],
+    image: "/images/infographic/biology/biology-human-respiratory-system-infographic.webp",
+    alt: "Human respiratory system infographic with airflow trachea bronchi lungs alveoli and gas exchange",
+    width: 948,
+    height: 1659,
     topic:
-      "Create a visual summary explaining how volcanoes erupt. Include magma chamber, pressure buildup, vent, crater, lava flow, ash cloud, eruption stages, and key takeaways for students.",
+      "Create a biology infographic explaining the human respiratory system with airflow, trachea, bronchi, lungs, alveoli, oxygen, carbon dioxide, and gas exchange.",
   },
   {
-    title: "How Roots Absorb Water and Minerals",
+    title: "Moon Phases",
     description:
-      "A biology infographic showing root hairs, osmosis, mineral ion uptake, xylem transport, and how water moves upward through a plant.",
-    tags: ["Biology Infographic", "Classroom Visual"],
-    image: "/en-picture/plate-tectonics-earthquake-infographic-case.jpg",
-    alt: "Root absorption infographic explaining how roots absorb water and minerals",
-    width: 1672,
-    height: 941,
+      "An astronomy infographic explaining the lunar phase cycle and how the Sun, Earth, and Moon positions change what we see.",
+    tags: ["Astronomy Infographic", "9:16"],
+    image: "/images/infographic/astronomy/astronomy-moon-phases-infographic.webp",
+    alt: "Moon phases infographic showing the lunar phase cycle and Sun Earth Moon relationship",
+    width: 948,
+    height: 1659,
     topic:
-      "Create a biology infographic explaining how roots absorb water and minerals. Include root hairs, osmosis, mineral ions, active transport, xylem, and how water and nutrients move upward through the plant.",
+      "Create an astronomy infographic explaining moon phases, the lunar cycle, sunlight direction, Earth-Moon positions, and why the Moon appears to change shape.",
   },
   {
-    title: "How a Tesla EV Works",
+    title: "Climate Change Basics",
     description:
-      "A technology infographic that labels the charging system, battery pack, inverter, motor, and regenerative braking in an electric vehicle.",
-    tags: ["Technology Infographic", "Engineering Visual"],
-    image: "/en-picture/inflation-daily-life-infographic-case.jpg",
-    alt: "Tesla EV infographic explaining electric vehicle components",
-    width: 1672,
-    height: 941,
+      "An earth science infographic covering greenhouse gases, warming trends, feedback loops, and major climate impacts.",
+    tags: ["Climate Visual", "9:16"],
+    image: "/images/infographic/earth-science/earth-science-climate-change-basics-infographic.webp",
+    alt: "Climate change basics infographic with greenhouse gases warming trends feedback loops and climate impacts",
+    width: 948,
+    height: 1659,
     topic:
-      "Create a technology infographic explaining how a Tesla EV works. Include charging, the battery pack, inverter, electric motor, power flow, and regenerative braking.",
-  },
-  {
-    title: "How Vaccines Train the Immune System",
-    description:
-      "A health science infographic explaining vaccine exposure, antigen recognition, antibody production, immune memory, and faster future protection.",
-    tags: ["Health Science Infographic", "Educational Visual"],
-    image: "/en-picture/printing-press-history-infographic-case.jpg",
-    alt: "Vaccine infographic explaining how vaccines train immune memory",
-    width: 1672,
-    height: 941,
-    topic:
-      "Create a health science infographic explaining how vaccines train the immune system. Include vaccine exposure, antigen recognition, B cells, antibodies, immune memory, and faster protection after future exposure.",
+      "Create an earth science infographic explaining climate change basics, greenhouse gases, warming trends, feedback loops, and major climate impacts.",
   },
 ] as const;
 
@@ -206,9 +194,14 @@ const whyExamples = [
 
 const relatedTools = [
   ["AI Infographic Generator", "/ai-infographic-generator", "Turn topics, notes, and plain text into structured infographics."],
-  ["Infographic Maker", "/infographic-maker", "Make clear infographics without design skills."],
   ["Text to Infographic", "/text-to-infographic", "Turn plain text into infographic-style visuals."],
+  ["Infographic Maker", "/infographic-maker", "Make clear infographics without design skills."],
   ["Science Infographic Generator", "/science-infographic-generator", "Create structured science infographics from science topics and notes."],
+  ["Biology Infographic Generator", "/biology-infographic-generator", "Create life science visuals for cells, body systems, ecosystems, and biology lessons."],
+  ["Earth Science Infographic Generator", "/earth-science-infographic-generator", "Create visuals for geology, weather, climate, oceans, and Earth systems."],
+  ["Educational Infographic Maker", "/educational-infographic-maker", "Create classroom visuals, study guides, and learning summaries."],
+  ["Process Infographic Generator", "/process-infographic-generator", "Create step-by-step workflow visuals, tutorials, and process guides."],
+  ["Recipe Infographic Maker", "/recipe-infographic-maker", "Turn ingredients and cooking steps into visual recipe cards."],
   ["AI Poster Generator", "/ai-poster-generator", "Create poster-style visuals from ideas and notes."],
   ["AI Carousel Generator", "/ai-carousel-generator", "Create carousel-style visuals for sharing."],
 ] as const;
@@ -313,7 +306,7 @@ export default function InfographicExamplesPage() {
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Featured Infographic Examples" description="Browse examples across science, education, study notes, product ideas, process visuals, and social visuals." />
         <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {portraitExamples.map((item) => (
+          {landscapeExamples.map((item) => (
             <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="bg-zinc-50 p-3">
                 <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
@@ -334,8 +327,8 @@ export default function InfographicExamplesPage() {
             </article>
           ))}
         </div>
-        <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {landscapeExamples.map((item) => (
+        <div className="mt-6 grid gap-5 md:grid-cols-3">
+          {portraitExamples.map((item) => (
             <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="bg-zinc-50 p-3">
                 <img src={item.image} alt={item.alt} width={item.width} height={item.height} className="mx-auto h-auto w-full rounded-xl object-contain" loading="lazy" />
