@@ -5,6 +5,11 @@ import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 
 const siteUrl = "https://knowlens.ai";
 const pageUrl = `${siteUrl}/ai-poster-generator`;
+const heroImage = {
+  src: "/picture/text-to-ppt-hero.jpg",
+  alt: "Text to visual PPT example showing renewable energy market presentation slides",
+  title: "Text to Visual PPT Example",
+};
 
 export const metadata: Metadata = {
   title: { absolute: "AI Poster Generator | Create Posters from Text | KnowLens.ai" },
@@ -34,10 +39,10 @@ export const metadata: Metadata = {
       "Create poster-style visuals from topics, notes, and plain text. Generate educational posters, science posters, social media posters, and visual summaries with AI.",
     images: [
       {
-        url: `${siteUrl}/picture/ai-infographic-generator-learning-hero.jpg`,
-        width: 1003,
-        height: 565,
-        alt: "AI-generated poster examples created from topics and notes",
+        url: `${siteUrl}${heroImage.src}`,
+        width: 752,
+        height: 752,
+        alt: heroImage.alt,
       },
     ],
   },
@@ -46,27 +51,9 @@ export const metadata: Metadata = {
     title: "AI Poster Generator | Create Posters from Text | KnowLens.ai",
     description:
       "Turn topics, notes, and plain text into educational posters, science posters, social media posters, and infographic-style visuals.",
-    images: [`${siteUrl}/picture/ai-infographic-generator-learning-hero.jpg`],
+    images: [`${siteUrl}${heroImage.src}`],
   },
 };
-
-const heroImages = [
-  {
-    src: "/picture/ai-infographic-generator-learning-hero.jpg",
-    alt: "AI-generated poster examples created from topics and notes",
-    title: "AI Poster Generator Examples",
-  },
-  {
-    src: "/picture/blue-light-health-poster-case.jpg",
-    alt: "Educational poster generated with AI from study notes",
-    title: "AI-Generated Educational Poster",
-  },
-  {
-    src: "/picture/inflation-daily-life-poster-case.jpg",
-    alt: "Social media poster generated with AI from plain text",
-    title: "AI-Generated Social Media Poster",
-  },
-];
 
 const createCards = [
   ["Educational Posters", "Turn lesson topics, study notes, and concepts into classroom-ready posters.", BookOpen],
@@ -229,14 +216,15 @@ export default function AiPosterGeneratorPage() {
         </div>
 
         <div className="rounded-[2rem] border border-zinc-200 bg-white p-3 shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
-          <div className="grid gap-3">
-            <img src={heroImages[0].src} alt={heroImages[0].alt} title={heroImages[0].title} width={1003} height={565} className="aspect-video w-full rounded-xl bg-zinc-100 object-cover" loading="eager" />
-            <div className="grid grid-cols-2 gap-3">
-              {heroImages.slice(1).map((image) => (
-                <img key={image.src} src={image.src} alt={image.alt} title={image.title} width={480} height={320} className="aspect-video w-full rounded-xl bg-zinc-100 object-cover" loading="eager" />
-              ))}
-            </div>
-          </div>
+          <img
+            src={heroImage.src}
+            alt={heroImage.alt}
+            title={heroImage.title}
+            width={752}
+            height={752}
+            className="aspect-square w-full rounded-xl bg-zinc-100 object-cover"
+            loading="eager"
+          />
           <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
             Examples generated with KnowLens from short topics, notes, and text prompts.
           </p>

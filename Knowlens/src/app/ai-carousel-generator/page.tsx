@@ -5,6 +5,10 @@ import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 
 const siteUrl = "https://knowlens.ai";
 const pageUrl = `${siteUrl}/ai-carousel-generator`;
+const heroImage = {
+  src: "/picture/text-to-ppt-hero.jpg",
+  alt: "Text to visual PPT example showing renewable energy market presentation slides",
+};
 
 export const metadata: Metadata = {
   title: { absolute: "AI Carousel Generator | Multi-Slide Infographics & Visual Summaries | KnowLens.ai" },
@@ -33,10 +37,10 @@ export const metadata: Metadata = {
       "Generate multi-slide carousel visuals from text, notes, or topics. Perfect for education, social media, and knowledge sharing.",
     images: [
       {
-        url: `${siteUrl}/en-picture/astronomy/astronomy-long-infographic.jpg`,
-        width: 720,
-        height: 1120,
-        alt: "Solar system carousel slides from topic",
+        url: `${siteUrl}${heroImage.src}`,
+        width: 752,
+        height: 752,
+        alt: heroImage.alt,
       },
     ],
   },
@@ -45,15 +49,9 @@ export const metadata: Metadata = {
     title: "AI Carousel Generator | Multi-Slide Infographics & Visual Summaries | KnowLens.ai",
     description:
       "Generate carousel-style visuals, infographic slides, and visual summaries from text, notes, or topics.",
-    images: [`${siteUrl}/en-picture/astronomy/astronomy-long-infographic.jpg`],
+    images: [`${siteUrl}${heroImage.src}`],
   },
 };
-
-const heroFrames = [
-  { src: "/en-picture/astronomy/astronomy-long-infographic.jpg", alt: "Solar system carousel slides from topic" },
-  { src: "/en-picture/photosynthesis-infographic-case.jpg", alt: "Photosynthesis carousel slides from notes" },
-  { src: "/en-picture/biology/biology-long-infographic.jpg", alt: "Biology visual summary carousel from notes" },
-];
 
 const outputTypes = [
   ["Educational Carousel Slides", "Turn lesson ideas into clear slide-by-slide explanations for students and self-study.", BookOpen],
@@ -215,14 +213,14 @@ export default function AiCarouselGeneratorPage() {
         </div>
 
         <div className="rounded-[2rem] border border-zinc-200 bg-white p-3 shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
-          <div className="grid grid-cols-[1.1fr_0.9fr] gap-3">
-            <img src={heroFrames[0].src} alt={heroFrames[0].alt} width={720} height={1120} className="h-full max-h-[520px] w-full rounded-xl bg-zinc-100 object-cover object-top" loading="eager" />
-            <div className="grid gap-3">
-              {heroFrames.slice(1).map((image) => (
-                <img key={image.src} src={image.src} alt={image.alt} width={720} height={520} className="aspect-[4/3] w-full rounded-xl bg-zinc-100 object-cover object-top" loading="eager" />
-              ))}
-            </div>
-          </div>
+          <img
+            src={heroImage.src}
+            alt={heroImage.alt}
+            width={752}
+            height={752}
+            className="aspect-square w-full rounded-xl bg-zinc-100 object-cover"
+            loading="eager"
+          />
           <p className="mt-3 text-center text-xs leading-5 text-zinc-500">Examples generated from text, notes, and topics.</p>
         </div>
       </section>
