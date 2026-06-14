@@ -182,6 +182,27 @@ function ensureSafeOrigin(req: NextRequest) {
   return origin === req.nextUrl.origin;
 }
 
+function isLocalNetworkRequest(req: NextRequest) {
+  const host = (req.headers.get("host") || req.nextUrl.host || "").toLowerCase();
+  const hostname = host.split(":")[0];
+  if (!hostname) {
+    return false;
+  }
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return true;
+  }
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return true;
+  }
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return true;
+  }
+  return false;
+}
+
 function normalizeImageModel(imageModel?: string) {
   const raw = (imageModel || "").trim();
   if (!raw) {
@@ -836,7 +857,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
     }
     const session = await getServerSession(nextAuthOptions);
-    const email = session?.user?.email?.trim().toLowerCase() || "";
+    const allowDevLocalAuthBypass =
+      process.env.NODE_ENV !== "production" &&
+      process.env.NEXTAUTH_ALLOW_DEV_LOGIN === "true" &&
+      isLocalNetworkRequest(request);
+    const email = session?.user?.email?.trim().toLowerCase() || (allowDevLocalAuthBypass ? "local-dev@knowlens.ai" : "");
     if (!email) {
       return NextResponse.json({ error: "Please sign in before generating images." }, { status: 401 });
     }
