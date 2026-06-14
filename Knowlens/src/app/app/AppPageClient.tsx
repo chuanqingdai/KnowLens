@@ -2686,7 +2686,7 @@ export default function Home() {
                     onPaste={(event) => {
                       void handleComposerPaste(event);
                     }}
-                    className="block min-h-[168px] max-h-[320px] w-full resize-none overflow-y-auto rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300"
+                    className="block h-[200px] w-full resize-none overflow-y-auto rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300"
                     placeholder={creationInputPlaceholder}
                   />
                 </label>
@@ -2829,10 +2829,10 @@ export default function Home() {
 
               {visiblePromptCards.length ? (
                 <div className="relative left-1/2 mt-7 w-[min(calc(100vw-1.5rem),72rem)] -translate-x-1/2 px-3 sm:mt-8 sm:w-[min(calc(100vw-6rem),78rem)] sm:px-0">
-                  <p className="mb-3 text-center text-xs font-medium text-zinc-500">
+                  <p className="mb-2.5 text-center text-xs font-medium text-zinc-500">
                     Try a prompt
                   </p>
-                  <div className="mx-auto flex max-w-[68rem] flex-wrap justify-center gap-2">
+                  <div className="mx-auto flex max-w-[58rem] flex-wrap items-center justify-center gap-x-1.5 gap-y-2 sm:gap-x-2">
                     {visiblePromptCards.map((card) => {
                       const CardIcon = getPromptSuggestionIcon(card.id);
                       return (
@@ -2840,7 +2840,7 @@ export default function Home() {
                           key={card.id}
                           type="button"
                           onClick={() => handlePromptSuggestionSelect(card.prompt)}
-                          className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-900"
+                          className="inline-flex w-auto min-w-0 max-w-full items-center justify-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-900"
                         >
                           <CardIcon size={12} className="shrink-0 text-zinc-400" />
                           <span className="truncate">{card.label}</span>
@@ -2914,13 +2914,13 @@ export default function Home() {
               <h2 className="mb-3 text-base font-semibold tracking-tight text-zinc-900">
                 Featured Cases
               </h2>
-              <div className="mb-4 flex flex-wrap gap-2">
+              <div className="mb-4 flex gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 {showcaseCategories.map((category) => (
                   <button
                     key={category}
                     type="button"
                     onClick={() => handleFeaturedCategoryChange(category)}
-                    className={`rounded-xl px-4 py-2 text-sm transition ${
+                    className={`shrink-0 rounded-xl px-4 py-2 text-sm transition ${
                       activeCategory === category
                         ? "bg-zinc-900 text-white"
                         : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
@@ -2931,7 +2931,7 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="columns-1 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
+              <div className="columns-2 gap-3 [column-gap:0.75rem] lg:columns-3 lg:[column-gap:1rem] xl:columns-4">
                 {featuredVisibleItems.map((item, index) => {
                     const metric = getCaseMetrics(item.id, item.views, item.likes, currentEmail);
                     return (
@@ -2946,18 +2946,16 @@ export default function Home() {
                         openFeaturedPreview(item);
                       }
                     }}
-                    className="group mb-4 block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    className="group mb-3 block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] lg:mb-4"
                   >
                     <div className="relative w-full bg-zinc-100">
-                      <div style={{ aspectRatio: `${item.coverWidth}/${item.coverHeight}` }}>
-                        <ProgressiveCover
-                          src={toOptimizedCaseCover(item.cover)}
-                          fallbackSrc={item.cover}
-                          alt={item.title}
-                          className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
-                          loading={index < 8 ? "eager" : "lazy"}
-                        />
-                      </div>
+                      <ProgressiveCover
+                        src={toOptimizedCaseCover(item.cover)}
+                        fallbackSrc={item.cover}
+                        alt={item.title}
+                        className="block h-auto w-full object-contain transition-transform duration-300 ease-out group-hover:scale-[1.02]"
+                        loading={index < 8 ? "eager" : "lazy"}
+                      />
                       <div className="pointer-events-none absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/55 via-black/10 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
                         <div className="pointer-events-auto flex items-center gap-2">
                           <button

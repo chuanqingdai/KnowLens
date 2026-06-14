@@ -79,56 +79,66 @@ const useCases = [
   ["Marketers", "Turn product ideas and campaign messages into simple visual posters.", "Campaign posters"],
 ] as const;
 
-const examples = [
-  {
-    title: "Solar System Learning Poster",
-    description: "An educational poster that explains the planets with clear visual structure.",
-    tags: ["Educational Poster", "Science Poster"],
-    image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar system learning poster generated with AI",
-    topic: "Create a solar system learning poster that explains the planets, their order, and simple facts for students.",
-  },
-  {
-    title: "Volcano Science Poster",
-    description: "A science poster explaining how volcanoes form and erupt.",
-    tags: ["Science Poster", "Visual Summary"],
-    image: "/picture/ai-infographic-generator-learning-hero.jpg",
-    alt: "Volcano science poster generated with AI",
-    topic: "Create a volcano science poster explaining magma, eruptions, lava flow, ash clouds, and key safety ideas.",
-  },
-  {
-    title: "Step-by-Step Recipe Poster",
-    description: "A poster-style visual guide for explaining a simple recipe.",
-    tags: ["Recipe Poster", "Step-by-Step Visual"],
-    image: "/picture/ocean-circulation-infographic-case.jpg",
-    alt: "Step-by-step recipe poster generated with AI",
-    topic: "Create a step-by-step recipe poster that turns a simple recipe into clear visual instructions.",
-  },
-  {
-    title: "Product Launch Poster",
-    description: "A visual poster for explaining a new product idea or feature.",
-    tags: ["Product Poster", "Marketing Visual"],
-    image: "/picture/inflation-daily-life-poster-case.jpg",
-    alt: "Product launch poster generated with AI from a short idea",
-    topic: "Create a product launch poster explaining a new feature, the user problem, and three clear benefits.",
-  },
-  {
-    title: "Study Notes Poster",
-    description: "A structured poster that turns notes into a quick study visual.",
-    tags: ["Study Poster", "Visual Summary"],
-    image: "/en-picture/biology/biology-long-infographic.jpg",
-    alt: "Study notes poster generated with AI",
-    topic: "Create a study notes poster that organizes key biology terms, definitions, and takeaways for review.",
-  },
-  {
-    title: "Social Media Idea Poster",
-    description: "A poster-style social visual generated from a short idea.",
-    tags: ["Social Media Poster", "Visual Content"],
-    image: "/picture/blue-light-health-poster-case.jpg",
-    alt: "Social media idea poster generated with AI",
-    topic: "Create a social media poster from a short idea, with a strong headline, simple sections, and a clear takeaway.",
-  },
-];
+const exampleRows = [
+  [
+    {
+      title: "Google Earnings Summary Poster",
+      description: "A wide business poster that organizes Google Q1 2024 revenue, segment growth, and management highlights into a clean report-style visual.",
+      tags: ["Business Poster", "Financial Summary"],
+      image: "/en-picture/17e1c7f5-b04e-4e54-88af-787c79d1e8e3.png",
+      alt: "Google earnings summary poster in landscape format",
+      topic: "Create a wide earnings poster that summarizes Google revenue, operating income, cloud momentum, segment breakdowns, and business highlights in a clean dashboard layout.",
+      aspectClassName: "aspect-[16/9]",
+    },
+    {
+      title: "Seed Germination Learning Poster",
+      description: "A wide classroom poster that explains seed germination with four simple stages and a clean plant-growth narrative.",
+      tags: ["Classroom Poster", "Science"],
+      image: "/en-picture/645ecabf-1b29-4d05-a377-1c886b5a2ae8.png",
+      alt: "Seed germination learning poster in landscape format",
+      topic: "Create a wide classroom poster that explains seed germination through the stages of dry seed, water absorption, root emergence, and first leaves.",
+      aspectClassName: "aspect-[16/9]",
+    },
+    {
+      title: "Vaccine Immunity Explainer Poster",
+      description: "A wide medical poster that shows how vaccines train the immune system with clear protective stages and memory-cell visuals.",
+      tags: ["Medical Poster", "Biology"],
+      image: "/en-picture/d561aaef-2126-479e-bef3-5726b925f88e.png",
+      alt: "Vaccine immunity explainer poster in landscape format",
+      topic: "Create a wide medical poster that explains vaccine exposure, antigen recognition, immune memory, and faster protection on future exposure.",
+      aspectClassName: "aspect-[16/9]",
+    },
+  ],
+  [
+    {
+      title: "Solar Storms Science Poster",
+      description: "A vertical science poster that explains solar storms and aurora formation with a cinematic space-weather sequence.",
+      tags: ["Science Poster", "Astronomy"],
+      image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
+      alt: "Solar storms science poster in vertical format",
+      topic: "Create a vertical science poster that explains solar flares, particle travel, Earth's magnetosphere, atmospheric collisions, and aurora formation.",
+      aspectClassName: "aspect-[9/16]",
+    },
+    {
+      title: "DNA Replication Study Poster",
+      description: "A vertical biology poster that explains DNA replication through a central double-helix diagram and concise learning points.",
+      tags: ["Biology Poster", "Study Guide"],
+      image: "/en-picture/biology/biology-infographic-card.jpg",
+      alt: "DNA replication study poster in vertical format",
+      topic: "Create a DNA replication study poster that explains helicase, base pairing, polymerase, and how one DNA molecule becomes two identical copies.",
+      aspectClassName: "aspect-[9/16]",
+    },
+    {
+      title: "Silk Road History Poster",
+      description: "A vertical history poster that maps Silk Road routes, trade goods, cultural exchange, and why the network connected civilizations.",
+      tags: ["History Poster", "Visual Summary"],
+      image: "/en-picture/history/b09d63d7-b6d4-4ff7-87e4-aad50d709b9d.png",
+      alt: "Silk Road history poster in vertical format",
+      topic: "Create a vertical history poster about the Silk Road. Explain route geography, traded goods, exchanged ideas, key cities, and long-term historical impact.",
+      aspectClassName: "aspect-[9/16]",
+    },
+  ],
+] as const;
 
 const whyPoints = [
   ["Starts from Your Idea", "Begin with a topic, notes, or plain text instead of a blank canvas."],
@@ -233,20 +243,26 @@ export default function AiPosterGeneratorPage() {
 
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Poster Examples Made with KnowLens" description="Explore poster examples created from topics, notes, and short text prompts." />
-        <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {examples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <img src={item.image} alt={item.alt} width={640} height={820} className="h-auto w-full bg-zinc-100 object-contain" loading="lazy" />
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
-                  Create Similar
-                  <ArrowRight size={14} aria-hidden="true" />
-                </Link>
-              </div>
-            </article>
+        <div className="mt-8 space-y-5">
+          {exampleRows.map((row, rowIndex) => (
+            <div key={rowIndex} className="grid gap-5 md:grid-cols-3">
+              {row.map((item) => (
+                <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                  <div className={`${item.aspectClassName} flex w-full items-center justify-center overflow-hidden bg-zinc-50 p-3`}>
+                    <img src={item.image} alt={item.alt} width={960} height={960} className="h-full w-full object-contain" loading="lazy" />
+                  </div>
+                  <div className="p-4">
+                    <div className="flex flex-wrap gap-2">{item.tags.map((tag) => <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>)}</div>
+                    <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                    <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.topic)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
+                      Create Similar
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
           ))}
         </div>
       </section>

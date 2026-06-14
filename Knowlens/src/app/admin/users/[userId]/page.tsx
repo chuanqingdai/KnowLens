@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Copy, ExternalLink, Gift, Loader2, X } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { BILLING_PLAN_CATALOG, type BillingCycle, type BillingPlanId } from "@/lib/billing-plans";
 
 type UserDetailResponse = {
   user: {
@@ -99,9 +100,18 @@ type CreditsPageResponse = {
   hasMore?: boolean;
 };
 
-type GiftCreditsResponse = {
+type GiftMembershipResponse = {
   currentBalance?: number;
-  record?: UserDetailResponse["credits"]["records"][number];
+  subscription?: {
+    id?: string | null;
+    planId?: string | null;
+    planName?: string | null;
+    cycle?: string | null;
+    status?: string | null;
+    renewAt?: string | null;
+    startedAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
 };
 
 type ProjectsPageResponse = {
@@ -212,7 +222,8 @@ export default function AdminUserDetailPage() {
   const [creditsError, setCreditsError] = useState("");
   const [creditsPage, setCreditsPage] = useState(1);
   const [creditsHasMore, setCreditsHasMore] = useState(false);
-  const [giftAmount, setGiftAmount] = useState("");
+  const [giftPlanId, setGiftPlanId] = useState<BillingPlanId>("starter");
+  const [giftCycle, setGiftCycle] = useState<BillingCycle>("monthly");
   const [giftReason, setGiftReason] = useState("");
   const [giftLoading, setGiftLoading] = useState(false);
   const [giftError, setGiftError] = useState("");
@@ -250,7 +261,8 @@ export default function AdminUserDetailPage() {
     setCreditsError("");
     setCreditsPage(1);
     setCreditsHasMore(false);
-    setGiftAmount("");
+    setGiftPlanId("starter");
+    setGiftCycle("monthly");
     setGiftReason("");
     setGiftError("");
     setGiftSuccess("");
@@ -368,13 +380,13 @@ export default function AdminUserDetailPage() {
     window.setTimeout(() => setHint(""), 2200);
   }
 
-  async function submitGiftCredits() {
+  async function submitGiftMembership() {
     if (!data?.user?.id || giftLoading) {
       return;
     }
-    const amount = Math.round(Number(giftAmount));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setGiftError("请输入大于 0 的积分数量。");
+    const selectedPlan = BILLING_PLAN_CATALOG.find((plan) => plan.id === giftPlanId);
+    if (!selectedPlan) {
+      setGiftError("请选择有效的会员套餐。");
       return;
     }
     setGiftLoading(true);
@@ -388,11 +400,12 @@ export default function AdminUserDetailPage() {
         },
         cache: "no-store",
         body: JSON.stringify({
-          action: "gift_credits",
-          amount,
+          action: "gift_membership",
+          planId: giftPlanId,
+          cycle: giftCycle,
           reason: giftReason,
         }),
-      }).then(readJsonOrThrow)) as GiftCreditsResponse;
+      }).then(readJsonOrThrow)) as GiftMembershipResponse;
       const nextBalance = Number(payload.currentBalance);
       if (Number.isFinite(nextBalance)) {
         setData((prev) =>
@@ -407,17 +420,33 @@ export default function AdminUserDetailPage() {
             : prev,
         );
       }
-      if (payload.record) {
-        setCreditsRecords((prev) => [payload.record as UserDetailResponse["credits"]["records"][number], ...prev]);
-      } else {
-        void loadCreditsPage(1);
+      if (payload.subscription) {
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                subscription: {
+                  id: payload.subscription?.id ?? prev.subscription?.id ?? "",
+                  planId: payload.subscription?.planId ?? null,
+                  planName: payload.subscription?.planName ?? null,
+                  cycle: payload.subscription?.cycle ?? null,
+                  status: payload.subscription?.status ?? null,
+                  renewAt: payload.subscription?.renewAt ?? null,
+                  startedAt: payload.subscription?.startedAt ?? null,
+                  updatedAt: payload.subscription?.updatedAt ?? null,
+                },
+              }
+            : prev,
+        );
       }
-      setGiftAmount("");
+      void loadCreditsPage(1);
+      setGiftPlanId("starter");
+      setGiftCycle("monthly");
       setGiftReason("");
-      setGiftSuccess(`已赠送 ${amount} 积分。`);
+      setGiftSuccess(`已开通 ${selectedPlan.name}${giftCycle === "yearly" ? " 年度" : " 月度"}会员。`);
       window.setTimeout(() => setGiftSuccess(""), 2600);
     } catch (fetchError) {
-      setGiftError(fetchError instanceof Error ? fetchError.message : "赠送积分失败。");
+      setGiftError(fetchError instanceof Error ? fetchError.message : "开通会员失败。");
     } finally {
       setGiftLoading(false);
     }
@@ -557,34 +586,47 @@ export default function AdminUserDetailPage() {
               <div className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:w-[300px]">
                 <div className="flex items-center gap-1 text-xs font-semibold text-zinc-900">
                   <Gift size={13} />
-                  赠送积分
+                  开通会员
                 </div>
-                <div className="mt-2 grid grid-cols-[96px_1fr] gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={100000}
-                    value={giftAmount}
-                    onChange={(event) => setGiftAmount(event.target.value)}
-                    placeholder="数量"
+                <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                  直接为用户开通与线上一致的会员权限，并发放对应月度积分。
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <select
+                    value={giftPlanId}
+                    onChange={(event) => setGiftPlanId(event.target.value as BillingPlanId)}
                     className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
-                  />
-                  <input
-                    type="text"
-                    value={giftReason}
-                    onChange={(event) => setGiftReason(event.target.value)}
-                    placeholder="备注，可选"
+                  >
+                    {BILLING_PLAN_CATALOG.map((plan) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={giftCycle}
+                    onChange={(event) => setGiftCycle(event.target.value as BillingCycle)}
                     className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
-                  />
+                  >
+                    <option value="monthly">月度会员</option>
+                    <option value="yearly">年度会员</option>
+                  </select>
                 </div>
+                <input
+                  type="text"
+                  value={giftReason}
+                  onChange={(event) => setGiftReason(event.target.value)}
+                  placeholder="备注，可选"
+                  className="mt-2 h-8 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
+                />
                 <button
                   type="button"
                   disabled={giftLoading}
-                  onClick={submitGiftCredits}
+                  onClick={submitGiftMembership}
                   className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {giftLoading ? <Loader2 size={12} className="animate-spin" /> : <Gift size={12} />}
-                  {giftLoading ? "赠送中..." : "确认赠送"}
+                  {giftLoading ? "开通中..." : "确认开通"}
                 </button>
                 {giftError ? <p className="mt-2 text-xs text-red-600">{giftError}</p> : null}
                 {giftSuccess ? <p className="mt-2 text-xs text-emerald-700">{giftSuccess}</p> : null}

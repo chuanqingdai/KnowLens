@@ -19,7 +19,7 @@ export type TuziImagePayload = {
 
 const MAX_FINAL_IMAGE_PROMPT_CHARS = 1500;
 const IMAGE_PROMPT_POLISH_SUFFIX =
-  "Make the image feel like a refined, professional, and aesthetically polished educational infographic with one dominant hero visual, integrated poster-like composition, soft visual transitions, natural embedded callouts, clear diagrammatic storytelling, elegant spacing, balanced information density, and cohesive premium design.";
+  "Make the image feel like a refined, professional, and aesthetically polished educational infographic with one dominant hero visual, integrated poster-like composition, soft visual transitions, natural embedded callouts, clear diagrammatic storytelling, elegant spacing, balanced information density, and cohesive premium design. Optimize the final visual for mobile viewing, and ensure every illustration, icon, and visible text label renders accurately, clearly, and without distortion on a phone screen.";
 const VIDEO_IMAGE_PROMPT_POLISH_SUFFIX =
   "Make the frame feel like a polished educational video still with one dominant subject, clear action, cinematic composition, generous negative space, minimal or no on-screen text, and strong readability at a glance.";
 const IMAGE_PROMPT_NOISE_PATTERNS = [

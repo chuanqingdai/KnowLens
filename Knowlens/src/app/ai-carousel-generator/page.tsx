@@ -75,62 +75,72 @@ const audiences = [
   ["Small Teams", "Make quick multi-slide visuals without a designer."],
 ] as const;
 
-const examples = [
-  {
-    title: "Solar System Carousel",
-    description: "A multi-slide visual summary that explains planets, orbits, and key space facts.",
-    tags: ["Science Carousel", "Visual Summary"],
-    image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
-    alt: "Solar system visual summary carousel",
-    prompt:
-      "Create a carousel explaining the solar system. Use one slide for the big idea, then slides for planet order, inner and outer planets, orbit basics, and memorable facts.",
-  },
-  {
-    title: "Photosynthesis Learning Carousel",
-    description: "An educational carousel that breaks photosynthesis into simple visual steps.",
-    tags: ["Educational Carousel", "Science"],
-    image: "/en-picture/photosynthesis-infographic-case.jpg",
-    alt: "Photosynthesis educational carousel from notes",
-    prompt:
-      "Create a carousel about photosynthesis. Explain sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen, and why plants are important for life on Earth.",
-  },
-  {
-    title: "Cell Biology Summary",
-    description: "A study-friendly carousel that turns biology notes into clear sections.",
-    tags: ["Study Guide", "Visual Summary"],
-    image: "/en-picture/biology/biology-long-infographic.jpg",
-    alt: "Cell biology visual summary carousel from notes",
-    prompt:
-      "Create a carousel that explains cell structure. Include the nucleus, mitochondria, ribosomes, cell membrane, and how each part supports the cell.",
-  },
-  {
-    title: "Earth Science Carousel",
-    description: "A slide-by-slide explanation of landforms, erosion, and changing landscapes.",
-    tags: ["Earth Science", "Infographic Slides"],
-    image: "/en-picture/geography/geography-long-infographic.jpg",
-    alt: "Earth science infographic carousel from topic",
-    prompt:
-      "Create a carousel about how landscapes change over time. Cover weathering, erosion, deposition, rivers, mountains, and why landforms keep changing.",
-  },
-  {
-    title: "History Timeline Carousel",
-    description: "A clear timeline carousel for explaining events and their impact.",
-    tags: ["Timeline", "Knowledge Carousel"],
-    image: "/en-picture/history/history-infographic-card.jpg",
-    alt: "History timeline carousel created from notes",
-    prompt:
-      "Create a carousel about a major invention in history. Explain the problem it solved, how it spread, and why it changed communication and learning.",
-  },
-  {
-    title: "Everyday Economics Carousel",
-    description: "A simple business-style carousel for explaining a practical concept.",
-    tags: ["Business Visual", "Social Carousel"],
-    image: "/en-picture/economics/economics-infographic-card.jpg",
-    alt: "Economics social media carousel from short explanation",
-    prompt:
-      "Create a carousel explaining inflation in everyday life. Cover prices, purchasing power, wages, savings, and why people notice inflation in daily spending.",
-  },
-];
+const exampleRows = [
+  [
+    {
+      title: "Google Earnings Summary Carousel",
+      description: "A wide business carousel that turns Google Q1 2024 earnings into clean metric panels, trend charts, and segment highlights.",
+      tags: ["Business Carousel", "Financial Summary"],
+      image: "/en-picture/17e1c7f5-b04e-4e54-88af-787c79d1e8e3.png",
+      alt: "Google earnings summary carousel in landscape format",
+      prompt:
+        "Create a carousel summarizing Google earnings. Show revenue, operating income, cloud growth, segment highlights, and a clear business takeaway in wide visual slides.",
+      aspectClassName: "aspect-[16/9]",
+    },
+    {
+      title: "Seed Germination Carousel",
+      description: "A wide educational carousel that explains seed germination through four simple plant growth stages.",
+      tags: ["Educational Carousel", "Science"],
+      image: "/en-picture/645ecabf-1b29-4d05-a377-1c886b5a2ae8.png",
+      alt: "Seed germination learning carousel in landscape format",
+      prompt:
+        "Create a carousel about seed germination. Explain dry seed, water absorption, root emergence, and first leaves with clear stage-by-stage visual guidance.",
+      aspectClassName: "aspect-[16/9]",
+    },
+    {
+      title: "Vaccine Immunity Carousel",
+      description: "A wide medical carousel that shows how vaccines train immune memory with clear steps and labeled immune response stages.",
+      tags: ["Medical Carousel", "Biology"],
+      image: "/en-picture/d561aaef-2126-479e-bef3-5726b925f88e.png",
+      alt: "Vaccine immunity explainer carousel in landscape format",
+      prompt:
+        "Create a carousel about how vaccines train the immune system. Show vaccine exposure, antigen recognition, immune memory, and faster protection on future exposure.",
+      aspectClassName: "aspect-[16/9]",
+    },
+  ],
+  [
+    {
+      title: "Solar Storms Learning Carousel",
+      description: "A vertical science carousel that explains how solar storms create auroras through a dramatic step-by-step space weather flow.",
+      tags: ["Science Carousel", "Astronomy"],
+      image: "/en-picture/astronomy/astronomy-long-infographic.jpg",
+      alt: "Solar storms learning carousel in vertical format",
+      prompt:
+        "Create a vertical carousel about solar storms and auroras. Explain solar flares, particle travel, Earth's magnetosphere, atmospheric collisions, and aurora colors.",
+      aspectClassName: "aspect-[9/16]",
+    },
+    {
+      title: "DNA Replication Carousel",
+      description: "A vertical biology carousel that explains DNA replication with a strong central double-helix and concise handwritten-style stages.",
+      tags: ["Biology", "Study Guide"],
+      image: "/en-picture/biology/biology-infographic-card.jpg",
+      alt: "DNA replication biology carousel in vertical format",
+      prompt:
+        "Create a carousel about DNA replication. Show strand separation, base pairing, polymerase activity, and how one DNA molecule becomes two copies.",
+      aspectClassName: "aspect-[9/16]",
+    },
+    {
+      title: "Silk Road History Carousel",
+      description: "A vertical history carousel that maps Silk Road routes, trade goods, exchanged ideas, and the long-term global impact.",
+      tags: ["History", "Timeline"],
+      image: "/en-picture/history/b09d63d7-b6d4-4ff7-87e4-aad50d709b9d.png",
+      alt: "Silk Road history carousel in vertical format",
+      prompt:
+        "Create a vertical carousel about the Silk Road. Explain route connections, traded goods, cultural exchange, key cities, and why the network shaped world history.",
+      aspectClassName: "aspect-[9/16]",
+    },
+  ],
+] as const;
 
 const faqItems = [
   ["What is an AI Carousel Generator?", "An AI Carousel Generator turns text, notes, or topics into multi-slide carousel visuals, infographic slides, and visual summaries. KnowLens helps organize the idea into slide-by-slide sections so each point is easier to follow."],
@@ -227,24 +237,30 @@ export default function AiCarouselGeneratorPage() {
 
       <section id="examples" className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <SectionHeading title="Carousel Examples" description="Explore carousel previews created from text, notes, short explanations, and topics." />
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {examples.map((item) => (
-            <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <img src={item.image} alt={item.alt} width={640} height={820} className="h-auto w-full bg-zinc-100 object-contain" loading="lazy" />
-              <div className="p-4">
-                <div className="flex flex-wrap gap-2">
-                  {item.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
-                  ))}
-                </div>
-                <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
-                <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.prompt)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
-                  Create Similar
-                  <ArrowRight size={14} aria-hidden="true" />
-                </Link>
-              </div>
-            </article>
+        <div className="mt-8 space-y-5">
+          {exampleRows.map((row, rowIndex) => (
+            <div key={rowIndex} className="grid gap-5 md:grid-cols-3">
+              {row.map((item) => (
+                <article key={item.title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                  <div className={`${item.aspectClassName} flex w-full items-center justify-center overflow-hidden bg-zinc-50 p-3`}>
+                    <img src={item.image} alt={item.alt} width={960} height={960} className="h-full w-full object-contain" loading="lazy" />
+                  </div>
+                  <div className="p-4">
+                    <div className="flex flex-wrap gap-2">
+                      {item.tags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600">{tag}</span>
+                      ))}
+                    </div>
+                    <h3 className="mt-3 text-lg font-semibold text-zinc-950">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-zinc-600">{item.description}</p>
+                    <Link href={`/app?intent=generate&prompt=${encodeURIComponent(item.prompt)}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-950 hover:text-emerald-700">
+                      Create Similar
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
           ))}
         </div>
       </section>

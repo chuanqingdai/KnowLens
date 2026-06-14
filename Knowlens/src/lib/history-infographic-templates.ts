@@ -331,8 +331,22 @@ export function getHistoryInfographicTemplates() {
 
 export const historyInfographicTemplates = getHistoryInfographicTemplates();
 
+function normalizeLegacyHistorySlug(slug: string) {
+  const value = slug.trim().toLowerCase();
+  if (!value) {
+    return value;
+  }
+  if (value.endsWith("-online-history-infographic")) {
+    return value.replace(/-online-history-infographic$/i, "-infographic");
+  }
+  return value;
+}
+
 export function getHistoryInfographicTemplate(slug: string) {
-  return getHistoryInfographicTemplates().find((template) => template.slug === slug);
+  const normalizedSlug = normalizeLegacyHistorySlug(slug);
+  return getHistoryInfographicTemplates().find(
+    (template) => template.slug === slug || template.slug === normalizedSlug,
+  );
 }
 
 export function getHistoryInfographicBatchJob() {

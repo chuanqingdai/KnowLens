@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { findBillingPlan, type BillingCycle, type BillingPlanId } from "@/lib/billing-plans";
 import { getDb } from "@/lib/server/db";
 import { requireAdminEmail } from "@/lib/server/admin-auth";
 import { hasManagedDatabase, pgAll, pgGet } from "@/lib/server/postgres";
 import {
+  applyBillingFulfillmentAtomic,
   applyCreditRecordAtomic,
   logOpsEvent,
   parseOpsEventDetailsJson,
@@ -92,6 +94,12 @@ type UserActivitySummary = {
   totalCount: number;
   errorCount: number;
 };
+
+function addMonths(base: Date, count: number) {
+  const next = new Date(base);
+  next.setMonth(next.getMonth() + count);
+  return next;
+}
 
 function parseIntInRange(raw: string | null, fallback: number, min: number, max: number) {
   const value = Number.parseInt((raw ?? "").trim(), 10);
@@ -612,15 +620,12 @@ export async function POST(
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     amount?: number | string;
+    planId?: BillingPlanId | string;
+    cycle?: BillingCycle | string;
     reason?: string;
   };
-  if (body.action !== "gift_credits") {
+  if (body.action !== "gift_credits" && body.action !== "gift_membership") {
     return NextResponse.json({ error: "Unsupported admin user action." }, { status: 400 });
-  }
-
-  const amount = Math.round(Number(body.amount));
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100_000) {
-    return NextResponse.json({ error: "Gift amount must be between 1 and 100000 credits." }, { status: 400 });
   }
   const reason = (body.reason || "").trim().slice(0, 280);
 
@@ -645,6 +650,84 @@ export async function POST(
   };
   if (!user.id || !user.email) {
     return NextResponse.json({ error: "User record is missing id or email." }, { status: 400 });
+  }
+
+  if (body.action === "gift_membership") {
+    const planId = String(body.planId || "").trim() as BillingPlanId;
+    const cycle: BillingCycle = body.cycle === "yearly" ? "yearly" : "monthly";
+    const plan = findBillingPlan(planId);
+
+    if (!plan) {
+      return NextResponse.json({ error: "Unsupported membership plan." }, { status: 400 });
+    }
+
+    const startedAt = new Date();
+    const renewAt = addMonths(startedAt, cycle === "yearly" ? 12 : 1);
+    const result = await applyBillingFulfillmentAtomic({
+      sessionId: `admin-gift-membership-${user.id}-${Date.now()}`,
+      userEmail: user.email,
+      planId: plan.id,
+      planName: plan.name,
+      cycle,
+      monthlyCredits: plan.monthlyCredits,
+      startedAt: startedAt.toISOString(),
+      renewAt: renewAt.toISOString(),
+      checkoutSource: "admin_membership_gift",
+    });
+
+    if (!result.applied) {
+      return NextResponse.json({ error: "Gift membership was not applied." }, { status: 500 });
+    }
+
+    const latestCreditRaw = await queryOne(
+      `SELECT balance
+       FROM credit_records
+       WHERE user_email = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [user.email],
+    );
+
+    logOpsEvent({
+      category: "admin",
+      action: "user.membership.gift",
+      status: "ok",
+      source: "admin_user_detail",
+      userEmail: adminEmail,
+      message: `Admin gifted ${plan.name} ${cycle} membership to ${user.email}.`,
+      details: {
+        targetUserId: user.id,
+        targetUserEmail: user.email,
+        planId: plan.id,
+        planName: plan.name,
+        cycle,
+        monthlyCredits: plan.monthlyCredits,
+        reason,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        subscription: {
+          id: null,
+          planId: plan.id,
+          planName: plan.name,
+          cycle,
+          status: "active",
+          startedAt: startedAt.toISOString(),
+          renewAt: renewAt.toISOString(),
+          updatedAt: startedAt.toISOString(),
+        },
+        currentBalance: asNumber(latestCreditRaw?.balance),
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" } },
+    );
+  }
+
+  const amount = Math.round(Number(body.amount));
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100_000) {
+    return NextResponse.json({ error: "Gift amount must be between 1 and 100000 credits." }, { status: 400 });
   }
 
   const description = reason
