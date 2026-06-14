@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { FocusedLandingPage } from "@/components/marketing/FocusedLandingPage";
 
 const siteUrl = "https://knowlens.ai";
-const pageUrl = `${siteUrl}/ai-explainer-video-generator`;
+const pageUrl = `${siteUrl}/ai-explainer-videos`;
 
 export const metadata: Metadata = {
   title: "AI Explainer Videos for YouTube & TikTok Creators | KnowLens",

@@ -97,7 +97,7 @@ export default async function BiologyInfographicTemplatePage({ params }: PagePro
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: "https://knowlens.ai/" },
           { "@type": "ListItem", position: 2, name: "Infographic", item: "https://knowlens.ai/infographic-examples" },
-          { "@type": "ListItem", position: 3, name: "Biology", item: "https://knowlens.ai/biology-infographic-generator" },
+          { "@type": "ListItem", position: 3, name: "Biology", item: "https://knowlens.ai/infographic/biology" },
           { "@type": "ListItem", position: 4, name: template.h1, item: template.canonicalUrl },
         ],
       },
@@ -112,7 +112,7 @@ export default async function BiologyInfographicTemplatePage({ params }: PagePro
           <nav className="mb-4 flex flex-wrap gap-2 text-sm text-zinc-500">
             <Link href="/infographic-examples" className="hover:text-zinc-900">Infographic Examples</Link>
             <span>/</span>
-            <Link href="/biology-infographic-generator" className="hover:text-zinc-900">Biology</Link>
+            <Link href="/infographic/biology" className="hover:text-zinc-900">Biology</Link>
             <span>/</span>
             <span>{template.topicName}</span>
           </nav>
@@ -136,10 +136,10 @@ export default async function BiologyInfographicTemplatePage({ params }: PagePro
                   Create similar infographic
                 </Link>
                 <Link
-                  href="/biology-infographic-generator"
+                  href="/infographic/biology"
                   className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
                 >
-                  Biology Infographic Generator
+                  Biology examples
                 </Link>
               </div>
             </div>

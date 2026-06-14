@@ -33,6 +33,14 @@ export const metadata: Metadata = {
       "Create infographic posters, PPT slides, and storyboard visuals from text, documents, webpages, videos, and podcasts in one workflow.",
     images: [`${siteUrl}/picture/knowlens-hero.png`],
   },
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
 };
 
 export default function AppPage() {

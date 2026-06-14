@@ -4,11 +4,24 @@ const siteUrl = "https://knowlens.ai";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: {
-      userAgent: "*",
-      allow: "/",
-    },
-    sitemap: ["https://knowlens.ai/sitemap.xml", "https://knowlens.ai/infographic-sitemap.xml"],
+    rules: [
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: [
+          "/api/",
+          "/admin",
+          "/app",
+          "/auth",
+          "/workspace",
+          "/projects",
+          "/profile",
+          "/home-original",
+          "/landing",
+        ],
+      },
+    ],
+    sitemap: ["https://knowlens.ai/sitemap.xml"],
     host: siteUrl,
   };
 }

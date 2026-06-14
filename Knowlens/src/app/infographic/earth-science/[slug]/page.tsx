@@ -97,7 +97,7 @@ export default async function EarthScienceInfographicTemplatePage({ params }: Pa
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: "https://knowlens.ai/" },
           { "@type": "ListItem", position: 2, name: "Infographic", item: "https://knowlens.ai/infographic-examples" },
-          { "@type": "ListItem", position: 3, name: "Earth Science", item: "https://knowlens.ai/earth-science-infographic-generator" },
+          { "@type": "ListItem", position: 3, name: "Earth Science", item: "https://knowlens.ai/infographic/earth-science" },
           { "@type": "ListItem", position: 4, name: template.h1, item: template.canonicalUrl },
         ],
       },
@@ -112,7 +112,7 @@ export default async function EarthScienceInfographicTemplatePage({ params }: Pa
           <nav className="mb-4 flex flex-wrap gap-2 text-sm text-zinc-500">
             <Link href="/infographic-examples" className="hover:text-zinc-900">Infographic Examples</Link>
             <span>/</span>
-            <Link href="/earth-science-infographic-generator" className="hover:text-zinc-900">Earth Science</Link>
+            <Link href="/infographic/earth-science" className="hover:text-zinc-900">Earth Science</Link>
             <span>/</span>
             <span>{template.topicName}</span>
           </nav>
@@ -132,8 +132,8 @@ export default async function EarthScienceInfographicTemplatePage({ params }: Pa
                 <Link href={createSimilarHref} className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white hover:bg-zinc-800">
                   Create similar infographic
                 </Link>
-                <Link href="/earth-science-infographic-generator" className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">
-                  Earth Science Infographic Generator
+                <Link href="/infographic/earth-science" className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">
+                  Earth Science examples
                 </Link>
               </div>
             </div>

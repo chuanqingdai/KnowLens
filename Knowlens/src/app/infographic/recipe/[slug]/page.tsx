@@ -95,7 +95,7 @@ export default async function RecipeInfographicTemplatePage({ params }: PageProp
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: "https://knowlens.ai/" },
           { "@type": "ListItem", position: 2, name: "Infographic", item: "https://knowlens.ai/infographic-examples" },
-          { "@type": "ListItem", position: 3, name: "Recipe", item: "https://knowlens.ai/recipe-infographic-maker" },
+          { "@type": "ListItem", position: 3, name: "Recipe", item: "https://knowlens.ai/infographic/recipe" },
           { "@type": "ListItem", position: 4, name: template.h1, item: template.canonicalUrl },
         ],
       },
@@ -110,7 +110,7 @@ export default async function RecipeInfographicTemplatePage({ params }: PageProp
           <nav className="mb-4 flex flex-wrap gap-2 text-sm text-zinc-500">
             <Link href="/infographic-examples" className="hover:text-zinc-900">Infographic Examples</Link>
             <span>/</span>
-            <Link href="/recipe-infographic-maker" className="hover:text-zinc-900">Recipe</Link>
+            <Link href="/infographic/recipe" className="hover:text-zinc-900">Recipe</Link>
             <span>/</span>
             <span>{template.topicName}</span>
           </nav>
@@ -130,8 +130,8 @@ export default async function RecipeInfographicTemplatePage({ params }: PageProp
                 <Link href={createSimilarHref} className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white hover:bg-zinc-800">
                   Create similar infographic
                 </Link>
-                <Link href="/recipe-infographic-maker" className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">
-                  Recipe Infographic Maker
+                <Link href="/infographic/recipe" className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">
+                  Recipe examples
                 </Link>
               </div>
             </div>

@@ -95,7 +95,7 @@ export default async function HistoryInfographicTemplatePage({ params }: PagePro
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: "https://knowlens.ai/" },
           { "@type": "ListItem", position: 2, name: "Infographic", item: "https://knowlens.ai/infographic-examples" },
-          { "@type": "ListItem", position: 3, name: "History", item: "https://knowlens.ai/educational-infographic-maker" },
+          { "@type": "ListItem", position: 3, name: "History", item: "https://knowlens.ai/infographic/history" },
           { "@type": "ListItem", position: 4, name: template.h1, item: template.canonicalUrl },
         ],
       },

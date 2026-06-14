@@ -12,6 +12,7 @@ import { getProcessInfographicTemplates } from "@/lib/process-infographic-templa
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
 import { getRoadmapInfographicTemplates } from "@/lib/roadmap-infographic-templates";
 import { getSexEducationInfographicTemplates } from "@/lib/sex-education-infographic-templates";
+import { getInfographicDirectorySlugs, getInfographicDirectoryUrl } from "@/lib/infographic-directories";
 import { listPublishedCases } from "@/lib/server/published-cases";
 
 const siteUrl = "https://knowlens.ai";
@@ -19,11 +20,26 @@ const siteUrl = "https://knowlens.ai";
 const publicRoutes = [
   "/",
   "/membership",
-  "/app",
   "/blog",
+  "/about",
+  "/contact",
   "/privacy",
   "/terms",
-  "/infographic/history",
+  "/ai-infographic-generator",
+  "/text-to-infographic",
+  "/infographic-maker",
+  "/science-infographic-generator",
+  "/biology-infographic-generator",
+  "/earth-science-infographic-generator",
+  "/educational-infographic-maker",
+  "/process-infographic-generator",
+  "/recipe-infographic-maker",
+  "/infographic-examples",
+  "/ai-poster-generator",
+  "/ai-carousel-generator",
+  "/ai-explainer-videos",
+  "/ai-video-generator",
+  "/text-to-video-ai",
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -31,8 +47,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = publicRoutes.map((route) => ({
     url: `${siteUrl}${route === "/" ? "" : route}`,
     lastModified: now,
-    changeFrequency: route === "/" || route === "/app" ? "daily" : "weekly",
-    priority: route === "/" || route === "/app" ? 1 : 0.8,
+    changeFrequency: route === "/" ? "daily" : "weekly",
+    priority: route === "/" ? 1 : 0.8,
+  }));
+  const directoryEntries: MetadataRoute.Sitemap = getInfographicDirectorySlugs().map((slug) => ({
+    url: getInfographicDirectoryUrl(slug),
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: slug === "history" || slug === "science" || slug === "biology" ? 0.8 : 0.7,
   }));
 
   try {
@@ -157,6 +179,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       });
     return [
       ...staticEntries,
+      ...directoryEntries,
       ...biologyEntries,
       ...processEntries,
       ...recipeEntries,
@@ -174,6 +197,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   } catch {
     return [
       ...staticEntries,
+      ...directoryEntries,
       ...getBiologyInfographicTemplates().map((template) => ({
         url: template.canonicalUrl,
         lastModified: new Date(template.updatedAt),

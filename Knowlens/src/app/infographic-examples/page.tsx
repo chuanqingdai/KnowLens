@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, BookOpen, FlaskConical, Grid2X2, Layers3, Lightbulb, Sparkles } from "lucide-react";
+import { ArrowRight, BadgeCheck, BookOpen, Briefcase, FlaskConical, Grid2X2, Layers3, Lightbulb, Sparkles, UtensilsCrossed } from "lucide-react";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 
 const siteUrl = "https://knowlens.ai";
@@ -133,36 +133,50 @@ const categories = [
   {
     title: "Science Infographics",
     description: "Visual examples for biology, physics, astronomy, earth science, and classroom science topics.",
-    href: "/science-infographic-generator",
+    href: "/infographic/science",
     Icon: FlaskConical,
   },
   {
-    title: "Educational Infographics",
-    description: "Study guides, lesson visuals, classroom posters, and learning summaries.",
+    title: "Biology Infographics",
+    description: "Cells, anatomy, genetics, ecosystems, and other life science visuals.",
+    href: "/infographic/biology",
     Icon: BookOpen,
   },
   {
-    title: "Process Infographics",
-    description: "Step-by-step visuals for workflows, tutorials, recipes, and simple explanations.",
-    Icon: Layers3,
-  },
-  {
-    title: "Visual Summaries",
-    description: "Structured summaries created from plain text, notes, or short explanations.",
-    href: "/text-to-infographic",
-    Icon: Sparkles,
-  },
-  {
-    title: "Poster-Style Infographics",
-    description: "Single-page visuals for social posts, presentations, and quick knowledge sharing.",
-    href: "/ai-poster-generator",
+    title: "Earth Science Infographics",
+    description: "Geology, weather, climate, Earth layers, and natural system visuals.",
+    href: "/infographic/earth-science",
     Icon: Grid2X2,
   },
   {
-    title: "Carousel-Style Visuals",
-    description: "Multi-section visuals that break one idea into easy-to-share parts.",
-    href: "/ai-carousel-generator",
-    Icon: Lightbulb,
+    title: "Process Infographics",
+    description: "Step-by-step visuals for workflows, operations, tutorials, and technical sequences.",
+    href: "/infographic/process",
+    Icon: Layers3,
+  },
+  {
+    title: "Recipe Infographics",
+    description: "Visual recipe cards with ingredients, prep steps, cooking flow, and serving notes.",
+    href: "/infographic/recipe",
+    Icon: UtensilsCrossed,
+  },
+  {
+    title: "History Infographics",
+    description: "Historical explainers, civilization overviews, timelines, and visual learning pages.",
+    href: "/infographic/history",
+    Icon: BookOpen,
+  },
+  {
+    title: "Business Infographics",
+    description: "Market insight, financial report, insurance, roadmap, and industry report visuals.",
+    href: "/infographic/business",
+    Icon: Briefcase,
+  },
+  {
+    title: "Educational Infographics",
+    description: "Study guides, classroom posters, lesson visuals, and structured learning summaries.",
+    href: "/infographic/education",
+    Icon: Sparkles,
   },
 ] as const;
 
