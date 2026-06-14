@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { get as getBlob, put as putBlob } from "@vercel/blob";
+import { getInfographicDetailPath } from "@/lib/infographic-paths";
 import { getDb } from "@/lib/server/db";
 import { readImageAsset } from "@/lib/server/image-generation-jobs";
 import { hasManagedDatabase, pgAll, pgGet, pgRun } from "@/lib/server/postgres";
@@ -158,6 +159,16 @@ function toPublicAssetUrl(assetId: string) {
 
 function toCaseViewerUrl(caseSlug: string, assetSlug: string) {
   return `/cases/${encodeURIComponent(caseSlug)}?asset=${encodeURIComponent(assetSlug)}`;
+}
+
+function toPreferredCaseViewerUrl(category: string, caseSlug: string, assetSlug?: string | null) {
+  return (
+    getInfographicDetailPath({
+      category,
+      slug: caseSlug,
+      asset: assetSlug || undefined,
+    }) || toCaseViewerUrl(caseSlug, assetSlug || "cover-1")
+  );
 }
 
 function mapCaseRow(row: Record<string, unknown>): PublishedCaseRow {
@@ -338,6 +349,15 @@ function isPublishedVideoAsset(asset: PublishedCaseAssetRow) {
   return mimeType.startsWith("video/") || /\.mp4(?:$|\?)/i.test(asset.fileUrl) || /\.mp4(?:$|\?)/i.test(asset.downloadUrl);
 }
 
+function applyPreferredViewerUrls(item: PublishedCaseRow) {
+  item.assets =
+    item.assets?.map((asset) => ({
+      ...asset,
+      viewerUrl: toPreferredCaseViewerUrl(item.category, item.slug, asset.slug || asset.id),
+    })) || [];
+  return item;
+}
+
 function videoExportProjectKey(projectId: string, userEmail?: string | null) {
   return `${projectId.trim()}\u0000${userEmail?.trim().toLowerCase() || ""}`;
 }
@@ -359,7 +379,7 @@ function buildLatestVideoExportAsset(item: PublishedCaseRow, job: VideoExportJob
     description: item.description,
     pageIndex: 0,
     fileUrl: videoUrl,
-    viewerUrl: `/cases/${encodeURIComponent(item.slug)}`,
+    viewerUrl: toPreferredCaseViewerUrl(item.category, item.slug, `${slugifyPublishedCase(item.title || item.slug)}-video`),
     thumbnailUrl,
     downloadUrl: job.downloadUrl || videoUrl,
     storageKey: null,
@@ -435,6 +455,7 @@ export async function listPublishedCases(input?: {
     if (includeAssets) {
       for (const item of items) {
         item.assets = await listPublishedCaseAssets(item.id);
+        applyPreferredViewerUrls(item);
       }
       if (input?.includeLatestVideoExportAssets) {
         await attachLatestVideoExportAssets(items);
@@ -465,6 +486,7 @@ export async function listPublishedCases(input?: {
     const item = mapCaseRow(row);
     if (includeAssets) {
       item.assets = listPublishedCaseAssetsSync(item.id);
+      applyPreferredViewerUrls(item);
     }
     return item;
   });
@@ -494,6 +516,7 @@ export async function getPublishedCaseBySlug(
     }
     const item = mapCaseRow(row);
     item.assets = await listPublishedCaseAssets(item.id);
+    applyPreferredViewerUrls(item);
     if (options?.includeLatestVideoExportAsset) {
       await attachLatestVideoExportAssets([item]);
     }
@@ -510,6 +533,7 @@ export async function getPublishedCaseBySlug(
   }
   const item = mapCaseRow(row);
   item.assets = listPublishedCaseAssetsSync(item.id);
+  applyPreferredViewerUrls(item);
   if (options?.includeLatestVideoExportAsset) {
     await attachLatestVideoExportAssets([item]);
   }
@@ -548,6 +572,7 @@ export async function getPublishedCaseByDisplaySlug(slug: string, outputType?: P
     }
     const item = mapCaseRow(row);
     item.assets = await listPublishedCaseAssets(item.id);
+    applyPreferredViewerUrls(item);
     return item;
   }
 
@@ -567,6 +592,7 @@ export async function getPublishedCaseByDisplaySlug(slug: string, outputType?: P
   }
   const item = mapCaseRow(row);
   item.assets = listPublishedCaseAssetsSync(item.id);
+  applyPreferredViewerUrls(item);
   return item;
 }
 
@@ -754,7 +780,7 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
       mimeType: bytes.mimeType,
     });
     const fileUrl = toPublicAssetUrl(assetId);
-    const viewerUrl = toCaseViewerUrl(slug, assetSlug);
+    const viewerUrl = toPreferredCaseViewerUrl(input.category || "All", slug, assetSlug);
     const assetValues = [
       assetId,
       caseId,
@@ -825,7 +851,7 @@ export async function publishProjectAsCase(input: PublishProjectInput) {
           description,
           0,
           fileUrl,
-          toCaseViewerUrl(slug, assetSlug),
+          toPreferredCaseViewerUrl(input.category || "All", slug, assetSlug),
           thumbnailUrl,
           fileUrl,
           copied.storageKey,

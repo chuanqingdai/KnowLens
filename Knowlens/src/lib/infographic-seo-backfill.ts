@@ -1,4 +1,5 @@
 import type { PublishedCaseAssetRow, PublishedCaseRow } from "@/lib/server/published-cases";
+import { getInfographicDetailPath } from "@/lib/infographic-paths";
 
 const SITE_URL = "https://knowlens.ai";
 
@@ -189,7 +190,12 @@ export function buildPublishedCaseImageSeo(item: PublishedCaseRow, preferredAsse
   const categoryName = toTitleCaseFromSlug(categorySlug);
   const topicName = inferTopicName(item, asset);
   const slug = ensureInfographicSuffix(buildTemplateSlug(item.slug || topicName));
-  const detailPath = `/cases/${encodeURIComponent(item.slug || slug)}`;
+  const detailPath =
+    getInfographicDetailPath({
+      category: item.category,
+      slug: item.slug || slug,
+      asset: asset?.slug || asset?.id,
+    }) || `/cases/${encodeURIComponent(item.slug || slug)}`;
   const canonicalUrl = absoluteUrl(detailPath);
   const previewImageUrl = absoluteUrl(asset?.thumbnailUrl || asset?.fileUrl || item.coverUrl || "");
   const imageFormat = extensionFromUrl(previewImageUrl, asset?.mimeType);

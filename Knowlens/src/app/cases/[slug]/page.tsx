@@ -1,11 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { PublishedPptViewer } from "@/components/featured/PublishedPptViewer";
 import { PublishedVideoPlayer } from "@/components/featured/PublishedVideoPlayer";
 import { MarketingChrome } from "@/components/marketing/MarketingChrome";
 import { buildPublishedCaseImageSeo, buildPublishedCaseJsonLd } from "@/lib/infographic-seo-backfill";
+import { getInfographicDetailPath } from "@/lib/infographic-paths";
 import { getPublishedCaseBySlug, type PublishedCaseAssetRow, type PublishedCaseOutputType } from "@/lib/server/published-cases";
 
 type CasePageProps = {
@@ -102,6 +103,14 @@ export default async function PublishedCasePage({ params, searchParams }: CasePa
   const item = await getPublishedCaseBySlug(slug, false, { includeLatestVideoExportAsset: true });
   if (!item) {
     notFound();
+  }
+  const preferredPath = getInfographicDetailPath({
+    category: item.category,
+    slug: item.slug,
+    asset: query.asset,
+  });
+  if (preferredPath) {
+    permanentRedirect(preferredPath);
   }
   const seo = buildPublishedCaseImageSeo(item, query.asset);
   const jsonLd = buildPublishedCaseJsonLd(seo);

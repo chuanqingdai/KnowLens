@@ -125,7 +125,7 @@ const topics: FinanceTopic[] = [
   sourcePublishedAt,
   sourceType: "official_company_report",
   sourceQuote,
-  sourceSummary: `${sourcePublisher} reports ${topicName.toLowerCase()} through company-disclosed metrics. The infographic uses the source as a data anchor and turns the figures into original, non-advisory financial explanation.`,
+  sourceSummary: `${sourcePublisher} reports ${String(topicName).toLowerCase()} through company-disclosed metrics. The infographic uses the source as a data anchor and turns the figures into original, non-advisory financial explanation.`,
   sourceDataPoints: (points as string[][]).map(([label, value, unit, period]) => ({
     label,
     value,

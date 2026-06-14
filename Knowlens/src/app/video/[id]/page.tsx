@@ -1,6 +1,7 @@
 import { CaseDetailRoute } from "@/components/featured/CaseDetailRoute";
+import { getInfographicDetailPath } from "@/lib/infographic-paths";
 import { getPublishedCaseByDisplaySlug } from "@/lib/server/published-cases";
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 type VideoDetailPageProps = {
   params: Promise<{
@@ -12,7 +13,12 @@ export default async function VideoDetailPage({ params }: VideoDetailPageProps) 
   const resolved = await params;
   const publicCase = await getPublishedCaseByDisplaySlug(resolved.id, "video");
   if (publicCase) {
-    redirect(`/cases/${encodeURIComponent(publicCase.slug)}`);
+    permanentRedirect(
+      getInfographicDetailPath({
+        category: publicCase.category,
+        slug: publicCase.slug,
+      }) || `/cases/${encodeURIComponent(publicCase.slug)}`,
+    );
   }
   return <CaseDetailRoute slug={resolved.id} kind="video" />;
 }

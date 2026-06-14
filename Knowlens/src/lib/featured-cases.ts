@@ -1,5 +1,7 @@
 "use client";
 
+import { getInfographicDetailPath } from "@/lib/infographic-paths";
+
 export type FeaturedCaseFormat = "Poster" | "PPT" | "Video" | "海报" | "视频";
 
 export type FeaturedCaseItem = {
@@ -235,6 +237,15 @@ function getFeaturedSlugSuffix(item: FeaturedCaseItem) {
 }
 
 export function getFeaturedDetailPath(item: FeaturedCaseItem) {
+  if (item.publicCaseSlug) {
+    const infographicPath = getInfographicDetailPath({
+      category: item.category,
+      slug: item.publicCaseSlug,
+    });
+    if (infographicPath) {
+      return infographicPath;
+    }
+  }
   return `/${formatToKind(item.format)}/${encodeURIComponent(getFeaturedSlug(item))}`;
 }
 
