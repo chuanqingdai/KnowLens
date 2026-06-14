@@ -3,7 +3,7 @@
   "batchId": "earth-science-infographic-tuzi-100",
   "batchTopic": "Earth Science Infographic",
   "generationProvider": "tuzi",
-  "updatedAt": "2026-06-13T11:13:20.476Z",
+  "updatedAt": "2026-06-14T03:16:33.295Z",
   "job": {
     "id": "earth-science-infographic-tuzi-100",
     "topicInput": "Earth Science",
@@ -20,9 +20,9 @@
     "disableImageCache": true,
     "status": "partial_completed",
     "requestedCount": 100,
-    "successCount": 84,
+    "successCount": 94,
     "failedCount": 0,
-    "createdPageCount": 84,
+    "createdPageCount": 94,
     "errors": [],
     "createdTemplateIds": [
       "earth-science-template-001",
@@ -108,10 +108,20 @@
       "earth-science-template-082",
       "earth-science-template-083",
       "earth-science-template-084",
-      "earth-science-template-056"
+      "earth-science-template-056",
+      "earth-science-template-085",
+      "earth-science-template-086",
+      "earth-science-template-087",
+      "earth-science-template-088",
+      "earth-science-template-089",
+      "earth-science-template-090",
+      "earth-science-template-091",
+      "earth-science-template-092",
+      "earth-science-template-093",
+      "earth-science-template-094"
     ],
     "createdAt": "2026-06-13T07:28:49.330Z",
-    "updatedAt": "2026-06-13T11:13:20.476Z"
+    "updatedAt": "2026-06-14T03:16:33.295Z"
   },
   "templates": {
     "earth-layers-infographic": {
@@ -9183,6 +9193,1047 @@
       "allowPublicDownload": false,
       "createdAt": "2026-06-13T00:00:00.000Z",
       "updatedAt": "2026-06-13T11:13:20.081Z"
+    },
+    "hydropower-process-infographic": {
+      "id": "earth-science-template-085",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-hydropower-process-infographic-1781405899850-v0igtilq",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T02:58:19.850Z",
+      "generationCompletedAt": "2026-06-14T02:59:10.051Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "hydropower-process-infographic",
+      "detailPath": "/infographic/earth-science/hydropower-process-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/hydropower-process-infographic/",
+      "title": "Hydropower Process Infographic Template",
+      "topicName": "Hydropower Process",
+      "shortDescription": "A ready-to-use hydropower process infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This hydropower process infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Hydropower Process Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this hydropower process infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Hydropower Process Infographic Template",
+      "primaryKeyword": "Hydropower Process Infographic",
+      "secondaryKeywords": [
+        "hydropower process visual guide",
+        "hydropower process earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-hydropower-process-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-hydropower-process-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-hydropower-process-infographic.webp",
+      "imageFilename": "earth-science-hydropower-process-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 323352,
+      "aspectRatio": "9:16",
+      "imageAlt": "Hydropower Process infographic",
+      "imageTitle": "Hydropower Process Infographic Template",
+      "imageCaption": "Hydropower Process Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This hydropower process infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Dark Premium Tech Style",
+      "stylePrompt": "Dark Premium Tech Style: Use a dark futuristic earth-science and data-visualization infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for climate systems, satellite monitoring, ocean currents, severe weather, mapping, geospatial science, and advanced environmental topics. Use a dark background with a central polished earth science visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep blue base with controlled cyan, blue, green, amber, or violet accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.",
+      "contentPrompt": "Create an earth science infographic about Hydropower Process. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Hydropower Process as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Hydropower Process; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This hydropower process infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This hydropower process infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Dark Premium Tech Style: Use a dark futuristic earth-science and data-visualization infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for climate systems, satellite monitoring, ocean currents, severe weather, mapping, geospatial science, and advanced environmental topics. Use a dark background with a central polished earth science visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep blue base with controlled cyan, blue, green, amber, or violet accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.\n\nCreate an earth science infographic about Hydropower Process. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Hydropower Process as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Hydropower Process; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This hydropower process infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This hydropower process infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Hydropower Process. Use Dark Premium Tech Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Hydropower Process as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Hydropower Process",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include energy source, formation or conversion process, resource flow, and practical earth science context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "geography and science education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "energy",
+        "hydropower",
+        "process"
+      ],
+      "relatedTemplateIds": [
+        "earth-science-template-083",
+        "earth-science-template-084"
+      ],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T02:59:10.051Z"
+    },
+    "fossil-fuels-formation-infographic": {
+      "id": "earth-science-template-086",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-fossil-fuels-formation-infographic-1781405950339-siyq83j9",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T02:59:10.339Z",
+      "generationCompletedAt": "2026-06-14T03:00:05.958Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "fossil-fuels-formation-infographic",
+      "detailPath": "/infographic/earth-science/fossil-fuels-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/fossil-fuels-formation-infographic/",
+      "title": "Fossil Fuels Formation Infographic Template",
+      "topicName": "Fossil Fuels Formation",
+      "shortDescription": "A ready-to-use fossil fuels formation infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This fossil fuels formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Fossil Fuels Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this fossil fuels formation infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Fossil Fuels Formation Infographic Template",
+      "primaryKeyword": "Fossil Fuels Formation Infographic",
+      "secondaryKeywords": [
+        "fossil fuels formation visual guide",
+        "fossil fuels formation earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-fossil-fuels-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-fossil-fuels-formation-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-fossil-fuels-formation-infographic.webp",
+      "imageFilename": "earth-science-fossil-fuels-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 296466,
+      "aspectRatio": "9:16",
+      "imageAlt": "Fossil Fuels Formation infographic",
+      "imageTitle": "Fossil Fuels Formation Infographic Template",
+      "imageCaption": "Fossil Fuels Formation Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This fossil fuels formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Clean Educational Style",
+      "stylePrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for earth science learning, geography education, and classroom use. Use a clear layout with a large readable title, one central earth science visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, green, orange, and earth-tone accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.",
+      "contentPrompt": "Create an earth science infographic about Fossil Fuels Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Fossil Fuels Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Fossil Fuels Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include layers, materials, landforms, time, movement, or geologic processes as relevant. Image description: This fossil fuels formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This fossil fuels formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for earth science learning, geography education, and classroom use. Use a clear layout with a large readable title, one central earth science visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, green, orange, and earth-tone accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.\n\nCreate an earth science infographic about Fossil Fuels Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Fossil Fuels Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Fossil Fuels Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include layers, materials, landforms, time, movement, or geologic processes as relevant. Image description: This fossil fuels formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This fossil fuels formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Fossil Fuels Formation. Use Clean Educational Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Fossil Fuels Formation as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Fossil Fuels Formation",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include layers, materials, landforms, time, movement, or geologic processes as relevant"
+      ],
+      "useCases": [
+        "earth science lessons",
+        "geology study guides",
+        "classroom diagrams",
+        "science education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "geography and science education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "geology",
+        "fossil",
+        "fuels",
+        "formation"
+      ],
+      "relatedTemplateIds": [
+        "earth-science-template-084"
+      ],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:00:05.958Z"
+    },
+    "natural-gas-formation-infographic": {
+      "id": "earth-science-template-087",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-natural-gas-formation-infographic-1781406006368-wbpb7hqo",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:00:06.368Z",
+      "generationCompletedAt": "2026-06-14T03:00:57.487Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "natural-gas-formation-infographic",
+      "detailPath": "/infographic/earth-science/natural-gas-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/natural-gas-formation-infographic/",
+      "title": "Natural Gas Formation Infographic Template",
+      "topicName": "Natural Gas Formation",
+      "shortDescription": "A ready-to-use natural gas formation infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This natural gas formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Natural Gas Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this natural gas formation infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Natural Gas Formation Infographic Template",
+      "primaryKeyword": "Natural Gas Formation Infographic",
+      "secondaryKeywords": [
+        "natural gas formation visual guide",
+        "natural gas formation earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-natural-gas-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-natural-gas-formation-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-natural-gas-formation-infographic.webp",
+      "imageFilename": "earth-science-natural-gas-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 349452,
+      "aspectRatio": "9:16",
+      "imageAlt": "Natural Gas Formation infographic",
+      "imageTitle": "Natural Gas Formation Infographic Template",
+      "imageCaption": "Natural Gas Formation Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This natural gas formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Dark Premium Tech Style",
+      "stylePrompt": "Dark Premium Tech Style: Use a dark futuristic earth-science and data-visualization infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for climate systems, satellite monitoring, ocean currents, severe weather, mapping, geospatial science, and advanced environmental topics. Use a dark background with a central polished earth science visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep blue base with controlled cyan, blue, green, amber, or violet accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.",
+      "contentPrompt": "Create an earth science infographic about Natural Gas Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Natural Gas Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Natural Gas Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This natural gas formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This natural gas formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Dark Premium Tech Style: Use a dark futuristic earth-science and data-visualization infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for climate systems, satellite monitoring, ocean currents, severe weather, mapping, geospatial science, and advanced environmental topics. Use a dark background with a central polished earth science visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep blue base with controlled cyan, blue, green, amber, or violet accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.\n\nCreate an earth science infographic about Natural Gas Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Natural Gas Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Natural Gas Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This natural gas formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This natural gas formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Natural Gas Formation. Use Dark Premium Tech Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Natural Gas Formation as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Natural Gas Formation",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include energy source, formation or conversion process, resource flow, and practical earth science context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "geography and science education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "energy",
+        "natural",
+        "gas",
+        "formation"
+      ],
+      "relatedTemplateIds": [],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:00:57.487Z"
+    },
+    "coal-formation-infographic": {
+      "id": "earth-science-template-088",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-coal-formation-infographic-1781406057793-zav8t87e",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:00:57.793Z",
+      "generationCompletedAt": "2026-06-14T03:01:49.203Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "coal-formation-infographic",
+      "detailPath": "/infographic/earth-science/coal-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/coal-formation-infographic/",
+      "title": "Coal Formation Infographic Template",
+      "topicName": "Coal Formation",
+      "shortDescription": "A ready-to-use coal formation infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This coal formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Coal Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this coal formation infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Coal Formation Infographic Template",
+      "primaryKeyword": "Coal Formation Infographic",
+      "secondaryKeywords": [
+        "coal formation visual guide",
+        "coal formation earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-coal-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-coal-formation-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-coal-formation-infographic.webp",
+      "imageFilename": "earth-science-coal-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 364650,
+      "aspectRatio": "9:16",
+      "imageAlt": "Coal Formation infographic",
+      "imageTitle": "Coal Formation Infographic Template",
+      "imageCaption": "Coal Formation Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This coal formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Premium Editorial Style",
+      "stylePrompt": "Premium Editorial Style: Use a premium magazine-style earth science infographic design. The image should feel elegant, polished, visually rich, and suitable for climate, oceans, geology, natural disasters, environmental science, and high-level earth science overview topics. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted green, stone gray, warm brown, gold, or topic-matching earth-tone accents. Keep the image premium, modern, shareable, and visually beautiful.",
+      "contentPrompt": "Create an earth science infographic about Coal Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Coal Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Coal Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This coal formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This coal formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Premium Editorial Style: Use a premium magazine-style earth science infographic design. The image should feel elegant, polished, visually rich, and suitable for climate, oceans, geology, natural disasters, environmental science, and high-level earth science overview topics. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted green, stone gray, warm brown, gold, or topic-matching earth-tone accents. Keep the image premium, modern, shareable, and visually beautiful.\n\nCreate an earth science infographic about Coal Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Coal Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Coal Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This coal formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This coal formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Coal Formation. Use Premium Editorial Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Coal Formation as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Coal Formation",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include energy source, formation or conversion process, resource flow, and practical earth science context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "geography and science education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "energy",
+        "coal",
+        "formation"
+      ],
+      "relatedTemplateIds": [],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:01:49.203Z"
+    },
+    "oil-formation-infographic": {
+      "id": "earth-science-template-089",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-oil-formation-infographic-1781406112443-v1bsmcls",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:01:52.443Z",
+      "generationCompletedAt": "2026-06-14T03:03:22.392Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "oil-formation-infographic",
+      "detailPath": "/infographic/earth-science/oil-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/oil-formation-infographic/",
+      "title": "Oil Formation Infographic Template",
+      "topicName": "Oil Formation",
+      "shortDescription": "A ready-to-use oil formation infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This oil formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Oil Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this oil formation infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Oil Formation Infographic Template",
+      "primaryKeyword": "Oil Formation Infographic",
+      "secondaryKeywords": [
+        "oil formation visual guide",
+        "oil formation earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-oil-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-oil-formation-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-oil-formation-infographic.webp",
+      "imageFilename": "earth-science-oil-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 401916,
+      "aspectRatio": "9:16",
+      "imageAlt": "Oil Formation infographic",
+      "imageTitle": "Oil Formation Infographic Template",
+      "imageCaption": "Oil Formation Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This oil formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Dark Premium Tech Style",
+      "stylePrompt": "Dark Premium Tech Style: Use a dark futuristic earth-science and data-visualization infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for climate systems, satellite monitoring, ocean currents, severe weather, mapping, geospatial science, and advanced environmental topics. Use a dark background with a central polished earth science visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep blue base with controlled cyan, blue, green, amber, or violet accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.",
+      "contentPrompt": "Create an earth science infographic about Oil Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Oil Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Oil Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This oil formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This oil formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Dark Premium Tech Style: Use a dark futuristic earth-science and data-visualization infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for climate systems, satellite monitoring, ocean currents, severe weather, mapping, geospatial science, and advanced environmental topics. Use a dark background with a central polished earth science visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep blue base with controlled cyan, blue, green, amber, or violet accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.\n\nCreate an earth science infographic about Oil Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Oil Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Oil Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This oil formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This oil formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Oil Formation. Use Dark Premium Tech Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Oil Formation as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Oil Formation",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include energy source, formation or conversion process, resource flow, and practical earth science context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "geography and science education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "energy",
+        "oil",
+        "formation"
+      ],
+      "relatedTemplateIds": [],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:03:22.392Z"
+    },
+    "energy-resources-infographic": {
+      "id": "earth-science-template-090",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-energy-resources-infographic-1781406728886-0vj7m8mu",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:12:08.886Z",
+      "generationCompletedAt": "2026-06-14T03:13:02.944Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "energy-resources-infographic",
+      "detailPath": "/infographic/earth-science/energy-resources-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/energy-resources-infographic/",
+      "title": "Energy Resources Infographic Template",
+      "topicName": "Energy Resources",
+      "shortDescription": "A ready-to-use energy resources infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This energy resources infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Energy Resources Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this energy resources infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Energy Resources Infographic Template",
+      "primaryKeyword": "Energy Resources Infographic",
+      "secondaryKeywords": [
+        "energy resources visual guide",
+        "energy resources earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-energy-resources-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-energy-resources-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-energy-resources-infographic.webp",
+      "imageFilename": "earth-science-energy-resources-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 336988,
+      "aspectRatio": "9:16",
+      "imageAlt": "Energy Resources infographic",
+      "imageTitle": "Energy Resources Infographic Template",
+      "imageCaption": "Energy Resources Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This energy resources infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Premium Editorial Style",
+      "stylePrompt": "Premium Editorial Style: Use a premium magazine-style earth science infographic design. The image should feel elegant, polished, visually rich, and suitable for climate, oceans, geology, natural disasters, environmental science, and high-level earth science overview topics. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted green, stone gray, warm brown, gold, or topic-matching earth-tone accents. Keep the image premium, modern, shareable, and visually beautiful.",
+      "contentPrompt": "Create an earth science infographic about Energy Resources. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Energy Resources as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Energy Resources; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This energy resources infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This energy resources infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Premium Editorial Style: Use a premium magazine-style earth science infographic design. The image should feel elegant, polished, visually rich, and suitable for climate, oceans, geology, natural disasters, environmental science, and high-level earth science overview topics. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted green, stone gray, warm brown, gold, or topic-matching earth-tone accents. Keep the image premium, modern, shareable, and visually beautiful.\n\nCreate an earth science infographic about Energy Resources. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Energy Resources as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Energy Resources; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include energy source, formation or conversion process, resource flow, and practical earth science context. Image description: This energy resources infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This energy resources infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Energy Resources. Use Premium Editorial Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Energy Resources as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Energy Resources",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include energy source, formation or conversion process, resource flow, and practical earth science context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "geography and science education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "energy",
+        "resources"
+      ],
+      "relatedTemplateIds": [
+        "earth-science-template-088",
+        "earth-science-template-089"
+      ],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:13:02.944Z"
+    },
+    "natural-disasters-infographic": {
+      "id": "earth-science-template-091",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-natural-disasters-infographic-1781406783248-5vq9pu5r",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:13:03.248Z",
+      "generationCompletedAt": "2026-06-14T03:13:56.138Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "natural-disasters-infographic",
+      "detailPath": "/infographic/earth-science/natural-disasters-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/natural-disasters-infographic/",
+      "title": "Natural Disasters Infographic Template",
+      "topicName": "Natural Disasters",
+      "shortDescription": "A ready-to-use natural disasters infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This natural disasters infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Natural Disasters Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this natural disasters infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Natural Disasters Infographic Template",
+      "primaryKeyword": "Natural Disasters Infographic",
+      "secondaryKeywords": [
+        "natural disasters visual guide",
+        "natural disasters earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-natural-disasters-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-natural-disasters-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-natural-disasters-infographic.webp",
+      "imageFilename": "earth-science-natural-disasters-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 459430,
+      "aspectRatio": "9:16",
+      "imageAlt": "Natural Disasters infographic",
+      "imageTitle": "Natural Disasters Infographic Template",
+      "imageCaption": "Natural Disasters Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This natural disasters infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Hand-drawn Explainer Style",
+      "stylePrompt": "Hand-drawn Explainer Style: Use a warm hand-drawn educational explainer style. The image should feel friendly, approachable, charming, and suitable for beginner-friendly earth science topics, natural processes, landforms, weather, and classroom explanations. Use a notebook-like layout with neat hand-drawn earth, weather, rock, water, or landform illustrations, small note areas, and simple section blocks. Keep the composition organized and balanced. Use neat handwritten-style English text with a large readable title, short labels, and simple notes. Use a warm paper background, pencil-gray lines, and muted blue, green, yellow, and brown accents. Keep the visual soft, clean, educational, and visually appealing.",
+      "contentPrompt": "Create an earth science infographic about Natural Disasters. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Natural Disasters as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Natural Disasters; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This natural disasters infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This natural disasters infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Hand-drawn Explainer Style: Use a warm hand-drawn educational explainer style. The image should feel friendly, approachable, charming, and suitable for beginner-friendly earth science topics, natural processes, landforms, weather, and classroom explanations. Use a notebook-like layout with neat hand-drawn earth, weather, rock, water, or landform illustrations, small note areas, and simple section blocks. Keep the composition organized and balanced. Use neat handwritten-style English text with a large readable title, short labels, and simple notes. Use a warm paper background, pencil-gray lines, and muted blue, green, yellow, and brown accents. Keep the visual soft, clean, educational, and visually appealing.\n\nCreate an earth science infographic about Natural Disasters. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Natural Disasters as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Natural Disasters; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This natural disasters infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This natural disasters infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Natural Disasters. Use Hand-drawn Explainer Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Natural Disasters as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Natural Disasters",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include conservation, monitoring, hazards, system interactions, and responsible environmental context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "environmental education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "environment",
+        "natural",
+        "disasters"
+      ],
+      "relatedTemplateIds": [
+        "earth-science-template-089"
+      ],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:13:56.138Z"
+    },
+    "flood-formation-infographic": {
+      "id": "earth-science-template-092",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-flood-formation-infographic-1781406836493-h1pwxkyn",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:13:56.493Z",
+      "generationCompletedAt": "2026-06-14T03:14:48.620Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "flood-formation-infographic",
+      "detailPath": "/infographic/earth-science/flood-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/flood-formation-infographic/",
+      "title": "Flood Formation Infographic Template",
+      "topicName": "Flood Formation",
+      "shortDescription": "A ready-to-use flood formation infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This flood formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Flood Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this flood formation infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Flood Formation Infographic Template",
+      "primaryKeyword": "Flood Formation Infographic",
+      "secondaryKeywords": [
+        "flood formation visual guide",
+        "flood formation earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-flood-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-flood-formation-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-flood-formation-infographic.webp",
+      "imageFilename": "earth-science-flood-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 319188,
+      "aspectRatio": "9:16",
+      "imageAlt": "Flood Formation infographic",
+      "imageTitle": "Flood Formation Infographic Template",
+      "imageCaption": "Flood Formation Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This flood formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Clean Educational Style",
+      "stylePrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for earth science learning, geography education, and classroom use. Use a clear layout with a large readable title, one central earth science visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, green, orange, and earth-tone accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.",
+      "contentPrompt": "Create an earth science infographic about Flood Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Flood Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Flood Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This flood formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This flood formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for earth science learning, geography education, and classroom use. Use a clear layout with a large readable title, one central earth science visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, green, orange, and earth-tone accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.\n\nCreate an earth science infographic about Flood Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Flood Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Flood Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This flood formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This flood formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Flood Formation. Use Clean Educational Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Flood Formation as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Flood Formation",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include conservation, monitoring, hazards, system interactions, and responsible environmental context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "environmental education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "environment",
+        "flood",
+        "formation"
+      ],
+      "relatedTemplateIds": [],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:14:48.620Z"
+    },
+    "drought-process-infographic": {
+      "id": "earth-science-template-093",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-drought-process-infographic-1781406888996-j5dj8oby",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:14:48.996Z",
+      "generationCompletedAt": "2026-06-14T03:15:41.919Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "drought-process-infographic",
+      "detailPath": "/infographic/earth-science/drought-process-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/drought-process-infographic/",
+      "title": "Drought Process Infographic Template",
+      "topicName": "Drought Process",
+      "shortDescription": "A ready-to-use drought process infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This drought process infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Drought Process Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this drought process infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Drought Process Infographic Template",
+      "primaryKeyword": "Drought Process Infographic",
+      "secondaryKeywords": [
+        "drought process visual guide",
+        "drought process earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-drought-process-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-drought-process-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-drought-process-infographic.webp",
+      "imageFilename": "earth-science-drought-process-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 353946,
+      "aspectRatio": "9:16",
+      "imageAlt": "Drought Process infographic",
+      "imageTitle": "Drought Process Infographic Template",
+      "imageCaption": "Drought Process Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This drought process infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Hand-drawn Explainer Style",
+      "stylePrompt": "Hand-drawn Explainer Style: Use a warm hand-drawn educational explainer style. The image should feel friendly, approachable, charming, and suitable for beginner-friendly earth science topics, natural processes, landforms, weather, and classroom explanations. Use a notebook-like layout with neat hand-drawn earth, weather, rock, water, or landform illustrations, small note areas, and simple section blocks. Keep the composition organized and balanced. Use neat handwritten-style English text with a large readable title, short labels, and simple notes. Use a warm paper background, pencil-gray lines, and muted blue, green, yellow, and brown accents. Keep the visual soft, clean, educational, and visually appealing.",
+      "contentPrompt": "Create an earth science infographic about Drought Process. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Drought Process as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Drought Process; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This drought process infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This drought process infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Hand-drawn Explainer Style: Use a warm hand-drawn educational explainer style. The image should feel friendly, approachable, charming, and suitable for beginner-friendly earth science topics, natural processes, landforms, weather, and classroom explanations. Use a notebook-like layout with neat hand-drawn earth, weather, rock, water, or landform illustrations, small note areas, and simple section blocks. Keep the composition organized and balanced. Use neat handwritten-style English text with a large readable title, short labels, and simple notes. Use a warm paper background, pencil-gray lines, and muted blue, green, yellow, and brown accents. Keep the visual soft, clean, educational, and visually appealing.\n\nCreate an earth science infographic about Drought Process. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Drought Process as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Drought Process; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This drought process infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This drought process infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Drought Process. Use Hand-drawn Explainer Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Drought Process as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Drought Process",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include conservation, monitoring, hazards, system interactions, and responsible environmental context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "environmental education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "environment",
+        "drought",
+        "process"
+      ],
+      "relatedTemplateIds": [],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:15:41.919Z"
+    },
+    "landslide-formation-infographic": {
+      "id": "earth-science-template-094",
+      "batchId": "earth-science-infographic-tuzi-100",
+      "batchTopic": "Earth Science Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "earth-science-infographic-tuzi-100-landslide-formation-infographic-1781406942256-fuu9kfka",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:15:42.256Z",
+      "generationCompletedAt": "2026-06-14T03:16:32.985Z",
+      "categorySlug": "earth-science",
+      "categoryName": "Earth Science",
+      "categoryKeyword": "Earth Science Infographic Templates",
+      "slug": "landslide-formation-infographic",
+      "detailPath": "/infographic/earth-science/landslide-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/earth-science/landslide-formation-infographic/",
+      "title": "Landslide Formation Infographic Template",
+      "topicName": "Landslide Formation",
+      "shortDescription": "A ready-to-use landslide formation infographic template for earth science learning and visual explanation.",
+      "visibleDescription": "This landslide formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "seoTitle": "Landslide Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this landslide formation infographic template for earth science learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Landslide Formation Infographic Template",
+      "primaryKeyword": "Landslide Formation Infographic",
+      "secondaryKeywords": [
+        "landslide formation visual guide",
+        "landslide formation earth science infographic",
+        "earth science infographic template",
+        "educational science visual"
+      ],
+      "generatorKeywords": [
+        "Earth Science Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/earth-science/earth-science-landslide-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/earth-science/earth-science-landslide-formation-infographic.webp",
+      "storageKey": "infographic/earth-science/earth-science-landslide-formation-infographic.webp",
+      "imageFilename": "earth-science-landslide-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 279810,
+      "aspectRatio": "9:16",
+      "imageAlt": "Landslide Formation infographic",
+      "imageTitle": "Landslide Formation Infographic Template",
+      "imageCaption": "Landslide Formation Infographic - an earth science infographic example created with KnowLens AI.",
+      "imageDescription": "This landslide formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators.",
+      "styleName": "Clean Educational Style",
+      "stylePrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for earth science learning, geography education, and classroom use. Use a clear layout with a large readable title, one central earth science visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, green, orange, and earth-tone accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.",
+      "contentPrompt": "Create an earth science infographic about Landslide Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Landslide Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Landslide Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This landslide formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This landslide formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "finalPrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for earth science learning, geography education, and classroom use. Use a clear layout with a large readable title, one central earth science visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, green, orange, and earth-tone accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.\n\nCreate an earth science infographic about Landslide Formation. Use a large readable title, one central earth science visual focus, and 3-6 concise information areas. Keep the content scientifically accurate, educational, clear, and not alarmist. Content focus: Explain Landslide Formation as an accurate educational earth science infographic for visual learning. Knowledge points: Define the earth science concept of Landslide Formation; Show the main structures, forces, materials, or system parts involved; Organize the process or relationship into clear visual sections; Explain why the concept matters for earth science learning; Include conservation, monitoring, hazards, system interactions, and responsible environmental context. Image description: This landslide formation infographic explains the earth science concept in a clear visual format for students, teachers, science creators, and educators. Visible description: This landslide formation infographic template explains the earth science concept in a clear visual format for students, teachers, science creators, and education teams. It organizes key structures, processes, relationships, labels, and learning takeaways into concise English sections for easy visual understanding.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the main science explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational earth science infographic about Landslide Formation. Use Clean Educational Style. Aspect ratio: 9:16. Focus on the key earth science details and knowledge points. Keep the design clear, polished, accurate, and professional.",
+      "topicPrompt": "Explain Landslide Formation as an accurate educational earth science infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the earth science concept of Landslide Formation",
+        "Show the main structures, forces, materials, or system parts involved",
+        "Organize the process or relationship into clear visual sections",
+        "Explain why the concept matters for earth science learning",
+        "Include conservation, monitoring, hazards, system interactions, and responsible environmental context"
+      ],
+      "useCases": [
+        "earth science learning",
+        "visual study guides",
+        "classroom visuals",
+        "science content creation"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "environmental education teams"
+      ],
+      "tags": [
+        "earth science",
+        "infographic",
+        "environment",
+        "landslide",
+        "formation"
+      ],
+      "relatedTemplateIds": [],
+      "relatedCategorySlugs": [
+        "earth-science",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "earth-science-infographic-generator",
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:16:32.985Z"
     }
   },
   "errors": [],
@@ -9438,6 +10489,36 @@
     ],
     "global-wind-patterns-infographic": [
       "https://apioss1.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10kn1ABmX8MTX72w17J8X0-lXaW8kaksYvW410igY01rY728X5VmR8_=/gi2027e-06b55bd1ef44451fa66dab04ad37ebf5.png"
+    ],
+    "hydropower-process-infographic": [
+      "https://apioss1.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBpkaewXxLg1p1mf0Fl1aksk7Fn181q18FsXxkpY82L1ZVmR8_=/gi2033e-3a7d69a330854166ae12c82e6663fbe0.png"
+    ],
+    "fossil-fuels-formation-infographic": [
+      "https://apioss27.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBV1p_s1a1Tf0kTY0wlf7YLfvYgk7QT1xi4Y8-lX0-lfZVmR8_=/gi2009e-9376135865d949fe8faaa524bfd44448.png"
+    ],
+    "natural-gas-formation-infographic": [
+      "https://apioss30.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZoL1a-AkpksXxMqf0-lkxFAk71lXvQsYawqYxWxks1VX4VmR8_=/gi2034e-e142c66628844b52ac44a6e98f1ccc96.png"
+    ],
+    "coal-formation-infographic": [
+      "https://apioss16.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBTXsQmkxQqkp-p17-lX0hAka1VX7-nY0bL1824XvXgfZVmR8_=/gi2009e-57a0b18c431d4482a395d1d0e2bb4ca8.png"
+    ],
+    "oil-formation-infographic": [
+      "https://apioss19.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBVXxXxYa-mf0bw17kl1skmk8JLf7iwf0YLXawsXxJxfZVmR8_=/gi2009e-963ce4080d1f43f0bee9dd86e59665c8.png"
+    ],
+    "energy-resources-infographic": [
+      "https://apioss20.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBsYahnf03TXa_qXxhlk8Jxka1s1xbxfaJwYxJw10hl15VmR8_=/gi2010e-6e81805578684beca3620c95df5d0841.png"
+    ],
+    "natural-disasters-infographic": [
+      "https://apioss30.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZogfv1pfaiLf0wTYx-l1xhAf72xXa_sf028XaMq102LYZVmR8_=/gi2034e-a8c394e895f442829bc57682f52802ed.png"
+    ],
+    "flood-formation-infographic": [
+      "https://apioss.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBs17Fn1vQqksixY0_lkaQrk8FT1xwT103s1php1p-sXAVmR8_=/gi2033e-61e10a8cdcd74a17be52950063833467.png"
+    ],
+    "drought-process-infographic": [
+      "https://apioss20.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBVXxe8f7kVXsQpXsQlYaiwfviwX0QsXp-mYaFsf71AY4VmR8_=/gi2033e-967f9f97a37a4e4d8dd416740e569c2f.png"
+    ],
+    "landslide-formation-infographic": [
+      "https://apioss20.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBmYagwX7J410LLYxMlXs-Akxhnk7-VX7XwXp3lf7-Tk4VmR8_=/gi2033e-0e8d5eb09ef247d2b81ad95cd7049d5b.png"
     ]
   }
 }

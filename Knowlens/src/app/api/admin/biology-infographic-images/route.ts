@@ -75,7 +75,7 @@ async function writeManifest(manifest: Manifest) {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-const imageQualityPrompt = "Create a professional knowledge infographic with clear information hierarchy, minimal and accurate English text, scientifically correct visual elements, precise diagram structures, no spelling mistakes, no distorted or misleading illustrations, and a clean editorial infographic layout that makes the key concepts easy to understand at a glance.";
+const imageQualityPrompt = "Create a professional knowledge infographic with clear information hierarchy, minimal and accurate English text, scientifically correct visual elements, precise diagram structures, no spelling mistakes, no distorted or misleading illustrations, and a clean editorial infographic layout that makes the key concepts easy to understand at a glance. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep all visible biology terms readable on a phone screen.";
 
 function cleanImagePromptText(value: string) {
   return value

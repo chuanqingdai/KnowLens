@@ -16,22 +16,36 @@ import { useSession } from "next-auth/react";
 
 import {
   Bot,
+  BookOpen,
+  Brain,
   Check,
   Crown,
+  Dna,
   FileText,
+  FlaskConical,
   FolderOpen,
   Globe,
   Headphones,
   Heart,
   Home as HomeIcon,
   ImagePlay,
+  Landmark,
+  Layers3,
+  Leaf,
+  Lightbulb,
   LoaderCircle,
+  Map,
   Menu,
   Minus,
+  Network,
+  PanelsTopLeft,
+  PanelTop,
+  Play,
   Plus,
   SendHorizontal,
   ExternalLink,
   Share2,
+  Video,
   UserCircle2,
   Upload,
   X,
@@ -52,7 +66,6 @@ import {
   getFeaturedDetailPath,
   getResolvedFeaturedCases,
   type FeaturedCaseItem,
-  featuredCategories as feedCategories,
   normalizeCategoryLabel,
   normalizeFormatLabel,
   toggleCaseLike,
@@ -71,6 +84,20 @@ const HOME_GENERATE_CTA_BASE_CLASS =
   "mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border-0 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-wait disabled:text-white disabled:active:translate-y-0 sm:ml-auto sm:mt-0 sm:w-auto";
 const HOME_GENERATE_CTA_READY_CLASS = "bg-zinc-900";
 const HOME_GENERATE_CTA_BUSY_CLASS = "cursor-wait bg-zinc-800";
+const DEFAULT_SHOWCASE_CATEGORY = "All";
+const SUPPORTED_SHOWCASE_CATEGORIES = [
+  "Earth Science",
+  "Process",
+  "Recipe",
+  "Financial Report",
+  "Biology",
+  "History",
+  "Timeline",
+  "Comparison",
+  "Roadmap",
+  "Astronomy",
+  "Medicine",
+];
 
 
 const textModelOptions = [
@@ -190,6 +217,149 @@ type WorkspaceStartErrorPayload = {
   error?: string;
   code?: string;
 };
+
+type PromptSuggestionCard = {
+  id: string;
+  label: string;
+  category: string;
+  weight: 1 | 2 | 3;
+  prompt: string;
+};
+
+const PROMPT_SUGGESTION_VISIBLE_COUNT = 8;
+const PROMPT_SUGGESTION_CARDS: PromptSuggestionCard[] = [
+  { id: "mediterranean-diet-recipe", label: "Mediterranean Diet Recipe", category: "recipe", weight: 3, prompt: "Create an English infographic poster about a Mediterranean diet recipe. Show a beautiful central plate with salmon, olive oil, vegetables, grains, and herbs. Include key ingredients, simple cooking steps, nutrition benefits, and serving tips. Use a clean editorial food infographic style with large readable text." },
+  { id: "high-protein-breakfast", label: "High Protein Breakfast", category: "recipe", weight: 3, prompt: "Create an English infographic explaining a high-protein breakfast recipe. Show eggs, Greek yogurt, oats, berries, and nuts as the central visual. Include ingredients, protein sources, simple preparation steps, and why the meal helps people feel full. Make it healthy, modern, and easy to read." },
+  { id: "air-fryer-chicken", label: "Air Fryer Chicken", category: "recipe", weight: 3, prompt: "Create an English recipe infographic for air fryer chicken. Show crispy chicken as the central visual. Include ingredients, seasoning mix, cooking time and temperature, step-by-step process, and serving ideas. Keep the design practical, clean, and appetizing." },
+  { id: "glp1-food-list", label: "GLP-1 Food List", category: "health", weight: 3, prompt: "Create an English educational infographic about a GLP-1 friendly food list. Show a balanced plate divided into protein, fiber-rich vegetables, healthy fats, and hydration. Include foods to prioritize, foods to limit, and a simple meal-building rule. Keep the tone educational and avoid medical advice." },
+  { id: "meal-prep-plan", label: "Meal Prep Plan", category: "recipe", weight: 2, prompt: "Create an English infographic showing a 5-day healthy meal prep plan. Use lunch boxes as the central visual. Include breakfast, lunch, dinner, and snack examples. Make the layout easy to scan, practical, colorful, and clean." },
+  { id: "ancient-egypt-timeline", label: "Ancient Egypt Timeline", category: "history", weight: 3, prompt: "Create an English history timeline infographic about Ancient Egypt. Show the main periods, the Nile River, pyramids, pharaohs, writing, religion, governance, achievements, and legacy. Keep the tone neutral, educational, and visually clear." },
+  { id: "world-war-ii-timeline", label: "World War II Timeline", category: "history", weight: 3, prompt: "Create an English educational timeline infographic about World War II. Show key events from 1939 to 1945, including the invasion of Poland, Battle of Britain, Pearl Harbor, D-Day, and the end of the war. Use a neutral, non-propagandistic tone and avoid graphic violence." },
+  { id: "history-of-ai", label: "History of AI", category: "ai-tech", weight: 3, prompt: "Create an English infographic timeline about the history of artificial intelligence. Include the Turing Test, expert systems, deep learning, transformers, generative AI, and AI agents. Use a premium technology editorial style with clear milestones." },
+  { id: "space-race-timeline", label: "Space Race Timeline", category: "history", weight: 2, prompt: "Create an English history infographic about the Space Race. Show key milestones such as Sputnik, Yuri Gagarin, Apollo 11, space stations, and reusable rockets. Use rockets, Earth, orbit lines, and concise timeline cards." },
+  { id: "roman-empire-timeline", label: "Roman Empire Timeline", category: "history", weight: 2, prompt: "Create an English history timeline infographic about the Roman Empire. Show the Roman Republic, Caesar, Augustus, Pax Romana, the empire split, and the fall of the Western Roman Empire. Include governance, engineering, military, law, and legacy." },
+  { id: "ai-agent-workflow", label: "AI Agent Workflow", category: "ai-tech", weight: 3, prompt: "Create an English infographic explaining an AI agent workflow. Show a clear loop: user goal, planning, tool use, memory or context, action, feedback, and final result. Use clean nodes, arrows, concise labels, and a modern technology education style." },
+  { id: "mcp-architecture", label: "MCP Architecture", category: "ai-tech", weight: 3, prompt: "Create an English technical infographic explaining MCP architecture. Show the relationship between an AI app, MCP client, MCP server, external tools, files, databases, and APIs. Use labeled layers, arrows, and simple explanations for developers and product managers." },
+  { id: "mcp-vs-api", label: "MCP vs API", category: "comparison", weight: 3, prompt: "Create an English comparison infographic titled MCP vs API. Compare direct API request-response connections with MCP as a standardized context and tool connection layer for AI apps. Include purpose, connection style, AI use case, and flexibility." },
+  { id: "ai-agent-vs-chatbot", label: "AI Agent vs Chatbot", category: "comparison", weight: 3, prompt: "Create an English comparison infographic explaining AI Agent vs Chatbot. Compare chatbots that respond to messages with AI agents that plan tasks, use tools, follow goals, and take multi-step actions. Use a clear two-column layout." },
+  { id: "vibe-coding-workflow", label: "Vibe Coding Workflow", category: "ai-tech", weight: 2, prompt: "Create an English infographic explaining a vibe coding workflow. Show the process: describe product idea, generate code, preview, test, fix errors, polish UI, and deploy. Add practical tips for designers and product managers learning AI coding." },
+  { id: "context-engineering", label: "Context Engineering", category: "ai-tech", weight: 2, prompt: "Create an English infographic explaining context engineering for AI systems. Show user goal, system instructions, retrieved knowledge, memory, tools, examples, output format, and evaluation around a central AI model visual." },
+  { id: "photosynthesis-process", label: "Photosynthesis Process", category: "science", weight: 3, prompt: "Create an English science infographic explaining photosynthesis. Show sunlight, carbon dioxide, water, chloroplasts, glucose, and oxygen. Use a clear plant-centered diagram with arrows and simple educational labels." },
+  { id: "water-cycle-diagram", label: "Water Cycle Diagram", category: "science", weight: 3, prompt: "Create an English earth science infographic about the water cycle. Show mountains, ocean, clouds, rain, and rivers. Label evaporation, condensation, precipitation, collection, runoff, and infiltration with clear arrows." },
+  { id: "human-heart-anatomy", label: "Human Heart Anatomy", category: "science", weight: 3, prompt: "Create an English medical education infographic explaining basic human heart anatomy. Show a simplified heart with left atrium, right atrium, left ventricle, and right ventricle. Add blood flow arrows and explain oxygen-rich and oxygen-poor blood flow." },
+  { id: "dna-replication", label: "DNA Replication", category: "science", weight: 2, prompt: "Create an English biology infographic explaining DNA replication. Show a DNA double helix opening into two strands. Label helicase, DNA polymerase, leading strand, lagging strand, and new complementary strands. Use simple steps and avoid overcrowding." },
+  { id: "solar-system-comparison", label: "Solar System Comparison", category: "science", weight: 3, prompt: "Create an English educational infographic comparing the planets in the solar system. Show all eight planets in order from the Sun with simple labels for size, type, and one key fact each. Use a cinematic space style." },
+  { id: "earth-layers-diagram", label: "Earth Layers Diagram", category: "science", weight: 2, prompt: "Create an English earth science infographic explaining Earth's layers. Show a cutaway globe and label crust, mantle, outer core, and inner core. Add simple notes about material, depth, and temperature trend." },
+  { id: "volcano-eruption", label: "Volcano Eruption", category: "science", weight: 2, prompt: "Create an English earth science infographic explaining how a volcano erupts. Show a cutaway volcano with magma chamber, conduit, crater, lava flow, ash cloud, and tectonic plates. Add simple steps explaining pressure buildup and eruption." },
+  { id: "design-thinking-process", label: "Design Thinking Process", category: "process", weight: 3, prompt: "Create an English process infographic explaining design thinking. Show the five stages: empathize, define, ideate, prototype, and test. Use a clean circular workflow layout with concise notes for each stage." },
+  { id: "coffee-making-process", label: "Coffee Making Process", category: "process", weight: 2, prompt: "Create an English process infographic explaining how coffee is made from bean to cup. Show coffee plant, harvesting, roasting, grinding, brewing, and final cup. Use a warm editorial illustration style with concise labels." },
+  { id: "product-roadmap", label: "Product Roadmap", category: "business", weight: 2, prompt: "Create an English product roadmap infographic for a SaaS product. Show a four-stage roadmap: research, MVP, launch, and growth. Include feature cards, milestones, and success metrics in a clean business editorial style." },
+  { id: "etfs-vs-mutual-funds", label: "ETFs vs Mutual Funds", category: "finance", weight: 3, prompt: "Create an English finance comparison infographic explaining ETFs vs mutual funds. Compare trading style, fees, diversification, tax efficiency, investor fit, and key differences. Keep the tone neutral and educational, without giving financial advice." },
+  { id: "compound-interest-chart", label: "Compound Interest Chart", category: "finance", weight: 3, prompt: "Create an English finance education infographic explaining compound interest. Show a simple growth curve with principal, interest, reinvested earnings, and time. Include a small example with simple numbers and keep it educational, not financial advice." },
+  { id: "sp500-investing-guide", label: "S&P 500 Investing Guide", category: "finance", weight: 2, prompt: "Create an English educational finance infographic explaining the basics of S&P 500 investing. Explain what the S&P 500 is, why diversification matters, the long-term investing concept, dollar-cost averaging, and risk reminder. Avoid personalized financial advice." },
+  { id: "ai-data-center-power", label: "AI Data Center Power", category: "ai-tech", weight: 2, prompt: "Create an English data-style infographic explaining why AI data centers need so much electricity. Show a central data center connected to GPUs, cooling systems, power grid, and AI model training. Include compute, cooling, storage, and grid demand." },
+];
+
+function shuffleItems<T>(items: T[]) {
+  const nextItems = [...items];
+  for (let index = nextItems.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [nextItems[index], nextItems[randomIndex]] = [nextItems[randomIndex], nextItems[index]];
+  }
+  return nextItems;
+}
+
+function selectPromptSuggestionCards() {
+  const selected: PromptSuggestionCard[] = [];
+  const usedIds = new Set<string>();
+  const categoryTargets = shuffleItems(Array.from(new Set(PROMPT_SUGGESTION_CARDS.map((item) => item.category)))).slice(0, 4);
+  while (selected.length < Math.min(PROMPT_SUGGESTION_VISIBLE_COUNT, PROMPT_SUGGESTION_CARDS.length)) {
+    const pendingCategories = categoryTargets.filter((category) => !selected.some((item) => item.category === category));
+    const candidatePool = PROMPT_SUGGESTION_CARDS.filter((item) => !usedIds.has(item.id) && (!pendingCategories.length || pendingCategories.includes(item.category)));
+    const fallbackPool = PROMPT_SUGGESTION_CARDS.filter((item) => !usedIds.has(item.id));
+    const pool = candidatePool.length ? candidatePool : fallbackPool;
+    if (!pool.length) break;
+    const totalWeight = pool.reduce((sum, item) => sum + item.weight, 0);
+    let threshold = Math.random() * totalWeight;
+    const picked = pool.find((item) => {
+      threshold -= item.weight;
+      return threshold <= 0;
+    }) || pool[pool.length - 1];
+    usedIds.add(picked.id);
+    selected.push(picked);
+  }
+  return selected;
+}
+
+function getPromptSuggestionIcon(cardId: string) {
+  switch (cardId) {
+    case "mediterranean-diet-recipe":
+      return Leaf;
+    case "high-protein-breakfast":
+      return Heart;
+    case "air-fryer-chicken":
+      return Crown;
+    case "glp1-food-list":
+      return Brain;
+    case "meal-prep-plan":
+      return PanelsTopLeft;
+    case "ancient-egypt-timeline":
+      return Landmark;
+    case "world-war-ii-timeline":
+      return Layers3;
+    case "history-of-ai":
+      return Bot;
+    case "space-race-timeline":
+      return Play;
+    case "roman-empire-timeline":
+      return BookOpen;
+    case "ai-agent-workflow":
+      return Network;
+    case "mcp-architecture":
+      return FolderOpen;
+    case "mcp-vs-api":
+      return PanelTop;
+    case "ai-agent-vs-chatbot":
+      return MessageSquareIconFallback;
+    case "vibe-coding-workflow":
+      return FileText;
+    case "context-engineering":
+      return Layers3;
+    case "photosynthesis-process":
+      return FlaskConical;
+    case "water-cycle-diagram":
+      return Globe;
+    case "human-heart-anatomy":
+      return Heart;
+    case "dna-replication":
+      return Dna;
+    case "solar-system-comparison":
+      return SparkleIconFallback;
+    case "earth-layers-diagram":
+      return Map;
+    case "volcano-eruption":
+      return Zap;
+    case "design-thinking-process":
+      return Lightbulb;
+    case "coffee-making-process":
+      return Headphones;
+    case "product-roadmap":
+      return Map;
+    case "etfs-vs-mutual-funds":
+      return Share2;
+    case "compound-interest-chart":
+      return Plus;
+    case "sp500-investing-guide":
+      return ExternalLink;
+    case "ai-data-center-power":
+      return ImagePlay;
+    default:
+      return BookOpen;
+  }
+}
+
+const MessageSquareIconFallback = FileText;
+const SparkleIconFallback = Lightbulb;
 
 function normalizeLegacySourceName(name: string) {
   if (name === "网页链接") {
@@ -790,6 +960,8 @@ type PublicCaseApiItem = {
   authorLabel?: string;
   coverUrl?: string;
   sortOrder?: number;
+  updatedAt?: string;
+  publishedAt?: string;
   assets?: Array<{
     id: string;
     slug: string;
@@ -805,6 +977,73 @@ type PublicCaseApiItem = {
     height?: number | null;
   }>;
 };
+
+function normalizeShowcaseCategory(category?: string) {
+  const normalized = normalizeCategoryLabel((category || DEFAULT_SHOWCASE_CATEGORY).trim());
+  const lower = normalized.toLowerCase();
+
+  if (
+    lower === "economics" ||
+    lower.includes("financial report") ||
+    lower.includes("market report") ||
+    lower.includes("earnings")
+  ) {
+    return "Financial Report";
+  }
+  if (lower === "geography" || lower.includes("earth science")) {
+    return "Earth Science";
+  }
+  if (lower.includes("recipe")) {
+    return "Recipe";
+  }
+  if (lower.includes("process")) {
+    return "Process";
+  }
+  if (lower.includes("biology")) {
+    return "Biology";
+  }
+  if (lower.includes("history")) {
+    return "History";
+  }
+  if (lower.includes("astronomy")) {
+    return "Astronomy";
+  }
+  if (lower.includes("medicine")) {
+    return "Medicine";
+  }
+  return normalized || DEFAULT_SHOWCASE_CATEGORY;
+}
+
+function getShowcaseSearchText(item: FeaturedCaseItem) {
+  return `${item.title} ${item.description || ""} ${item.publicCaseSlug || ""}`.toLowerCase();
+}
+
+function getStructuralShowcaseCategories(item: FeaturedCaseItem) {
+  const searchText = getShowcaseSearchText(item);
+  const nextCategories: string[] = [];
+
+  if (/\btimeline\b|\bchronology\b|over time|historical phases/.test(searchText)) {
+    nextCategories.push("Timeline");
+  }
+  if (/\bcomparison\b|\bcompare\b|\bversus\b|\bvs\b/.test(searchText)) {
+    nextCategories.push("Comparison");
+  }
+  if (/\broadmap\b|\bmilestone\b|\bquarterly plan\b/.test(searchText)) {
+    nextCategories.push("Roadmap");
+  }
+
+  return nextCategories;
+}
+
+function itemMatchesShowcaseCategory(item: FeaturedCaseItem, category: string) {
+  if (category === DEFAULT_SHOWCASE_CATEGORY) {
+    return true;
+  }
+  if (normalizeShowcaseCategory(item.category) === category) {
+    return true;
+  }
+  return getStructuralShowcaseCategories(item).includes(category);
+}
 
 type ServerProjectSummary = {
   id: string;
@@ -967,6 +1206,7 @@ export default function Home() {
   const [textMenuOpenUp, setTextMenuOpenUp] = useState(true);
   const [textMenuMaxHeight, setTextMenuMaxHeight] = useState(360);
   const [composeInput, setComposeInput] = useState("");
+  const [visiblePromptCards, setVisiblePromptCards] = useState<PromptSuggestionCard[]>([]);
   const [serverRecentProjects, setServerRecentProjects] = useState<ServerProjectSummary[]>([]);
   const [linkInputOpen, setLinkInputOpen] = useState(false);
   const [linkValue, setLinkValue] = useState("");
@@ -1046,7 +1286,7 @@ export default function Home() {
     };
   }, [currentEmail]);
   const [sourceItems, setSourceItems] = useState<SourceItem[]>([]);
-  const [activeCategory, setActiveCategory] = useState(feedCategories[0]);
+  const [activeCategory, setActiveCategory] = useState(DEFAULT_SHOWCASE_CATEGORY);
   const [fallbackFeaturedItems] = useState<FeaturedCaseItem[]>(() => getResolvedFeaturedCases());
   const [publishedFeaturedItems, setPublishedFeaturedItems] = useState<FeaturedCaseItem[]>([]);
   const [featuredVisibleCount, setFeaturedVisibleCount] = useState(8);
@@ -1081,6 +1321,9 @@ export default function Home() {
   useEffect(() => {
     writeStoredHomeTextModel(textModel, currentEmail);
   }, [currentEmail, textModel]);
+  useEffect(() => {
+    setVisiblePromptCards(selectPromptSuggestionCards());
+  }, []);
   useEffect(() => {
     let isCancelled = false;
     fetch("/api/public/cases")
@@ -1154,6 +1397,27 @@ export default function Home() {
       ...fallbackFeaturedItems.filter((item) => !seenKeys.has(item.publicCaseSlug || item.id)),
     ];
   }, [fallbackFeaturedItems, publishedFeaturedItems]);
+  const showcaseCategories = useMemo(() => {
+    const detectedCategories = new Set<string>();
+
+    featuredItems.forEach((item) => {
+      detectedCategories.add(normalizeShowcaseCategory(item.category));
+      getStructuralShowcaseCategories(item).forEach((category) => detectedCategories.add(category));
+    });
+
+    const orderedSupported = SUPPORTED_SHOWCASE_CATEGORIES.filter((category) => detectedCategories.has(category));
+    const additionalDetected = Array.from(detectedCategories).filter(
+      (category) =>
+        category !== DEFAULT_SHOWCASE_CATEGORY && !SUPPORTED_SHOWCASE_CATEGORIES.includes(category),
+    );
+
+    return [DEFAULT_SHOWCASE_CATEGORY, ...orderedSupported, ...additionalDetected.sort()];
+  }, [featuredItems]);
+  useEffect(() => {
+    if (!showcaseCategories.includes(activeCategory)) {
+      setActiveCategory(DEFAULT_SHOWCASE_CATEGORY);
+    }
+  }, [activeCategory, showcaseCategories]);
   const previewAssets = useMemo(() => getPreviewAssetsForItem(previewItem), [previewItem]);
   const activePreviewAsset =
     previewAssets[Math.min(previewAssetIndex, Math.max(0, previewAssets.length - 1))] ?? null;
@@ -2137,6 +2401,60 @@ export default function Home() {
     setPreviewItem(item);
   }
 
+  function buildFeaturedSimilarPrompt(item: FeaturedCaseItem) {
+    const category = normalizeCategoryLabel(item.category).toLowerCase();
+    const description = item.description?.trim();
+    const format = normalizeFormatLabel(item.format);
+
+    if (format === "Video") {
+      return [
+        `Create a ${category} explainer video about ${item.title}.`,
+        description,
+        "Keep the scenes clear, concise, and easy to follow.",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    if (format === "PPT") {
+      return [
+        `Create a ${category} presentation about ${item.title}.`,
+        description,
+        "Keep the slides structured, visual, and easy to scan.",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    return [
+      `Create a ${category} infographic about ${item.title}.`,
+      description,
+      "Keep the layout clear, visual, and easy to scan.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  function handleCreateSimilarFromShowcase(item: FeaturedCaseItem) {
+    handlePromptSuggestionSelect(buildFeaturedSimilarPrompt(item), "Prompt added to the input.");
+  }
+
+  function handlePromptSuggestionSelect(prompt: string, toastMessage?: string) {
+    updateComposeInput(prompt);
+    if (toastMessage) {
+      setUploadToast(toastMessage);
+    }
+    window.requestAnimationFrame(() => {
+      const node = composeRef.current;
+      if (!node) {
+        return;
+      }
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+      node.focus();
+      node.setSelectionRange(prompt.length, prompt.length);
+    });
+  }
+
   function closeFeaturedPreview() {
     setPreviewZoom(1);
     setPreviewAssetIndex(0);
@@ -2192,10 +2510,7 @@ export default function Home() {
 
   const featuredFilteredItems = useMemo(
     () =>
-      featuredItems.filter(
-        (item) =>
-          activeCategory === "All" || normalizeCategoryLabel(item.category) === activeCategory,
-      ),
+      featuredItems.filter((item) => itemMatchesShowcaseCategory(item, activeCategory)),
     [activeCategory, featuredItems],
   );
 
@@ -2511,6 +2826,30 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+
+              {visiblePromptCards.length ? (
+                <div className="relative left-1/2 mt-7 w-[min(calc(100vw-1.5rem),72rem)] -translate-x-1/2 px-3 sm:mt-8 sm:w-[min(calc(100vw-6rem),78rem)] sm:px-0">
+                  <p className="mb-3 text-center text-xs font-medium text-zinc-500">
+                    Try a prompt
+                  </p>
+                  <div className="mx-auto flex max-w-[68rem] flex-wrap justify-center gap-2">
+                    {visiblePromptCards.map((card) => {
+                      const CardIcon = getPromptSuggestionIcon(card.id);
+                      return (
+                        <button
+                          key={card.id}
+                          type="button"
+                          onClick={() => handlePromptSuggestionSelect(card.prompt)}
+                          className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-900"
+                        >
+                          <CardIcon size={12} className="shrink-0 text-zinc-400" />
+                          <span className="truncate">{card.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             {shouldShowRecentProjects ? (
@@ -2576,7 +2915,7 @@ export default function Home() {
                 Featured Cases
               </h2>
               <div className="mb-4 flex flex-wrap gap-2">
-                {feedCategories.map((category) => (
+                {showcaseCategories.map((category) => (
                   <button
                     key={category}
                     type="button"
@@ -2618,6 +2957,30 @@ export default function Home() {
                           className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
                           loading={index < 8 ? "eager" : "lazy"}
                         />
+                      </div>
+                      <div className="pointer-events-none absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/55 via-black/10 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+                        <div className="pointer-events-auto flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openFeaturedPreview(item);
+                            }}
+                            className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-sm font-medium text-zinc-900 shadow-[0_8px_24px_rgba(15,23,42,0.18)] transition hover:bg-zinc-100"
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleCreateSimilarFromShowcase(item);
+                            }}
+                            className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)] transition hover:bg-zinc-800"
+                          >
+                            Similar
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <div className="p-3">

@@ -9,6 +9,7 @@ import { getIndustryReportTemplates } from "@/lib/industry-report-templates";
 import { getInsuranceInfographicTemplates } from "@/lib/insurance-infographic-templates";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
+import { getRoadmapInfographicTemplates } from "@/lib/roadmap-infographic-templates";
 import { getSexEducationInfographicTemplates } from "@/lib/sex-education-infographic-templates";
 
 function escapeXml(value: string) {
@@ -51,6 +52,9 @@ export function GET() {
       (template) => template.generationStatus === "success",
     ),
     ...getIndustryReportTemplates().filter(
+      (template) => template.generationStatus === "success",
+    ),
+    ...getRoadmapInfographicTemplates().filter(
       (template) => template.generationStatus === "success",
     ),
   ];

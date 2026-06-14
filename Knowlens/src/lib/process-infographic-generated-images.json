@@ -3,7 +3,7 @@
   "batchId": "process-infographic-tuzi-100",
   "batchTopic": "Process Infographic",
   "generationProvider": "tuzi",
-  "updatedAt": "2026-06-12T22:31:55.972Z",
+  "updatedAt": "2026-06-14T03:13:29.836Z",
   "job": {
     "id": "process-infographic-tuzi-100",
     "topicInput": "Process",
@@ -15,14 +15,14 @@
       "9:16": 95
     },
     "provider": "tuzi",
-    "batchSize": 5,
+    "batchSize": 20,
     "forceFreshGeneration": true,
     "disableImageCache": true,
-    "status": "partial_completed",
+    "status": "completed",
     "requestedCount": 100,
-    "successCount": 99,
+    "successCount": 100,
     "failedCount": 1,
-    "createdPageCount": 99,
+    "createdPageCount": 100,
     "errors": [
       {
         "itemIndex": 89,
@@ -129,10 +129,11 @@
       "process-template-097",
       "process-template-098",
       "process-template-099",
-      "process-template-100"
+      "process-template-100",
+      "process-template-089"
     ],
     "createdAt": "2026-06-12T19:46:47.348Z",
-    "updatedAt": "2026-06-12T22:29:52.247Z"
+    "updatedAt": "2026-06-14T03:13:29.836Z"
   },
   "templates": {
     "customer-onboarding-process-infographic": {
@@ -11219,6 +11220,118 @@
       "createdAt": "2026-06-13T00:00:00.000Z",
       "updatedAt": "2026-06-12T22:29:52.106Z",
       "visualPrompt": "Create a process infographic about Conflict Resolution Process. Use a large readable title, a clear start-to-finish flow, and 3-6 easy-to-scan sections or cards. Show the main stages with arrows, icons, checkpoints, and a final outcome. Content focus: Explain the Conflict Resolution Process as a clear step-by-step process infographic. Knowledge points: Define the goal of the conflict resolution process; Show the main stages in clear order; Highlight handoffs, decisions, or checkpoints; Clarify the final output or result; Include stakeholders, actions, metrics, decisions, and next steps. Image description: This conflict resolution process infographic explains the process in a clear visual format for students, teams, creators, and educators. Visible description: This conflict resolution process infographic template explains the process in a clear visual format for students, teams, creators, and educators. It organizes the topic into ordered stages, concise English labels, decision points, checkpoints, and a clear final outcome so viewers can understand the workflow at a glance."
+    },
+    "fitness-training-process-infographic": {
+      "id": "process-template-089",
+      "batchId": "process-infographic-tuzi-100",
+      "batchTopic": "Process Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "process-infographic-tuzi-100-fitness-training-process-infographic-1781406730006-f8sza6mh",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:12:10.006Z",
+      "generationCompletedAt": "2026-06-14T03:13:29.708Z",
+      "categorySlug": "process",
+      "categoryName": "Process",
+      "categoryKeyword": "Process Infographic Templates",
+      "slug": "fitness-training-process-infographic",
+      "detailPath": "/infographic/process/fitness-training-process-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/process/fitness-training-process-infographic/",
+      "title": "Fitness Training Process Infographic Template",
+      "topicName": "Fitness Training Process",
+      "shortDescription": "A ready-to-use fitness training process infographic template for visual process explanation.",
+      "visibleDescription": "This fitness training process infographic template explains the process in a clear visual format for students, teams, creators, and educators. It organizes the topic into ordered stages, concise English labels, decision points, checkpoints, and a clear final outcome so viewers can understand the workflow at a glance.",
+      "seoTitle": "Fitness Training Process Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this fitness training process infographic template for process learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Fitness Training Process Infographic Template",
+      "primaryKeyword": "Fitness Training Process Infographic",
+      "secondaryKeywords": [
+        "fitness training process flowchart",
+        "fitness training process workflow",
+        "process infographic template",
+        "step-by-step process visual"
+      ],
+      "generatorKeywords": [
+        "Process Infographic Generator",
+        "Flowchart Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/process/process-fitness-training-process-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/process/process-fitness-training-process-infographic.webp",
+      "storageKey": "infographic/process/process-fitness-training-process-infographic.webp",
+      "imageFilename": "process-fitness-training-process-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 216748,
+      "aspectRatio": "9:16",
+      "imageAlt": "Fitness Training Process infographic",
+      "imageTitle": "Fitness Training Process Infographic Template",
+      "imageCaption": "Fitness Training Process Infographic - a process infographic example created with KnowLens AI.",
+      "imageDescription": "This fitness training process infographic explains the process in a clear visual format for students, teams, creators, and educators.",
+      "styleName": "Dark Premium Tech Style",
+      "stylePrompt": "Dark Premium Tech Style: Use a dark futuristic science-tech infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for AI workflows, cybersecurity, cloud systems, software engineering, data workflows, advanced technology, and digital process topics. Use a dark background with a central glowing technical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep purple base with controlled cyan, blue, violet, or green neon accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.",
+      "contentPrompt": "Create a process infographic about Fitness Training Process. Use a large readable title, a clear start-to-finish flow, and 3-6 easy-to-scan sections or cards. Show the main stages with arrows, icons, checkpoints, and a final outcome. Content focus: Explain the Fitness Training Process as a clear step-by-step process infographic. Knowledge points: Define the goal of the fitness training process; Show the main stages in clear order; Highlight handoffs, decisions, or checkpoints; Clarify the final output or result; Include tools, data flow, validation, and deployment-style checkpoints. Image description: This fitness training process infographic explains the process in a clear visual format for students, teams, creators, and educators. Visible description: This fitness training process infographic template explains the process in a clear visual format for students, teams, creators, and educators. It organizes the topic into ordered stages, concise English labels, decision points, checkpoints, and a clear final outcome so viewers can understand the workflow at a glance.",
+      "visualPrompt": "Create a process infographic about Fitness Training Process. Use a large readable title, a clear start-to-finish flow, and 3-6 easy-to-scan sections or cards. Show the main stages with arrows, icons, checkpoints, and a final outcome. Content focus: Explain the Fitness Training Process as a clear step-by-step process infographic. Knowledge points: Define the goal of the fitness training process; Show the main stages in clear order; Highlight handoffs, decisions, or checkpoints; Clarify the final output or result; Include tools, data flow, validation, and deployment-style checkpoints. Image description: This fitness training process infographic explains the process in a clear visual format for students, teams, creators, and educators. Visible description: This fitness training process infographic template explains the process in a clear visual format for students, teams, creators, and educators. It organizes the topic into ordered stages, concise English labels, decision points, checkpoints, and a clear final outcome so viewers can understand the workflow at a glance.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep each stage easy to read on a phone screen.",
+      "finalPrompt": "Dark Premium Tech Style: Use a dark futuristic science-tech infographic style. The image should feel high-end, cinematic, precise, dramatic, and suitable for AI workflows, cybersecurity, cloud systems, software engineering, data workflows, advanced technology, and digital process topics. Use a dark background with a central glowing technical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, black, or deep purple base with controlled cyan, blue, violet, or green neon accents. Keep the visual premium, polished, readable, and not overloaded with sci-fi clutter.\n\nCreate a process infographic about Fitness Training Process. Use a large readable title, a clear start-to-finish flow, and 3-6 easy-to-scan sections or cards. Show the main stages with arrows, icons, checkpoints, and a final outcome. Content focus: Explain the Fitness Training Process as a clear step-by-step process infographic. Knowledge points: Define the goal of the fitness training process; Show the main stages in clear order; Highlight handoffs, decisions, or checkpoints; Clarify the final output or result; Include tools, data flow, validation, and deployment-style checkpoints. Image description: This fitness training process infographic explains the process in a clear visual format for students, teams, creators, and educators. Visible description: This fitness training process infographic template explains the process in a clear visual format for students, teams, creators, and educators. It organizes the topic into ordered stages, concise English labels, decision points, checkpoints, and a clear final outcome so viewers can understand the workflow at a glance.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, scientifically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep each stage easy to read on a phone screen.",
+      "createSimilarPrompt": "Create an educational process infographic about Fitness Training Process. Use Dark Premium Tech Style. Aspect ratio: 9:16. Focus on the key process details and knowledge points. Keep the design clear, polished, and professional.",
+      "topicPrompt": "Explain the Fitness Training Process as a clear step-by-step process infographic.",
+      "knowledgePoints": [
+        "Define the goal of the fitness training process",
+        "Show the main stages in clear order",
+        "Highlight handoffs, decisions, or checkpoints",
+        "Clarify the final output or result",
+        "Include tools, data flow, validation, and deployment-style checkpoints"
+      ],
+      "useCases": [
+        "technical documentation",
+        "team onboarding",
+        "workflow explanation",
+        "product education"
+      ],
+      "targetAudience": [
+        "product teams",
+        "engineers",
+        "technical writers",
+        "students"
+      ],
+      "tags": [
+        "process",
+        "infographic",
+        "technology",
+        "workflow",
+        "fitness",
+        "training"
+      ],
+      "relatedTemplateIds": [
+        "process-template-087",
+        "process-template-088",
+        "process-template-090",
+        "process-template-091",
+        "process-template-092",
+        "process-template-093"
+      ],
+      "relatedCategorySlugs": [
+        "process",
+        "education",
+        "business",
+        "technology"
+      ],
+      "relatedToolSlugs": [
+        "process-infographic-generator",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:13:29.708Z"
     }
   },
   "errors": [
@@ -11497,7 +11610,8 @@
       "https://apioss1.sydney-ai.com/img/187/t9il_91djAoxYvqykrzL_5VN_8_Nt7TgYsJpjs-nX8XwX7Y4YvQnfa-q18FN1x3AX4BmX4Bn1ABnXphn1p3AX0kmDsFVf0XxXx-lYvX41sigY0LwXpXxX024k7kTYaMpfa_ljIeLkI3=/gi2027e-1781302460_e983c644dcb3dad9d73c42baf5e23974.webp"
     ],
     "fitness-training-process-infographic": [
-      "https://apioss15.sydney-ai.com/img/187/t9il_91djAoxYvqykrzL_5VN_8_Nt7TgYsJpjs-nX8XwX7Y4YvQnfa-q18FN1x3AX4BmX4Bn1ABnXphn1p3AXaQpDpJ4Yx-lkx3TX02gXaFpYxiwYa_AkskVfabLXa_nf7-pjIeLkI3=/gi2009e-1781302513_5bf44b0542a553f4de72cf990e5719d3.webp"
+      "https://apioss15.sydney-ai.com/img/187/t9il_91djAoxYvqykrzL_5VN_8_Nt7TgYsJpjs-nX8XwX7Y4YvQnfa-q18FN1x3AX4BmX4Bn1ABnXphn1p3AXaQpDpJ4Yx-lkx3TX02gXaFpYxiwYa_AkskVfabLXa_nf7-pjIeLkI3=/gi2009e-1781302513_5bf44b0542a553f4de72cf990e5719d3.webp",
+      "https://apioss3.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBnYaFsY7Mp1vMnYx_lY0Jwfv2gfa1s10hsXpMAY0JwY5VmR8_=/gi2034e-1e56eb30b1f74d5d8ba936086722d5de.png"
     ],
     "sleep-cycle-process-infographic": [
       "https://apioss4.sydney-ai.com/img/187/t9il_91djAoxYvqykrzL_5VN_8_Nt7TgYsJpjs-nX8XwX7Y4YvQnfa-q18FN1x3AX4BmX4Bn1ABnXphn1p3AXx-VDpLg1aJ4faX8fakn1pwTYxX4Yaixk7Jwf7Mq1xYgkpFVjIeLkI3=/gi2009e-1781302649_9a15b93f961395f3be4caed9b826ac59.webp"

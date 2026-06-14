@@ -44,10 +44,10 @@ export const metadata: Metadata = {
       "Create biology infographics from topics, notes, and plain text. Turn life science ideas into clear visual summaries with readable labels and structured sections.",
     images: [
       {
-        url: `${siteUrl}/picture/biology-infographic.jpg`,
-        width: 1003,
-        height: 565,
-        alt: "Blood vessel network biology infographic created from notes",
+        url: `${siteUrl}/images/infographic/biology/biology-cell-structure-infographic.webp`,
+        width: 1659,
+        height: 948,
+        alt: "Cell structure biology infographic with labeled organelles and clear visual hierarchy",
       },
     ],
   },
@@ -56,15 +56,15 @@ export const metadata: Metadata = {
     title: "Biology Infographic Generator | Create Biology Infographics with AI | KnowLens.ai",
     description:
       "Turn biology topics, notes, and explanations into clear biology infographics and educational biology visuals.",
-    images: [`${siteUrl}/picture/biology-infographic.jpg`],
+    images: [`${siteUrl}/images/infographic/biology/biology-cell-structure-infographic.webp`],
   },
 };
 
 const heroPreview = {
-  image: "/picture/biology-infographic.jpg",
-  alt: "Blood vessel network biology infographic with readable labels",
-  width: 1003,
-  height: 565,
+  image: "/images/infographic/biology/biology-cell-structure-infographic.webp",
+  alt: "Cell structure biology infographic with labeled organelles and clear visual hierarchy",
+  width: 1659,
+  height: 948,
 } as const;
 
 const biologyVisuals = [
@@ -316,19 +316,19 @@ export default function BiologyInfographicGeneratorPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
 
-      <section className="mx-auto grid w-full max-w-6xl gap-8 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1fr)] lg:items-center lg:pt-16">
-        <div className="text-center lg:text-left">
+      <section className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 pb-12 pt-10 text-center sm:px-6 lg:pt-16">
+        <div className="mx-auto max-w-4xl">
           <p className="inline-flex rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 shadow-sm">
             LIFE SCIENCE VISUAL LEARNING
           </p>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
+          <h1 className="mx-auto mt-6 max-w-5xl text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
             Biology Infographic Generator for Clear Visuals
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-zinc-600 lg:mx-0">
+          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-zinc-600">
             Turn biology topics, notes, or plain text into clear biology infographics with readable labels,
             structured sections, and visual hierarchy.
           </p>
-          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/app?intent=generate"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-zinc-950 px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] transition hover:bg-zinc-800"
@@ -343,10 +343,10 @@ export default function BiologyInfographicGeneratorPage() {
               View Examples
             </Link>
           </div>
-          <p className="mt-4 text-sm text-zinc-500">Start with notes or a topic. KnowLens structures the visual.</p>
+          <p className="mt-4 text-sm text-zinc-500">No design skills needed.</p>
         </div>
 
-        <div className="mx-auto w-full max-w-[720px] lg:mx-0">
+        <div className="mt-8 w-full max-w-[820px]">
           <article className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <img
               src={heroPreview.image}

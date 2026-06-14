@@ -3,7 +3,7 @@
   "batchId": "astronomy-infographic-tuzi-50",
   "batchTopic": "Astronomy Infographic",
   "generationProvider": "tuzi",
-  "updatedAt": "2026-06-13T09:55:13.226Z",
+  "updatedAt": "2026-06-14T03:13:56.523Z",
   "job": {
     "id": "astronomy-infographic-tuzi-50",
     "topicInput": "Astronomy",
@@ -18,23 +18,12 @@
     "batchSize": 5,
     "forceFreshGeneration": true,
     "disableImageCache": true,
-    "status": "partial_completed",
+    "status": "completed",
     "requestedCount": 50,
-    "successCount": 48,
-    "failedCount": 2,
-    "createdPageCount": 48,
-    "errors": [
-      {
-        "itemIndex": 5,
-        "topicName": "Earth in Space Infographic Template",
-        "reason": "This operation was aborted"
-      },
-      {
-        "itemIndex": 7,
-        "topicName": "Jupiter System Infographic Template",
-        "reason": "This operation was aborted"
-      }
-    ],
+    "successCount": 50,
+    "failedCount": 0,
+    "createdPageCount": 50,
+    "errors": [],
     "createdTemplateIds": [
       "astronomy-template-001",
       "astronomy-template-002",
@@ -83,10 +72,12 @@
       "astronomy-template-047",
       "astronomy-template-048",
       "astronomy-template-049",
-      "astronomy-template-050"
+      "astronomy-template-050",
+      "astronomy-template-005",
+      "astronomy-template-007"
     ],
     "createdAt": "2026-06-13T08:49:15.082Z",
-    "updatedAt": "2026-06-13T09:55:13.226Z"
+    "updatedAt": "2026-06-14T03:13:56.523Z"
   },
   "templates": {
     "solar-system-structure-infographic": {
@@ -5291,24 +5282,226 @@
       "allowPublicDownload": false,
       "createdAt": "2026-06-13T00:00:00.000Z",
       "updatedAt": "2026-06-13T09:55:13.127Z"
+    },
+    "earth-in-space-infographic": {
+      "id": "astronomy-template-005",
+      "batchId": "astronomy-infographic-tuzi-50",
+      "batchTopic": "Astronomy Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "astronomy-infographic-tuzi-50-earth-in-space-infographic-1781406728989-pmiao2fz",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:12:08.989Z",
+      "generationCompletedAt": "2026-06-14T03:12:57.155Z",
+      "categorySlug": "astronomy",
+      "categoryName": "Astronomy",
+      "categoryKeyword": "Astronomy Infographic Templates",
+      "slug": "earth-in-space-infographic",
+      "detailPath": "/infographic/astronomy/earth-in-space-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/astronomy/earth-in-space-infographic/",
+      "title": "Earth in Space Infographic Template",
+      "topicName": "Earth in Space",
+      "shortDescription": "A ready-to-use earth in space infographic template for astronomy learning and visual science education.",
+      "visibleDescription": "This Earth in Space Infographic helps astronomy learners see how earth in space fits into the wider Solar System. The visual can organize planet categories, orbital context, object traits, and key comparison points into a structured layout that is easier to scan than plain notes. Teachers, students, and space content creators can use the example as a reference for turning astronomy topics into readable sections with clear labels, meaningful diagrams, and a strong visual hierarchy. It also shows how an Astronomy Infographic Generator can support classroom-friendly explanations without inventing unsupported numbers or claims.",
+      "seoTitle": "Earth in Space Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this earth in space infographic template for astronomy learning and visual science education. Create a similar visual with KnowLens AI.",
+      "h1": "Earth in Space Infographic Template",
+      "primaryKeyword": "Earth in Space Infographic",
+      "secondaryKeywords": [
+        "earth in space visual guide",
+        "earth in space astronomy infographic",
+        "astronomy infographic template",
+        "space science visual"
+      ],
+      "generatorKeywords": [
+        "Astronomy Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/astronomy/astronomy-earth-in-space-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/astronomy/astronomy-earth-in-space-infographic.webp",
+      "storageKey": "infographic/astronomy/astronomy-earth-in-space-infographic.webp",
+      "imageFilename": "astronomy-earth-in-space-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 1659,
+      "imageHeight": 948,
+      "imageSizeBytes": 263940,
+      "aspectRatio": "16:9",
+      "imageAlt": "Earth in Space infographic",
+      "imageTitle": "Earth in Space Infographic Template",
+      "imageCaption": "Earth in Space Infographic - an astronomy infographic example created with KnowLens AI.",
+      "imageDescription": "A structured astronomy visual showing earth in space through object categories, orbital context, and concise labels for classroom-friendly space learning.",
+      "styleName": "Clean Astronomy Education Style",
+      "stylePrompt": "Clean Astronomy Education Style: Use a modern, clean, professional educational astronomy infographic style. The image should feel bright, trustworthy, polished, and suitable for science learning, classroom use, and beginner-friendly astronomy explanation. Use a clear layout with a large readable title, one strong astronomy visual focus, and supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and clear English labels. Use a light background with deep blue, soft cyan, warm yellow, slate, and white accents. Keep the visual beautiful, organized, mobile-readable, accurate, and easy to scan.",
+      "contentPrompt": "Create an astronomy knowledge infographic about Earth in Space. Use a celestial object profile structure, not a generic fact sheet. Explain Earth in Space as a celestial object profile for astronomy learners, focusing on object categories, orbital context, and how the system is organized. Knowledge points: Identify the main celestial bodies or regions connected to Earth in Space; Show relative position, composition categories, or defining traits without inventing exact data; Explain how the object or system fits into solar system structure; Use comparison, orbit, layer, or profile sections matched to the topic. Image description: A structured astronomy visual showing earth in space through object categories, orbital context, and concise labels for classroom-friendly space learning. Visible page description to align with: This Earth in Space Infographic helps astronomy learners see how earth in space fits into the wider Solar System. The visual can organize planet categories, orbital context, object traits, and key comparison points into a structured layout that is easier to scan than plain notes. Teachers, students, and space content creators can use the example as a reference for turning astronomy topics into readable sections with clear labels, meaningful diagrams, and a strong visual hierarchy. It also shows how an Astronomy Infographic Generator can support classroom-friendly explanations without inventing unsupported numbers or claims. Use accurate English labels, clear section hierarchy, readable explanatory text, and astronomy diagrams or visuals that match the topic. Do not include astrology, mystical interpretation, unsupported exact values, invented discoveries, or unsupported life/habitability claims.",
+      "aspectRatioPrompt": "Aspect ratio: 16:9",
+      "qualityPrompt": "Create a high-quality professional astronomy knowledge infographic with a clear information hierarchy, accurate English labels, scientifically correct space and astronomy visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted astronomical drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, strong visual hierarchy, data-rich sections, clear concept explanations, and easy-to-scan astronomy information. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the astronomy explanation readable on a phone screen.",
+      "finalPrompt": "Clean Astronomy Education Style: Use a modern, clean, professional educational astronomy infographic style. The image should feel bright, trustworthy, polished, and suitable for science learning, classroom use, and beginner-friendly astronomy explanation. Use a clear layout with a large readable title, one strong astronomy visual focus, and supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and clear English labels. Use a light background with deep blue, soft cyan, warm yellow, slate, and white accents. Keep the visual beautiful, organized, mobile-readable, accurate, and easy to scan.\n\nCreate an astronomy knowledge infographic about Earth in Space. Use a celestial object profile structure, not a generic fact sheet. Explain Earth in Space as a celestial object profile for astronomy learners, focusing on object categories, orbital context, and how the system is organized. Knowledge points: Identify the main celestial bodies or regions connected to Earth in Space; Show relative position, composition categories, or defining traits without inventing exact data; Explain how the object or system fits into solar system structure; Use comparison, orbit, layer, or profile sections matched to the topic. Image description: A structured astronomy visual showing earth in space through object categories, orbital context, and concise labels for classroom-friendly space learning. Visible page description to align with: This Earth in Space Infographic helps astronomy learners see how earth in space fits into the wider Solar System. The visual can organize planet categories, orbital context, object traits, and key comparison points into a structured layout that is easier to scan than plain notes. Teachers, students, and space content creators can use the example as a reference for turning astronomy topics into readable sections with clear labels, meaningful diagrams, and a strong visual hierarchy. It also shows how an Astronomy Infographic Generator can support classroom-friendly explanations without inventing unsupported numbers or claims. Use accurate English labels, clear section hierarchy, readable explanatory text, and astronomy diagrams or visuals that match the topic. Do not include astrology, mystical interpretation, unsupported exact values, invented discoveries, or unsupported life/habitability claims.\n\nAspect ratio: 16:9\n\nCreate a high-quality professional astronomy knowledge infographic with a clear information hierarchy, accurate English labels, scientifically correct space and astronomy visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted astronomical drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, strong visual hierarchy, data-rich sections, clear concept explanations, and easy-to-scan astronomy information. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the astronomy explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational astronomy infographic about Earth in Space. Use Clean Astronomy Education Style. Aspect ratio: 16:9. Focus on the key astronomy knowledge points, scientific concept explanation, and clear visual learning structure. Keep the design accurate, polished, readable, and professional.",
+      "topicPrompt": "Explain Earth in Space as a celestial object profile for astronomy learners, focusing on object categories, orbital context, and how the system is organized.",
+      "knowledgePoints": [
+        "Identify the main celestial bodies or regions connected to Earth in Space",
+        "Show relative position, composition categories, or defining traits without inventing exact data",
+        "Explain how the object or system fits into solar system structure",
+        "Use comparison, orbit, layer, or profile sections matched to the topic"
+      ],
+      "useCases": [
+        "astronomy learning",
+        "visual study guides",
+        "classroom science visuals",
+        "space education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "education content teams"
+      ],
+      "tags": [
+        "astronomy",
+        "infographic",
+        "solar-system",
+        "earth",
+        "in",
+        "space"
+      ],
+      "relatedTemplateIds": [
+        "astronomy-template-003",
+        "astronomy-template-004",
+        "astronomy-template-006",
+        "astronomy-template-008",
+        "astronomy-template-009",
+        "astronomy-template-010"
+      ],
+      "relatedCategorySlugs": [
+        "astronomy",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:12:57.155Z"
+    },
+    "jupiter-system-infographic": {
+      "id": "astronomy-template-007",
+      "batchId": "astronomy-infographic-tuzi-50",
+      "batchTopic": "Astronomy Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "astronomy-infographic-tuzi-50-jupiter-system-infographic-1781406777268-e4jp3tv5",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:12:57.268Z",
+      "generationCompletedAt": "2026-06-14T03:13:56.331Z",
+      "categorySlug": "astronomy",
+      "categoryName": "Astronomy",
+      "categoryKeyword": "Astronomy Infographic Templates",
+      "slug": "jupiter-system-infographic",
+      "detailPath": "/infographic/astronomy/jupiter-system-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/astronomy/jupiter-system-infographic/",
+      "title": "Jupiter System Infographic Template",
+      "topicName": "Jupiter System",
+      "shortDescription": "A ready-to-use jupiter system infographic template for astronomy learning and visual science education.",
+      "visibleDescription": "This Jupiter System Infographic helps astronomy learners see how jupiter system fits into the wider Solar System. The visual can organize planet categories, orbital context, object traits, and key comparison points into a structured layout that is easier to scan than plain notes. Teachers, students, and space content creators can use the example as a reference for turning astronomy topics into readable sections with clear labels, meaningful diagrams, and a strong visual hierarchy. It also shows how an Astronomy Infographic Generator can support classroom-friendly explanations without inventing unsupported numbers or claims.",
+      "seoTitle": "Jupiter System Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this jupiter system infographic template for astronomy learning and visual science education. Create a similar visual with KnowLens AI.",
+      "h1": "Jupiter System Infographic Template",
+      "primaryKeyword": "Jupiter System Infographic",
+      "secondaryKeywords": [
+        "jupiter system visual guide",
+        "jupiter system astronomy infographic",
+        "astronomy infographic template",
+        "space science visual"
+      ],
+      "generatorKeywords": [
+        "Astronomy Infographic Generator",
+        "Science Infographic Generator",
+        "Educational Infographic Maker",
+        "AI Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/astronomy/astronomy-jupiter-system-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/astronomy/astronomy-jupiter-system-infographic.webp",
+      "storageKey": "infographic/astronomy/astronomy-jupiter-system-infographic.webp",
+      "imageFilename": "astronomy-jupiter-system-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 265580,
+      "aspectRatio": "9:16",
+      "imageAlt": "Jupiter System infographic",
+      "imageTitle": "Jupiter System Infographic Template",
+      "imageCaption": "Jupiter System Infographic - an astronomy infographic example created with KnowLens AI.",
+      "imageDescription": "A structured astronomy visual showing jupiter system through object categories, orbital context, and concise labels for classroom-friendly space learning.",
+      "styleName": "Clean Astronomy Education Style",
+      "stylePrompt": "Clean Astronomy Education Style: Use a modern, clean, professional educational astronomy infographic style. The image should feel bright, trustworthy, polished, and suitable for science learning, classroom use, and beginner-friendly astronomy explanation. Use a clear layout with a large readable title, one strong astronomy visual focus, and supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and clear English labels. Use a light background with deep blue, soft cyan, warm yellow, slate, and white accents. Keep the visual beautiful, organized, mobile-readable, accurate, and easy to scan.",
+      "contentPrompt": "Create an astronomy knowledge infographic about Jupiter System. Use a celestial object profile structure, not a generic fact sheet. Explain Jupiter System as a celestial object profile for astronomy learners, focusing on object categories, orbital context, and how the system is organized. Knowledge points: Identify the main celestial bodies or regions connected to Jupiter System; Show relative position, composition categories, or defining traits without inventing exact data; Explain how the object or system fits into solar system structure; Use comparison, orbit, layer, or profile sections matched to the topic. Image description: A structured astronomy visual showing jupiter system through object categories, orbital context, and concise labels for classroom-friendly space learning. Visible page description to align with: This Jupiter System Infographic helps astronomy learners see how jupiter system fits into the wider Solar System. The visual can organize planet categories, orbital context, object traits, and key comparison points into a structured layout that is easier to scan than plain notes. Teachers, students, and space content creators can use the example as a reference for turning astronomy topics into readable sections with clear labels, meaningful diagrams, and a strong visual hierarchy. It also shows how an Astronomy Infographic Generator can support classroom-friendly explanations without inventing unsupported numbers or claims. Use accurate English labels, clear section hierarchy, readable explanatory text, and astronomy diagrams or visuals that match the topic. Do not include astrology, mystical interpretation, unsupported exact values, invented discoveries, or unsupported life/habitability claims.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional astronomy knowledge infographic with a clear information hierarchy, accurate English labels, scientifically correct space and astronomy visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted astronomical drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, strong visual hierarchy, data-rich sections, clear concept explanations, and easy-to-scan astronomy information. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the astronomy explanation readable on a phone screen.",
+      "finalPrompt": "Clean Astronomy Education Style: Use a modern, clean, professional educational astronomy infographic style. The image should feel bright, trustworthy, polished, and suitable for science learning, classroom use, and beginner-friendly astronomy explanation. Use a clear layout with a large readable title, one strong astronomy visual focus, and supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and clear English labels. Use a light background with deep blue, soft cyan, warm yellow, slate, and white accents. Keep the visual beautiful, organized, mobile-readable, accurate, and easy to scan.\n\nCreate an astronomy knowledge infographic about Jupiter System. Use a celestial object profile structure, not a generic fact sheet. Explain Jupiter System as a celestial object profile for astronomy learners, focusing on object categories, orbital context, and how the system is organized. Knowledge points: Identify the main celestial bodies or regions connected to Jupiter System; Show relative position, composition categories, or defining traits without inventing exact data; Explain how the object or system fits into solar system structure; Use comparison, orbit, layer, or profile sections matched to the topic. Image description: A structured astronomy visual showing jupiter system through object categories, orbital context, and concise labels for classroom-friendly space learning. Visible page description to align with: This Jupiter System Infographic helps astronomy learners see how jupiter system fits into the wider Solar System. The visual can organize planet categories, orbital context, object traits, and key comparison points into a structured layout that is easier to scan than plain notes. Teachers, students, and space content creators can use the example as a reference for turning astronomy topics into readable sections with clear labels, meaningful diagrams, and a strong visual hierarchy. It also shows how an Astronomy Infographic Generator can support classroom-friendly explanations without inventing unsupported numbers or claims. Use accurate English labels, clear section hierarchy, readable explanatory text, and astronomy diagrams or visuals that match the topic. Do not include astrology, mystical interpretation, unsupported exact values, invented discoveries, or unsupported life/habitability claims.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional astronomy knowledge infographic with a clear information hierarchy, accurate English labels, scientifically correct space and astronomy visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted astronomical drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, strong visual hierarchy, data-rich sections, clear concept explanations, and easy-to-scan astronomy information. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep the astronomy explanation readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational astronomy infographic about Jupiter System. Use Clean Astronomy Education Style. Aspect ratio: 9:16. Focus on the key astronomy knowledge points, scientific concept explanation, and clear visual learning structure. Keep the design accurate, polished, readable, and professional.",
+      "topicPrompt": "Explain Jupiter System as a celestial object profile for astronomy learners, focusing on object categories, orbital context, and how the system is organized.",
+      "knowledgePoints": [
+        "Identify the main celestial bodies or regions connected to Jupiter System",
+        "Show relative position, composition categories, or defining traits without inventing exact data",
+        "Explain how the object or system fits into solar system structure",
+        "Use comparison, orbit, layer, or profile sections matched to the topic"
+      ],
+      "useCases": [
+        "astronomy learning",
+        "visual study guides",
+        "classroom science visuals",
+        "space education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "science creators",
+        "education content teams"
+      ],
+      "tags": [
+        "astronomy",
+        "infographic",
+        "solar-system",
+        "jupiter",
+        "system"
+      ],
+      "relatedTemplateIds": [
+        "astronomy-template-006",
+        "astronomy-template-008",
+        "astronomy-template-009",
+        "astronomy-template-010",
+        "astronomy-template-011",
+        "astronomy-template-012"
+      ],
+      "relatedCategorySlugs": [
+        "astronomy",
+        "science",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "science-infographic-generator",
+        "educational-infographic-maker",
+        "ai-infographic-generator"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:13:56.331Z"
     }
   },
-  "errors": [
-    {
-      "slug": "earth-in-space-infographic",
-      "title": "Earth in Space Infographic Template",
-      "itemIndex": 5,
-      "reason": "This operation was aborted",
-      "updatedAt": "2026-06-13T09:00:52.037Z"
-    },
-    {
-      "slug": "jupiter-system-infographic",
-      "title": "Jupiter System Infographic Template",
-      "itemIndex": 7,
-      "reason": "This operation was aborted",
-      "updatedAt": "2026-06-13T09:04:36.595Z"
-    }
-  ],
+  "errors": [],
   "sourceUrls": {
     "solar-system-structure-infographic": [
       "https://apioss1.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10kn1AoLXa1qXaFVY8FV1sklXawVkxQrY8-pXv1p1v1r18X8XZVmR8_=/gi2008e-e538559fe93f4599b17fd34c30c72cf4.png"
@@ -5453,6 +5646,12 @@
     ],
     "electromagnetic-spectrum-in-astronomy-infographic": [
       "https://apioss15.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10kn1ABmYvQV103pk828YaQl10WLkxL8k8-pfa1rX0FpfvQT1AVmR8_=/gi2008e-0da9003bbfe1401eb9fbd39374538a53.png"
+    ],
+    "earth-in-space-infographic": [
+      "https://apioss30.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBqX7-pXa3mY0bw1v1l1x3sfaMV1pewkaX81sQVYawT1AVmR8_=/gi2034e-85d3500d0d0c420692937da3f3a9e953.png"
+    ],
+    "jupiter-system-infographic": [
+      "https://apioss30.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBr10-T1xhAYa-n1sMl1xFqfae4kahmY8kpY7i4Xpe815VmR8_=/gi2033e-7045282e413b425897ba80ff3edb77f1.png"
     ]
   }
 }

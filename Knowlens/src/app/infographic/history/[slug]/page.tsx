@@ -110,7 +110,7 @@ export default async function HistoryInfographicTemplatePage({ params }: PagePro
           <nav className="mb-4 flex flex-wrap gap-2 text-sm text-zinc-500">
             <Link href="/infographic-examples" className="hover:text-zinc-900">Infographic Examples</Link>
             <span>/</span>
-            <Link href="/educational-infographic-maker" className="hover:text-zinc-900">History</Link>
+            <Link href="/infographic/history" className="hover:text-zinc-900">History</Link>
             <span>/</span>
             <span>{template.topicName}</span>
           </nav>
@@ -130,8 +130,8 @@ export default async function HistoryInfographicTemplatePage({ params }: PagePro
                 <Link href={createSimilarHref} className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white hover:bg-zinc-800">
                   Create similar infographic
                 </Link>
-                <Link href="/educational-infographic-maker" className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">
-                  Educational Infographic Maker
+                <Link href="/infographic/history" className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">
+                  History directory
                 </Link>
               </div>
             </div>

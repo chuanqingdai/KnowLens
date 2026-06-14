@@ -53,76 +53,76 @@ export const metadata: Metadata = {
 
 const examples = [
   {
-    title: "Photosynthesis Process",
+    title: "Cell Structure",
     description:
-      "A biology infographic that connects sunlight, water, carbon dioxide, chloroplasts, glucose, and oxygen in one clear visual.",
+      "A biology infographic that maps the membrane, nucleus, cytoplasm, mitochondria, and other core organelles in a wide classroom-friendly layout.",
     tags: ["Biology Infographic", "16:9"],
-    image: "/images/infographic/biology/biology-photosynthesis-process-infographic.webp",
-    alt: "Photosynthesis process infographic with sunlight water carbon dioxide chloroplasts glucose and oxygen",
+    image: "/images/infographic/biology/biology-cell-structure-infographic.webp",
+    alt: "Cell structure infographic with membrane nucleus cytoplasm mitochondria and labeled organelles",
     width: 1659,
     height: 948,
     topic:
-      "Create a biology infographic explaining photosynthesis with sunlight, water, carbon dioxide, chloroplasts, glucose, oxygen, and why the process matters.",
+      "Create a biology infographic explaining cell structure with membrane, nucleus, cytoplasm, mitochondria, ribosomes, and core organelle functions.",
+  },
+  {
+    title: "Earth Layers",
+    description:
+      "An earth science infographic that explains the crust, mantle, outer core, inner core, and the relationship between internal layers and surface processes.",
+    tags: ["Earth Science", "16:9"],
+    image: "/images/infographic/earth-science/earth-science-earth-layers-infographic.webp",
+    alt: "Earth layers infographic with crust mantle outer core inner core and internal structure sections",
+    width: 1659,
+    height: 948,
+    topic:
+      "Create an earth science infographic explaining the crust, mantle, outer core, inner core, and how Earth layers connect to tectonic activity.",
   },
   {
     title: "Pizza Margherita Recipe Process",
     description:
-      "A recipe process infographic showing dough, tomato sauce, mozzarella, basil, baking, and serving steps.",
+      "A recipe process infographic that turns ingredients, preparation, baking, and serving steps into one easy-to-follow cooking visual.",
     tags: ["Recipe Infographic", "16:9"],
     image: "/images/infographic/recipe/recipe-pizza-margherita-recipe-process-infographic.webp",
-    alt: "Pizza Margherita recipe process infographic with dough tomato sauce mozzarella basil and baking steps",
+    alt: "Pizza margherita recipe process infographic with ingredients cooking steps and serving notes",
     width: 1659,
     height: 948,
     topic:
-      "Create a recipe process infographic for Pizza Margherita with dough, tomato sauce, mozzarella, basil, baking, and serving steps.",
+      "Create a recipe infographic showing pizza margherita ingredients, dough preparation, topping steps, baking instructions, and serving tips.",
   },
   {
-    title: "Global Wind Patterns",
+    title: "Crusades Overview",
     description:
-      "An earth science visual that explains trade winds, westerlies, polar easterlies, pressure belts, and circulation bands.",
-    tags: ["Earth Science", "16:9"],
-    image: "/images/infographic/earth-science/earth-science-global-wind-patterns-infographic.webp",
-    alt: "Global wind patterns infographic with trade winds westerlies polar easterlies and circulation bands",
-    width: 1659,
-    height: 948,
-    topic:
-      "Create an earth science infographic explaining global wind patterns, pressure belts, trade winds, westerlies, polar easterlies, and Earth rotation.",
-  },
-  {
-    title: "Human Respiratory System",
-    description:
-      "A biology study visual showing airflow through the nose, trachea, bronchi, lungs, alveoli, and gas exchange.",
-    tags: ["Biology Infographic", "9:16"],
-    image: "/images/infographic/biology/biology-human-respiratory-system-infographic.webp",
-    alt: "Human respiratory system infographic with airflow trachea bronchi lungs alveoli and gas exchange",
+      "A history infographic that organizes the causes, major campaigns, key groups, and historical consequences of the Crusades in a tall editorial layout.",
+    tags: ["History Infographic", "9:16"],
+    image: "/images/infographic/history/history-crusades-overview-infographic.webp",
+    alt: "Crusades overview history infographic with causes campaigns groups and outcomes",
     width: 948,
     height: 1659,
     topic:
-      "Create a biology infographic explaining the human respiratory system with airflow, trachea, bronchi, lungs, alveoli, oxygen, carbon dioxide, and gas exchange.",
+      "Create a history infographic explaining the Crusades with causes, major campaigns, religious and political actors, and long-term consequences.",
   },
   {
-    title: "Moon Phases",
+    title: "AI Agent vs AI Assistant",
     description:
-      "An astronomy infographic explaining the lunar phase cycle and how the Sun, Earth, and Moon positions change what we see.",
-    tags: ["Astronomy Infographic", "9:16"],
-    image: "/images/infographic/astronomy/astronomy-moon-phases-infographic.webp",
-    alt: "Moon phases infographic showing the lunar phase cycle and Sun Earth Moon relationship",
+      "A comparison infographic that separates autonomy, tool use, workflow scope, supervision needs, and practical use cases for AI agents and AI assistants.",
+    tags: ["Comparison Infographic", "9:16"],
+    image: "/images/infographic/comparison/comparison-ai-agent-vs-ai-assistant-comparison-infographic.webp",
+    alt: "AI agent versus AI assistant comparison infographic with side by side workflow and autonomy differences",
     width: 948,
     height: 1659,
     topic:
-      "Create an astronomy infographic explaining moon phases, the lunar cycle, sunlight direction, Earth-Moon positions, and why the Moon appears to change shape.",
+      "Create a comparison infographic showing AI agents versus AI assistants with autonomy, tool use, workflow ownership, oversight, and business use cases.",
   },
   {
-    title: "Climate Change Basics",
+    title: "Nvidia AI Data Center Revenue Insight",
     description:
-      "An earth science infographic covering greenhouse gases, warming trends, feedback loops, and major climate impacts.",
-    tags: ["Climate Visual", "9:16"],
-    image: "/images/infographic/earth-science/earth-science-climate-change-basics-infographic.webp",
-    alt: "Climate change basics infographic with greenhouse gases warming trends feedback loops and climate impacts",
+      "A financial report infographic that summarizes Nvidia's AI data center revenue growth, demand drivers, and investor-facing market context in a mobile-friendly format.",
+    tags: ["Financial Report", "9:16"],
+    image: "/images/infographic/financial-report/finance-nvidia-ai-data-center-revenue-insight.webp",
+    alt: "Nvidia AI data center revenue insight infographic with growth metrics demand drivers and market context",
     width: 948,
     height: 1659,
     topic:
-      "Create an earth science infographic explaining climate change basics, greenhouse gases, warming trends, feedback loops, and major climate impacts.",
+      "Create a finance infographic explaining Nvidia AI data center revenue growth, demand drivers, valuation context, and market implications.",
   },
 ] as const;
 
@@ -207,16 +207,38 @@ const relatedTools = [
 ] as const;
 
 const faqItems = [
-  ["What are infographic examples?", "Infographic examples are sample visuals that show how information can be organized into sections, labels, diagrams, and summaries. They help you understand what kind of infographic structure might work for your own topic or notes."],
-  ["Can I create a similar infographic with KnowLens?", "Yes. Choose an example, click Create Similar, and start with your own topic, notes, or plain text."],
-  ["What kinds of infographic examples are included?", "This page includes examples for science topics, education, study notes, recipes, product ideas, visual summaries, process visuals, and poster-style infographics."],
-  ["What inputs can I use to create an infographic?", "You can start with a topic, notes, plain text, a short explanation, or a rough text idea."],
-  ["Do I need design skills to create these infographics?", "No. KnowLens helps organize your content into a visual structure, so you do not need to design from a blank canvas."],
-  ["How do I get better infographic results?", "Use complete input. Include the topic, audience, key points, steps, facts, and examples you want to show in the visual."],
-  ["Are these only science infographic examples?", "No. The gallery can include science, education, recipes, product explanations, study notes, process visuals, and social content examples."],
-  ["Can I use these examples for social media ideas?", "Yes. Poster-style infographics, visual summaries, and carousel-style visuals can be useful for social posts, presentations, blogs, and learning materials."],
-  ["How is this different from a template gallery?", "A template gallery usually starts from fixed layouts. KnowLens examples show what can be created from text, notes, or topics, then let you create a similar visual with your own content."],
-  ["Can I browse by infographic type?", "Yes. The page organizes examples by type, such as science infographics, educational visuals, process infographics, visual summaries, poster-style infographics, and carousel-style visuals."],
+  [
+    "What are infographic examples?",
+    "Infographic examples are finished visuals that show how one topic can be organized into sections, labels, charts, timelines, comparisons, or step-by-step blocks. They help you see the structure before you start creating your own version, which makes it much easier to decide whether your content should become a science explainer, a classroom study guide, a recipe process card, a financial summary, or a poster-style visual.",
+  ],
+  [
+    "Can I create a similar infographic with KnowLens?",
+    "Yes. Each example can act as a starting point for a new visual. If you like the pacing, hierarchy, or general composition of an example, you can use it as inspiration, replace the topic with your own notes or text, and generate a new infographic that keeps the same broad structure while changing the actual content. This is especially useful when you know the kind of layout you want but have not written the final prompt yet.",
+  ],
+  [
+    "What kinds of infographic examples are included on this page?",
+    "The gallery is intentionally mixed so you can compare different visual structures side by side. It may include biology diagrams, earth science explainers, recipe process infographics, financial report summaries, history visuals, comparison charts, roadmap layouts, and study-guide style examples. The goal is to show different ways plain text can become a readable visual system rather than repeating one narrow format.",
+  ],
+  [
+    "What should I provide to get better infographic results?",
+    "The best results usually come from complete input. Include the topic, intended audience, the main sections or stages you want covered, any required labels, and the kind of structure you want the infographic to use. If your content has steps, comparisons, milestones, definitions, or key facts, naming them directly gives KnowLens more to work with and usually leads to a clearer, more accurate, and more useful result.",
+  ],
+  [
+    "Do I need design skills to make something like these examples?",
+    "No. KnowLens is built for people who have information to explain but do not want to start from a blank canvas. Instead of manually placing every title, box, and label, you focus on the content and the system helps shape that content into a clearer visual hierarchy. That makes it useful for students, teachers, marketers, founders, operators, writers, and creators who want polished visuals without traditional design work.",
+  ],
+  [
+    "How is this different from a normal template gallery?",
+    "A normal template gallery usually starts with fixed layouts that you fill in manually. KnowLens examples work differently because they reflect outputs generated from topics, notes, and prompts. That means each example is both a visual reference and a practical hint about how to describe your own content, what level of detail works well, and how much structure is useful when you want the final infographic to feel clear instead of crowded.",
+  ],
+  [
+    "Are these examples useful for social media, teaching, and presentations?",
+    "Yes. Many examples on this page work well across multiple contexts. A science infographic can support classroom teaching, a comparison layout can work in a blog post or LinkedIn carousel, and a report-style visual can support presentations, briefings, or internal communication. Browsing examples helps you spot which structures feel easiest to reuse for sharing, teaching, or explaining ideas in a professional setting.",
+  ],
+  [
+    "Can I browse examples to choose the right infographic format first?",
+    "Yes. That is one of the main reasons this page exists. If you are unsure whether your topic should become a process infographic, a comparison visual, a roadmap, a study guide, a poster-style summary, or a financial insight card, browsing examples first makes that decision much easier. Once the format is clear, writing a stronger prompt and getting a better result usually becomes much faster and more predictable.",
+  ],
 ] as const;
 
 const collectionSchema = {

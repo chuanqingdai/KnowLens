@@ -10,6 +10,7 @@ import { getIndustryReportTemplates } from "@/lib/industry-report-templates";
 import { getInsuranceInfographicTemplates } from "@/lib/insurance-infographic-templates";
 import { getProcessInfographicTemplates } from "@/lib/process-infographic-templates";
 import { getRecipeInfographicTemplates } from "@/lib/recipe-infographic-templates";
+import { getRoadmapInfographicTemplates } from "@/lib/roadmap-infographic-templates";
 import { getSexEducationInfographicTemplates } from "@/lib/sex-education-infographic-templates";
 import { listPublishedCases } from "@/lib/server/published-cases";
 
@@ -22,6 +23,7 @@ const publicRoutes = [
   "/blog",
   "/privacy",
   "/terms",
+  "/infographic/history",
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -132,6 +134,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
         images: [template.previewImageUrl],
       }));
+    const roadmapEntries: MetadataRoute.Sitemap = getRoadmapInfographicTemplates()
+      .filter((template) => template.generationStatus === "success")
+      .map((template) => ({
+        url: template.canonicalUrl,
+        lastModified: new Date(template.updatedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [template.previewImageUrl],
+      }));
     const caseEntries = cases
       .filter((item) => item.outputType !== "video")
       .map((item) => {
@@ -157,6 +168,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ...financeEntries,
       ...comparisonEntries,
       ...industryReportEntries,
+      ...roadmapEntries,
       ...caseEntries,
     ];
   } catch {
@@ -251,6 +263,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           images: [template.previewImageUrl],
         })),
       ...getIndustryReportTemplates()
+        .filter((template) => template.generationStatus === "success")
+        .map((template) => ({
+          url: template.canonicalUrl,
+          lastModified: new Date(template.updatedAt),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+          images: [template.previewImageUrl],
+        })),
+      ...getRoadmapInfographicTemplates()
         .filter((template) => template.generationStatus === "success")
         .map((template) => ({
           url: template.canonicalUrl,

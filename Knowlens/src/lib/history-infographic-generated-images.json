@@ -3,7 +3,7 @@
   "batchId": "history-infographic-tuzi-100",
   "batchTopic": "History Infographic",
   "generationProvider": "duomi",
-  "updatedAt": "2026-06-13T07:01:54.429Z",
+  "updatedAt": "2026-06-14T03:25:06.827Z",
   "job": {
     "id": "history-infographic-duomi-100",
     "topicInput": "History",
@@ -18,68 +18,12 @@
     "batchSize": 5,
     "forceFreshGeneration": true,
     "disableImageCache": true,
-    "status": "partial_completed",
+    "status": "completed",
     "requestedCount": 100,
-    "successCount": 89,
-    "failedCount": 11,
-    "createdPageCount": 89,
-    "errors": [
-      {
-        "itemIndex": 70,
-        "topicName": "Civil Rights Movement Infographic Template",
-        "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)"
-      },
-      {
-        "itemIndex": 76,
-        "topicName": "Great Depression Infographic Template",
-        "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)"
-      },
-      {
-        "itemIndex": 78,
-        "topicName": "World War II Timeline Infographic Template",
-        "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)"
-      },
-      {
-        "itemIndex": 80,
-        "topicName": "United Nations Formation Infographic Template",
-        "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)"
-      },
-      {
-        "itemIndex": 82,
-        "topicName": "Berlin Wall Infographic Template",
-        "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)"
-      },
-      {
-        "itemIndex": 77,
-        "topicName": "World War II Causes Infographic Template",
-        "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)"
-      },
-      {
-        "itemIndex": 79,
-        "topicName": "D-Day Normandy Landings Infographic Template",
-        "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)"
-      },
-      {
-        "itemIndex": 81,
-        "topicName": "Cold War Timeline Infographic Template",
-        "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)"
-      },
-      {
-        "itemIndex": 83,
-        "topicName": "Space Race Infographic Template",
-        "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)"
-      },
-      {
-        "itemIndex": 85,
-        "topicName": "Decolonization After World War II Infographic Template",
-        "reason": "DUOMI_POLL_TIMEOUT: Duomi provider did not return image URL in time. (task_id=597d4581-b425-9ce8-6d04-be1a74cbb8b4 | provider=duomi)"
-      },
-      {
-        "itemIndex": 97,
-        "topicName": "History of Architecture Infographic Template",
-        "reason": "IMAGE2_TIMEOUT: Image provider request timed out. (This operation was aborted | provider=tuzi)"
-      }
-    ],
+    "successCount": 100,
+    "failedCount": 0,
+    "createdPageCount": 100,
+    "errors": [],
     "createdTemplateIds": [
       "history-template-025",
       "history-template-036",
@@ -169,10 +113,21 @@
       "history-template-096",
       "history-template-098",
       "history-template-099",
-      "history-template-100"
+      "history-template-100",
+      "history-template-070",
+      "history-template-076",
+      "history-template-077",
+      "history-template-078",
+      "history-template-080",
+      "history-template-081",
+      "history-template-082",
+      "history-template-083",
+      "history-template-085",
+      "history-template-079",
+      "history-template-097"
     ],
     "createdAt": "2026-06-13T01:34:07.107Z",
-    "updatedAt": "2026-06-13T07:01:54.429Z"
+    "updatedAt": "2026-06-14T03:25:06.827Z"
   },
   "templates": {
     "crusades-overview-infographic": {
@@ -9913,87 +9868,1217 @@
       "allowPublicDownload": false,
       "createdAt": "2026-06-13T00:00:00.000Z",
       "updatedAt": "2026-06-13T07:01:22.936Z"
+    },
+    "civil-rights-movement-infographic": {
+      "id": "history-template-070",
+      "batchId": "history-infographic-duomi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "duomi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-duomi-100-civil-rights-movement-infographic-1781405899629-9rcngspj",
+      "sourceType": "duomi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T02:58:19.629Z",
+      "generationCompletedAt": "2026-06-14T03:00:07.466Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "civil-rights-movement-infographic",
+      "detailPath": "/infographic/history/civil-rights-movement-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/civil-rights-movement-infographic/",
+      "title": "Civil Rights Movement Infographic Template",
+      "topicName": "Civil Rights Movement",
+      "shortDescription": "A ready-to-use civil rights movement infographic template for history learning and visual explanation.",
+      "visibleDescription": "This civil rights movement infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "Civil Rights Movement Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this civil rights movement infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Civil Rights Movement Infographic Template",
+      "primaryKeyword": "Civil Rights Movement Infographic",
+      "secondaryKeywords": [
+        "civil rights movement visual summary",
+        "civil rights movement history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-civil-rights-movement-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-civil-rights-movement-infographic.webp",
+      "storageKey": "infographic/history/history-civil-rights-movement-infographic.webp",
+      "imageFilename": "history-civil-rights-movement-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 768,
+      "imageHeight": 1360,
+      "imageSizeBytes": 222856,
+      "aspectRatio": "9:16",
+      "imageAlt": "Civil Rights Movement infographic",
+      "imageTitle": "Civil Rights Movement Infographic Template",
+      "imageCaption": "Civil Rights Movement Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This civil rights movement infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Clean Educational Style",
+      "stylePrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for history learning, classroom use, and educational content. Use a clear layout with a large readable title, one central historical visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, beige, muted red, and gold accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.",
+      "contentPrompt": "Create a history infographic about Civil Rights Movement. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Civil Rights Movement as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Civil Rights Movement; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include causes, turning points, participants, outcomes, and civic impact. Image description: This civil rights movement infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This civil rights movement infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for history learning, classroom use, and educational content. Use a clear layout with a large readable title, one central historical visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, beige, muted red, and gold accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.\n\nCreate a history infographic about Civil Rights Movement. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Civil Rights Movement as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Civil Rights Movement; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include causes, turning points, participants, outcomes, and civic impact. Image description: This civil rights movement infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This civil rights movement infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about Civil Rights Movement. Use Clean Educational Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain Civil Rights Movement as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of Civil Rights Movement",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Include causes, turning points, participants, outcomes, and civic impact"
+      ],
+      "useCases": [
+        "history learning",
+        "study guides",
+        "visual summaries",
+        "education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history content creators",
+        "education teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "movements",
+        "civil",
+        "rights",
+        "movement"
+      ],
+      "relatedTemplateIds": [
+        "history-template-068",
+        "history-template-069",
+        "history-template-071",
+        "history-template-072",
+        "history-template-073",
+        "history-template-074"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:00:07.466Z"
+    },
+    "great-depression-infographic": {
+      "id": "history-template-076",
+      "batchId": "history-infographic-duomi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "duomi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-duomi-100-great-depression-infographic-1781406007820-l26k02vr",
+      "sourceType": "duomi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:00:07.820Z",
+      "generationCompletedAt": "2026-06-14T03:02:38.085Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "great-depression-infographic",
+      "detailPath": "/infographic/history/great-depression-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/great-depression-infographic/",
+      "title": "Great Depression Infographic Template",
+      "topicName": "Great Depression",
+      "shortDescription": "A ready-to-use great depression infographic template for history learning and visual explanation.",
+      "visibleDescription": "This great depression infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "Great Depression Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this great depression infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Great Depression Infographic Template",
+      "primaryKeyword": "Great Depression Infographic",
+      "secondaryKeywords": [
+        "great depression visual summary",
+        "great depression history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-great-depression-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-great-depression-infographic.webp",
+      "storageKey": "infographic/history/history-great-depression-infographic.webp",
+      "imageFilename": "history-great-depression-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 768,
+      "imageHeight": 1360,
+      "imageSizeBytes": 290852,
+      "aspectRatio": "9:16",
+      "imageAlt": "Great Depression infographic",
+      "imageTitle": "Great Depression Infographic Template",
+      "imageCaption": "Great Depression Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This great depression infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Clean Educational Style",
+      "stylePrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for history learning, classroom use, and educational content. Use a clear layout with a large readable title, one central historical visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, beige, muted red, and gold accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.",
+      "contentPrompt": "Create a history infographic about Great Depression. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Great Depression as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Great Depression; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include timelines, social change, technology, institutions, and global connections. Image description: This great depression infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This great depression infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for history learning, classroom use, and educational content. Use a clear layout with a large readable title, one central historical visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, beige, muted red, and gold accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.\n\nCreate a history infographic about Great Depression. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Great Depression as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Great Depression; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include timelines, social change, technology, institutions, and global connections. Image description: This great depression infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This great depression infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about Great Depression. Use Clean Educational Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain Great Depression as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of Great Depression",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Include timelines, social change, technology, institutions, and global connections"
+      ],
+      "useCases": [
+        "history learning",
+        "study guides",
+        "visual summaries",
+        "education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history content creators",
+        "education teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "modern",
+        "great",
+        "depression"
+      ],
+      "relatedTemplateIds": [
+        "history-template-074",
+        "history-template-075",
+        "history-template-077",
+        "history-template-078",
+        "history-template-079",
+        "history-template-080"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:02:38.085Z"
+    },
+    "world-war-ii-causes-infographic": {
+      "id": "history-template-077",
+      "batchId": "history-infographic-duomi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "duomi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-duomi-100-world-war-ii-causes-infographic-1781406158458-ltfbtr6a",
+      "sourceType": "duomi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:02:38.458Z",
+      "generationCompletedAt": "2026-06-14T03:05:07.837Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "world-war-ii-causes-infographic",
+      "detailPath": "/infographic/history/world-war-ii-causes-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/world-war-ii-causes-infographic/",
+      "title": "World War II Causes Infographic Template",
+      "topicName": "World War II Causes",
+      "shortDescription": "A ready-to-use world war ii causes infographic template for history learning and visual explanation.",
+      "visibleDescription": "This world war ii causes infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "World War II Causes Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this world war ii causes infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "World War II Causes Infographic Template",
+      "primaryKeyword": "World War II Causes Infographic",
+      "secondaryKeywords": [
+        "world war ii causes visual summary",
+        "world war ii causes history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-world-war-ii-causes-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-world-war-ii-causes-infographic.webp",
+      "storageKey": "infographic/history/history-world-war-ii-causes-infographic.webp",
+      "imageFilename": "history-world-war-ii-causes-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 768,
+      "imageHeight": 1360,
+      "imageSizeBytes": 276716,
+      "aspectRatio": "9:16",
+      "imageAlt": "World War II Causes infographic",
+      "imageTitle": "World War II Causes Infographic Template",
+      "imageCaption": "World War II Causes Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This world war ii causes infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Dark Premium History Style",
+      "stylePrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.",
+      "contentPrompt": "Create a history infographic about World War II Causes. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain World War II Causes as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of World War II Causes; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This world war ii causes infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This world war ii causes infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.\n\nCreate a history infographic about World War II Causes. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain World War II Causes as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of World War II Causes; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This world war ii causes infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This world war ii causes infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about World War II Causes. Use Dark Premium History Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain World War II Causes as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of World War II Causes",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences"
+      ],
+      "useCases": [
+        "neutral history lessons",
+        "exam review",
+        "timeline summaries",
+        "teacher handouts"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history educators",
+        "curriculum teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "geopolitical",
+        "world",
+        "war",
+        "ii",
+        "causes"
+      ],
+      "relatedTemplateIds": [
+        "history-template-075",
+        "history-template-076",
+        "history-template-078",
+        "history-template-079",
+        "history-template-080",
+        "history-template-081"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:05:07.837Z"
+    },
+    "world-war-ii-timeline-infographic": {
+      "id": "history-template-078",
+      "batchId": "history-infographic-duomi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "duomi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-duomi-100-world-war-ii-timeline-infographic-1781406308178-l741fl5h",
+      "sourceType": "duomi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:05:08.178Z",
+      "generationCompletedAt": "2026-06-14T03:08:08.568Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "world-war-ii-timeline-infographic",
+      "detailPath": "/infographic/history/world-war-ii-timeline-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/world-war-ii-timeline-infographic/",
+      "title": "World War II Timeline Infographic Template",
+      "topicName": "World War II Timeline",
+      "shortDescription": "A ready-to-use world war ii timeline infographic template for history learning and visual explanation.",
+      "visibleDescription": "This world war ii timeline infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "World War II Timeline Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this world war ii timeline infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "World War II Timeline Infographic Template",
+      "primaryKeyword": "World War II Timeline Infographic",
+      "secondaryKeywords": [
+        "world war ii timeline visual summary",
+        "world war ii timeline history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-world-war-ii-timeline-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-world-war-ii-timeline-infographic.webp",
+      "storageKey": "infographic/history/history-world-war-ii-timeline-infographic.webp",
+      "imageFilename": "history-world-war-ii-timeline-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 768,
+      "imageHeight": 1360,
+      "imageSizeBytes": 278786,
+      "aspectRatio": "9:16",
+      "imageAlt": "World War II Timeline infographic",
+      "imageTitle": "World War II Timeline Infographic Template",
+      "imageCaption": "World War II Timeline Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This world war ii timeline infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Premium Editorial Style",
+      "stylePrompt": "Premium Editorial Style: Use a premium magazine-style history infographic design. The image should feel elegant, polished, visually rich, and suitable for historical timelines, revolutions, empires, social movements, world history overviews, and shareable educational content. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted red, warm brown, gold, or topic-matching historical accents. Keep the image premium, modern, educational, and visually beautiful.",
+      "contentPrompt": "Create a history infographic about World War II Timeline. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain World War II Timeline as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of World War II Timeline; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This world war ii timeline infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This world war ii timeline infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Premium Editorial Style: Use a premium magazine-style history infographic design. The image should feel elegant, polished, visually rich, and suitable for historical timelines, revolutions, empires, social movements, world history overviews, and shareable educational content. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted red, warm brown, gold, or topic-matching historical accents. Keep the image premium, modern, educational, and visually beautiful.\n\nCreate a history infographic about World War II Timeline. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain World War II Timeline as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of World War II Timeline; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This world war ii timeline infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This world war ii timeline infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about World War II Timeline. Use Premium Editorial Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain World War II Timeline as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of World War II Timeline",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences"
+      ],
+      "useCases": [
+        "neutral history lessons",
+        "exam review",
+        "timeline summaries",
+        "teacher handouts"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history educators",
+        "curriculum teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "geopolitical",
+        "world",
+        "war",
+        "ii",
+        "timeline"
+      ],
+      "relatedTemplateIds": [
+        "history-template-076",
+        "history-template-077",
+        "history-template-079",
+        "history-template-080",
+        "history-template-081",
+        "history-template-082"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:08:08.568Z"
+    },
+    "united-nations-formation-infographic": {
+      "id": "history-template-080",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-united-nations-formation-infographic-1781407046779-pi38jsti",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:17:26.778Z",
+      "generationCompletedAt": "2026-06-14T03:18:30.147Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "united-nations-formation-infographic",
+      "detailPath": "/infographic/history/united-nations-formation-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/united-nations-formation-infographic/",
+      "title": "United Nations Formation Infographic Template",
+      "topicName": "United Nations Formation",
+      "shortDescription": "A ready-to-use united nations formation infographic template for history learning and visual explanation.",
+      "visibleDescription": "This united nations formation infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "United Nations Formation Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this united nations formation infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "United Nations Formation Infographic Template",
+      "primaryKeyword": "United Nations Formation Infographic",
+      "secondaryKeywords": [
+        "united nations formation visual summary",
+        "united nations formation history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-united-nations-formation-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-united-nations-formation-infographic.webp",
+      "storageKey": "infographic/history/history-united-nations-formation-infographic.webp",
+      "imageFilename": "history-united-nations-formation-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 395618,
+      "aspectRatio": "9:16",
+      "imageAlt": "United Nations Formation infographic",
+      "imageTitle": "United Nations Formation Infographic Template",
+      "imageCaption": "United Nations Formation Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This united nations formation infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Museum Archive Style",
+      "stylePrompt": "Museum Archive Style: Use a refined museum archive infographic style. The image should feel historical, credible, calm, elegant, and suitable for ancient civilizations, artifacts, documents, historical figures, dynasties, and cultural history. Use a parchment or archive-inspired visual layout with a strong central historical subject, short explanatory text areas, and a polished exhibition-board feeling. Use a classic readable serif-style title with clean readable body text in English. Use warm beige, parchment, sepia, muted brown, dark ink, and subtle gold accents. Keep the visual scholarly, tasteful, clean, and historically respectful.",
+      "contentPrompt": "Create a history infographic about United Nations Formation. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain United Nations Formation as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of United Nations Formation; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include timelines, social change, technology, institutions, and global connections. Image description: This united nations formation infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This united nations formation infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Museum Archive Style: Use a refined museum archive infographic style. The image should feel historical, credible, calm, elegant, and suitable for ancient civilizations, artifacts, documents, historical figures, dynasties, and cultural history. Use a parchment or archive-inspired visual layout with a strong central historical subject, short explanatory text areas, and a polished exhibition-board feeling. Use a classic readable serif-style title with clean readable body text in English. Use warm beige, parchment, sepia, muted brown, dark ink, and subtle gold accents. Keep the visual scholarly, tasteful, clean, and historically respectful.\n\nCreate a history infographic about United Nations Formation. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain United Nations Formation as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of United Nations Formation; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include timelines, social change, technology, institutions, and global connections. Image description: This united nations formation infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This united nations formation infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about United Nations Formation. Use Museum Archive Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain United Nations Formation as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of United Nations Formation",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Include timelines, social change, technology, institutions, and global connections"
+      ],
+      "useCases": [
+        "history learning",
+        "study guides",
+        "visual summaries",
+        "education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history content creators",
+        "education teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "united",
+        "nations",
+        "formation"
+      ],
+      "relatedTemplateIds": [
+        "history-template-078",
+        "history-template-079",
+        "history-template-081",
+        "history-template-082",
+        "history-template-083",
+        "history-template-084"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:18:30.147Z"
+    },
+    "cold-war-timeline-infographic": {
+      "id": "history-template-081",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-cold-war-timeline-infographic-1781407112558-dvoxmora",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:18:32.558Z",
+      "generationCompletedAt": "2026-06-14T03:19:26.347Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "cold-war-timeline-infographic",
+      "detailPath": "/infographic/history/cold-war-timeline-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/cold-war-timeline-infographic/",
+      "title": "Cold War Timeline Infographic Template",
+      "topicName": "Cold War Timeline",
+      "shortDescription": "A ready-to-use cold war timeline infographic template for history learning and visual explanation.",
+      "visibleDescription": "This cold war timeline infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "Cold War Timeline Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this cold war timeline infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Cold War Timeline Infographic Template",
+      "primaryKeyword": "Cold War Timeline Infographic",
+      "secondaryKeywords": [
+        "cold war timeline visual summary",
+        "cold war timeline history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-cold-war-timeline-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-cold-war-timeline-infographic.webp",
+      "storageKey": "infographic/history/history-cold-war-timeline-infographic.webp",
+      "imageFilename": "history-cold-war-timeline-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 277228,
+      "aspectRatio": "9:16",
+      "imageAlt": "Cold War Timeline infographic",
+      "imageTitle": "Cold War Timeline Infographic Template",
+      "imageCaption": "Cold War Timeline Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This cold war timeline infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Dark Premium History Style",
+      "stylePrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.",
+      "contentPrompt": "Create a history infographic about Cold War Timeline. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Cold War Timeline as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Cold War Timeline; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This cold war timeline infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This cold war timeline infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.\n\nCreate a history infographic about Cold War Timeline. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Cold War Timeline as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Cold War Timeline; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This cold war timeline infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This cold war timeline infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about Cold War Timeline. Use Dark Premium History Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain Cold War Timeline as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of Cold War Timeline",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences"
+      ],
+      "useCases": [
+        "neutral history lessons",
+        "exam review",
+        "timeline summaries",
+        "teacher handouts"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history educators",
+        "curriculum teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "geopolitical",
+        "cold",
+        "war",
+        "timeline"
+      ],
+      "relatedTemplateIds": [
+        "history-template-079",
+        "history-template-080",
+        "history-template-082",
+        "history-template-083",
+        "history-template-084",
+        "history-template-085"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:19:26.347Z"
+    },
+    "berlin-wall-infographic": {
+      "id": "history-template-082",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-berlin-wall-infographic-1781407166645-tlygtx3l",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:19:26.645Z",
+      "generationCompletedAt": "2026-06-14T03:20:28.211Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "berlin-wall-infographic",
+      "detailPath": "/infographic/history/berlin-wall-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/berlin-wall-infographic/",
+      "title": "Berlin Wall Infographic Template",
+      "topicName": "Berlin Wall",
+      "shortDescription": "A ready-to-use berlin wall infographic template for history learning and visual explanation.",
+      "visibleDescription": "This berlin wall infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "Berlin Wall Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this berlin wall infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Berlin Wall Infographic Template",
+      "primaryKeyword": "Berlin Wall Infographic",
+      "secondaryKeywords": [
+        "berlin wall visual summary",
+        "berlin wall history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-berlin-wall-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-berlin-wall-infographic.webp",
+      "storageKey": "infographic/history/history-berlin-wall-infographic.webp",
+      "imageFilename": "history-berlin-wall-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 327386,
+      "aspectRatio": "9:16",
+      "imageAlt": "Berlin Wall infographic",
+      "imageTitle": "Berlin Wall Infographic Template",
+      "imageCaption": "Berlin Wall Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This berlin wall infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Premium Editorial Style",
+      "stylePrompt": "Premium Editorial Style: Use a premium magazine-style history infographic design. The image should feel elegant, polished, visually rich, and suitable for historical timelines, revolutions, empires, social movements, world history overviews, and shareable educational content. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted red, warm brown, gold, or topic-matching historical accents. Keep the image premium, modern, educational, and visually beautiful.",
+      "contentPrompt": "Create a history infographic about Berlin Wall. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Berlin Wall as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Berlin Wall; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This berlin wall infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This berlin wall infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Premium Editorial Style: Use a premium magazine-style history infographic design. The image should feel elegant, polished, visually rich, and suitable for historical timelines, revolutions, empires, social movements, world history overviews, and shareable educational content. Use a strong hero visual, a large headline, a concise subtitle, and supporting information blocks. Use refined editorial spacing, balanced composition, clean hierarchy, and beautiful visual rhythm. Use an elegant editorial title font with clean readable body text, all in English and mobile-readable. Use a sophisticated palette such as deep blue, cream, muted red, warm brown, gold, or topic-matching historical accents. Keep the image premium, modern, educational, and visually beautiful.\n\nCreate a history infographic about Berlin Wall. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Berlin Wall as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Berlin Wall; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This berlin wall infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This berlin wall infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about Berlin Wall. Use Premium Editorial Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain Berlin Wall as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of Berlin Wall",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences"
+      ],
+      "useCases": [
+        "neutral history lessons",
+        "exam review",
+        "timeline summaries",
+        "teacher handouts"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history educators",
+        "curriculum teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "geopolitical",
+        "berlin",
+        "wall"
+      ],
+      "relatedTemplateIds": [
+        "history-template-080",
+        "history-template-081",
+        "history-template-083",
+        "history-template-084",
+        "history-template-085",
+        "history-template-086"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:20:28.211Z"
+    },
+    "space-race-infographic": {
+      "id": "history-template-083",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-space-race-infographic-1781407228581-8kynmlj3",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:20:28.581Z",
+      "generationCompletedAt": "2026-06-14T03:21:22.372Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "space-race-infographic",
+      "detailPath": "/infographic/history/space-race-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/space-race-infographic/",
+      "title": "Space Race Infographic Template",
+      "topicName": "Space Race",
+      "shortDescription": "A ready-to-use space race infographic template for history learning and visual explanation.",
+      "visibleDescription": "This space race infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "Space Race Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this space race infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Space Race Infographic Template",
+      "primaryKeyword": "Space Race Infographic",
+      "secondaryKeywords": [
+        "space race visual summary",
+        "space race history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-space-race-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-space-race-infographic.webp",
+      "storageKey": "infographic/history/history-space-race-infographic.webp",
+      "imageFilename": "history-space-race-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 287220,
+      "aspectRatio": "9:16",
+      "imageAlt": "Space Race infographic",
+      "imageTitle": "Space Race Infographic Template",
+      "imageCaption": "Space Race Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This space race infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Clean Educational Style",
+      "stylePrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for history learning, classroom use, and educational content. Use a clear layout with a large readable title, one central historical visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, beige, muted red, and gold accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.",
+      "contentPrompt": "Create a history infographic about Space Race. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Space Race as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Space Race; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include timelines, social change, technology, institutions, and global connections. Image description: This space race infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This space race infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Clean Educational Style: Use a modern, clean, professional educational infographic style. The image should feel bright, trustworthy, polished, and suitable for history learning, classroom use, and educational content. Use a clear layout with a large readable title, one central historical visual focus, and 3-6 supporting information areas. Use a clean sans-serif font with large title text, readable section headings, and short English labels. Use a light background with high contrast and soft blue, beige, muted red, and gold accents. Use 2-4 harmonious colors. Keep the visual beautiful, organized, mobile-readable, and not overcrowded.\n\nCreate a history infographic about Space Race. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Space Race as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Space Race; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include timelines, social change, technology, institutions, and global connections. Image description: This space race infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This space race infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about Space Race. Use Clean Educational Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain Space Race as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of Space Race",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Include timelines, social change, technology, institutions, and global connections"
+      ],
+      "useCases": [
+        "history learning",
+        "study guides",
+        "visual summaries",
+        "education content"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history content creators",
+        "education teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "space",
+        "race"
+      ],
+      "relatedTemplateIds": [
+        "history-template-081",
+        "history-template-082",
+        "history-template-084",
+        "history-template-085",
+        "history-template-086",
+        "history-template-087"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:21:22.372Z"
+    },
+    "decolonization-after-world-war-ii-infographic": {
+      "id": "history-template-085",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-decolonization-after-world-war-ii-infographic-1781407282767-3viwi0nn",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:21:22.767Z",
+      "generationCompletedAt": "2026-06-14T03:22:20.461Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "decolonization-after-world-war-ii-infographic",
+      "detailPath": "/infographic/history/decolonization-after-world-war-ii-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/decolonization-after-world-war-ii-infographic/",
+      "title": "Decolonization After World War II Infographic Template",
+      "topicName": "Decolonization After World War II",
+      "shortDescription": "A ready-to-use decolonization after world war ii infographic template for history learning and visual explanation.",
+      "visibleDescription": "This decolonization after world war ii infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "Decolonization After World War II Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this decolonization after world war ii infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "Decolonization After World War II Infographic Template",
+      "primaryKeyword": "Decolonization After World War II Infographic",
+      "secondaryKeywords": [
+        "decolonization after world war ii visual summary",
+        "decolonization after world war ii history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-decolonization-after-world-war-ii-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-decolonization-after-world-war-ii-infographic.webp",
+      "storageKey": "infographic/history/history-decolonization-after-world-war-ii-infographic.webp",
+      "imageFilename": "history-decolonization-after-world-war-ii-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 283226,
+      "aspectRatio": "9:16",
+      "imageAlt": "Decolonization After World War II infographic",
+      "imageTitle": "Decolonization After World War II Infographic Template",
+      "imageCaption": "Decolonization After World War II Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This decolonization after world war ii infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Dark Premium History Style",
+      "stylePrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.",
+      "contentPrompt": "Create a history infographic about Decolonization After World War II. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Decolonization After World War II as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Decolonization After World War II; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This decolonization after world war ii infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This decolonization after world war ii infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.\n\nCreate a history infographic about Decolonization After World War II. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain Decolonization After World War II as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of Decolonization After World War II; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This decolonization after world war ii infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This decolonization after world war ii infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about Decolonization After World War II. Use Dark Premium History Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain Decolonization After World War II as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of Decolonization After World War II",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences"
+      ],
+      "useCases": [
+        "neutral history lessons",
+        "exam review",
+        "timeline summaries",
+        "teacher handouts"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history educators",
+        "curriculum teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "geopolitical",
+        "decolonization",
+        "after",
+        "world",
+        "war",
+        "ii"
+      ],
+      "relatedTemplateIds": [
+        "history-template-083",
+        "history-template-084",
+        "history-template-086",
+        "history-template-087",
+        "history-template-088",
+        "history-template-089"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:22:20.461Z"
+    },
+    "d-day-normandy-landings-infographic": {
+      "id": "history-template-079",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-d-day-normandy-landings-infographic-1781407387775-slbqs4ez",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:23:07.775Z",
+      "generationCompletedAt": "2026-06-14T03:24:07.947Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "d-day-normandy-landings-infographic",
+      "detailPath": "/infographic/history/d-day-normandy-landings-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/d-day-normandy-landings-infographic/",
+      "title": "D-Day Normandy Landings Infographic Template",
+      "topicName": "D-Day Normandy Landings",
+      "shortDescription": "A ready-to-use d-day normandy landings infographic template for history learning and visual explanation.",
+      "visibleDescription": "This d-day normandy landings infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "D-Day Normandy Landings Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this d-day normandy landings infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "D-Day Normandy Landings Infographic Template",
+      "primaryKeyword": "D-Day Normandy Landings Infographic",
+      "secondaryKeywords": [
+        "d-day normandy landings visual summary",
+        "d-day normandy landings history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-d-day-normandy-landings-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-d-day-normandy-landings-infographic.webp",
+      "storageKey": "infographic/history/history-d-day-normandy-landings-infographic.webp",
+      "imageFilename": "history-d-day-normandy-landings-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 313492,
+      "aspectRatio": "9:16",
+      "imageAlt": "D-Day Normandy Landings infographic",
+      "imageTitle": "D-Day Normandy Landings Infographic Template",
+      "imageCaption": "D-Day Normandy Landings Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This d-day normandy landings infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Dark Premium History Style",
+      "stylePrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.",
+      "contentPrompt": "Create a history infographic about D-Day Normandy Landings. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain D-Day Normandy Landings as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of D-Day Normandy Landings; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This d-day normandy landings infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This d-day normandy landings infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Dark Premium History Style: Use a dark premium historical infographic style. The image should feel cinematic, serious, refined, and suitable for major wars, geopolitical timelines, empires, revolutions, cold war topics, space race, and modern history explained in a neutral educational way. Use a dark background with a central polished historical visual and clean information areas. Use a modern clean sans-serif font with a bright readable title, high-contrast English labels, and concise body text. Use a dark navy, charcoal, black, deep red, bronze, or muted gold palette. Keep the visual premium, dramatic, readable, historically respectful, and not sensationalized.\n\nCreate a history infographic about D-Day Normandy Landings. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain D-Day Normandy Landings as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of D-Day Normandy Landings; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences. Image description: This d-day normandy landings infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This d-day normandy landings infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about D-Day Normandy Landings. Use Dark Premium History Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain D-Day Normandy Landings as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of D-Day Normandy Landings",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Keep war and conflict content neutral, educational, non-sensationalized, and focused on causes and consequences"
+      ],
+      "useCases": [
+        "neutral history lessons",
+        "exam review",
+        "timeline summaries",
+        "teacher handouts"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history educators",
+        "curriculum teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "geopolitical",
+        "d",
+        "day",
+        "normandy",
+        "landings"
+      ],
+      "relatedTemplateIds": [
+        "history-template-077",
+        "history-template-078",
+        "history-template-080",
+        "history-template-081",
+        "history-template-082",
+        "history-template-083"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:24:07.947Z"
+    },
+    "history-of-architecture-infographic": {
+      "id": "history-template-097",
+      "batchId": "history-infographic-tuzi-100",
+      "batchTopic": "History Infographic",
+      "generationProvider": "tuzi",
+      "generationStatus": "success",
+      "tuziRequestId": "history-infographic-tuzi-100-history-of-architecture-infographic-1781407448350-01y6m26f",
+      "sourceType": "tuzi_generated",
+      "cacheBypassed": true,
+      "isFreshGeneration": true,
+      "generationStartedAt": "2026-06-14T03:24:08.350Z",
+      "generationCompletedAt": "2026-06-14T03:25:04.129Z",
+      "categorySlug": "history",
+      "categoryName": "History",
+      "categoryKeyword": "History Infographic Templates",
+      "slug": "history-of-architecture-infographic",
+      "detailPath": "/infographic/history/history-of-architecture-infographic/",
+      "canonicalUrl": "https://knowlens.ai/infographic/history/history-of-architecture-infographic/",
+      "title": "History of Architecture Infographic Template",
+      "topicName": "History of Architecture",
+      "shortDescription": "A ready-to-use history of architecture infographic template for history learning and visual explanation.",
+      "visibleDescription": "This history of architecture infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "seoTitle": "History of Architecture Infographic Template - KnowLens AI",
+      "metaDescription": "Explore this history of architecture infographic template for history learning and visual explanation. Create a similar visual with KnowLens AI.",
+      "h1": "History of Architecture Infographic Template",
+      "primaryKeyword": "History of Architecture Infographic",
+      "secondaryKeywords": [
+        "history of architecture visual summary",
+        "history of architecture history infographic",
+        "history infographic template",
+        "educational history visual"
+      ],
+      "generatorKeywords": [
+        "History Infographic Maker",
+        "Educational Infographic Maker",
+        "AI Infographic Generator",
+        "Text to Infographic Generator"
+      ],
+      "previewImagePath": "/images/infographic/history/history-history-of-architecture-infographic.webp",
+      "previewImageUrl": "https://knowlens.ai/images/infographic/history/history-history-of-architecture-infographic.webp",
+      "storageKey": "infographic/history/history-history-of-architecture-infographic.webp",
+      "imageFilename": "history-history-of-architecture-infographic.webp",
+      "imageFormat": "webp",
+      "imageMimeType": "image/webp",
+      "imageWidth": 948,
+      "imageHeight": 1659,
+      "imageSizeBytes": 286850,
+      "aspectRatio": "9:16",
+      "imageAlt": "History of Architecture infographic",
+      "imageTitle": "History of Architecture Infographic Template",
+      "imageCaption": "History of Architecture Infographic - a history infographic example created with KnowLens AI.",
+      "imageDescription": "This history of architecture infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators.",
+      "styleName": "Blueprint Technical Style",
+      "stylePrompt": "Blueprint Technical Style: Use a precise technical diagram style adapted for historical systems, trade routes, inventions, architecture, transportation, communication networks, and military logistics explained in a neutral educational way. The image should feel analytical, structured, and organized. Use a grid-based blueprint layout with a central historical system or object visual and organized explanation areas. Use a technical sans-serif font with crisp English labels and readable callouts. Use a dark navy or blueprint-blue background with white and cyan linework, plus one or two controlled accent colors. Keep the visual clean, accurate, premium, symmetrical, and not cluttered.",
+      "contentPrompt": "Create a history infographic about History of Architecture. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain History of Architecture as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of History of Architecture; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include routes, mechanisms, networks, tools, or structural relationships. Image description: This history of architecture infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This history of architecture infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.",
+      "aspectRatioPrompt": "Aspect ratio: 9:16",
+      "qualityPrompt": "Create a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "finalPrompt": "Blueprint Technical Style: Use a precise technical diagram style adapted for historical systems, trade routes, inventions, architecture, transportation, communication networks, and military logistics explained in a neutral educational way. The image should feel analytical, structured, and organized. Use a grid-based blueprint layout with a central historical system or object visual and organized explanation areas. Use a technical sans-serif font with crisp English labels and readable callouts. Use a dark navy or blueprint-blue background with white and cyan linework, plus one or two controlled accent colors. Keep the visual clean, accurate, premium, symmetrical, and not cluttered.\n\nCreate a history infographic about History of Architecture. Use a large readable title, one central historically appropriate visual focus, and 3-6 concise information areas. Keep the tone neutral, respectful, educational, and non-propagandistic. Content focus: Explain History of Architecture as a neutral educational history infographic for visual learning. Knowledge points: Define the historical context of History of Architecture; Show the main people, places, ideas, or systems involved; Organize the key developments in a clear learning sequence; Explain the broader historical significance in neutral language; Include routes, mechanisms, networks, tools, or structural relationships. Image description: This history of architecture infographic explains the historical concept in a clear visual format for students, teachers, history creators, and educators. Visible description: This history of architecture infographic template explains the historical topic in a clear visual format for students, teachers, history creators, and education teams. It organizes context, key developments, people, places, systems, turning points, and significance into concise English sections for easy visual learning.\n\nAspect ratio: 9:16\n\nCreate a high-quality professional knowledge infographic with a clear information hierarchy, accurate and concise English labels, historically correct knowledge visualization, precise diagrams and visual structures, no spelling or grammar mistakes, no incorrect or distorted drawings, no invented facts, and a polished editorial infographic layout with balanced spacing, readable typography, and easy-to-scan sections. Optimize the design for mobile viewing, keep the title and section headings large, reduce small text, avoid tiny labels, and keep every key section readable on a phone screen.",
+      "createSimilarPrompt": "Create an educational history infographic about History of Architecture. Use Blueprint Technical Style. Aspect ratio: 9:16. Focus on the key historical details and knowledge points. Keep the design clear, polished, neutral, respectful, and professional.",
+      "topicPrompt": "Explain History of Architecture as a neutral educational history infographic for visual learning.",
+      "knowledgePoints": [
+        "Define the historical context of History of Architecture",
+        "Show the main people, places, ideas, or systems involved",
+        "Organize the key developments in a clear learning sequence",
+        "Explain the broader historical significance in neutral language",
+        "Include routes, mechanisms, networks, tools, or structural relationships"
+      ],
+      "useCases": [
+        "timeline visuals",
+        "system explainers",
+        "history of technology lessons",
+        "educational diagrams"
+      ],
+      "targetAudience": [
+        "students",
+        "teachers",
+        "history creators",
+        "education content teams"
+      ],
+      "tags": [
+        "history",
+        "infographic",
+        "systems",
+        "of",
+        "architecture"
+      ],
+      "relatedTemplateIds": [
+        "history-template-095",
+        "history-template-096",
+        "history-template-098",
+        "history-template-099",
+        "history-template-100"
+      ],
+      "relatedCategorySlugs": [
+        "history",
+        "education",
+        "infographic-examples"
+      ],
+      "relatedToolSlugs": [
+        "educational-infographic-maker",
+        "ai-infographic-generator",
+        "text-to-infographic",
+        "infographic-maker"
+      ],
+      "allowPublicDownload": false,
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-14T03:25:04.129Z"
     }
   },
-  "errors": [
-    {
-      "slug": "civil-rights-movement-infographic",
-      "title": "Civil Rights Movement Infographic Template",
-      "itemIndex": 70,
-      "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)",
-      "updatedAt": "2026-06-13T05:37:52.829Z"
-    },
-    {
-      "slug": "great-depression-infographic",
-      "title": "Great Depression Infographic Template",
-      "itemIndex": 76,
-      "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)",
-      "updatedAt": "2026-06-13T05:37:54.989Z"
-    },
-    {
-      "slug": "world-war-ii-timeline-infographic",
-      "title": "World War II Timeline Infographic Template",
-      "itemIndex": 78,
-      "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)",
-      "updatedAt": "2026-06-13T05:37:57.144Z"
-    },
-    {
-      "slug": "united-nations-formation-infographic",
-      "title": "United Nations Formation Infographic Template",
-      "itemIndex": 80,
-      "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)",
-      "updatedAt": "2026-06-13T05:37:59.278Z"
-    },
-    {
-      "slug": "berlin-wall-infographic",
-      "title": "Berlin Wall Infographic Template",
-      "itemIndex": 82,
-      "reason": "IMAGE2_FETCH_ERROR: Image provider request failed. (fetch failed | provider=tuzi)",
-      "updatedAt": "2026-06-13T05:38:01.409Z"
-    },
-    {
-      "slug": "world-war-ii-causes-infographic",
-      "title": "World War II Causes Infographic Template",
-      "itemIndex": 77,
-      "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)",
-      "updatedAt": "2026-06-13T06:18:02.410Z"
-    },
-    {
-      "slug": "d-day-normandy-landings-infographic",
-      "title": "D-Day Normandy Landings Infographic Template",
-      "itemIndex": 79,
-      "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)",
-      "updatedAt": "2026-06-13T06:18:02.687Z"
-    },
-    {
-      "slug": "cold-war-timeline-infographic",
-      "title": "Cold War Timeline Infographic Template",
-      "itemIndex": 81,
-      "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)",
-      "updatedAt": "2026-06-13T06:18:02.961Z"
-    },
-    {
-      "slug": "space-race-infographic",
-      "title": "Space Race Infographic Template",
-      "itemIndex": 83,
-      "reason": "DUOMI_FETCH_ERROR: Duomi image provider request failed. (fetch failed | provider=duomi)",
-      "updatedAt": "2026-06-13T06:18:03.260Z"
-    },
-    {
-      "slug": "decolonization-after-world-war-ii-infographic",
-      "title": "Decolonization After World War II Infographic Template",
-      "itemIndex": 85,
-      "reason": "DUOMI_POLL_TIMEOUT: Duomi provider did not return image URL in time. (task_id=597d4581-b425-9ce8-6d04-be1a74cbb8b4 | provider=duomi)",
-      "updatedAt": "2026-06-13T06:34:17.937Z"
-    },
-    {
-      "slug": "history-of-architecture-infographic",
-      "title": "History of Architecture Infographic Template",
-      "itemIndex": 97,
-      "reason": "IMAGE2_TIMEOUT: Image provider request timed out. (This operation was aborted | provider=tuzi)",
-      "updatedAt": "2026-06-13T06:58:06.172Z"
-    }
-  ],
+  "errors": [],
   "sourceUrls": {
     "crusades-overview-infographic": [
       "https://apioss19.sydney-ai.com/img/187/t9il_91djAoxYvqykrzL_5VN_8_Nt7TgYsJpjs-nX8XwX7Y4YvQnfa-q18FN1x3AX4BmX4Bn1ABnXphn1pQlXx3lDs-mY0_p172gXv-AYxig17Y8kpb417kAYx_r18MpY0QmjIeLkI3=/gi2010e-1781314604_d0d731ba4d2f4a1ffc0b1f2f772b3d10.webp"
@@ -10264,6 +11349,39 @@
     ],
     "history-of-the-internet-infographic": [
       "https://cdn3.dmiapi.com/img/2026/06/13/1/task_8FdFsKdwt0gKhruvDgR28LVbxckUQ9Pf/0.png?e=1781766075&token=mTvq9hVVEUusCokO8WegAYo2IjxRSvr97Q4j2lrx:aoVeACl7_KxbW9uoeGZzeFgH8k0="
+    ],
+    "civil-rights-movement-infographic": [
+      "https://cdn3.dmiapi.com/img/2026/06/14/1/task_JUeCXi1SLDUlPKXS1zOMkNK9ijCcBksU/0.png?e=1781837997&token=mTvq9hVVEUusCokO8WegAYo2IjxRSvr97Q4j2lrx:FIKeGAWnvGYYFwWVACiWeQ4Mg6A="
+    ],
+    "great-depression-infographic": [
+      "https://cdn3.dmiapi.com/img/2026/06/14/1/task_SKxgnOpY2KlkAbqA6TuwVEb0GZi62Et1/0.png?e=1781838150&token=mTvq9hVVEUusCokO8WegAYo2IjxRSvr97Q4j2lrx:oD9CMkU1D_Jd01zsyYrqcmQ8rXg="
+    ],
+    "world-war-ii-causes-infographic": [
+      "https://cdn3.dmiapi.com/img/2026/06/14/1/task_F7ve9Cb9jpV88aCSxgwS9lgndxHv3yZp/0.png?e=1781838299&token=mTvq9hVVEUusCokO8WegAYo2IjxRSvr97Q4j2lrx:jWgYBaieXjVw_6i5HoSGrDsu1V8="
+    ],
+    "world-war-ii-timeline-infographic": [
+      "https://cdn3.dmiapi.com/img/2026/06/14/1/task_1IEYZSnWvAT6lUakzq0SBQOyCPUaPJPC/0.png?e=1781838481&token=mTvq9hVVEUusCokO8WegAYo2IjxRSvr97Q4j2lrx:nni1c9OMA9M0Q2TZMOFBtFn6kg8="
+    ],
+    "united-nations-formation-infographic": [
+      "https://apioss1.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBrkx-n18JgXawVYakl1aQTkxQsX0bLk7Ywf0_sYvWw15VmR8_=/gi2008e-7b412ea599e64115b1640eafd876dad1.png"
+    ],
+    "cold-war-timeline-infographic": [
+      "https://apioss20.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBV1pkrYxLwYaMTkx-lkp2xfa_nYx1s1p3qX824kpkpY4VmR8_=/gi2033e-9367f9de25b44c2c971f363086bbc63f.png"
+    ],
+    "berlin-wall-infographic": [
+      "https://apioss20.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZoLY8kmYvX81ahmXxhlY71Ak8XL1pg4kakn1a3VYvQTfZVmR8_=/gi2008e-eff0dcf180684ec2bce38ba61109da58.png"
+    ],
+    "space-race-infographic": [
+      "https://apioss1.sydney-ai.com/img/149/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZow1sQn1v-T1xLxXxklfvi4fv-VkpwqfaFVkpXwk8J4Y4VmR8_=/gi2009e-d3a10d529c6648db8d9c98959c3dbebf.png"
+    ],
+    "decolonization-after-world-war-ii-infographic": [
+      "https://apioss22.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZo4Y82wfa3s103m1v1lXxMTkaknka2wkxkq1vXg1pFTkAVmR8_=/gi2008e-bfbd9060000c4625a61a2db680ca355c.png"
+    ],
+    "d-day-normandy-landings-infographic": [
+      "https://apioss21.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZBp10_n1vixk8J8XvQlfaknk7Fn18Jwkp1TYxMrkahT1ZVmR8_=/gi2027e-30710dcbef4a4961ae12edc35f27a850.png"
+    ],
+    "history-of-architecture-infographic": [
+      "https://apioss20.sydney-ai.com/img/150/t9il_91djAom_8ByY8LCYDXV_riLR5VptDiLjsXwR4BA10Ms10knXZo4ks-rfaJgYaXwXvkl1aFrfvkAkphmY0Qr1a3mX81sX4VmR8_=/gi2010e-bcd795ae3d4f41578f2c80d171006c66.png"
     ]
   }
 }
