@@ -23,8 +23,10 @@ import {
 } from "lucide-react";
 
 import {
+  Background,
   Controls,
   MiniMap,
+  Panel,
   PanOnScrollMode,
   Position,
   ReactFlow,
@@ -855,7 +857,31 @@ function createInitialPack() {
 }
 
 function getSlideIdFromNodeId(nodeId: string) {
-  return nodeId.replace(/^(story|image)-/, "");
+  const storyboardMatch = nodeId.match(/^story-(.+)$/);
+  if (storyboardMatch) {
+    return storyboardMatch[1];
+  }
+
+  const imageWithPageMatch = nodeId.match(/^image-slide-\d+-(.+)$/);
+  if (imageWithPageMatch) {
+    return imageWithPageMatch[1];
+  }
+
+  const legacyImageMatch = nodeId.match(/^image-(.+)$/);
+  if (legacyImageMatch) {
+    return legacyImageMatch[1];
+  }
+
+  return nodeId;
+}
+
+function extractStoryboardMiniMapIndexFromNodeId(nodeId: string) {
+  const match = nodeId.match(/^image-slide-(\d+)(?:$|-)/);
+  if (!match) {
+    return null;
+  }
+  const index = Number.parseInt(match[1], 10);
+  return Number.isFinite(index) ? index : null;
 }
 
 function StoryboardMiniMapNode({
@@ -878,6 +904,9 @@ function StoryboardMiniMapNode({
   const stroke = selected ? MINIMAP_VIEWPORT_COLOR : color || strokeColor || "#71717a";
   const lineWidth = selected ? Math.max(2.5, strokeWidth || 1) : Math.max(1.6, strokeWidth || 1);
   const isImageNode = id.startsWith("image-");
+  const sceneIndex = extractStoryboardMiniMapIndexFromNodeId(id);
+  const labelFontSize = Math.max(8, Math.min(13, safeWidth * 0.13));
+  const showLabel = isImageNode && safeWidth >= 30 && safeHeight >= 24 && sceneIndex != null;
 
   return (
     <g
@@ -898,18 +927,34 @@ function StoryboardMiniMapNode({
         shapeRendering={shapeRendering}
       />
       {isImageNode ? (
-        <rect
-          x={inset}
-          y={inset}
-          width={Math.max(2, safeWidth - inset * 2)}
-          height={Math.max(2, safeHeight - inset * 2)}
-          rx={Math.min(borderRadius, 4)}
-          ry={Math.min(borderRadius, 4)}
-          fill="transparent"
-          stroke={stroke}
-          strokeWidth={Math.max(1, lineWidth * 0.55)}
-          shapeRendering={shapeRendering}
-        />
+        <>
+          <rect
+            x={inset}
+            y={inset}
+            width={Math.max(2, safeWidth - inset * 2)}
+            height={Math.max(2, safeHeight - inset * 2)}
+            rx={Math.min(borderRadius, 4)}
+            ry={Math.min(borderRadius, 4)}
+            fill="transparent"
+            stroke={stroke}
+            strokeWidth={Math.max(1, lineWidth * 0.55)}
+            shapeRendering={shapeRendering}
+          />
+          {showLabel ? (
+            <text
+              x={safeWidth / 2}
+              y={safeHeight / 2}
+              fill={stroke}
+              fontSize={labelFontSize}
+              fontWeight={700}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              pointerEvents="none"
+            >
+              {sceneIndex}
+            </text>
+          ) : null}
+        </>
       ) : (
         <>
           <line
@@ -1254,6 +1299,25 @@ export function StoryboardCanvas({
   const storyboardCopy = useMemo(() => getStoryboardCopy(slides), [slides]);
 
   const canvasMode: CanvasMode = canvasModeExternal ?? "free";
+  const getStoryboardMiniMapNodeColor = useCallback((node: Node) => {
+    const slideId = getSlideIdFromNodeId(node.id);
+    const slide = slides.find((item) => item.id === slideId);
+    const generationState = slide ? generationTaskStateByIndex?.[slide.page] : undefined;
+    if (selectedSlideId && slideId === selectedSlideId) {
+      return MINIMAP_VIEWPORT_COLOR;
+    }
+    if (generationState?.status === "failed") {
+      return "#ef4444";
+    }
+    if (
+      generationState?.status === "queued" ||
+      generationState?.status === "generating" ||
+      generationState?.status === "retrying"
+    ) {
+      return "#8B5CF6";
+    }
+    return "#18181b";
+  }, [generationTaskStateByIndex, selectedSlideId, slides]);
 
   useEffect(() => {
     ttsBySlideIdRef.current = ttsBySlideId;
@@ -1319,9 +1383,6 @@ export function StoryboardCanvas({
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
   const isCanvasInteractive = canvasMode === "free";
-  const getStoryboardMiniMapNodeColor = useCallback((node: Node) => {
-    return node.id.startsWith("image-") ? "#dbeafe" : "#f4f4f5";
-  }, []);
   const selectedSlideIndex = useMemo(() => {
     if (!slides.length) {
       return -1;
@@ -3465,7 +3526,7 @@ export function StoryboardCanvas({
           canvasMode === "free" ? FREE_CANVAS_IMAGE_NODE_Y : PPT_CANVAS_IMAGE_NODE_Y;
 
         return {
-          id: `image-${slide.id}`,
+          id: `image-slide-${slide.page}-${slide.id}`,
           position: {
             x: idx * IMAGE_NODE_STEP,
             y: imageNodeY,
@@ -4185,23 +4246,35 @@ export function StoryboardCanvas({
           onPaneClick={() => setSelectedSlideId(null)}
         >
           {canvasMode === "free" ? (
-            <MiniMap
-              pannable
-              zoomable
-              nodeComponent={StoryboardMiniMapNode}
-              nodeColor={getStoryboardMiniMapNodeColor}
-              nodeStrokeColor={() => "#71717a"}
-              nodeBorderRadius={8}
-              maskColor="rgba(17,24,39,0.10)"
-              maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
-              maskStrokeWidth={2}
-              className="!bottom-3 !right-3 !h-[118px] !w-[188px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
-            />
-          ) : null}
-          {canvasMode === "free" ? (
-            <Controls
-            style={{ background: "#ffffff", border: "1px solid #e4e4e7", color: "#27272a" }}
-            />
+            <>
+              <Panel
+                position="bottom-right"
+                className="pointer-events-none !bottom-[130px] !right-3 hidden rounded-xl border border-zinc-200/90 bg-white/92 px-3 py-2 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur md:block"
+              >
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Canvas Map</div>
+                <div className="mt-1 text-xs font-semibold text-zinc-900">
+                  {slides.length} scene{slides.length > 1 ? "s" : ""}
+                </div>
+              </Panel>
+              <MiniMap
+                pannable
+                zoomable
+                nodeComponent={StoryboardMiniMapNode}
+                nodeColor={getStoryboardMiniMapNodeColor}
+                nodeStrokeColor={() => "#71717a"}
+                nodeBorderRadius={8}
+                maskColor="rgba(17,24,39,0.10)"
+                maskStrokeColor={MINIMAP_VIEWPORT_COLOR}
+                maskStrokeWidth={2}
+                className="!bottom-3 !right-3 !h-[118px] !w-[188px] !overflow-hidden !rounded-xl !border !border-zinc-300 !bg-zinc-50 !shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
+              />
+              <Controls
+                showInteractive={false}
+                className="!bottom-3 !left-3"
+                style={{ background: "#ffffff", border: "1px solid #e4e4e7", color: "#27272a" }}
+              />
+              <Background color="#e5e7eb" gap={26} />
+            </>
           ) : null}
         </ReactFlow>
 

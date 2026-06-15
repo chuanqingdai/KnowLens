@@ -46,6 +46,7 @@ const VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS = 25_000;
 const VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS = 540_000;
 const MIN_VISIBLE_TRANSITION_DURATION_SEC = 0.8;
 const MAX_VISIBLE_TRANSITION_DURATION_SEC = 1.25;
+const MAX_XFADE_SCENES = 8;
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -137,6 +138,11 @@ function mapTransitionToFfmpegXfade(transition: SceneTransition) {
     return "slideleft";
   }
   return "fade";
+}
+
+function buildVideoNormalizeFilter(fps: number) {
+  const safeFps = Math.max(1, Math.round(fps || DEFAULT_FPS));
+  return `fps=${safeFps},settb=expr=1/${safeFps},setpts=N/(${safeFps}*TB),setsar=1,format=yuv420p`;
 }
 
 function countTransitionsByType(transitions: SceneTransition[]) {
@@ -485,6 +491,10 @@ async function runFfmpeg(args: string[], timeout = 180_000) {
   }
 }
 
+function escapeConcatPath(filePath: string) {
+  return filePath.replace(/'/g, "'\\''");
+}
+
 async function getMediaDurationSec(filePath: string, fallbackSec: number) {
   if (!ffmpegStatic) {
     return fallbackSec;
@@ -521,6 +531,7 @@ async function renderSceneSegment(input: {
   fps: number;
   durationSec: number;
 }) {
+  const safeFps = Math.max(1, Math.round(input.fps || DEFAULT_FPS));
   const scaleFilter =
     `scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease,` +
     `pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2:color=0x0b0c0f,` +
@@ -530,7 +541,7 @@ async function renderSceneSegment(input: {
     const durationSec = Math.max(0.5, rawDurationSec / VIDEO_TTS_PLAYBACK_RATE);
     const durationText = durationSec.toFixed(3);
     const audioTempoFilter = `atempo=${VIDEO_TTS_PLAYBACK_RATE.toFixed(2)}`;
-    const videoFilter = `${scaleFilter},setpts=PTS-STARTPTS`;
+    const videoFilter = `${scaleFilter},${buildVideoNormalizeFilter(safeFps)}`;
     const audioFilter =
       `${audioTempoFilter},apad=whole_dur=${durationText},atrim=0:${durationText},` +
       "aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo," +
@@ -539,7 +550,7 @@ async function renderSceneSegment(input: {
       "-loop",
       "1",
       "-framerate",
-      String(input.fps),
+      String(safeFps),
       "-t",
       durationText,
       "-i",
@@ -564,6 +575,8 @@ async function renderSceneSegment(input: {
       "stillimage",
       "-pix_fmt",
       "yuv420p",
+      "-r",
+      String(safeFps),
       "-c:a",
       "aac",
       "-b:a",
@@ -581,7 +594,7 @@ async function renderSceneSegment(input: {
     "-loop",
     "1",
     "-framerate",
-    String(input.fps),
+    String(safeFps),
     "-t",
     input.durationSec.toFixed(3),
     "-i",
@@ -595,7 +608,7 @@ async function renderSceneSegment(input: {
     "-t",
     input.durationSec.toFixed(3),
     "-filter_complex",
-    `[0:v]${scaleFilter},setpts=PTS-STARTPTS[v];[1:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a]`,
+    `[0:v]${scaleFilter},${buildVideoNormalizeFilter(safeFps)}[v];[1:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a]`,
     "-map",
     "[v]",
     "-map",
@@ -610,6 +623,8 @@ async function renderSceneSegment(input: {
     "stillimage",
     "-pix_fmt",
     "yuv420p",
+    "-r",
+    String(safeFps),
     "-c:a",
     "aac",
     "-b:a",
@@ -622,29 +637,22 @@ async function renderSceneSegment(input: {
   ]);
 }
 
-async function concatSegments(segmentPaths: string[], outputPath: string) {
+async function concatSegmentsWithDemuxer(segmentPaths: string[], outputPath: string, fps = DEFAULT_FPS) {
   if (!segmentPaths.length) {
     throw new Error("No rendered video segments to concatenate.");
   }
-  const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
-  const normalizedInputs = segmentPaths
-    .map((_, index) => {
-      return (
-        `[${index}:v]setpts=PTS-STARTPTS[v${index}];` +
-        `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`
-      );
-    })
-    .join(";");
-  const concatInputs = segmentPaths.map((_, index) => `[v${index}][a${index}]`).join("");
+  const safeFps = Math.max(1, Math.round(fps || DEFAULT_FPS));
+  const listPath = path.join(path.dirname(outputPath), "segments.txt");
+  const listBody = segmentPaths.map((segmentPath) => `file '${escapeConcatPath(segmentPath)}'`).join("\n");
+  await fs.writeFile(listPath, `${listBody}\n`, "utf8");
   await runFfmpeg(
     [
-      ...inputArgs,
-      "-filter_complex",
-      `${normalizedInputs};${concatInputs}concat=n=${segmentPaths.length}:v=1:a=1[v][a]`,
-      "-map",
-      "[v]",
-      "-map",
-      "[a]",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      listPath,
       "-c:v",
       "libx264",
       "-preset",
@@ -655,6 +663,8 @@ async function concatSegments(segmentPaths: string[], outputPath: string) {
       "stillimage",
       "-pix_fmt",
       "yuv420p",
+      "-r",
+      String(safeFps),
       "-c:a",
       "aac",
       "-b:a",
@@ -669,6 +679,61 @@ async function concatSegments(segmentPaths: string[], outputPath: string) {
   );
 }
 
+async function concatSegments(segmentPaths: string[], outputPath: string, fps = DEFAULT_FPS) {
+  if (!segmentPaths.length) {
+    throw new Error("No rendered video segments to concatenate.");
+  }
+  const inputArgs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const safeFps = Math.max(1, Math.round(fps || DEFAULT_FPS));
+  const videoNormalizeFilter = buildVideoNormalizeFilter(safeFps);
+  const normalizedInputs = segmentPaths
+    .map((_, index) => {
+      return (
+        `[${index}:v]${videoNormalizeFilter}[v${index}];` +
+        `[${index}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${index}]`
+      );
+    })
+    .join(";");
+  const concatInputs = segmentPaths.map((_, index) => `[v${index}][a${index}]`).join("");
+  try {
+    await runFfmpeg(
+      [
+        ...inputArgs,
+        "-filter_complex",
+        `${normalizedInputs};${concatInputs}concat=n=${segmentPaths.length}:v=1:a=1[v][a]`,
+        "-map",
+        "[v]",
+        "-map",
+        "[a]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        VIDEO_EXPORT_PRESET,
+        "-crf",
+        VIDEO_EXPORT_CRF,
+        "-tune",
+        "stillimage",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        String(safeFps),
+        "-c:a",
+        "aac",
+        "-b:a",
+        VIDEO_EXPORT_AUDIO_BITRATE,
+        "-movflags",
+        "+faststart",
+        "-avoid_negative_ts",
+        "make_zero",
+        outputPath,
+      ],
+      240_000,
+    );
+  } catch {
+    await concatSegmentsWithDemuxer(segmentPaths, outputPath, safeFps);
+  }
+}
+
 async function concatSegmentsWithTransitions(input: {
   segmentPaths: string[];
   segmentDurationsSec: number[];
@@ -680,7 +745,7 @@ async function concatSegmentsWithTransitions(input: {
   const fps = Math.max(1, Math.round(input.fps || DEFAULT_FPS));
   const transitions = input.transitions.slice(0, Math.max(0, segmentPaths.length - 1));
   if (segmentPaths.length <= 1 || !transitions.length) {
-    await concatSegments(segmentPaths, outputPath);
+    await concatSegments(segmentPaths, outputPath, fps);
     return;
   }
   if (segmentDurationsSec.length !== segmentPaths.length) {
@@ -1093,7 +1158,22 @@ export async function runVideoExportJob(jobId: string) {
       },
     });
     const outputPath = path.join(tmpDir, "knowlens-storyboard.mp4");
-    if (transitions.length) {
+    if (transitions.length && segmentPaths.length > MAX_XFADE_SCENES) {
+      await logVideoExportJobEvent({
+        job,
+        action: "video_export_transition_concat_skipped",
+        status: "info",
+        code: "VIDEO_TRANSITION_SKIPPED_FOR_STABILITY",
+        message: "Skipping transition concat for a long timeline; rendering a stable video concat.",
+        details: {
+          transitionPresetId: job.timeline.transitionPresetId,
+          segmentCount: segmentPaths.length,
+          transitionCount: transitions.length,
+          maxXfadeScenes: MAX_XFADE_SCENES,
+        },
+      });
+      await concatSegments(segmentPaths, outputPath, job.timeline.fps);
+    } else if (transitions.length) {
       try {
         await concatSegmentsWithTransitions({
           segmentPaths,
@@ -1158,11 +1238,33 @@ export async function runVideoExportJob(jobId: string) {
               error: getProcessErrorMessage(fadeError),
             },
           });
-          throw fadeError;
+          await logVideoExportJobEvent({
+            job,
+            action: "video_export_transition_concat_plain_fallback",
+            status: "info",
+            code: "VIDEO_TRANSITION_PLAIN_FALLBACK",
+            message: "Fade transition concat failed; retrying without transitions.",
+            details: {
+              transitionPresetId: job.timeline.transitionPresetId,
+              transitionCount: fadeTransitions.length,
+              error: getProcessErrorMessage(fadeError),
+            },
+          });
+          await concatSegments(segmentPaths, outputPath, job.timeline.fps);
+          await logVideoExportJobEvent({
+            job,
+            action: "video_export_transition_concat_plain_recovered",
+            status: "ok",
+            message: "Video concat recovered without transitions.",
+            details: {
+              transitionPresetId: job.timeline.transitionPresetId,
+              segmentCount: segmentPaths.length,
+            },
+          });
         }
       }
     } else {
-      await concatSegments(segmentPaths, outputPath);
+      await concatSegments(segmentPaths, outputPath, job.timeline.fps);
     }
     const data = await fs.readFile(outputPath);
     if (data.length <= 0) {
