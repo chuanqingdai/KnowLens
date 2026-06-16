@@ -46,7 +46,6 @@ const VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS = 25_000;
 const VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS = 540_000;
 const MIN_VISIBLE_TRANSITION_DURATION_SEC = 0.8;
 const MAX_VISIBLE_TRANSITION_DURATION_SEC = 1.25;
-const MAX_XFADE_SCENES = 8;
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -1158,22 +1157,7 @@ export async function runVideoExportJob(jobId: string) {
       },
     });
     const outputPath = path.join(tmpDir, "knowlens-storyboard.mp4");
-    if (transitions.length && segmentPaths.length > MAX_XFADE_SCENES) {
-      await logVideoExportJobEvent({
-        job,
-        action: "video_export_transition_concat_skipped",
-        status: "info",
-        code: "VIDEO_TRANSITION_SKIPPED_FOR_STABILITY",
-        message: "Skipping transition concat for a long timeline; rendering a stable video concat.",
-        details: {
-          transitionPresetId: job.timeline.transitionPresetId,
-          segmentCount: segmentPaths.length,
-          transitionCount: transitions.length,
-          maxXfadeScenes: MAX_XFADE_SCENES,
-        },
-      });
-      await concatSegments(segmentPaths, outputPath, job.timeline.fps);
-    } else if (transitions.length) {
+    if (transitions.length) {
       try {
         await concatSegmentsWithTransitions({
           segmentPaths,
@@ -1191,6 +1175,7 @@ export async function runVideoExportJob(jobId: string) {
           message: "Transition concat failed; retrying with simple fade transitions.",
           details: {
             transitionPresetId: job.timeline.transitionPresetId,
+            segmentCount: segmentPaths.length,
             transitionCount: transitions.length,
             transitionTypes: countTransitionsByType(transitions),
             error: getProcessErrorMessage(error),
@@ -1222,6 +1207,7 @@ export async function runVideoExportJob(jobId: string) {
             message: "Transition concat recovered with fade transitions.",
             details: {
               transitionPresetId: job.timeline.transitionPresetId,
+              segmentCount: segmentPaths.length,
               transitionCount: fadeTransitions.length,
             },
           });
@@ -1234,6 +1220,7 @@ export async function runVideoExportJob(jobId: string) {
             message: "Fade transition concat failed.",
             details: {
               transitionPresetId: job.timeline.transitionPresetId,
+              segmentCount: segmentPaths.length,
               transitionCount: fadeTransitions.length,
               error: getProcessErrorMessage(fadeError),
             },
@@ -1246,6 +1233,7 @@ export async function runVideoExportJob(jobId: string) {
             message: "Fade transition concat failed; retrying without transitions.",
             details: {
               transitionPresetId: job.timeline.transitionPresetId,
+              segmentCount: segmentPaths.length,
               transitionCount: fadeTransitions.length,
               error: getProcessErrorMessage(fadeError),
             },

@@ -485,6 +485,7 @@ type ImageGenerationRestoreResponse = {
   project?: {
     id?: string;
     title?: string;
+    originalInput?: string;
     status?: string;
     format?: string | null;
     cover?: string;
@@ -2557,6 +2558,44 @@ function readWorkspaceChatHistory(scopeKey: string) {
   }
 }
 
+function normalizePromptForRestoreComparison(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function buildRestoredOriginalInputTurn(projectId: string, originalInput: string): ChatTurn {
+  return {
+    id: `restored-original-input-${projectId}`,
+    role: "user",
+    module: "Original Input",
+    content: originalInput,
+  };
+}
+
+function reconcileRestoredProjectChatHistory(
+  turns: ChatTurn[],
+  projectId: string,
+  originalInput: string,
+) {
+  const normalizedOriginalInput = normalizePromptForRestoreComparison(originalInput);
+  if (!projectId || !normalizedOriginalInput) {
+    return turns;
+  }
+  const firstUserTurn = turns.find((turn) => turn.role === "user");
+  const normalizedFirstUser = normalizePromptForRestoreComparison(firstUserTurn?.content || "");
+  const canCompareByContainment = normalizedFirstUser.length >= 24 && normalizedOriginalInput.length >= 24;
+  if (
+    normalizedFirstUser &&
+    (normalizedFirstUser === normalizedOriginalInput ||
+      (canCompareByContainment &&
+        (normalizedFirstUser.includes(normalizedOriginalInput) ||
+          normalizedOriginalInput.includes(normalizedFirstUser))))
+  ) {
+    return turns;
+  }
+  const sourceTurns = turns.filter((turn) => turn.module === "Source Inputs");
+  return [buildRestoredOriginalInputTurn(projectId, originalInput), ...sourceTurns];
+}
+
 function writeWorkspaceChatHistory(scopeKey: string, updates: ChatTurn[]) {
   if (typeof window === "undefined") {
     return;
@@ -2716,7 +2755,8 @@ export default function WorkspacePage() {
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [updates, setUpdates] = useState<ChatTurn[]>(() => {
-    const history = readWorkspaceChatHistory(sessionPrefsScopeKey);
+    const shouldRestoreLocalChatHistory = !routeProjectId || initialEntry.freshSessionDraft;
+    const history = shouldRestoreLocalChatHistory ? readWorkspaceChatHistory(sessionPrefsScopeKey) : [];
     if (!initialEntry.sources.length) {
       return history;
     }
@@ -3115,14 +3155,19 @@ export default function WorkspacePage() {
           return;
         }
         const projectTitle = payload.project?.title?.trim() || "";
-        if (!projectTitle) {
+        const originalInput = payload.project?.originalInput?.trim() || "";
+        const restoredContextPrompt = originalInput || projectTitle;
+        if (!restoredContextPrompt) {
           return;
         }
         if (!workspaceProjectTitle) {
           setWorkspaceProjectTitle(projectTitle);
         }
-        if (!topicContextPrompt.trim()) {
-          setTopicContextPrompt(projectTitle);
+        if (originalInput || !topicContextPrompt.trim()) {
+          setTopicContextPrompt(restoredContextPrompt);
+        }
+        if (routeProjectId && originalInput) {
+          setUpdates((prev) => reconcileRestoredProjectChatHistory(prev, effectiveProjectId, originalInput));
         }
       })
       .catch(() => {
@@ -4511,10 +4556,17 @@ export default function WorkspacePage() {
         }
         const restoredProjectFormat = (payload.project?.format || "").trim();
         const restoredProjectTitle = (payload.project?.title || "").trim();
-        if (restoredProjectTitle) {
+        const restoredOriginalInput = (payload.project?.originalInput || "").trim();
+        const restoredContextPrompt = restoredOriginalInput || restoredProjectTitle;
+        if (restoredContextPrompt) {
           setWorkspaceProjectTitle(restoredProjectTitle);
-          if (!topicContextPrompt.trim()) {
-            setTopicContextPrompt(restoredProjectTitle);
+          if (restoredOriginalInput || !topicContextPrompt.trim()) {
+            setTopicContextPrompt(restoredContextPrompt);
+          }
+          if (routeProjectId && restoredOriginalInput) {
+            setUpdates((prev) =>
+              reconcileRestoredProjectChatHistory(prev, projectId, restoredOriginalInput),
+            );
           }
         }
         const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];

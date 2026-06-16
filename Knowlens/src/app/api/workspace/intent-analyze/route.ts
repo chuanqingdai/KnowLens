@@ -475,6 +475,66 @@ function repairClarificationResultForInput(
   };
 }
 
+function isCompleteUserMaterial(input: string) {
+  const text = input.trim();
+  if (!text || /^(hello|hi|hey|test|你好|在吗|测试)$/i.test(text)) {
+    return false;
+  }
+  const tokenCount = text
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const sentenceCount = text
+    .split(/[。！？.!?]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 12).length;
+  const hasParagraphBreak = /\n\s*\n/.test(text);
+  const hasTransformSignal =
+    /(create|generate|make|build|turn|transform|explain|summarize|poster|video|ppt|slide|storyboard|infographic|生成|制作|做成|输出|讲解|解释|分析|总结|海报|视频|分镜|课件|信息图)/i.test(
+      text,
+    );
+
+  return (
+    text.length >= 220 ||
+    tokenCount >= 34 ||
+    sentenceCount >= 3 ||
+    hasParagraphBreak ||
+    (hasTransformSignal && (text.length >= 100 || tokenCount >= 18))
+  );
+}
+
+function keepCompleteInputReady(input: {
+  analysis: IntentAnalysis;
+  fallback: IntentAnalysis;
+  userInput: string;
+  outputLanguage?: string;
+}) {
+  const { analysis, fallback, userInput, outputLanguage } = input;
+  if (
+    fallback.classification !== "ready" ||
+    !isCompleteUserMaterial(userInput) ||
+    (analysis.classification !== "need_topic_clarification" && analysis.classification !== "invalid") ||
+    analysis.clarifyMode !== "topic"
+  ) {
+    return analysis;
+  }
+
+  const isZh = (outputLanguage || "").toLowerCase().startsWith("zh");
+  return {
+    ...analysis,
+    classification: "ready" as const,
+    direction: analysis.direction === "unknown" ? fallback.direction : analysis.direction,
+    topic: analysis.topic || fallback.topic,
+    reason: "Input contains enough detailed user-provided material to continue without topic suggestions.",
+    clarifyMode: "none" as const,
+    needsFreshSources: analysis.needsFreshSources || fallback.needsFreshSources,
+    suggestions: [],
+    assistantHint: isZh
+      ? "用户已经提供了足够详细的素材。Prompt2 应直接整理这些内容并生成结构化视觉草稿，不要再要求选择建议主题。"
+      : "The user provided enough detailed material. Prompt2 should organize this content into a structured visual draft without asking for topic suggestions.",
+  };
+}
+
 async function requestAnalyzeFromModel(
   input: string,
   sourcesSummary: string,
@@ -663,7 +723,13 @@ export async function POST(request: NextRequest) {
 
     const modelResult = await requestAnalyzeFromModel(input, sourcesSummary, outputLanguage);
     const normalizedAnalysis = normalizeAnalyzeResult(modelResult.result || {}, fallback, outputLanguage);
-    const analysis = repairClarificationResultForInput(normalizedAnalysis, input, outputLanguage);
+    const repairedAnalysis = repairClarificationResultForInput(normalizedAnalysis, input, outputLanguage);
+    const analysis = keepCompleteInputReady({
+      analysis: repairedAnalysis,
+      fallback,
+      userInput: input,
+      outputLanguage,
+    });
     return NextResponse.json({
       ok: true,
       analysis,

@@ -9,6 +9,7 @@ import {
 import {
   buildGenerationTaskStatusSummary,
   getProjectByIdForUser,
+  listOpsEvents,
   listProjectsByUser,
   logGenerationOpsEvent,
 } from "@/lib/server/store";
@@ -55,6 +56,39 @@ type ProjectPageWithImageHistory = WorkspaceProjectPageRow & {
 
 function normalizeText(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function parseOriginalInputFromEvent(detailsJson?: string | null) {
+  if (!detailsJson) {
+    return "";
+  }
+  try {
+    const details = JSON.parse(detailsJson) as { originalInput?: unknown };
+    return normalizeText(details.originalInput).slice(0, 8000);
+  } catch {
+    return "";
+  }
+}
+
+async function resolveProjectOriginalInput(input: {
+  userEmail: string;
+  projectId: string;
+}) {
+  const events = await listOpsEvents({
+    userEmail: input.userEmail,
+    projectId: input.projectId,
+    category: "project",
+    action: "workspace_project_started",
+    status: "ok",
+    limit: 8,
+  });
+  for (const event of events) {
+    const originalInput = parseOriginalInputFromEvent(event.detailsJson);
+    if (originalInput) {
+      return originalInput;
+    }
+  }
+  return "";
 }
 
 function latestIso(values: Array<string | null | undefined>) {
@@ -292,11 +326,16 @@ export async function resolveProjectDetail(input: {
     normalizeText(project?.title) ||
     normalizeText(pagesWithImageHistory.find((page) => page.title)?.title) ||
     "Untitled project";
+  const originalInput = await resolveProjectOriginalInput({
+    userEmail: input.userEmail,
+    projectId,
+  });
 
   return {
     project: {
       id: projectId,
       title,
+      originalInput,
       status,
       storedStatus: normalizeText(project?.status, ""),
       format: outputType,
