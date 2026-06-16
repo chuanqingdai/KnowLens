@@ -71,7 +71,7 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
         }}
         className={
           buttonClassName ??
-          "inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-70"
+          "inline-flex h-10 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-70"
         }
       >
         <LogIn size={15} />
@@ -114,7 +114,7 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
               setOpen(false);
               router.push("/profile");
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             <UserCircle2 size={14} />
             {t("Profile", "个人主页")}
@@ -126,7 +126,7 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
               setOpen(false);
               router.push("/membership");
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             <CreditCard size={14} />
             {t("Membership", "会员中心")}
@@ -138,7 +138,7 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
               setOpen(false);
               void signOut({ callbackUrl: "/auth" });
             }}
-            className="flex w-full items-center gap-2 border-t border-zinc-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+            className="flex w-full items-center gap-2 rounded-xl border-t border-zinc-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
           >
             <LogOut size={14} />
             {t("Sign out", "退出登录")}

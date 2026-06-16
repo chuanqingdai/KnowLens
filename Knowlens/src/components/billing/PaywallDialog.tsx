@@ -71,7 +71,7 @@ export function PaywallDialog({
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100"
+          className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100"
         >
           <X size={14} />
         </button>
@@ -102,7 +102,7 @@ export function PaywallDialog({
               }).catch(() => undefined);
               onClose();
             }}
-            className="inline-flex h-10 items-center rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
+            className="inline-flex h-10 items-center rounded-full border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             {cancelLabel}
           </button>

@@ -76,7 +76,7 @@ export function SidebarNav({
           title="KnowLens.ai"
           disabled={isNavigating && activePendingHref !== "/app"}
           onClick={() => handleNavigate("/app")}
-          className="mb-6 flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:bg-zinc-100"
+          className="mb-6 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-sm transition hover:bg-zinc-100"
         >
           {activePendingHref === "/app" ? (
             <LoaderCircle size={17} className="animate-spin" />
@@ -104,7 +104,7 @@ export function SidebarNav({
                   onClick={() => handleNavigate(item.href)}
                   aria-label={item.label}
                   title={item.label}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
                     isActive ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-100"
                   }`}
                 >
@@ -126,7 +126,7 @@ export function SidebarNav({
               onClick={() => handleNavigate("/admin")}
               aria-label="Admin"
               title="Admin"
-              className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+              className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
                 pathname.startsWith("/admin")
                   ? "bg-zinc-900 text-white"
                   : "text-zinc-600 hover:bg-zinc-100"
@@ -148,7 +148,7 @@ export function SidebarNav({
               title="Feedback"
               disabled={isNavigating && activePendingHref !== "/feedback"}
               onClick={() => handleNavigate("/feedback")}
-              className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+              className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
                 pathname.startsWith("/feedback")
                   ? "bg-zinc-100 text-zinc-900"
                   : "text-zinc-600 hover:bg-zinc-100"
@@ -167,7 +167,7 @@ export function SidebarNav({
               title="Updates"
               disabled={isNavigating && activePendingHref !== "/upgrades"}
               onClick={() => handleNavigate("/upgrades")}
-              className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+              className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
                 pathname.startsWith("/upgrades")
                   ? "bg-zinc-100 text-zinc-900"
                   : "text-zinc-600 hover:bg-zinc-100"
@@ -220,7 +220,7 @@ export function SidebarNav({
                 type="button"
                 onClick={onMobileClose}
                 aria-label="Close navigation"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700"
               >
                 <X size={16} />
               </button>
@@ -237,7 +237,7 @@ export function SidebarNav({
                       type="button"
                       disabled={isNavigating && activePendingHref !== item.href}
                       onClick={() => handleNavigate(item.href, { closeMobile: true })}
-                      className={`flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition ${
+                      className={`flex h-12 w-full items-center gap-3 rounded-full px-3 text-sm font-medium transition ${
                         isActive
                           ? "bg-zinc-900 text-white"
                           : "text-zinc-700 hover:bg-zinc-100"
@@ -257,7 +257,7 @@ export function SidebarNav({
                   type="button"
                   disabled={isNavigating && activePendingHref !== "/admin"}
                   onClick={() => handleNavigate("/admin", { closeMobile: true })}
-                  className={`flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition ${
+                  className={`flex h-12 w-full items-center gap-3 rounded-full px-3 text-sm font-medium transition ${
                     pathname.startsWith("/admin")
                       ? "bg-zinc-900 text-white"
                       : "text-zinc-700 hover:bg-zinc-100"
@@ -274,7 +274,7 @@ export function SidebarNav({
                 type="button"
                 disabled={isNavigating && activePendingHref !== "/feedback"}
                 onClick={() => handleNavigate("/feedback", { closeMobile: true })}
-                className={`flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition ${
+                className={`flex h-12 w-full items-center gap-3 rounded-full px-3 text-sm font-medium transition ${
                   pathname.startsWith("/feedback")
                     ? "bg-zinc-100 text-zinc-900"
                     : "text-zinc-700 hover:bg-zinc-100"
@@ -287,7 +287,7 @@ export function SidebarNav({
                 type="button"
                 disabled={isNavigating && activePendingHref !== "/upgrades"}
                 onClick={() => handleNavigate("/upgrades", { closeMobile: true })}
-                className={`mt-1 flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition ${
+                className={`mt-1 flex h-12 w-full items-center gap-3 rounded-full px-3 text-sm font-medium transition ${
                   pathname.startsWith("/upgrades")
                     ? "bg-zinc-100 text-zinc-900"
                     : "text-zinc-700 hover:bg-zinc-100"

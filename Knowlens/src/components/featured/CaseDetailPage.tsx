@@ -275,7 +275,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+            className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             Back
           </button>
@@ -283,7 +283,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
             <button
               type="button"
               onClick={toggleLike}
-              className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm transition ${
+              className={`inline-flex h-10 items-center gap-1.5 rounded-full border px-3 text-sm transition ${
                 metrics.liked
                   ? "border-rose-300 bg-rose-50 text-rose-600"
                   : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
@@ -295,14 +295,14 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
             <button
               type="button"
               onClick={() => void handleShare()}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
+              className="inline-flex h-10 items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
             >
               <Link2 size={15} />
               {shareLabel}
             </button>
             <Link
               href={createSimilarHref}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700"
+              className="inline-flex h-10 items-center gap-1.5 rounded-full bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700"
             >
               <Sparkles size={15} />
               Create similar infographic
@@ -422,7 +422,7 @@ export function CaseDetailPage({ item }: CaseDetailPageProps) {
           </p>
           <Link
             href={createSimilarHref}
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-zinc-950 hover:bg-zinc-100"
+            className="mt-5 inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 hover:bg-zinc-100"
           >
             <Sparkles size={16} />
             Create similar infographic

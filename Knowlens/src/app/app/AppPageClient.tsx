@@ -2605,7 +2605,7 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(true)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
             aria-label="Open navigation"
             title="Open navigation"
           >
@@ -2615,7 +2615,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => openMembershipFromHome("upgrade_button")}
-              className="inline-flex h-9 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-xs text-zinc-700 transition hover:bg-zinc-100"
             >
               {shouldShowCreditUpgradeButton ? (
                 <>
@@ -2635,7 +2635,7 @@ export default function Home() {
           <button
             type="button"
             onClick={() => openMembershipFromHome("upgrade_button")}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100"
           >
             {shouldShowCreditUpgradeButton ? (
               <>
@@ -2789,7 +2789,7 @@ export default function Home() {
                                 setTextModel(option.value);
                                 setOpenMenu(null);
                               }}
-                              className="w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-zinc-100"
+                              className="w-full rounded-xl px-2.5 py-2 text-left transition hover:bg-zinc-100"
                             >
                               <span className="flex items-center justify-between text-sm font-medium text-zinc-900">
                                 <span className="inline-flex items-center gap-1.5">{option.label}</span>
@@ -2920,7 +2920,7 @@ export default function Home() {
                     key={category}
                     type="button"
                     onClick={() => handleFeaturedCategoryChange(category)}
-                    className={`shrink-0 rounded-xl px-4 py-2 text-sm transition ${
+                    className={`shrink-0 rounded-full px-4 py-2 text-sm transition ${
                       activeCategory === category
                         ? "bg-zinc-900 text-white"
                         : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
@@ -2995,7 +2995,7 @@ export default function Home() {
                             event.stopPropagation();
                             handleToggleLike(item);
                           }}
-                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 transition ${
+                          className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 transition ${
                             metric.liked
                               ? "bg-rose-50 text-rose-600"
                               : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
@@ -3085,7 +3085,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => handleToggleLike(previewItem)}
-                      className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm transition ${
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition ${
                         metric.liked
                           ? "border-rose-300 bg-rose-50 text-rose-600"
                           : "border-white/20 bg-black/40 text-white hover:bg-black/55"
@@ -3097,12 +3097,12 @@ export default function Home() {
                   );
                 })()}
                 {activePreviewIsImage ? (
-                  <div className="inline-flex h-9 items-center gap-1 rounded-xl border border-white/15 bg-black/45 px-1">
+                  <div className="inline-flex h-9 items-center gap-1 rounded-full border border-white/15 bg-black/45 px-1">
                     <button
                       type="button"
                       onClick={() => applyPreviewZoom(previewZoom - 0.25)}
                       disabled={previewZoom <= 1}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white/90 transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
                       aria-label="Zoom out"
                     >
                       <Minus size={14} />
@@ -3113,7 +3113,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => applyPreviewZoom(previewZoom + 0.25)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white/90 transition hover:bg-white/15"
                       aria-label="Zoom in"
                     >
                       <Plus size={14} />
@@ -3123,7 +3123,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => void handleFeaturedShare()}
-                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
                 >
                   <Share2 size={16} />
                   Share
@@ -3132,7 +3132,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => window.open(activePreviewAsset.viewerUrl, "_blank", "noopener,noreferrer")}
-                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
+                    className="inline-flex h-9 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
                   >
                     <ExternalLink size={16} />
                     Open details
@@ -3144,7 +3144,7 @@ export default function Home() {
                   type="button"
                   onClick={closeFeaturedPreview}
                   aria-label="Close"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-black/40 text-white hover:bg-black/60"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white hover:bg-black/60"
                 >
                   <X size={16} />
                 </button>
@@ -3161,7 +3161,7 @@ export default function Home() {
                       setPreviewAssetIndex((prev) => Math.max(0, prev - 1));
                     }}
                     disabled={previewAssetIndex <= 0}
-                    className="rounded-lg border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-full border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Previous
                   </button>
@@ -3178,7 +3178,7 @@ export default function Home() {
                       setPreviewAssetIndex((prev) => Math.min(previewAssets.length - 1, prev + 1));
                     }}
                     disabled={previewAssetIndex >= previewAssets.length - 1}
-                    className="rounded-lg border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-full border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Next
                   </button>
