@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { SidebarNav } from "@/components/app-shell/SidebarNav";
 import { UserMenu } from "@/components/auth/UserMenu";
+import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import {
   consumeCheckoutReturnNotice,
@@ -85,6 +86,7 @@ const HOME_GENERATE_CTA_BASE_CLASS =
 const HOME_GENERATE_CTA_READY_CLASS = "bg-zinc-900";
 const HOME_GENERATE_CTA_BUSY_CLASS = "cursor-wait bg-zinc-800";
 const DEFAULT_SHOWCASE_CATEGORY = "All";
+const FEATURED_CASE_BATCH_SIZE = 8;
 const SUPPORTED_SHOWCASE_CATEGORIES = [
   "Earth Science",
   "Process",
@@ -1199,7 +1201,7 @@ export default function Home() {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status: sessionStatus } = useSession();
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const currentEmail = session?.user?.email?.trim().toLowerCase() ?? "";
   const [textModel, setTextModel] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<"text" | null>(null);
@@ -1289,7 +1291,8 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState(DEFAULT_SHOWCASE_CATEGORY);
   const [fallbackFeaturedItems] = useState<FeaturedCaseItem[]>(() => getResolvedFeaturedCases());
   const [publishedFeaturedItems, setPublishedFeaturedItems] = useState<FeaturedCaseItem[]>([]);
-  const [featuredVisibleCount, setFeaturedVisibleCount] = useState(8);
+  const [featuredVisibleCount, setFeaturedVisibleCount] = useState(FEATURED_CASE_BATCH_SIZE);
+  const [isFeaturedLoadingMore, setIsFeaturedLoadingMore] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<FeaturedCaseItem | null>(null);
   const [previewAssetIndex, setPreviewAssetIndex] = useState(0);
@@ -1306,6 +1309,7 @@ export default function Home() {
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
   const textModelButtonRef = useRef<HTMLButtonElement | null>(null);
   const featuredLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const featuredLoadMoreTimerRef = useRef<number | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const composeLimitToastShownRef = useRef(false);
   const dragDepthRef = useRef(0);
@@ -2479,7 +2483,12 @@ export default function Home() {
 
   function handleFeaturedCategoryChange(category: string) {
     setActiveCategory(category);
-    setFeaturedVisibleCount(8);
+    setFeaturedVisibleCount(FEATURED_CASE_BATCH_SIZE);
+    setIsFeaturedLoadingMore(false);
+    if (featuredLoadMoreTimerRef.current) {
+      window.clearTimeout(featuredLoadMoreTimerRef.current);
+      featuredLoadMoreTimerRef.current = null;
+    }
   }
 
   function handleToggleLike(item: FeaturedCaseItem) {
@@ -2488,7 +2497,14 @@ export default function Home() {
   }
 
   const localizedNavItems = navItems.map((item) => ({
-    label: item.label,
+    label:
+      item.key === "home"
+        ? t("Home", "首页")
+        : item.key === "projects"
+          ? t("Projects", "项目")
+          : item.key === "profile"
+            ? t("Profile", "个人中心")
+            : item.label,
     icon: item.icon,
     href: item.href,
   }));
@@ -2520,10 +2536,11 @@ export default function Home() {
   );
 
   const hasMoreFeaturedItems = featuredVisibleCount < featuredFilteredItems.length;
+  const featuredRemainingCount = Math.max(0, featuredFilteredItems.length - featuredVisibleItems.length);
 
   useEffect(() => {
     const target = featuredLoadMoreRef.current;
-    if (!target || !hasMoreFeaturedItems) {
+    if (!target || !hasMoreFeaturedItems || isFeaturedLoadingMore) {
       return;
     }
 
@@ -2533,14 +2550,29 @@ export default function Home() {
         if (!entry?.isIntersecting) {
           return;
         }
-        setFeaturedVisibleCount((prev) => Math.min(prev + 8, featuredFilteredItems.length));
+        setIsFeaturedLoadingMore(true);
+        featuredLoadMoreTimerRef.current = window.setTimeout(() => {
+          setFeaturedVisibleCount((prev) =>
+            Math.min(prev + FEATURED_CASE_BATCH_SIZE, featuredFilteredItems.length),
+          );
+          setIsFeaturedLoadingMore(false);
+          featuredLoadMoreTimerRef.current = null;
+        }, 260);
       },
-      { rootMargin: "280px 0px" },
+      { rootMargin: "180px 0px" },
     );
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMoreFeaturedItems, featuredFilteredItems.length]);
+  }, [hasMoreFeaturedItems, isFeaturedLoadingMore, featuredFilteredItems.length]);
+
+  useEffect(() => {
+    return () => {
+      if (featuredLoadMoreTimerRef.current) {
+        window.clearTimeout(featuredLoadMoreTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (autoGenerateOnceRef.current) {
@@ -2606,12 +2638,13 @@ export default function Home() {
             type="button"
             onClick={() => setMobileSidebarOpen(true)}
             className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-100"
-            aria-label="Open navigation"
-            title="Open navigation"
+            aria-label={t("Open navigation", "打开导航")}
+            title={t("Open navigation", "打开导航")}
           >
             <Menu size={15} />
           </button>
           <div className="flex items-center gap-2">
+            <LocaleSwitch />
             <button
               type="button"
               onClick={() => openMembershipFromHome("upgrade_button")}
@@ -2622,16 +2655,17 @@ export default function Home() {
                   <Zap size={14} className="text-zinc-500" />
                   <span className="font-medium text-zinc-900">{currentCredits}</span>
                   <span className="text-zinc-500">|</span>
-                  <span className="font-medium">Upgrade</span>
+                  <span className="font-medium">{t("Upgrade", "升级")}</span>
                 </>
               ) : (
-                <span className="font-medium text-zinc-900">Pricing</span>
+                <span className="font-medium text-zinc-900">{t("Pricing", "价格")}</span>
               )}
             </button>
             <UserMenu />
           </div>
         </div>
         <div className="fixed right-6 top-6 z-50 hidden items-center gap-3 md:flex">
+          <LocaleSwitch />
           <button
             type="button"
             onClick={() => openMembershipFromHome("upgrade_button")}
@@ -2642,10 +2676,10 @@ export default function Home() {
                 <Zap size={15} className="text-zinc-500" />
                 <span className="font-medium text-zinc-900">{currentCredits}</span>
                 <span className="text-zinc-500">|</span>
-                <span className="font-medium">Upgrade</span>
+                <span className="font-medium">{t("Upgrade", "升级")}</span>
               </>
             ) : (
-              <span className="font-medium text-zinc-900">Pricing</span>
+              <span className="font-medium text-zinc-900">{t("Pricing", "价格")}</span>
             )}
           </button>
           <UserMenu />
@@ -2658,8 +2692,8 @@ export default function Home() {
             <div className="mb-6 flex flex-col items-center text-center">
               <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
               <h1 className="mt-1 max-w-[14ch] text-center text-[clamp(1.55rem,4.15vw,2.45rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900 sm:max-w-none sm:text-[clamp(1.65rem,4.15vw,2.55rem)]">
-                <span className="block sm:inline">Turn Text into Clear</span>{" "}
-                <span className="block sm:inline">Infographics</span>
+                <span className="block sm:inline">{t("Turn Text into Clear", "把文本变成清晰")}</span>{" "}
+                <span className="block sm:inline">{t("Infographics", "信息图")}</span>
               </h1>
             </div>
 
@@ -2676,7 +2710,7 @@ export default function Home() {
                   className="hidden"
                 />
                 <label className="block">
-                  <span className="sr-only">Creation input</span>
+                  <span className="sr-only">{t("Creation input", "创作输入框")}</span>
                   <textarea
                     ref={composeRef}
                     value={composeInput}
@@ -2687,7 +2721,7 @@ export default function Home() {
                       void handleComposerPaste(event);
                     }}
                     className="block h-[200px] w-full resize-none overflow-y-auto rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300"
-                    placeholder={creationInputPlaceholder}
+                    placeholder={t(creationInputPlaceholder, "输入一个科学想法，或粘贴你的学习内容。")}
                   />
                 </label>
 
@@ -2724,7 +2758,7 @@ export default function Home() {
                             type="button"
                             onClick={() => removeSourceItem(item.id)}
                             className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
-                            aria-label="Remove source"
+                            aria-label={t("Remove source", "移除素材")}
                           >
                             <X size={14} />
                           </button>
@@ -2765,7 +2799,10 @@ export default function Home() {
                         onClick={toggleTextModelMenu}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
                         title={selectedTextModel.label}
-                        aria-label={`Choose text model. Current model: ${selectedTextModel.label}`}
+                        aria-label={t(
+                          `Choose text model. Current model: ${selectedTextModel.label}`,
+                          `选择文本模型。当前模型：${selectedTextModel.label}`,
+                        )}
                       >
                         <Bot size={16} className={openMenu === "text" ? "text-zinc-700" : ""} />
                       </button>
@@ -2813,7 +2850,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={handleGoGenerate}
-                      title="Generate (Enter / Ctrl+Enter)"
+                      title={t("Generate (Enter / Ctrl+Enter)", "生成（Enter / Ctrl+Enter）")}
                       aria-busy={isStartingWorkspace}
                       disabled={isStartingWorkspace}
                       className={`${HOME_GENERATE_CTA_BASE_CLASS} ${
@@ -2821,7 +2858,7 @@ export default function Home() {
                       }`}
                     >
                       {isStartingWorkspace ? <LoaderCircle size={15} className="animate-spin" /> : <SendHorizontal size={15} />}
-                      {isStartingWorkspace ? "Starting workspace..." : "Generate"}
+                      {isStartingWorkspace ? t("Starting workspace...", "正在启动工作区...") : t("Generate", "生成")}
                     </button>
                   </div>
                 </div>
@@ -2830,7 +2867,7 @@ export default function Home() {
               {visiblePromptCards.length ? (
                 <div className="relative left-1/2 mt-7 w-[min(calc(100vw-1.5rem),72rem)] -translate-x-1/2 px-3 sm:mt-8 sm:w-[min(calc(100vw-6rem),78rem)] sm:px-0">
                   <p className="mb-2.5 text-center text-xs font-medium text-zinc-500">
-                    Try a prompt
+                    {t("Try a prompt", "试试这些提示词")}
                   </p>
                   <div className="mx-auto flex max-w-[58rem] flex-wrap items-center justify-center gap-x-1.5 gap-y-2 sm:gap-x-2">
                     {visiblePromptCards.map((card) => {
@@ -2856,14 +2893,14 @@ export default function Home() {
             <section className="mx-auto w-full max-w-6xl">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold tracking-tight text-zinc-900">
-                  Recent Projects
+                  {t("Recent Projects", "最近项目")}
                 </h2>
                 <button
                   type="button"
                   onClick={() => router.push("/projects")}
                   className="text-sm text-zinc-500 transition hover:text-zinc-800"
                 >
-                  View all
+                  {t("View all", "查看全部")}
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -2891,7 +2928,7 @@ export default function Home() {
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center bg-zinc-50 text-xs text-zinc-400">
-                          No cover yet
+                          {t("No cover yet", "暂无封面")}
                         </div>
                       )}
                       <span className="absolute left-2 top-2 inline-flex items-center rounded-md border border-white/25 bg-black/78 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-[2px]">
@@ -2912,7 +2949,7 @@ export default function Home() {
 
             <section className="mx-auto w-full max-w-6xl">
               <h2 className="mb-3 text-base font-semibold tracking-tight text-zinc-900">
-                Featured Cases
+                {t("Featured Cases", "精选案例")}
               </h2>
               <div className="mb-4 flex gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 {showcaseCategories.map((category) => (
@@ -2966,7 +3003,7 @@ export default function Home() {
                             }}
                             className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-sm font-medium text-zinc-900 shadow-[0_8px_24px_rgba(15,23,42,0.18)] transition hover:bg-zinc-100"
                           >
-                            View
+                            {t("View", "查看")}
                           </button>
                           <button
                             type="button"
@@ -2976,7 +3013,7 @@ export default function Home() {
                             }}
                             className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)] transition hover:bg-zinc-800"
                           >
-                            Similar
+                            {t("Similar", "同款")}
                           </button>
                         </div>
                       </div>
@@ -3000,28 +3037,59 @@ export default function Home() {
                               ? "bg-rose-50 text-rose-600"
                               : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
                           }`}
-                          aria-label={metric.liked ? "Unlike" : "Like"}
+                          aria-label={metric.liked ? t("Unlike", "取消喜欢") : t("Like", "喜欢")}
                         >
                           <Heart size={12} className={metric.liked ? "fill-current" : ""} />
                           <span>{metric.likes}</span>
                         </button>
                         <span className="shrink-0 whitespace-nowrap tabular-nums">
-                          {metric.views} views
+                          {metric.views} {t("views", "次浏览")}
                         </span>
                       </div>
                     </div>
                   </article>
                     );
                 })}
+                {isFeaturedLoadingMore
+                  ? Array.from({
+                      length: Math.min(FEATURED_CASE_BATCH_SIZE, Math.max(1, featuredRemainingCount)),
+                    }).map((_, index) => (
+                      <div
+                        key={`featured-loading-${index}`}
+                        className="mb-3 block break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] lg:mb-4"
+                      >
+                        <div className="aspect-[3/4] w-full animate-pulse bg-zinc-100" />
+                        <div className="space-y-2 p-3">
+                          <div className="h-3 w-20 rounded-full bg-zinc-100" />
+                          <div className="h-3 w-2/3 rounded-full bg-zinc-100" />
+                        </div>
+                      </div>
+                    ))
+                  : null}
               </div>
               <div className="mt-4 flex justify-center" ref={hasMoreFeaturedItems ? featuredLoadMoreRef : undefined}>
                 {hasMoreFeaturedItems ? (
-                  <div className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-500">
-                    Scroll down to load more cases ({featuredVisibleItems.length}/{featuredFilteredItems.length})
+                  <div
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-500"
+                    aria-live="polite"
+                  >
+                    {isFeaturedLoadingMore ? <LoaderCircle size={12} className="animate-spin" /> : null}
+                    {isFeaturedLoadingMore
+                      ? t(
+                          `Loading ${Math.min(FEATURED_CASE_BATCH_SIZE, featuredRemainingCount)} more cases...`,
+                          `正在加载 ${Math.min(FEATURED_CASE_BATCH_SIZE, featuredRemainingCount)} 个案例...`,
+                        )
+                      : t(
+                          `Scroll to load more (${featuredVisibleItems.length}/${featuredFilteredItems.length})`,
+                          `向下滚动加载更多（${featuredVisibleItems.length}/${featuredFilteredItems.length}）`,
+                        )}
                   </div>
                 ) : (
                   <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-500">
-                    You reached the end — all {featuredFilteredItems.length} featured cases are shown.
+                    {t(
+                      `You reached the end — all ${featuredFilteredItems.length} featured cases are shown.`,
+                      `已显示全部 ${featuredFilteredItems.length} 个精选案例。`,
+                    )}
                   </div>
                 )}
               </div>
@@ -3050,29 +3118,36 @@ export default function Home() {
                   </span>
                 </div>
               </div>
-              <p className="text-[30px] font-semibold tracking-tight text-white sm:text-[38px]">Add anything</p>
-              <p className="mt-3 text-[22px] font-medium leading-tight text-white/92 sm:text-[28px]">Drop files to upload</p>
+              <p className="text-[30px] font-semibold tracking-tight text-white sm:text-[38px]">
+                {t("Add anything", "添加任意素材")}
+              </p>
+              <p className="mt-3 text-[22px] font-medium leading-tight text-white/92 sm:text-[28px]">
+                {t("Drop files to upload", "拖放文件以上传")}
+              </p>
             </div>
           </div>
         </div>
       ) : null}
       <PaywallDialog
         open={modelPaywallOpen}
-        title="Membership required"
-        description="This language model is available to members only. Please go to the membership page to continue."
+        title={t("Membership required", "需要会员")}
+        description={t(
+          "This language model is available to members only. Please go to the membership page to continue.",
+          "此语言模型仅会员可用。请前往会员页面继续。",
+        )}
         compact
         onClose={() => setModelPaywallOpen(false)}
         onConfirm={() => {
           setModelPaywallOpen(false);
           openMembershipFromHome("model_paywall");
         }}
-        confirmLabel="Go to Membership"
+        confirmLabel={t("Go to Membership", "前往会员")}
       />
       {previewItem ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4">
           <button
             type="button"
-            aria-label="Close preview"
+            aria-label={t("Close preview", "关闭预览")}
             className="absolute inset-0 bg-zinc-950/75 backdrop-blur-[2px]"
             onClick={closeFeaturedPreview}
           />
@@ -3126,7 +3201,7 @@ export default function Home() {
                   className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-3.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
                 >
                   <Share2 size={16} />
-                  Share
+                  {t("Share", "分享")}
                 </button>
                 {activePreviewAsset?.viewerUrl ? (
                   <button
@@ -3135,7 +3210,7 @@ export default function Home() {
                     className="inline-flex h-9 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-3.5 text-sm font-medium text-white transition hover:bg-black/55"
                   >
                     <ExternalLink size={16} />
-                    Open details
+                    {t("Open details", "打开详情")}
                   </button>
                 ) : null}
               </div>
@@ -3143,7 +3218,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={closeFeaturedPreview}
-                  aria-label="Close"
+                  aria-label={t("Close", "关闭")}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white hover:bg-black/60"
                 >
                   <X size={16} />
@@ -3163,10 +3238,10 @@ export default function Home() {
                     disabled={previewAssetIndex <= 0}
                     className="rounded-full border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Previous
+                    {t("Previous", "上一张")}
                   </button>
                   <span>
-                    {previewFormat === "PPT" ? "Slide " : ""}
+                    {previewFormat === "PPT" ? t("Slide ", "幻灯片 ") : ""}
                     {Math.min(previewAssetIndex + 1, previewAssets.length)} / {previewAssets.length}
                     {activePreviewAsset?.title ? ` · ${activePreviewAsset.title}` : ""}
                   </span>
@@ -3180,7 +3255,7 @@ export default function Home() {
                     disabled={previewAssetIndex >= previewAssets.length - 1}
                     className="rounded-full border border-white/15 px-2.5 py-1 transition enabled:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Next
+                    {t("Next", "下一张")}
                   </button>
                 </div>
               ) : null}
@@ -3212,9 +3287,12 @@ export default function Home() {
                     }`}
                   >
                     <div>
-                      <p className="text-base font-semibold">PPT file preview</p>
+                      <p className="text-base font-semibold">{t("PPT file preview", "PPT 文件预览")}</p>
                       <p className="mt-2 text-sm leading-6 text-white/70">
-                        This case includes a presentation file. Use Open details to view the deck.
+                        {t(
+                          "This case includes a presentation file. Use Open details to view the deck.",
+                          "此案例包含演示文稿文件。点击打开详情查看完整幻灯片。",
+                        )}
                       </p>
                     </div>
                     <img
@@ -3257,7 +3335,7 @@ export default function Home() {
                         disabled={previewAssetIndex <= 0}
                         className="rounded-full px-3 py-1.5 font-medium transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:text-white/35"
                       >
-                        Previous
+                        {t("Previous", "上一张")}
                       </button>
                       <span className="min-w-16 text-center font-medium text-white/85">
                         {Math.min(previewAssetIndex + 1, previewAssets.length)} / {previewAssets.length}
@@ -3272,7 +3350,7 @@ export default function Home() {
                         disabled={previewAssetIndex >= previewAssets.length - 1}
                         className="rounded-full px-3 py-1.5 font-medium transition enabled:hover:bg-white/15 disabled:cursor-not-allowed disabled:text-white/35"
                       >
-                        Next
+                        {t("Next", "下一张")}
                       </button>
                     </div>
                   </div>
@@ -3284,8 +3362,11 @@ export default function Home() {
       ) : null}
       <PaywallDialog
         open={previewPaywallOpen}
-        title="Membership required"
-        description="Image downloads are available to members only. Please go to the membership page to continue."
+        title={t("Membership required", "需要会员")}
+        description={t(
+          "Image downloads are available to members only. Please go to the membership page to continue.",
+          "图片下载仅会员可用。请前往会员页面继续。",
+        )}
         compact
         onClose={() => setPreviewPaywallOpen(false)}
         onConfirm={() => {
@@ -3293,19 +3374,22 @@ export default function Home() {
           closeFeaturedPreview();
           openMembershipFromHome("preview_paywall");
         }}
-        confirmLabel="Go to Membership"
+        confirmLabel={t("Go to Membership", "前往会员")}
       />
       <PaywallDialog
         open={mediaUploadPaywallOpen}
-        title="Membership required"
-      description="Audio, video, YouTube, and podcast transcript extraction require a premium language model. Please go to the membership page to continue."
+        title={t("Membership required", "需要会员")}
+      description={t(
+          "Audio, video, YouTube, and podcast transcript extraction require a premium language model. Please go to the membership page to continue.",
+          "音频、视频、YouTube 和播客转录提取需要高级语言模型。请前往会员页面继续。",
+        )}
         compact
         onClose={() => setMediaUploadPaywallOpen(false)}
         onConfirm={() => {
           setMediaUploadPaywallOpen(false);
           openMembershipFromHome("media_paywall");
         }}
-        confirmLabel="Go to Membership"
+        confirmLabel={t("Go to Membership", "前往会员")}
       />
     </div>
   );

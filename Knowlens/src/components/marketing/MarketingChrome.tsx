@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LocalizedMarketingText } from "@/components/i18n/LocalizedMarketingText";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { usePathname, useRouter } from "next/navigation";
@@ -158,7 +159,20 @@ function normalizeMarketingPath(path: string) {
 
 const toolsMenuCloseDelayMs = 420;
 
-export function MarketingChrome({ children, showLocaleSwitch = false, infographicOnly = false }: MarketingChromeProps) {
+function translateToolGroupTitle(title: string, t: (en: string, zh: string) => string) {
+  if (title === "Infographic Tools") {
+    return t(title, "信息图工具");
+  }
+  if (title === "Video Tools") {
+    return t(title, "视频工具");
+  }
+  if (title === "Visual Content Tools") {
+    return t(title, "视觉内容工具");
+  }
+  return title;
+}
+
+export function MarketingChrome({ children, showLocaleSwitch = true, infographicOnly = false }: MarketingChromeProps) {
   const { t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
@@ -306,6 +320,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f6f7f9] text-zinc-900">
+      <LocalizedMarketingText />
       <div
         className="pointer-events-none fixed inset-0"
         style={{
@@ -346,7 +361,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
                 aria-haspopup="menu"
                 aria-expanded={toolsMenuOpen}
               >
-                Tools
+                {t("Tools", "工具")}
                 <ChevronDown
                   size={13}
                   className={`text-zinc-500 transition ${toolsMenuOpen ? "rotate-180" : ""}`}
@@ -356,7 +371,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
               <div
                 data-marketing-tools-menu="true"
                 role="menu"
-                aria-label="KnowLens tools"
+                aria-label={t("KnowLens tools", "KnowLens 工具")}
                 className={`absolute right-0 top-[calc(100%-0.5rem)] z-50 w-[720px] max-w-[calc(100vw-1.5rem)] pt-3 transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 ${
                   toolsMenuOpen ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
                 }`}
@@ -367,7 +382,9 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
                 <div className="grid gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.14)] md:grid-cols-3">
                   {visibleToolLinkGroups.map((group) => (
                     <div key={group.title} className="rounded-lg p-1">
-                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{group.title}</p>
+                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                        {translateToolGroupTitle(group.title, t)}
+                      </p>
                       {group.links.map((item) => (
                         <Link
                           key={`${item.href}-${item.label}`}
@@ -388,18 +405,22 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
               href="/membership"
               className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100 min-[430px]:inline-flex"
             >
-              Pricing
+              {t("Pricing", "价格")}
             </Link>
             <button
               type="button"
-              aria-label="Generate Free"
+              aria-label={t("Generate Free", "免费生成")}
               onClick={() => {
                 router.push("/app");
               }}
               className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-zinc-900 px-2.5 text-xs font-medium text-white hover:bg-zinc-700 sm:px-3"
             >
-              <span aria-hidden="true" className="hidden min-[360px]:inline">Generate Free</span>
-              <span aria-hidden="true" className="min-[360px]:hidden">Generate</span>
+              <span aria-hidden="true" className="hidden min-[360px]:inline">
+                {t("Generate Free", "免费生成")}
+              </span>
+              <span aria-hidden="true" className="min-[360px]:hidden">
+                {t("Generate", "生成")}
+              </span>
               <ArrowRight size={13} />
             </button>
           </div>
@@ -425,32 +446,39 @@ export function MarketingChrome({ children, showLocaleSwitch = false, infographi
                 <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
               </Link>
               <p className="mt-3 max-w-md text-sm leading-6 text-zinc-600">
-                Create clear AI infographics, short visual explainers, and structured knowledge visuals from text.
+                {t(
+                  "Create clear AI infographics, short visual explainers, and structured knowledge visuals from text.",
+                  "把文本变成清晰的信息图、短视频解说和结构化知识视觉。",
+                )}
               </p>
               <nav className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
                 <Link href="/about" className="hover:text-zinc-950">
-                  {t("About", "About")}
+                  {t("About", "关于")}
                 </Link>
                 <Link href="/privacy" className="hover:text-zinc-950">
-                  {t("Privacy", "Privacy")}
+                  {t("Privacy", "隐私")}
                 </Link>
                 <Link href="/terms" className="hover:text-zinc-950">
-                  {t("Terms", "Terms")}
+                  {t("Terms", "条款")}
                 </Link>
                 <Link href="/payment-terms" className="hover:text-zinc-950">
-                  {t("Payment Terms", "Payment Terms")}
+                  {t("Payment Terms", "支付条款")}
                 </Link>
                 <Link href="/contact" className="hover:text-zinc-950">
-                  {t("Contact", "Contact")}
+                  {t("Contact", "联系")}
                 </Link>
               </nav>
-              <p className="mt-5 text-xs text-zinc-500">© 2026 KnowLens.ai · All rights reserved</p>
+              <p className="mt-5 text-xs text-zinc-500">
+                {t("© 2026 KnowLens.ai · All rights reserved", "© 2026 KnowLens.ai · 保留所有权利")}
+              </p>
             </div>
             <nav>
               <div className="grid gap-6 text-sm text-zinc-600 sm:grid-cols-3">
                 {visibleToolLinkGroups.map((group) => (
                   <div key={group.title}>
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{group.title}</p>
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                      {translateToolGroupTitle(group.title, t)}
+                    </p>
                     <div className="flex flex-col gap-2.5">
                       {group.links.map((item) => (
                         <Link
