@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { get as getBlob, list as listBlobs, put as putBlob } from "@vercel/blob";
 import ffmpegStatic from "ffmpeg-static";
 import {
+  getWorkspaceTtsVoiceProvider,
   synthesizeWorkspaceTtsAudio,
   type TtsAudioResult,
 } from "@/lib/server/tts-synthesis";
@@ -17,7 +18,7 @@ import {
   readImageAsset,
 } from "@/lib/server/image-generation-jobs";
 import { linkVideoExportToPublishedCases } from "@/lib/server/published-case-video-assets";
-import { logOpsEvent } from "@/lib/server/store";
+import { isFreeUserBySubscriptionSafe, logOpsEvent } from "@/lib/server/store";
 import {
   buildSceneTransitions,
   TRANSITION_PRESETS,
@@ -46,6 +47,9 @@ const VIDEO_TRANSITION_CONCAT_TIMEOUT_PER_SCENE_MS = 25_000;
 const VIDEO_TRANSITION_CONCAT_MAX_TIMEOUT_MS = 540_000;
 const MIN_VISIBLE_TRANSITION_DURATION_SEC = 0.8;
 const MAX_VISIBLE_TRANSITION_DURATION_SEC = 1.25;
+const BASIC_GPT_TTS_VOICE_ID = "basic_narrator_female";
+const TTS_MAX_RETRIES = 3;
+const TTS_RETRY_BASE_DELAY_MS = 700;
 
 export type VideoExportJobStatus = "queued" | "running" | "success" | "error";
 export type VideoExportJobStep = "queued" | "tts" | "render" | "upload" | "done";
@@ -184,6 +188,10 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
 
 function normalizeText(value: unknown, max: number) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getJobPath(jobId: string) {
@@ -456,15 +464,61 @@ async function writeSceneAudio(
   scene: NormalizedScene,
   tmpDir: string,
   index: number,
+  job: Pick<
+    VideoExportJob,
+    "id" | "userEmail" | "projectId" | "step" | "progress" | "currentScene" | "totalScenes"
+  >,
+  effectiveTtsId: string,
 ): Promise<string | null> {
   const text = scene.narrationText?.trim() || "";
   if (!text) {
     return null;
   }
-  const audio: TtsAudioResult = await synthesizeWorkspaceTtsAudio({
-    text,
-    voice: scene.ttsId || undefined,
-  });
+  const provider = getWorkspaceTtsVoiceProvider(effectiveTtsId);
+  const maxAttempts = TTS_MAX_RETRIES + 1;
+  let audio: TtsAudioResult | null = null;
+  let lastTtsError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      audio = await synthesizeWorkspaceTtsAudio({
+        text,
+        voice: effectiveTtsId,
+      });
+      break;
+    } catch (error) {
+      lastTtsError = error;
+      if (attempt >= maxAttempts) {
+        break;
+      }
+      const delayMs = TTS_RETRY_BASE_DELAY_MS * attempt;
+      const retryNumber = attempt;
+      await logVideoExportJobEvent({
+        job,
+        action: "video_export_scene_tts_retry",
+        status: "error",
+        code: "GPT_TTS_RETRY",
+        message: `GPT TTS failed for scene ${index + 1}; retrying automatically.`,
+        details: {
+          sceneIndex: index,
+          scenePage: scene.page,
+          sceneId: scene.id,
+          requestedTtsId: scene.ttsId || null,
+          effectiveTtsId,
+          provider,
+          attempt,
+          retryNumber,
+          maxRetries: TTS_MAX_RETRIES,
+          maxAttempts,
+          retryDelayMs: delayMs,
+          error: error instanceof Error ? error.message : String(error ?? "Unknown TTS error"),
+        },
+      });
+      await delay(delayMs);
+    }
+  }
+  if (!audio) {
+    throw lastTtsError instanceof Error ? lastTtsError : new Error("TTS audio was not generated.");
+  }
   const audioPath = path.join(
     tmpDir,
     `scene-${String(index + 1).padStart(3, "0")}${extensionFromContentType(
@@ -474,6 +528,24 @@ async function writeSceneAudio(
   );
   await fs.writeFile(audioPath, Buffer.from(audio.data));
   return audioPath;
+}
+
+async function isVideoExportFreeUser(job: Pick<VideoExportJob, "userEmail" | "projectId">) {
+  if (!job.userEmail) {
+    return true;
+  }
+  return isFreeUserBySubscriptionSafe({
+    email: job.userEmail,
+    source: "video_export_tts",
+    projectId: job.projectId,
+  });
+}
+
+function getEffectiveVideoExportTtsId(scene: NormalizedScene, isFreeUser: boolean) {
+  if (isFreeUser) {
+    return BASIC_GPT_TTS_VOICE_ID;
+  }
+  return scene.ttsId || BASIC_GPT_TTS_VOICE_ID;
 }
 
 async function runFfmpeg(args: string[], timeout = 180_000) {
@@ -1040,11 +1112,25 @@ export async function runVideoExportJob(jobId: string) {
         fps: job.timeline.fps,
       },
     });
+    const isFreeUser = await isVideoExportFreeUser(job);
+    await logVideoExportJobEvent({
+      job,
+      action: "video_export_tts_voice_policy_ready",
+      status: "ok",
+      message: isFreeUser
+        ? "Free user TTS voice restricted to basic GPT voice."
+        : "Member TTS voice policy ready.",
+      details: {
+        isFreeUser,
+        enforcedVoiceId: isFreeUser ? BASIC_GPT_TTS_VOICE_ID : null,
+      },
+    });
 
     const segmentPaths: string[] = [];
     const segmentDurationsSec: number[] = [];
     for (let index = 0; index < job.timeline.scenes.length; index += 1) {
       const scene = job.timeline.scenes[index];
+      const effectiveTtsId = getEffectiveVideoExportTtsId(scene, isFreeUser);
       const sceneStartedAt = Date.now();
       job = await updateJob(job, {
         step: "tts",
@@ -1064,6 +1150,10 @@ export async function runVideoExportJob(jobId: string) {
           hasNarration: Boolean(scene.narrationText?.trim()),
           narrationChars: scene.narrationText?.trim().length || 0,
           imageSourceKind: getImageSourceKind(scene.imageUrl),
+          requestedTtsId: scene.ttsId || null,
+          effectiveTtsId,
+          ttsProvider: getWorkspaceTtsVoiceProvider(effectiveTtsId),
+          freeUserVoiceRestricted: isFreeUser,
         },
       });
       const imagePath = await writeSceneImage(scene, tmpDir, index, job.userEmail);
@@ -1080,7 +1170,7 @@ export async function runVideoExportJob(jobId: string) {
           durationMs: Date.now() - sceneStartedAt,
         },
       });
-      const audioPath = await writeSceneAudio(scene, tmpDir, index);
+      const audioPath = await writeSceneAudio(scene, tmpDir, index, job, effectiveTtsId);
       await logVideoExportJobEvent({
         job,
         action: audioPath ? "video_export_scene_audio_ready" : "video_export_scene_audio_skipped",
@@ -1094,7 +1184,10 @@ export async function runVideoExportJob(jobId: string) {
           sceneId: scene.id,
           hasNarration: Boolean(scene.narrationText?.trim()),
           narrationChars: scene.narrationText?.trim().length || 0,
-          ttsId: scene.ttsId || null,
+          requestedTtsId: scene.ttsId || null,
+          effectiveTtsId,
+          ttsProvider: getWorkspaceTtsVoiceProvider(effectiveTtsId),
+          freeUserVoiceRestricted: isFreeUser,
           durationMs: Date.now() - sceneStartedAt,
         },
       });

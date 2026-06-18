@@ -262,6 +262,171 @@ const PROMPT_SUGGESTION_CARDS: PromptSuggestionCard[] = [
   { id: "ai-data-center-power", label: "AI Data Center Power", category: "ai-tech", weight: 2, prompt: "Create an English data-style infographic explaining why AI data centers need so much electricity. Show a central data center connected to GPUs, cooling systems, power grid, and AI model training. Include compute, cooling, storage, and grid demand." },
 ];
 
+const PROMPT_SUGGESTION_ZH: Record<string, { label: string; prompt: string }> = {
+  "mediterranean-diet-recipe": {
+    label: "地中海饮食食谱",
+    prompt: "生成一张中文食谱信息图，主题是地中海饮食。画面以三文鱼、橄榄油、蔬菜、谷物和香草组成的餐盘为核心，包含关键食材、简单步骤、营养亮点和搭配建议。整体风格清爽、健康、适合手机阅读。",
+  },
+  "high-protein-breakfast": {
+    label: "高蛋白早餐",
+    prompt: "生成一张中文早餐信息图，主题是高蛋白早餐。画面展示鸡蛋、希腊酸奶、燕麦、莓果和坚果，说明蛋白质来源、制作步骤、饱腹感原因和适合人群。排版现代、干净、易读。",
+  },
+  "air-fryer-chicken": {
+    label: "空气炸锅鸡肉",
+    prompt: "生成一张中文食谱流程信息图，主题是空气炸锅鸡肉。展示酥脆鸡肉、调味料、烹饪温度和时间、分步做法与摆盘建议。画面实用、清爽、有食欲。",
+  },
+  "glp1-food-list": {
+    label: "GLP-1 饮食清单",
+    prompt: "生成一张中文健康饮食科普信息图，主题是 GLP-1 友好食物清单。用均衡餐盘展示优先选择的蛋白质、高纤维蔬菜、健康脂肪和补水建议，同时说明应少吃的食物。语气保持科普，不提供医疗建议。",
+  },
+  "meal-prep-plan": {
+    label: "一周备餐计划",
+    prompt: "生成一张中文备餐计划信息图，展示 5 天健康备餐安排。以便当盒为核心视觉，包含早餐、午餐、晚餐和加餐示例。排版实用、清晰、色彩友好。",
+  },
+  "ancient-egypt-timeline": {
+    label: "古埃及时间线",
+    prompt: "生成一张中文历史时间线信息图，主题是古埃及文明。展示主要时期、尼罗河、金字塔、法老、文字、宗教、治理、成就与影响。语气中立，适合教学和复习。",
+  },
+  "world-war-ii-timeline": {
+    label: "二战时间线",
+    prompt: "生成一张中文历史时间线信息图，主题是第二次世界大战。展示 1939 到 1945 年的重要节点，包括波兰战役、不列颠空战、珍珠港、诺曼底登陆和战争结束。保持中立、教育导向，避免血腥画面。",
+  },
+  "history-of-ai": {
+    label: "AI 发展史",
+    prompt: "生成一张中文科技时间线信息图，主题是人工智能发展史。包含图灵测试、专家系统、深度学习、Transformer、生成式 AI 和 AI Agent 等关键阶段。风格高级、清晰、适合科普。",
+  },
+  "space-race-timeline": {
+    label: "太空竞赛时间线",
+    prompt: "生成一张中文历史信息图，主题是太空竞赛。展示 Sputnik、尤里·加加林、阿波罗 11 号、空间站和可复用火箭等节点。使用火箭、地球和轨道线，文字简洁。",
+  },
+  "roman-empire-timeline": {
+    label: "罗马帝国时间线",
+    prompt: "生成一张中文历史时间线信息图，主题是罗马帝国。展示罗马共和国、凯撒、奥古斯都、罗马和平、帝国分裂和西罗马灭亡，并说明治理、工程、军事、法律与影响。",
+  },
+  "ai-agent-workflow": {
+    label: "AI Agent 工作流",
+    prompt: "生成一张中文科技流程信息图，解释 AI Agent 的工作流。展示用户目标、规划、工具调用、记忆或上下文、执行、反馈和结果。使用清晰节点、箭头和简短说明。",
+  },
+  "mcp-architecture": {
+    label: "MCP 架构",
+    prompt: "生成一张中文技术架构信息图，解释 MCP 架构。展示 AI 应用、MCP Client、MCP Server、外部工具、文件、数据库和 API 的关系，适合开发者和产品经理理解。",
+  },
+  "mcp-vs-api": {
+    label: "MCP vs API",
+    prompt: "生成一张中文对比信息图，主题是 MCP vs API。对比传统 API 的请求响应连接方式，以及 MCP 作为 AI 应用连接上下文与工具的标准层。包含用途、连接方式、AI 场景和灵活性。",
+  },
+  "ai-agent-vs-chatbot": {
+    label: "AI Agent vs 聊天机器人",
+    prompt: "生成一张中文对比信息图，解释 AI Agent 和聊天机器人的区别。对比聊天机器人主要回复消息，而 AI Agent 可以规划任务、调用工具、追踪目标并执行多步操作。使用清晰双栏布局。",
+  },
+  "vibe-coding-workflow": {
+    label: "Vibe Coding 流程",
+    prompt: "生成一张中文流程信息图，解释 Vibe Coding 工作流。展示描述产品想法、生成代码、预览、测试、修复错误、打磨界面和部署等步骤，并加入给产品经理和设计师的实用建议。",
+  },
+  "context-engineering": {
+    label: "上下文工程",
+    prompt: "生成一张中文技术信息图，解释 AI 系统中的上下文工程。展示用户目标、系统指令、检索知识、记忆、工具、示例、输出格式和评估如何围绕模型协同工作。",
+  },
+  "photosynthesis-process": {
+    label: "光合作用过程",
+    prompt: "生成一张中文科学信息图，解释光合作用。展示阳光、二氧化碳、水、叶绿体、葡萄糖和氧气，用植物为中心的图解和箭头说明过程。",
+  },
+  "water-cycle-diagram": {
+    label: "水循环图解",
+    prompt: "生成一张中文地球科学信息图，解释水循环。画面包含山脉、海洋、云、降雨和河流，并标注蒸发、凝结、降水、汇集、径流和下渗。",
+  },
+  "human-heart-anatomy": {
+    label: "心脏结构图",
+    prompt: "生成一张中文医学科普信息图，解释基础心脏结构。展示简化心脏图，标注左心房、右心房、左心室、右心室和血流方向，说明含氧血与缺氧血的流动。",
+  },
+  "dna-replication": {
+    label: "DNA 复制",
+    prompt: "生成一张中文生物信息图，解释 DNA 复制。展示双螺旋打开成两条链，标注解旋酶、DNA 聚合酶、前导链、滞后链和互补新链。步骤简洁，避免文字过密。",
+  },
+  "solar-system-comparison": {
+    label: "太阳系行星对比",
+    prompt: "生成一张中文科学对比信息图，比较太阳系八大行星。按离太阳远近展示行星顺序，并用简短标签说明大小、类型和一个关键事实。风格具有宇宙感且易读。",
+  },
+  "earth-layers-diagram": {
+    label: "地球圈层图",
+    prompt: "生成一张中文地球科学信息图，解释地球圈层。展示地球剖面图，标注地壳、地幔、外核和内核，并用简短说明展示材料、深度和温度趋势。",
+  },
+  "volcano-eruption": {
+    label: "火山喷发原理",
+    prompt: "生成一张中文地球科学信息图，解释火山如何喷发。展示火山剖面，包含岩浆房、通道、火山口、熔岩流、火山灰云和板块，并说明压力积累和喷发过程。",
+  },
+  "design-thinking-process": {
+    label: "设计思维流程",
+    prompt: "生成一张中文流程信息图，解释设计思维五个阶段：共情、定义、创意、原型和测试。使用清晰的循环流程布局，每一步配简短说明。",
+  },
+  "coffee-making-process": {
+    label: "咖啡制作流程",
+    prompt: "生成一张中文流程信息图，解释咖啡从咖啡豆到杯子的过程。展示咖啡树、采摘、烘焙、研磨、冲煮和成品咖啡，使用温暖的编辑插画风格。",
+  },
+  "product-roadmap": {
+    label: "产品路线图",
+    prompt: "生成一张中文产品路线图信息图，面向 SaaS 产品。展示调研、MVP、发布和增长四个阶段，包含功能卡片、里程碑和成功指标。",
+  },
+  "etfs-vs-mutual-funds": {
+    label: "ETF vs 共同基金",
+    prompt: "生成一张中文金融科普对比信息图，解释 ETF 和共同基金的区别。比较交易方式、费用、分散投资、税务效率、适合人群和关键差异。保持中立，不提供投资建议。",
+  },
+  "compound-interest-chart": {
+    label: "复利增长图",
+    prompt: "生成一张中文金融科普信息图，解释复利。展示本金、利息、再投资收益和时间带来的增长曲线，并用简单数字举例。仅做教育说明，不提供投资建议。",
+  },
+  "sp500-investing-guide": {
+    label: "标普 500 入门",
+    prompt: "生成一张中文金融科普信息图，解释标普 500 投资基础。说明标普 500 是什么、分散投资为什么重要、长期投资、定投概念和风险提醒。避免个性化投资建议。",
+  },
+  "ai-data-center-power": {
+    label: "AI 数据中心用电",
+    prompt: "生成一张中文数据型信息图，解释为什么 AI 数据中心需要大量电力。展示数据中心与 GPU、冷却系统、电网和模型训练的连接，说明计算、散热、存储和电网需求。",
+  },
+};
+
+const SHOWCASE_CATEGORY_ZH: Record<string, string> = {
+  All: "全部",
+  "Earth Science": "地球科学",
+  Process: "流程",
+  Recipe: "食谱",
+  "Financial Report": "财报分析",
+  Biology: "生物",
+  History: "历史",
+  Timeline: "时间线",
+  Comparison: "对比图",
+  Roadmap: "路线图",
+  Astronomy: "天文",
+  Medicine: "医学科普",
+  Science: "科学",
+  Education: "教育",
+  Business: "商业",
+};
+
+const FORMAT_LABEL_ZH: Record<string, string> = {
+  Infographic: "信息图",
+  Poster: "海报",
+  Video: "视频",
+  PPT: "演示文稿",
+  Carousel: "轮播图",
+};
+
+function getPromptSuggestionLabel(card: PromptSuggestionCard, locale: "en" | "zh") {
+  return locale === "zh" ? PROMPT_SUGGESTION_ZH[card.id]?.label || card.label : card.label;
+}
+
+function getPromptSuggestionPrompt(card: PromptSuggestionCard, locale: "en" | "zh") {
+  return locale === "zh" ? PROMPT_SUGGESTION_ZH[card.id]?.prompt || card.prompt : card.prompt;
+}
+
+function localizeShowcaseCategory(category: string, locale: "en" | "zh") {
+  return locale === "zh" ? SHOWCASE_CATEGORY_ZH[category] || category : category;
+}
+
+function localizeFormatLabel(format: string, locale: "en" | "zh") {
+  return locale === "zh" ? FORMAT_LABEL_ZH[format] || format : format;
+}
+
 function shuffleItems<T>(items: T[]) {
   const nextItems = [...items];
   for (let index = nextItems.length - 1; index > 0; index -= 1) {
@@ -2393,7 +2558,7 @@ export default function Home() {
       document.execCommand("copy");
       textarea.remove();
     }
-    setUploadToast("Share link copied to clipboard.");
+    setUploadToast(t("Share link copied to clipboard.", "分享链接已复制。"));
   }
 
   function openFeaturedPreview(item: FeaturedCaseItem) {
@@ -2409,6 +2574,34 @@ export default function Home() {
     const category = normalizeCategoryLabel(item.category).toLowerCase();
     const description = item.description?.trim();
     const format = normalizeFormatLabel(item.format);
+    if (locale === "zh") {
+      const zhCategory = localizeShowcaseCategory(normalizeShowcaseCategory(item.category), locale);
+      if (format === "Video") {
+        return [
+          `生成一个关于「${item.title}」的${zhCategory}解说视频。`,
+          description,
+          "分镜要清晰、节奏自然、适合手机观看。",
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+      if (format === "PPT") {
+        return [
+          `生成一套关于「${item.title}」的${zhCategory}演示文稿。`,
+          description,
+          "页面结构要清楚，重点突出，适合快速阅读。",
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+      return [
+        `生成一张关于「${item.title}」的${zhCategory}信息图。`,
+        description,
+        "画面要清晰、有层次，适合手机浏览，文字不要过密。",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
 
     if (format === "Video") {
       return [
@@ -2440,7 +2633,10 @@ export default function Home() {
   }
 
   function handleCreateSimilarFromShowcase(item: FeaturedCaseItem) {
-    handlePromptSuggestionSelect(buildFeaturedSimilarPrompt(item), "Prompt added to the input.");
+    handlePromptSuggestionSelect(
+      buildFeaturedSimilarPrompt(item),
+      t("Prompt added to the input.", "已填入输入框。"),
+    );
   }
 
   function handlePromptSuggestionSelect(prompt: string, toastMessage?: string) {
@@ -2513,7 +2709,11 @@ export default function Home() {
     return serverRecentProjects.slice(0, 4).map((project, index) => ({
       id: project.id,
       title: formatRecentProjectTitle(project.title, locale, index),
-      updatedAt: project.updatedAt ? `Updated ${project.updatedAt}` : "Recently updated",
+      updatedAt: project.updatedAt
+        ? locale === "zh"
+          ? `更新于 ${project.updatedAt}`
+          : `Updated ${project.updatedAt}`
+        : t("Recently updated", "最近更新"),
       cover: project.cover || project.coverImageUrl || "",
       format: normalizeFormatLabel(project.format || "海报"),
       duration: project.duration,
@@ -2693,7 +2893,7 @@ export default function Home() {
               <p className="text-sm font-medium text-blue-600">KnowLens.ai</p>
               <h1 className="mt-1 max-w-[14ch] text-center text-[clamp(1.55rem,4.15vw,2.45rem)] font-semibold leading-[1.08] tracking-tight text-zinc-900 sm:max-w-none sm:text-[clamp(1.65rem,4.15vw,2.55rem)]">
                 <span className="block sm:inline">{t("Turn Text into Clear", "把文本变成清晰")}</span>{" "}
-                <span className="block sm:inline">{t("Infographics", "信息图")}</span>
+                <span className="block sm:inline">{t("Infographics", "的信息图")}</span>
               </h1>
             </div>
 
@@ -2721,7 +2921,7 @@ export default function Home() {
                       void handleComposerPaste(event);
                     }}
                     className="block h-[200px] w-full resize-none overflow-y-auto rounded-t-[30px] bg-transparent px-6 py-6 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300"
-                    placeholder={t(creationInputPlaceholder, "输入一个科学想法，或粘贴你的学习内容。")}
+                    placeholder={t(creationInputPlaceholder, "输入主题、笔记或一段说明，KnowLens 会帮你整理成信息图。")}
                   />
                 </label>
 
@@ -2867,7 +3067,7 @@ export default function Home() {
               {visiblePromptCards.length ? (
                 <div className="relative left-1/2 mt-7 w-[min(calc(100vw-1.5rem),72rem)] -translate-x-1/2 px-3 sm:mt-8 sm:w-[min(calc(100vw-6rem),78rem)] sm:px-0">
                   <p className="mb-2.5 text-center text-xs font-medium text-zinc-500">
-                    {t("Try a prompt", "试试这些提示词")}
+                    {t("Try a prompt", "点一个示例开始")}
                   </p>
                   <div className="mx-auto flex max-w-[58rem] flex-wrap items-center justify-center gap-x-1.5 gap-y-2 sm:gap-x-2">
                     {visiblePromptCards.map((card) => {
@@ -2876,11 +3076,11 @@ export default function Home() {
                         <button
                           key={card.id}
                           type="button"
-                          onClick={() => handlePromptSuggestionSelect(card.prompt)}
+                          onClick={() => handlePromptSuggestionSelect(getPromptSuggestionPrompt(card, locale))}
                           className="inline-flex w-auto min-w-0 max-w-full items-center justify-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-900"
                         >
                           <CardIcon size={12} className="shrink-0 text-zinc-400" />
-                          <span className="truncate">{card.label}</span>
+                          <span className="truncate">{getPromptSuggestionLabel(card, locale)}</span>
                         </button>
                       );
                     })}
@@ -2919,7 +3119,7 @@ export default function Home() {
                     className="group cursor-pointer overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative aspect-video w-full overflow-hidden bg-zinc-100">
-                      {project.cover ? (
+                        {project.cover ? (
                         <ProgressiveCover
                           src={toOptimizedCaseCover(project.cover)}
                           fallbackSrc={project.cover}
@@ -2932,7 +3132,7 @@ export default function Home() {
                         </div>
                       )}
                       <span className="absolute left-2 top-2 inline-flex items-center rounded-md border border-white/25 bg-black/78 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-[2px]">
-                        {normalizeFormatLabel(project.format)}
+                        {localizeFormatLabel(normalizeFormatLabel(project.format), locale)}
                       </span>
                     </div>
                     <div className="px-3 pb-3 pt-2.5">
@@ -2963,7 +3163,7 @@ export default function Home() {
                         : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
                     }`}
                   >
-                    {category}
+                    {localizeShowcaseCategory(category, locale)}
                   </button>
                 ))}
               </div>
@@ -3021,7 +3221,7 @@ export default function Home() {
                     <div className="p-3">
                       <div className="mt-0.5 flex items-center justify-between gap-2 text-xs text-zinc-500">
                         <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
-                          {normalizeFormatLabel(item.format)}
+                          {localizeFormatLabel(normalizeFormatLabel(item.format), locale)}
                         </span>
                         <span className="truncate">@{item.author}</span>
                       </div>

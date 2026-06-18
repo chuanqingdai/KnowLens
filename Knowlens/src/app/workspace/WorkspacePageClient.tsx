@@ -602,8 +602,8 @@ const TEXT_MODEL_OPTION_LABELS: Record<string, string> = {
   "claude-sonnet-4.6": "Claude Sonnet 4.7",
 };
 const TTS_VOICE_BILLING_LABELS: Record<string, string> = {
-  basic_narrator_male: "Basic Voice · Guy",
-  basic_narrator_female: "Basic Voice · Jenny",
+  basic_narrator_male: "Basic GPT Voice · Male",
+  basic_narrator_female: "Basic GPT Voice · Female",
   pro_documentary_male: "OpenAI TTS Pro · Cedar",
   pro_documentary_female: "OpenAI TTS Pro · Marin",
   pro_deep_science: "OpenAI TTS Pro · Onyx",
@@ -662,7 +662,7 @@ function getImageModelBillingLabel() {
 }
 
 function getTtsBillingModelLabel(voiceId: string) {
-  return TTS_VOICE_BILLING_LABELS[voiceId] ?? (PRO_TTS_VOICE_IDS.has(voiceId) ? "OpenAI TTS Pro" : "Basic Voice");
+  return TTS_VOICE_BILLING_LABELS[voiceId] ?? (PRO_TTS_VOICE_IDS.has(voiceId) ? "OpenAI TTS Pro" : "Basic GPT Voice");
 }
 
 function scheduleWorkspaceClientLogFlush() {

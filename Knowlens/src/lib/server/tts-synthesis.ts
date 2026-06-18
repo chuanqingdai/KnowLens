@@ -1,16 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-const VOICE_WHITELIST = new Set(["Ting-Ting", "Samantha", "Daniel"]);
 const DEFAULT_TTS_VOICE_ID = "basic_narrator_female";
 
-type TtsProvider = "edge" | "openai";
+type TtsProvider = "openai";
 
 type TtsVoiceConfig = {
   provider: TtsProvider;
@@ -26,18 +16,28 @@ export type TtsAudioResult = {
   contentType: string;
 };
 
+export type FreeTtsFallbackProvider = "gpt_tts";
+
+export type FreeTtsFallbackAudioResult = TtsAudioResult & {
+  fallbackProvider: FreeTtsFallbackProvider;
+};
+
 const TTS_VOICES: Record<string, TtsVoiceConfig> = {
   basic_narrator_male: {
-    provider: "edge",
-    voiceName: "en-US-GuyNeural",
+    provider: "openai",
+    voiceName: "echo",
     languageCode: "en-US",
     gender: "male",
+    styleInstructions:
+      "Speak with a clear, friendly narrator voice for a short educational video. Use natural pacing, crisp articulation, and gentle emphasis on key ideas. Keep the tone polished, reliable, and easy to understand on mobile speakers.",
   },
   basic_narrator_female: {
-    provider: "edge",
-    voiceName: "en-US-JennyNeural",
+    provider: "openai",
+    voiceName: "nova",
     languageCode: "en-US",
     gender: "female",
+    styleInstructions:
+      "Speak with a clear, warm narrator voice for a short educational video. Use natural pacing, crisp articulation, and gentle emphasis on key ideas. Keep the tone polished, reliable, and easy to understand on mobile speakers.",
   },
   pro_documentary_male: {
     provider: "openai",
@@ -119,183 +119,9 @@ export function getWorkspaceTtsVoiceProvider(voiceId?: string) {
   return resolveTtsVoice(voiceId).provider;
 }
 
-function getLocalFallbackVoice(voice: TtsVoiceConfig) {
-  if (voice.gender === "male") {
-    return "Daniel";
-  }
-  return "Samantha";
-}
-
-async function safeUnlink(filePath: string) {
-  try {
-    await fs.unlink(filePath);
-  } catch {
-    // ignore
-  }
-}
-
-async function synthesizeWithLocalSay(
-  text: string,
-  voice: TtsVoiceConfig,
-): Promise<TtsAudioResult> {
-  const basename = `knowlens-tts-${randomUUID()}`;
-  const aiffPath = path.join(os.tmpdir(), `${basename}.aiff`);
-  const wavPath = path.join(os.tmpdir(), `${basename}.wav`);
-  try {
-    const localVoice = getLocalFallbackVoice(voice);
-    const safeVoice = VOICE_WHITELIST.has(localVoice) ? localVoice : "Samantha";
-    await execFileAsync("/usr/bin/say", ["-v", safeVoice, "-o", aiffPath, text]);
-    await execFileAsync("/usr/bin/afconvert", [
-      "-f",
-      "WAVE",
-      "-d",
-      "LEI16@48000",
-      aiffPath,
-      wavPath,
-    ]);
-    const data = await fs.readFile(wavPath);
-    return {
-      data,
-      contentType: "audio/wav",
-    };
-  } finally {
-    await safeUnlink(aiffPath);
-    await safeUnlink(wavPath);
-  }
-}
-
-function escapeXml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-function makeEdgeRequestId() {
-  return randomUUID().replace(/-/g, "");
-}
-
-function edgeTimestamp() {
-  return new Date().toISOString();
-}
-
-function edgeMessage(pathName: string, requestId: string, body: string) {
-  return [
-    `X-RequestId:${requestId}`,
-    `X-Timestamp:${edgeTimestamp()}`,
-    `Path:${pathName}`,
-    "",
-    body,
-  ].join("\r\n");
-}
-
-function edgeBinaryToAudioBuffer(data: ArrayBuffer) {
-  const buffer = Buffer.from(data);
-  const marker = Buffer.from("Path:audio");
-  const markerIndex = buffer.indexOf(marker);
-  if (markerIndex < 0) {
-    return null;
-  }
-  const headerEnd = buffer.indexOf(Buffer.from("\r\n\r\n"), markerIndex);
-  if (headerEnd < 0) {
-    return null;
-  }
-  return buffer.subarray(headerEnd + 4);
-}
-
-async function synthesizeWithEdge(
-  text: string,
-  voice: TtsVoiceConfig,
-): Promise<TtsAudioResult> {
-  if (typeof WebSocket === "undefined") {
-    throw new Error("WebSocket is not available for Edge TTS");
-  }
-
-  const requestId = makeEdgeRequestId();
-  const token =
-    process.env.EDGE_TTS_TRUSTED_CLIENT_TOKEN?.trim() ||
-    "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
-  const outputFormat =
-    process.env.EDGE_TTS_OUTPUT_FORMAT?.trim() ||
-    "audio-24khz-48kbitrate-mono-mp3";
-  const connectionId = makeEdgeRequestId();
-  const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${encodeURIComponent(
-    token,
-  )}&ConnectionId=${connectionId}`;
-
-  return await new Promise<TtsAudioResult>((resolve, reject) => {
-    const ws = new WebSocket(url);
-    const chunks: Buffer[] = [];
-    const timeout = setTimeout(() => {
-      ws.close();
-      reject(new Error("Edge TTS timed out"));
-    }, 45000);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-    };
-
-    ws.onerror = () => {
-      cleanup();
-      reject(new Error("Edge TTS connection failed"));
-    };
-
-    ws.onopen = () => {
-      const speechConfig = {
-        context: {
-          synthesis: {
-            audio: {
-              metadataoptions: {
-                sentenceBoundaryEnabled: "false",
-                wordBoundaryEnabled: "false",
-              },
-              outputFormat,
-            },
-          },
-        },
-      };
-      ws.send(edgeMessage("speech.config", requestId, JSON.stringify(speechConfig)));
-      const ssml = `<speak version='1.0' xml:lang='${voice.languageCode ?? "en-US"}'><voice name='${voice.voiceName}'>${escapeXml(
-        text,
-      )}</voice></speak>`;
-      ws.send(edgeMessage("ssml", requestId, ssml));
-    };
-
-    ws.onmessage = async (event) => {
-      if (typeof event.data === "string") {
-        if (event.data.includes("Path:turn.end")) {
-          cleanup();
-          ws.close();
-          const data = Buffer.concat(chunks);
-          if (!data.length) {
-            reject(new Error("Edge TTS returned no audio"));
-            return;
-          }
-          resolve({
-            data,
-            contentType: "audio/mpeg",
-          });
-        }
-        return;
-      }
-
-      const arrayBuffer =
-        event.data instanceof ArrayBuffer
-          ? event.data
-          : event.data instanceof Blob
-            ? await event.data.arrayBuffer()
-            : null;
-      if (!arrayBuffer) {
-        return;
-      }
-      const audioBuffer = edgeBinaryToAudioBuffer(arrayBuffer);
-      if (audioBuffer?.length) {
-        chunks.push(audioBuffer);
-      }
-    };
-  });
+export function isBasicWorkspaceTtsVoice(voiceId?: string) {
+  const resolvedVoiceId = TTS_VOICES[voiceId || ""] ? voiceId : DEFAULT_TTS_VOICE_ID;
+  return resolvedVoiceId === "basic_narrator_male" || resolvedVoiceId === "basic_narrator_female";
 }
 
 function buildTtsStyleInstructions(text: string, voice: TtsVoiceConfig) {
@@ -333,7 +159,7 @@ async function synthesizeWithOpenAi(
     process.env.OPENAI_TTS_API_KEY?.trim() ||
     process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("Missing premium TTS API key");
+    throw new Error("Missing GPT TTS API key");
   }
 
   const baseUrl = (
@@ -345,6 +171,10 @@ async function synthesizeWithOpenAi(
   ).replace(/\/$/, "");
   const model =
     voice.model ||
+    (isBasicWorkspaceTtsVoiceByConfig(voice)
+      ? process.env.GPTSAPI_BASIC_TTS_MODEL?.trim() ||
+        process.env.OPENAI_BASIC_TTS_MODEL?.trim()
+      : undefined) ||
     process.env.GPTSAPI_TTS_MODEL?.trim() ||
     process.env.OPENAI_TTS_MODEL?.trim() ||
     "gpt-4o-mini-tts";
@@ -396,6 +226,10 @@ async function synthesizeWithOpenAi(
   };
 }
 
+function isBasicWorkspaceTtsVoiceByConfig(voice: TtsVoiceConfig) {
+  return voice === TTS_VOICES.basic_narrator_male || voice === TTS_VOICES.basic_narrator_female;
+}
+
 export async function synthesizeWorkspaceTtsAudio(input: {
   text: string;
   voice?: string;
@@ -403,18 +237,21 @@ export async function synthesizeWorkspaceTtsAudio(input: {
 }): Promise<TtsAudioResult> {
   const text = input.text.trim();
   const voice = resolveTtsVoice(input.voice);
-  try {
-    return voice.provider === "edge"
-      ? await synthesizeWithEdge(text, voice)
-      : await synthesizeWithOpenAi(text, voice);
-  } catch (providerError) {
-    const allowLocalFallback =
-      input.allowLocalFallback ??
-      (process.env.TTS_ALLOW_LOCAL_FALLBACK === "true" ||
-        (process.env.NODE_ENV !== "production" && process.platform === "darwin"));
-    if (!allowLocalFallback) {
-      throw providerError;
-    }
-    return synthesizeWithLocalSay(text, voice);
-  }
+  void input.allowLocalFallback;
+  return synthesizeWithOpenAi(text, voice);
+}
+
+export async function synthesizeFreeBasicTtsFallbackAudio(input: {
+  text: string;
+  voice?: string;
+  allowSilentFallback?: boolean;
+}): Promise<FreeTtsFallbackAudioResult> {
+  const text = input.text.trim();
+  const voice = resolveTtsVoice(input.voice || DEFAULT_TTS_VOICE_ID);
+  void input.allowSilentFallback;
+  const audio = await synthesizeWithOpenAi(text, voice);
+  return {
+    ...audio,
+    fallbackProvider: "gpt_tts",
+  };
 }

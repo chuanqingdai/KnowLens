@@ -133,19 +133,19 @@ const capabilityFlows = [
   {
     id: "infographic-poster",
     tabEn: "AI Infographic",
-    tabZh: "AI Infographic",
+    tabZh: "AI 信息图",
     previewImage: "/picture/text-to-poster.jpg",
   },
   {
     id: "visual-summary",
     tabEn: "Visual Summary",
-    tabZh: "Visual Summary",
+    tabZh: "视觉摘要",
     previewImage: "/picture/text-to-ppt-workflow.jpg",
   },
   {
     id: "explainer-video",
     tabEn: "Short Explainer Video",
-    tabZh: "Short Explainer Video",
+    tabZh: "短解说视频",
     previewImage: "/picture/text to video.jpg",
   },
 ];
@@ -161,40 +161,63 @@ const howItWorksTags = [
   "Carousel-style Visual",
 ];
 
+const howItWorksTagZh: Record<string, string> = {
+  "AI Infographic Generator": "AI 信息图生成器",
+  "AI Video Generator": "AI 视频生成器",
+  "Infographic Maker": "信息图制作器",
+  "Visual Summary": "视觉摘要",
+  "AI Poster": "AI 海报",
+  "Carousel-style Visual": "轮播式视觉",
+};
+
 const homepageToolCards = [
   {
     title: "Text to Video",
+    titleZh: "文本转视频",
     description: "Create short educational videos and science explainers from topics, notes, or short scripts.",
+    descriptionZh: "用主题、笔记或短脚本创建教学短视频和科学解说。",
     href: "/text-to-video-ai",
   },
   {
     title: "Infographic Maker",
+    titleZh: "信息图制作器",
     description: "Make educational infographics, visual summaries, posters, and carousel-style visuals from simple text.",
+    descriptionZh: "把简单文本做成教育信息图、视觉摘要、海报和轮播图。",
     href: "/infographic-maker",
   },
   {
     title: "Text to Infographic",
+    titleZh: "文本转信息图",
     description: "Turn plain text, notes, and topics into clear infographics, posters, and visual summaries.",
+    descriptionZh: "把纯文本、笔记和主题转成清晰的信息图、海报和视觉摘要。",
     href: "/text-to-infographic",
   },
   {
     title: "AI Poster Generator",
+    titleZh: "AI 海报生成器",
     description: "Turn topics, notes, and plain text into clear posters, visual summaries, and infographic-style designs.",
+    descriptionZh: "用主题、笔记和纯文本生成清晰海报、视觉摘要和信息图式设计。",
     href: "/ai-poster-generator",
   },
   {
     title: "AI Carousel Generator",
+    titleZh: "AI 轮播图生成器",
     description: "Turn text, notes, and topics into multi-slide carousel visuals and infographic-style slides.",
+    descriptionZh: "把文本、笔记和主题转成多页轮播图和信息图式幻灯片。",
     href: "/ai-carousel-generator",
   },
   {
     title: "Infographic & Video Tools",
+    titleZh: "信息图与视频工具",
     description: "Create short explainer videos, infographic-style overlays, and visual summaries from topics, notes, or plain text.",
+    descriptionZh: "从主题、笔记或纯文本创建短解说视频、信息图叠加视觉和视觉摘要。",
     href: "/ai-video-generator",
   },
   {
     title: "AI Infographic Generator",
+    titleZh: "AI 信息图生成器",
     description: "Turn ideas and notes into infographics, posters, and carousel-style visuals.",
+    descriptionZh: "把想法和笔记变成信息图、海报和轮播式视觉内容。",
     href: "/ai-infographic-generator",
   },
 ];
@@ -203,20 +226,29 @@ const howItWorksCards = [
   {
     id: "understand",
     title: "Add Your Idea",
+    titleZh: "输入你的想法",
     description:
       "Start with a topic, notes, plain text, a short script, or a rough outline. Give KnowLens the core idea, audience, and context you want people to understand.",
+    descriptionZh:
+      "从主题、笔记、纯文本、短脚本或大纲开始。告诉 KnowLens 你想表达的核心内容、受众和背景。",
   },
   {
     id: "organize",
     title: "Shape the Message",
+    titleZh: "整理内容结构",
     description:
       "KnowLens breaks the idea into key points, sections, captions, visual hierarchy, and scene flow so the explanation is easier to scan, teach, and share.",
+    descriptionZh:
+      "KnowLens 会把想法拆成重点、分区、标题、视觉层级和分镜流程，让内容更容易阅读、教学和分享。",
   },
   {
     id: "generate",
     title: "Generate the Visual",
+    titleZh: "生成视觉内容",
     description:
       "Create a polished infographic, poster, carousel-style visual, visual summary, or short explainer video, then refine the direction before sharing or downloading.",
+    descriptionZh:
+      "生成精致的信息图、海报、轮播图、视觉摘要或短解说视频，再根据需要调整方向并分享或下载。",
   },
 ];
 
@@ -224,44 +256,62 @@ const personaUseCases = [
   {
     id: "students",
     role: "Students",
+    roleZh: "学生",
     quote:
       "Turn class notes, study topics, and short explanations into visual summaries that are easier to review and remember.",
+    quoteZh: "把课堂笔记、复习主题和短说明转成更容易回顾和记忆的视觉摘要。",
     tags: "Study notes · Visual summaries",
+    tagsZh: "学习笔记 · 视觉摘要",
   },
   {
     id: "teachers",
     role: "Teachers",
+    roleZh: "老师",
     quote:
       "Create educational infographics and short visual explainers that make lesson topics clearer for students.",
+    quoteZh: "创建教育信息图和短解说视觉，让课堂主题对学生更清楚。",
     tags: "Educational infographics · Lesson visuals",
+    tagsZh: "教育信息图 · 课堂视觉",
   },
   {
     id: "content-creators",
     role: "Content Creators",
+    roleZh: "内容创作者",
     quote:
       "Turn one idea into social visuals, carousel-style graphics, posters, and short explainer videos for audience-friendly publishing.",
+    quoteZh: "把一个想法变成社媒视觉、轮播图、海报和短解说视频，更适合面向受众发布。",
     tags: "Social visuals · Short explainers",
+    tagsZh: "社媒视觉 · 短解说",
   },
   {
     id: "science-communicators",
     role: "Science Communicators",
+    roleZh: "科学传播者",
     quote:
       "Explain science, health, history, technology, and everyday concepts with clear visual structure instead of dense text.",
+    quoteZh: "用清晰的视觉结构解释科学、健康、历史、技术和日常概念，减少大段文字负担。",
     tags: "Science infographics · Knowledge visuals",
+    tagsZh: "科学信息图 · 知识视觉",
   },
   {
     id: "small-teams",
     role: "Small Teams",
+    roleZh: "小团队",
     quote:
       "Summarize product ideas, workflows, campaign messages, and internal concepts into clear visual content.",
+    quoteZh: "把产品想法、工作流、活动信息和内部概念整理成清晰的视觉内容。",
     tags: "Team explainers · Visual briefs",
+    tagsZh: "团队说明 · 视觉简报",
   },
   {
     id: "marketers",
     role: "Marketers",
+    roleZh: "市场营销人员",
     quote:
       "Turn plain text into promotional posters, visual summaries, and carousel-style content without starting from a blank canvas.",
+    quoteZh: "无需从空白画布开始，把纯文本转成推广海报、视觉摘要和轮播内容。",
     tags: "Posters · Carousel visuals",
+    tagsZh: "海报 · 轮播图",
   },
 ];
 
@@ -320,9 +370,9 @@ const planCards = [
   {
     id: "starter",
     nameEn: "Starter",
-    nameZh: "Starter",
+    nameZh: "入门版",
     subtitleEn: "Create clean infographics and visual summaries without watermark.",
-    subtitleZh: "Create clean infographics and visual summaries without watermark.",
+    subtitleZh: "无水印生成清晰的信息图和视觉摘要，适合日常轻量使用。",
     monthlyPrice: 14.9,
     yearlyPrice: 124.9,
     monthlyEquivalent: 10.43,
@@ -340,17 +390,17 @@ const planCards = [
       "Basic visual styles",
       "Standard queue",
     ],
-    featuresZh: ["No watermark", "Standard infographic generation", "Visual summary generation", "Standard image export", "Basic visual styles", "Standard queue"],
+    featuresZh: ["无水印输出", "标准信息图生成", "视觉摘要生成", "标准图片导出", "基础视觉风格", "标准生成队列"],
     ctaEn: "Subscribe with Stripe",
-    ctaZh: "Stripe 订阅",
+    ctaZh: "通过 Stripe 订阅",
     highlight: false,
   },
   {
     id: "pro",
     nameEn: "Creator",
-    nameZh: "Creator",
+    nameZh: "创作者版",
     subtitleEn: "Best for creators turning topics, notes, and ideas into visual content.",
-    subtitleZh: "Best for creators turning topics, notes, and ideas into visual content.",
+    subtitleZh: "适合经常把主题、笔记和想法做成视觉内容的创作者。",
     monthlyPrice: 29,
     yearlyPrice: 242,
     monthlyEquivalent: 20.17,
@@ -369,17 +419,17 @@ const planCards = [
       "Faster generation queue",
       "Commercial usage",
     ],
-    featuresZh: ["No watermark", "HD infographic export", "More visual styles", "Poster and carousel-style visuals", "Short explainer video generation", "Faster generation queue", "Commercial usage"],
+    featuresZh: ["无水印输出", "高清信息图导出", "更多视觉风格", "海报与轮播式视觉", "短解说视频生成", "更快生成队列", "可商用"],
     ctaEn: "Subscribe with Stripe",
-    ctaZh: "Stripe 订阅",
+    ctaZh: "通过 Stripe 订阅",
     highlight: true,
   },
   {
     id: "scale",
     nameEn: "Pro",
-    nameZh: "Pro",
+    nameZh: "专业版",
     subtitleEn: "For high-volume creators producing HD infographics, posters, and short explainer videos regularly.",
-    subtitleZh: "For high-volume creators producing HD infographics, posters, and short explainer videos regularly.",
+    subtitleZh: "适合高频生成高清信息图、海报和短解说视频的团队或个人。",
     monthlyPrice: 59,
     yearlyPrice: 489.9,
     monthlyEquivalent: 40.83,
@@ -399,9 +449,9 @@ const planCards = [
       "Batch generation",
       "Commercial usage",
     ],
-    featuresZh: ["No watermark", "Premium HD export", "Long infographic generation", "Visual summary generation", "Short explainer video generation", "Priority rendering", "Batch generation", "Commercial usage"],
+    featuresZh: ["无水印输出", "高级高清导出", "长信息图生成", "视觉摘要生成", "短解说视频生成", "优先渲染", "批量生成", "可商用"],
     ctaEn: "Subscribe with Stripe",
-    ctaZh: "Stripe 订阅",
+    ctaZh: "通过 Stripe 订阅",
     highlight: false,
   },
 ];
@@ -726,7 +776,7 @@ export default function LandingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
  
-        <h1 className="sr-only">{t("AI Infographic and AI Video Generator", "AI Infographic and AI Video Generator")}</h1>
+        <h1 className="sr-only">{t("AI Infographic and AI Video Generator", "AI 信息图与 AI 视频生成器")}</h1>
 
         <section className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-4 pt-6 sm:gap-8 sm:px-6 sm:pt-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-center lg:gap-10 lg:pt-14">
           <div className="mx-auto max-w-[620px] text-center lg:mx-0 lg:text-left">
@@ -736,14 +786,17 @@ export default function LandingPage() {
                   <Star key={index} size={11} fill="currentColor" strokeWidth={1.8} />
                 ))}
               </span>
-              <span className="font-medium">AI Infographic & Video Generator</span>
+              <span className="font-medium">{t("AI Infographic & Video Generator", "AI 信息图与视频生成器")}</span>
             </div>
             <h2 className="mt-4 text-[clamp(1.95rem,5.2vw,2.5rem)] font-semibold leading-[1.14] tracking-tight text-zinc-950 sm:text-[36px] lg:text-[40px]">
-              <span className="block">AI Infographic and</span>
-              <span className="block">AI Video Generator</span>
+              <span className="block">{t("AI Infographic and", "AI 信息图")}</span>
+              <span className="block">{t("AI Video Generator", "与 AI 视频生成器")}</span>
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-zinc-600 sm:mt-4 sm:text-base lg:mx-0">
-              Turn topics, notes, or plain text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos in minutes.
+              {t(
+                "Turn topics, notes, or plain text into infographics, visual summaries, posters, carousel-style visuals, and short explainer videos in minutes.",
+                "把主题、笔记或纯文本快速变成信息图、视觉摘要、海报、轮播图和短解说视频。",
+              )}
             </p>
             <div className="mt-5 flex items-center justify-center sm:mt-6 lg:justify-start">
               <Link
@@ -751,12 +804,12 @@ export default function LandingPage() {
                 onClick={() => trackLandingGenerateClick("hero")}
                 className={`${LANDING_CTA_CLASS} h-12 min-w-[148px] gap-2 px-6 text-[15px] sm:h-[52px]`}
               >
-                Create Now
+                {t("Create Now", "立即创建")}
                 <ArrowRight size={15} />
               </Link>
             </div>
             <p className="mt-3 text-xs leading-5 text-zinc-500">
-              No design skills needed.
+              {t("No design skills needed.", "无需设计技能。")}
             </p>
           </div>
 
@@ -773,7 +826,10 @@ export default function LandingPage() {
               />
             </AspectSkeleton>
             <p className="mt-2 text-center text-xs leading-5 text-zinc-500">
-              Generated examples: educational infographics, science visuals, visual summaries, posters, and short explainer videos.
+              {t(
+                "Generated examples: educational infographics, science visuals, visual summaries, posters, and short explainer videos.",
+                "案例包含教育信息图、科学图解、视觉摘要、海报和短解说视频。",
+              )}
             </p>
           </div>
         </section>
@@ -783,13 +839,13 @@ export default function LandingPage() {
             <h2 className="mt-2 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
               {t(
                 "Create Different Types of Infographics & Videos",
-                "Create Different Types of Infographics & Videos",
+                "一站式创建多种信息图与视频",
               )}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-7 text-zinc-600">
               {t(
                 "Choose the right format for your idea, from educational visuals to social media posters, carousel-style graphics, and short explainer videos.",
-                "Choose the right format for your idea, from educational visuals to social media posters, carousel-style graphics, and short explainer videos.",
+                "根据你的内容选择合适形式：教学图解、社媒海报、轮播图，或短解说视频。",
               )}
             </p>
 
@@ -837,12 +893,12 @@ export default function LandingPage() {
         <section id="pricing" className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="text-center">
             <h2 className="text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[42px]">
-              {t("AI-Generated Infographic & Video Examples", "AI-Generated Infographic & Video Examples")}
+              {t("AI-Generated Infographic & Video Examples", "AI 生成的信息图与视频案例")}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
               {t(
                 "Explore visual examples created from topics, notes, and short text prompts.",
-                "Explore visual examples created from topics, notes, and short text prompts.",
+                "浏览由主题、笔记和短提示词生成的视觉案例。",
               )}
             </p>
           </div>
@@ -903,22 +959,22 @@ export default function LandingPage() {
         <section className="mx-auto mt-8 w-full max-w-6xl px-4 py-6 sm:mt-10 sm:px-6">
           <div className="mx-auto max-w-5xl">
             <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
-              HOW IT WORKS
+              {t("HOW IT WORKS", "使用流程")}
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("Create an Infographic or Video in 3 Simple Steps", "Create an Infographic or Video in 3 Simple Steps")}
+              {t("Create an Infographic or Video in 3 Simple Steps", "三步创建信息图或视频")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
                 "Start with a topic, notes, or rough outline. KnowLens helps structure your message and turn it into polished visuals or short explainer videos.",
-                "Start with a topic, notes, or rough outline. KnowLens helps structure your message and turn it into polished visuals or short explainer videos.",
+                "从主题、笔记或大纲开始，KnowLens 会帮你整理结构，并生成精致的视觉内容或短解说视频。",
               )}
             </p>
 
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               {howItWorksTags.map((domain) => (
                 <span key={domain} className="rounded-full border border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-600">
-                  {domain}
+                  {t(domain, howItWorksTagZh[domain] || domain)}
                 </span>
               ))}
             </div>
@@ -927,10 +983,10 @@ export default function LandingPage() {
               {howItWorksCards.map((module) => (
                 <article key={module.id} className="border-t border-zinc-300 pt-4">
                   <h3 className="mt-2 text-base font-semibold text-zinc-900">
-                    {module.title}
+                    {t(module.title, module.titleZh)}
                   </h3>
                   <p className="mt-2 text-sm leading-7 text-zinc-600">
-                    {module.description}
+                    {t(module.description, module.descriptionZh)}
                   </p>
                 </article>
               ))}
@@ -943,10 +999,10 @@ export default function LandingPage() {
                   href={tool.href}
                   className="group rounded-xl border border-zinc-200 bg-white/90 p-4 text-left transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-sm"
                 >
-                  <h3 className="text-base font-semibold text-zinc-950">{tool.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-zinc-600">{tool.description}</p>
+                  <h3 className="text-base font-semibold text-zinc-950">{t(tool.title, tool.titleZh)}</h3>
+                  <p className="mt-2 text-sm leading-6 text-zinc-600">{t(tool.description, tool.descriptionZh)}</p>
                   <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-zinc-950 group-hover:text-zinc-600">
-                    Open tool
+                    {t("Open tool", "打开工具")}
                     <ArrowRight size={14} aria-hidden="true" />
                   </span>
                 </Link>
@@ -958,24 +1014,24 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="mx-auto mt-12 max-w-5xl sm:mt-14">
             <p className="text-center text-xs font-medium tracking-[0.12em] text-zinc-500">
-              USE CASES
+              {t("USE CASES", "适用场景")}
             </p>
             <h2 className="mt-3 text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              {t("Built for Anyone Who Needs Clear Visual Content", "Built for Anyone Who Needs Clear Visual Content")}
+              {t("Built for Anyone Who Needs Clear Visual Content", "适合任何需要清晰视觉内容的人")}
             </h2>
             <p className="mx-auto mt-3 max-w-3xl text-center text-sm leading-7 text-zinc-600">
               {t(
                 "Use KnowLens to turn ideas, notes, and explanations into visual summaries, infographics, posters, and short explainer videos for learning, social media, and presentations.",
-                "Use KnowLens to turn ideas, notes, and explanations into visual summaries, infographics, posters, and short explainer videos for learning, social media, and presentations.",
+                "用 KnowLens 把想法、笔记和解释变成视觉摘要、信息图、海报和短解说视频，适合学习、社媒和演示。",
               )}
             </p>
 
             <div className="mt-7 grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
               {personaUseCases.map((voice) => (
                 <article key={voice.id} className="rounded-xl border border-zinc-200 bg-white/90 p-3.5 sm:p-4">
-                  <h3 className="text-[15px] font-semibold text-zinc-900 sm:text-base">{voice.role}</h3>
-                  <p className="mt-2 text-sm leading-7 text-zinc-700">{voice.quote}</p>
-                  <p className="mt-3 text-xs font-medium text-zinc-500">{voice.tags}</p>
+                  <h3 className="text-[15px] font-semibold text-zinc-900 sm:text-base">{t(voice.role, voice.roleZh)}</h3>
+                  <p className="mt-2 text-sm leading-7 text-zinc-700">{t(voice.quote, voice.quoteZh)}</p>
+                  <p className="mt-3 text-xs font-medium text-zinc-500">{t(voice.tags, voice.tagsZh)}</p>
                 </article>
               ))}
             </div>

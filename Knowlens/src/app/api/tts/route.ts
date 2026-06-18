@@ -3,6 +3,7 @@ import { nextAuthOptions } from "@/lib/nextAuth";
 import { isFreeUserBySubscriptionSafe } from "@/lib/server/store";
 import {
   getWorkspaceTtsVoiceProvider,
+  isBasicWorkspaceTtsVoice,
   synthesizeWorkspaceTtsAudio,
 } from "@/lib/server/tts-synthesis";
 
@@ -24,6 +25,7 @@ async function synthesizeTtsResponse(payload: TtsPayload) {
   try {
     const text = (payload.text ?? "").trim();
     const voiceProvider = getWorkspaceTtsVoiceProvider(payload.voice);
+    const isBasicVoice = isBasicWorkspaceTtsVoice(payload.voice);
     const isSamplePreview = payload.sample === true;
 
     if (!text) {
@@ -38,7 +40,7 @@ async function synthesizeTtsResponse(payload: TtsPayload) {
       return new Response("sample text is too long", { status: 400 });
     }
 
-    if (voiceProvider === "openai" && !isSamplePreview) {
+    if (voiceProvider === "openai" && !isBasicVoice && !isSamplePreview) {
       const session = await getServerSession(nextAuthOptions);
       const email = session?.user?.email?.trim().toLowerCase();
       if (!email) {
