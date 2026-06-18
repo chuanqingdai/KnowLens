@@ -6,12 +6,14 @@ import { ArrowRight } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
-import { useLocale } from "@/components/i18n/LocaleProvider";
+import { useLocale, type Locale } from "@/components/i18n/LocaleProvider";
 import { usePathname, useRouter } from "next/navigation";
 
 type MarketingChromeProps = {
   children: React.ReactNode;
   showLocaleSwitch?: boolean;
+  showExamplesLink?: boolean;
+  forceLocale?: Locale;
 };
 
 declare global {
@@ -76,8 +78,13 @@ function canUseOneTapNow() {
   return !isIOS && !isSafariLike && navigator.cookieEnabled;
 }
 
-export function MarketingChrome({ children, showLocaleSwitch = false }: MarketingChromeProps) {
-  const { t } = useLocale();
+export function MarketingChrome({
+  children,
+  showLocaleSwitch = false,
+  showExamplesLink = true,
+  forceLocale,
+}: MarketingChromeProps) {
+  const { locale, setLocale, t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const { status } = useSession();
@@ -86,6 +93,12 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+  useEffect(() => {
+    if (forceLocale && locale !== forceLocale) {
+      setLocale(forceLocale);
+    }
+  }, [forceLocale, locale, setLocale]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !isLanding || !oneTapClientId) {
@@ -209,17 +222,19 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
           </Link>
           <div className="flex items-center gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
-            <Link
-              href="/infographic-examples"
-              className="hidden h-9 items-center rounded-lg px-3 text-xs text-zinc-700 hover:bg-zinc-100 sm:inline-flex"
-            >
-              Infographic Examples
-            </Link>
+            {showExamplesLink ? (
+              <Link
+                href="/infographic-examples"
+                className="hidden h-9 items-center rounded-lg px-3 text-xs text-zinc-700 hover:bg-zinc-100 sm:inline-flex"
+              >
+                Infographic Examples
+              </Link>
+            ) : null}
             <Link
               href="/membership"
               className="inline-flex h-9 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100"
             >
-              Pricing
+              {t("Pricing", "价格")}
             </Link>
             <button
               type="button"
@@ -228,7 +243,7 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
               }}
               className="inline-flex h-9 items-center gap-1 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-700"
             >
-              Generate Free
+              {t("Generate Free", "免费试用")}
               <ArrowRight size={13} />
             </button>
           </div>
@@ -256,9 +271,11 @@ export function MarketingChrome({ children, showLocaleSwitch = false }: Marketin
             <Link href="/contact" className="hover:text-zinc-900">
               {t("Contact", "联系我们")}
             </Link>
-            <Link href="/infographic-examples" className="hover:text-zinc-900">
-              Infographic Examples
-            </Link>
+            {showExamplesLink ? (
+              <Link href="/infographic-examples" className="hover:text-zinc-900">
+                Infographic Examples
+              </Link>
+            ) : null}
           </nav>
         </div>
       </footer>
