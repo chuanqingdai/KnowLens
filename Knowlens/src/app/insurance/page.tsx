@@ -1,26 +1,20 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import {
-  ArrowRight,
-  BadgeCheck,
-  Sparkles,
-} from "lucide-react";
-import { InsuranceCustomPosterButton } from "@/app/insurance/InsuranceCustomPosterButton";
-import {
-  InsuranceTemplateGallery,
-  type InsuranceTemplateCard,
-} from "@/app/insurance/InsuranceTemplateGallery";
-import { InsuranceScrollLink } from "@/app/insurance/InsuranceScrollLink";
-import { MarketingChrome } from "@/components/marketing/MarketingChrome";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { InsurancePageClient } from "@/app/insurance/InsurancePageClient";
+import type { InsuranceTemplateCard } from "@/app/insurance/InsuranceTemplateGallery";
 import { activityTemplates } from "@/lib/insurance-activity-templates";
+import { criticalIllnessTemplates } from "@/lib/insurance-critical-illness-templates";
 import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
 import { festivalTemplates } from "@/lib/insurance-festival-templates";
+import { productTemplates } from "@/lib/insurance-product-templates";
 import { solarTermTemplates } from "@/lib/insurance-solar-term-templates";
 
 const siteOrigin = "https://knowlens.ai";
 const pagePath = "/insurance";
 const pageLink = `${siteOrigin}${pagePath}`;
-const heroImageUrl = `${siteOrigin}/insurance/hero-insurance-poster-wide.webp`;
+const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
+const heroImageUrl = `${siteOrigin}${heroImagePath}`;
 
 export const metadata: Metadata = {
   title: "保险模板中心 | 保险营销内容生成 | KnowLens.ai",
@@ -74,6 +68,8 @@ const templates: InsuranceTemplateCard[] = [
   ...(festivalTemplates as InsuranceTemplateCard[]),
   ...(solarTermTemplates as InsuranceTemplateCard[]),
   ...(activityTemplates as InsuranceTemplateCard[]),
+  ...(productTemplates as InsuranceTemplateCard[]),
+  ...(criticalIllnessTemplates as InsuranceTemplateCard[]),
   {
     title: "成人重疾险，给家庭多一份底气",
     category: "品宣",
@@ -246,24 +242,17 @@ const templates: InsuranceTemplateCard[] = [
   },
 ];
 
-const valuePoints = [
-  {
-    title: "模板复用",
-    description: "把常用保险场景沉淀成模板，代理人和运营团队可直接制作同款。",
-  },
-  {
-    title: "文案可控",
-    description: "标题、卖点、风险提示和机构信息都可以按字段控制。",
-  },
-  {
-    title: "场景覆盖",
-    description: "覆盖获客、转化、服务、续保、理赔、培训和消费者教育。",
-  },
-  {
-    title: "中文优先",
-    description: "先面向中文保险营销语境，表达专业、克制、便于客户理解。",
-  },
-];
+function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
+  if (!template.imageSrc) {
+    return false;
+  }
+  if (!template.imageSrc.startsWith("/")) {
+    return true;
+  }
+  return existsSync(path.join(process.cwd(), "public", template.imageSrc));
+}
+
+const visibleTemplates = templates.filter(hasAvailableTemplateImage);
 
 const showcaseCategories = [
   "全部",
@@ -276,106 +265,30 @@ const showcaseCategories = [
   "产品",
   "健康",
   "保险",
-  "28种重疾",
+  "重疾",
 ];
 
-export default function InsurancePage() {
+type InsurancePageProps = {
+  searchParams?: Promise<{
+    category?: string | string[];
+  }>;
+};
+
+function pickInitialCategory(value: string | string[] | undefined) {
+  const category = Array.isArray(value) ? value[0] : value;
+  const normalizedCategory = category?.trim();
+  return normalizedCategory && showcaseCategories.includes(normalizedCategory) ? normalizedCategory : "全部";
+}
+
+export default async function InsurancePage({ searchParams }: InsurancePageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialCategory = pickInitialCategory(resolvedSearchParams?.category);
+
   return (
-    <MarketingChrome
-      showLocaleSwitch={false}
-      showExamplesLink={false}
-      forceLocale="zh"
-      membershipVariant="insurance"
-      showPrimaryCta={false}
-    >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-8 sm:gap-12 sm:px-6 sm:py-10 lg:gap-12 lg:py-10">
-        <section className="grid justify-items-center gap-8 py-8 text-center sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:justify-items-stretch lg:py-12 lg:text-left">
-          <div className="flex max-w-3xl flex-col items-center lg:items-start">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-700 shadow-sm sm:mb-5 sm:px-4 sm:py-2 sm:text-xs">
-              <Sparkles size={14} />
-              保险模板中心
-            </div>
-            <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-zinc-950 sm:text-5xl sm:leading-tight">
-              <span className="block">保险营销海报</span>
-              <span className="block">一键制作同款</span>
-            </h1>
-            <p className="mt-4 max-w-2xl text-[15px] leading-7 text-zinc-600 sm:mt-5 sm:text-base sm:leading-7">
-              面向保险宣传图、产品说明、客户教育、续保提醒和理赔服务，快速生成可复用的中文视觉内容。标题、卖点、风险提示和机构信息都能按字段精确控制。
-            </p>
-            <div className="mt-5 flex flex-row flex-wrap justify-center gap-3 sm:mt-6 lg:justify-start">
-              <InsuranceScrollLink
-                className="inline-flex h-12 items-center justify-center rounded-full bg-zinc-950 px-6 text-sm font-medium text-white shadow-sm transition hover:bg-zinc-800"
-              >
-                选择模板
-                <ArrowRight size={16} className="ml-2" />
-              </InsuranceScrollLink>
-              <InsuranceCustomPosterButton
-                className="inline-flex h-12 items-center justify-center rounded-full border border-zinc-300 bg-white px-6 text-sm font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-100"
-              >
-                自定义海报
-              </InsuranceCustomPosterButton>
-            </div>
-          </div>
-
-          <div className="relative aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm sm:rounded-[2rem] lg:max-w-none">
-            <Image
-              src="/insurance/hero-insurance-poster-wide.webp"
-              alt="保险文案生成海报示例"
-              fill
-              priority
-              sizes="(min-width: 1024px) 610px, 100vw"
-              className="object-contain"
-            />
-          </div>
-        </section>
-
-        <section id="templates" className="scroll-mt-20">
-          <div className="mb-5 sm:mb-7">
-            <h2 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">精选案例</h2>
-          </div>
-          <InsuranceTemplateGallery templates={templates} categories={showcaseCategories} />
-        </section>
-
-        <section>
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">核心能力</h2>
-            <p className="mt-4 text-base leading-7 text-zinc-600">
-              保险内容需要稳定、清晰、可复用。KnowLens 的重点是把模板结构和文案字段固定下来，让内容生成更可控。
-            </p>
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {valuePoints.map((point) => (
-              <div key={point.title} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-50 text-zinc-800">
-                  <BadgeCheck size={18} />
-                </div>
-                <h3 className="mt-5 text-base font-semibold text-zinc-950">{point.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-zinc-600">{point.description}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-zinc-200 bg-zinc-950 p-6 text-center text-white shadow-sm sm:rounded-[2rem] sm:p-10">
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-4xl">开始制作保险模板</h2>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-zinc-300">
-            从模板开始更快，也可以直接自定义主题。生成时保留可控字段，方便团队持续复用。
-          </p>
-          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <InsuranceScrollLink
-              className="inline-flex h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
-            >
-              选择模板
-              <ArrowRight size={16} className="ml-2" />
-            </InsuranceScrollLink>
-            <InsuranceCustomPosterButton
-              className="inline-flex h-12 items-center justify-center rounded-full border border-white/25 px-6 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              自定义海报
-            </InsuranceCustomPosterButton>
-          </div>
-        </section>
-      </div>
-    </MarketingChrome>
+    <InsurancePageClient
+      templates={visibleTemplates}
+      categories={showcaseCategories}
+      initialCategory={initialCategory}
+    />
   );
 }

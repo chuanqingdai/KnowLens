@@ -20,6 +20,7 @@ import {
 import { PromoCountdownBanner } from "@/components/billing/PromoCountdownBanner";
 import { useSession } from "next-auth/react";
 import { findBillingPlan, type BillingPlanId } from "@/lib/billing-plans";
+import { useLocale } from "@/components/i18n/LocaleProvider";
 
 type Plan = {
   id: BillingPlanId;
@@ -158,6 +159,98 @@ const faqItems = [
   },
 ];
 
+const planZh: Record<BillingPlanId, { name: string; subtitle: string; usage: string; features: string[] }> = {
+  starter: {
+    name: "入门版",
+    subtitle: "适合轻量生成清晰信息图和简单幻灯片，无水印输出。",
+    usage: "活动期每张图 6 积分，每月约可生成 200 张。",
+    features: [
+      "每月 1,200 积分",
+      "无水印输出",
+      "标准信息图生成",
+      "基础 PPT 生成",
+      "标准图片导出",
+      "基础视觉风格",
+      "标准生成队列",
+      "使用 Image2 模型，积分消耗更优惠",
+    ],
+  },
+  pro: {
+    name: "创作者版",
+    subtitle: "适合把文章、视频和想法持续做成视觉内容的创作者。",
+    usage: "活动期每张图 6 积分，每月约可生成 500 张。",
+    features: [
+      "每月 3,000 积分",
+      "无水印输出",
+      "高清信息图导出",
+      "更多视觉风格",
+      "视觉 PPT 生成",
+      "YouTube 封面和海报生成",
+      "视频分镜生成",
+      "更快生成队列",
+      "支持更长内容输入",
+      "可商用",
+      "使用 Image2 模型，积分消耗更优惠",
+    ],
+  },
+  scale: {
+    name: "专业版",
+    subtitle: "适合高频生成高清视觉、演示文稿和视频分镜的团队或个人。",
+    usage: "活动期每张图 6 积分，每月约可生成 1,250 张。",
+    features: [
+      "每月 7,500 积分",
+      "无水印输出",
+      "高级高清导出",
+      "长信息图生成",
+      "完整视觉 PPT 生成",
+      "视频分镜生成",
+      "优先渲染",
+      "批量生成",
+      "可商用",
+      "使用 Image2 模型，积分消耗更优惠",
+    ],
+  },
+};
+
+const faqZh: Record<string, { q: string; a: string }> = {
+  "Why is yearly billing better value?": {
+    q: "为什么年付更划算？",
+    a: "年付相当于同套餐月付价格的 7 折，适合长期持续使用。",
+  },
+  "How are credits used?": {
+    q: "积分怎么消耗？",
+    a: "标准视觉输出原价 20 积分，限时活动期为 6 积分。一次输出可以是海报、PPT 页面或视频分镜画面。",
+  },
+  "Which payment methods are supported?": {
+    q: "支持哪些支付方式？",
+    a: "订阅通过 Stripe 安全处理，支持银行卡以及 Stripe 可用的支付方式。",
+  },
+  "When does access update after payment?": {
+    q: "付款后多久生效？",
+    a: "付款成功后会立即开通套餐权益，并同步对应积分。",
+  },
+  "Do credits reset every month?": {
+    q: "积分每月会重置吗？",
+    a: "会。积分按套餐每月发放，年付用户也会按月获得当月积分。",
+  },
+  "Can I upgrade or downgrade anytime?": {
+    q: "可以随时升级或降级吗？",
+    a: "可以。升级通常会立即生效并按比例调整，降级会在下一个计费周期生效。",
+  },
+  "Are exports watermarked?": {
+    q: "导出内容有水印吗？",
+    a: "免费用户会有水印、队列和导出质量限制。付费套餐会移除水印。",
+  },
+  "How does team collaboration work?": {
+    q: "支持团队协作吗？",
+    a: "当前公开套餐主要面向个人创作者，包含入门版、创作者版和专业版。",
+  },
+  "What happens if I run out of credits?": {
+    q: "积分用完后怎么办？",
+    a: "高成本操作会在执行前拦截。你可以充值或升级套餐后继续生成。",
+  },
+};
+
 function formatUsd(value: number) {
   return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }
@@ -231,6 +324,7 @@ function clearPendingCheckout() {
 
 export default function MembershipPage() {
   const router = useRouter();
+  const { locale, t } = useLocale();
   const { data: session, status: sessionStatus } = useSession();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [toast, setToast] = useState<string | null>(null);
@@ -495,7 +589,7 @@ export default function MembershipPage() {
       const monthly = plan.monthlyPrice;
       const yearly = plan.yearlyPrice;
       const cyclePrice = billingCycle === "monthly" ? monthly : yearly;
-      const cycleUnit = billingCycle === "monthly" ? "/mo" : "/yr";
+      const cycleUnit = billingCycle === "monthly" ? t("/mo", "/月") : t("/yr", "/年");
       const monthlyEquivalent = billingCycle === "yearly" ? plan.yearlyEquivalent : monthly;
       return {
         ...plan,
@@ -505,7 +599,7 @@ export default function MembershipPage() {
         monthlyEquivalent,
       };
     });
-  }, [billingCycle]);
+  }, [billingCycle, t]);
 
   async function handlePay(plan: Plan) {
     const isPaying = Boolean(payingPlanId);
@@ -707,7 +801,7 @@ export default function MembershipPage() {
                   : "text-zinc-600 hover:text-zinc-900"
               }`}
             >
-              Monthly
+              {t("Monthly", "月付")}
             </button>
             <button
               type="button"
@@ -718,7 +812,7 @@ export default function MembershipPage() {
                   : "text-zinc-600 hover:text-zinc-900"
               }`}
             >
-              Annual (Save 30%)
+              {t("Annual (Save 30%)", "年付（省 30%）")}
             </button>
           </div>
             </section>
@@ -736,14 +830,14 @@ export default function MembershipPage() {
               {plan.recommended ? (
                 <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
                   <BadgeCheck size={12} />
-                  Most Popular
+                  {t("Most Popular", "最受欢迎")}
                 </span>
               ) : null}
 
-              <h2 className="text-lg font-semibold text-zinc-900">{plan.name}</h2>
-              <p className="mt-1 text-xs leading-5 text-zinc-500">{plan.subtitle}</p>
+              <h2 className="text-lg font-semibold text-zinc-900">{locale === "zh" ? planZh[plan.id].name : plan.name}</h2>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">{locale === "zh" ? planZh[plan.id].subtitle : plan.subtitle}</p>
               <p className="mt-1 text-sm text-zinc-500">
-                {plan.monthlyCredits.toLocaleString("en-US")} credits / month
+                {plan.monthlyCredits.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {t("credits / month", "积分 / 月")}
               </p>
 
               <div className="mt-4">
@@ -755,7 +849,7 @@ export default function MembershipPage() {
                 </p>
                 {billingCycle === "yearly" ? (
                   <p className="mt-1 text-xs text-zinc-500">
-                    Equivalent to ${formatUsd(plan.monthlyEquivalent)}/mo
+                    {t("Equivalent to", "折合")} ${formatUsd(plan.monthlyEquivalent)}{t("/mo", "/月")}
                   </p>
                 ) : null}
               </div>
@@ -772,18 +866,18 @@ export default function MembershipPage() {
               >
                 {payingPlanId === plan.id ? <LoaderCircle size={15} className="animate-spin" /> : <Zap size={15} />}
                 {payingPlanId === plan.id
-                  ? "Opening Checkout..."
+                  ? t("Opening Checkout...", "正在打开支付页...")
                   : finalizing
-                    ? "Verifying Payment..."
-                    : "Subscribe with Stripe"}
+                    ? t("Verifying Payment...", "正在确认支付...")
+                    : t("Subscribe with Stripe", "通过 Stripe 订阅")}
               </button>
 
-              <p className="mt-2 text-xs text-zinc-500">{plan.usage}</p>
+              <p className="mt-2 text-xs text-zinc-500">{locale === "zh" ? planZh[plan.id].usage : plan.usage}</p>
 
               <ul className="mt-4 space-y-2 text-sm text-zinc-700">
                 <li className="border-b border-zinc-200 pb-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-900">
-                    Model Access
+                    {t("Model Access", "可用模型")}
                   </p>
                   <div className="mt-2 space-y-1">
                     {plan.supportedTextModels.map((model) => {
@@ -798,7 +892,7 @@ export default function MembershipPage() {
                             <span>{model}</span>
                             {hasPromo ? (
                               <span className="inline-flex items-center rounded-full border border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 shadow-sm shadow-amber-100/80">
-                                Limited-time 70% off
+                                {t("Limited-time 70% off", "限时 7 折")}
                               </span>
                             ) : null}
                           </span>
@@ -820,7 +914,7 @@ export default function MembershipPage() {
                     </div>
                   ) : null}
                 </li>
-                {plan.features.map((feature) => (
+                {(locale === "zh" ? planZh[plan.id].features : plan.features).map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
                     <Check size={14} className="mt-0.5 text-zinc-900" />
                     <span>{feature}</span>
@@ -831,12 +925,12 @@ export default function MembershipPage() {
           ))}
             </section>
             <p className="mt-3 text-xs leading-5 text-amber-800">
-              * GPT-image2 limited-time 70% off offer. Availability windows may change.
+              {t("* GPT-image2 limited-time 70% off offer. Availability windows may change.", "* GPT-image2 限时 7 折活动，活动时间可能调整。")}
             </p>
 
             <section className="mt-6 rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-5">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-zinc-900">Trusted Billing & Security</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">{t("Trusted Billing & Security", "支付与账户安全")}</h3>
             <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] text-zinc-600">
               Stripe Checkout
             </span>
@@ -845,44 +939,44 @@ export default function MembershipPage() {
             <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
               <p className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-900">
                 <ShieldCheck size={14} />
-                Encrypted Payments
+                {t("Encrypted Payments", "加密支付")}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-600">
-                Secure Stripe checkout with industry-standard protection.
+                {t("Secure Stripe checkout with industry-standard protection.", "通过 Stripe 安全结账，采用行业标准保护。")}
               </p>
             </article>
             <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
               <p className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-900">
                 <CreditCard size={14} />
-                Full Subscription Control
+                {t("Full Subscription Control", "订阅可控")}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-600">
-                Auto-renew is enabled, and you can cancel anytime.
+                {t("Auto-renew is enabled, and you can cancel anytime.", "订阅会自动续费，也可以随时取消。")}
               </p>
             </article>
             <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
               <p className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-900">
                 <BadgeCheck size={14} />
-                Invoice Ready
+                {t("Invoice Ready", "支持账单记录")}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-600">
-                Billing records and invoice support for teams and businesses.
+                {t("Billing records and invoice support for teams and businesses.", "保留支付记录，方便团队和企业管理。")}
               </p>
             </article>
             <article className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
               <p className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-900">
                 <Zap size={14} />
-                Start Small, Scale Fast
+                {t("Start Small, Scale Fast", "从小规模开始")}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-600">
-                Begin with a lower plan and upgrade as your output grows.
+                {t("Begin with a lower plan and upgrade as your output grows.", "可以先用低档套餐，内容需求增加后再升级。")}
               </p>
             </article>
           </div>
             </section>
 
             <section className="mt-6 rounded-2xl border border-zinc-200 bg-white px-4 py-5 shadow-sm sm:px-5 sm:py-6">
-          <h3 className="text-lg font-semibold text-zinc-900">Frequently Asked Questions</h3>
+          <h3 className="text-lg font-semibold text-zinc-900">{t("Frequently Asked Questions", "常见问题")}</h3>
           <div className="mt-4 divide-y divide-zinc-200">
             {faqItems.map((item, idx) => {
               const isOpen = openFaq === idx;
@@ -894,7 +988,7 @@ export default function MembershipPage() {
                     data-plain-interaction="true"
                     className="flex w-full items-center justify-between gap-3 text-left transition hover:text-zinc-950"
                   >
-                    <p className="text-sm font-medium text-zinc-900">{item.q}</p>
+                    <p className="text-sm font-medium text-zinc-900">{locale === "zh" ? faqZh[item.q]?.q ?? item.q : item.q}</p>
                     <ChevronDown
                       size={16}
                       className={`shrink-0 text-zinc-500 transition ${
@@ -903,7 +997,7 @@ export default function MembershipPage() {
                     />
                   </button>
                   {isOpen ? (
-                    <p className="mt-2 pr-6 text-sm leading-6 text-zinc-600">{item.a}</p>
+                    <p className="mt-2 pr-6 text-sm leading-6 text-zinc-600">{locale === "zh" ? faqZh[item.q]?.a ?? item.a : item.a}</p>
                   ) : null}
                 </div>
               );
@@ -916,11 +1010,14 @@ export default function MembershipPage() {
 
       {pendingFinalizeSessionId ? (
         <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1rem)] max-w-[560px] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg sm:bottom-20 sm:w-[min(92vw,560px)]">
-          <p className="font-medium">Payment verification is pending</p>
+          <p className="font-medium">{t("Payment verification is pending", "支付状态待确认")}</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             {pendingCheckoutMeta
-              ? `Plan ${pendingCheckoutMeta.planId} (${pendingCheckoutMeta.cycle}) was started, but verification did not complete yet.`
-              : "A checkout session returned, but verification did not complete yet."}
+              ? t(
+                  `Plan ${pendingCheckoutMeta.planId} (${pendingCheckoutMeta.cycle}) was started, but verification did not complete yet.`,
+                  `已开始订阅 ${planZh[pendingCheckoutMeta.planId as BillingPlanId]?.name ?? pendingCheckoutMeta.planId}（${pendingCheckoutMeta.cycle === "yearly" ? "年付" : "月付"}），但支付验证尚未完成。`,
+                )
+              : t("A checkout session returned, but verification did not complete yet.", "已从支付页返回，但支付验证尚未完成。")}
           </p>
           <div className="mt-2 flex items-center gap-2">
             <button
@@ -929,7 +1026,7 @@ export default function MembershipPage() {
               disabled={finalizing}
               className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${PAYMENT_CTA_CLASS}`}
             >
-              {finalizing ? "Verifying..." : "Retry verification"}
+              {finalizing ? t("Verifying...", "正在验证...") : t("Retry verification", "重新验证")}
             </button>
             <button
               type="button"
@@ -940,7 +1037,7 @@ export default function MembershipPage() {
               }}
               className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
             >
-              Dismiss
+              {t("Dismiss", "关闭")}
             </button>
           </div>
         </div>

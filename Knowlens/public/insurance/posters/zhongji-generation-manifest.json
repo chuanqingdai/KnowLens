@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-06-18T21:24:50.818Z",
+  "results": [
+    {
+      "title": "成人重疾保障，先看责任再看额度",
+      "imageSrc": "/insurance/posters/zhongji-01.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2558086,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "少儿重疾保障，陪孩子稳稳成长",
+      "imageSrc": "/insurance/posters/zhongji-02.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3168795,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "女性健康风险，值得提前看见",
+      "imageSrc": "/insurance/posters/zhongji-03.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1793507,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "给父母看重疾，先看能不能投",
+      "imageSrc": "/insurance/posters/zhongji-04.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2958230,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "重疾和医疗，解决的问题不一样",
+      "imageSrc": "/insurance/posters/zhongji-05.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2067405,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "重疾投保前，健康告知要认真看",
+      "imageSrc": "/insurance/posters/zhongji-06.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2548378,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "家庭责任重的人，更要看见重疾风险",
+      "imageSrc": "/insurance/posters/zhongji-07.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2632788,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "一笔重疾金，重点是给康复留空间",
+      "imageSrc": "/insurance/posters/zhongji-08.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2836749,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "重疾保单，也要定期检查",
+      "imageSrc": "/insurance/posters/zhongji-09.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 1453988,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "重疾保障清单，按家庭阶段更新",
+      "imageSrc": "/insurance/posters/zhongji-10.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2290390,
+      "skipped": true,
+      "normalized": false
+    }
+  ],
+  "failures": []
+}

@@ -5,7 +5,7 @@ export function createInsuranceTemplateFormState(template) {
     title: template.title,
     description: template.description,
     rows: template.rows,
-    auxiliaryInfo: template.auxiliaryInfo,
+    auxiliaryInfo: template.auxiliaryInfo || "",
     organizationName,
     illustration: template.illustration,
     aspectRatio: template.aspectRatio || "9:16",
@@ -28,6 +28,7 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
   const illustration = typeof form.illustration === "string" ? form.illustration.trim() : "";
   const resolvedOrganizationName =
     typeof form.organizationName === "string" ? form.organizationName.trim() : organizationName;
+  const coreCount = rows.length;
   const visibleCopy = [
     title,
     description,
@@ -38,21 +39,25 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
   const compositionParts = [
     title ? "place the title as the strongest visual text" : "",
     description ? "place the subtitle below or near the title" : "",
-    rows.length ? "present core information as readable lines, icon cards, or structured modules" : "",
+    rows.length ? "present core information as readable lines, icon cards, or structured modules, with each item treated as one short headline plus one concise explanation when the copy contains a colon" : "",
     auxiliaryInfo || resolvedOrganizationName ? "keep footer text small and restrained" : "",
+    !auxiliaryInfo && !resolvedOrganizationName ? "use the lower area for illustration, atmosphere, or clean breathing space instead of footer copy" : "",
   ].filter(Boolean);
   const layoutAvoidMixing = [
     description ? "subtitle" : "",
     auxiliaryInfo ? "auxiliary information" : "",
     resolvedOrganizationName ? "organization name" : "",
   ].filter(Boolean);
+  const coreCountGuidance = coreCount
+    ? `The provided core information count is ${coreCount}. Insurance posters may naturally use 3 to 6 core groups depending on category, copy density, and aspect ratio; use the provided count exactly, without forcing four groups.`
+    : "";
   const layoutConstraint = rows.length
-    ? `Layout constraints: The core content area contains exactly the core information from the whitelist. Do not invent a fixed count or add unprovided items${layoutAvoidMixing.length ? `, and do not mix ${layoutAvoidMixing.join(", ")} into the core content area` : ""}.`
+    ? `Layout constraints: The core content area contains exactly the core information from the whitelist. ${coreCountGuidance} Do not invent a fixed count or add unprovided items${layoutAvoidMixing.length ? `, and do not mix ${layoutAvoidMixing.join(", ")} into the core content area` : ""}.`
     : "Layout constraints: Use only the provided whitelist text. Do not invent core points, labels, numbers, subtitles, footer text, or explanatory copy.";
   const footerTexts = [auxiliaryInfo, resolvedOrganizationName].filter(Boolean);
   const footerConstraint = footerTexts.length
     ? `Footer constraints: The bottom footer must show ${footerTexts.map((copy) => `「${copy}」`).join(" and ")} exactly once. If space is tight, reduce footer font size or place footer text on two lines. Do not replace footer text with any insurance company, brand, logo, watermark, license name, or placeholder text. Do not attach icons, badges, buttons, labels, or card containers to footer text.`
-    : "Footer constraints: Do not render footer text, company, brand, logo, watermark, license name, or placeholder text.";
+    : "Footer constraints: Auxiliary information and organization name are empty. Do not render footer text, footer bar, company, brand, logo, watermark, license name, placeholder text, or any copy that looks like a disclaimer. Rebalance the layout naturally without leaving an empty footer slot.";
   const avoidFieldLabels = [
     title ? "标题" : "",
     description ? "副标题" : "",

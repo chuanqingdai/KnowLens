@@ -1,76 +1,18 @@
 {
-  "generatedAt": "2026-06-18T13:46:45.691Z",
-  "results": [],
-  "failures": [
+  "generatedAt": "2026-06-18T20:18:55.022Z",
+  "results": [
     {
-      "title": "家庭保单整理日，给保障做一次复盘",
-      "imageSrc": "/insurance/posters/huodong-01.png",
+      "title": "职场风险地图直播，给年轻人一份清单",
+      "imageSrc": "/insurance/posters/huodong-13.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "少儿保障公开课，陪孩子安心成长",
-      "imageSrc": "/insurance/posters/huodong-02.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "父母医疗保障说明会，早点了解更从容",
-      "imageSrc": "/insurance/posters/huodong-03.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "理赔资料小课堂，出险服务更有序",
-      "imageSrc": "/insurance/posters/huodong-04.png",
-      "aspectRatio": "3:4",
-      "size": "1008x1344",
-      "message": "fetch failed"
-    },
-    {
-      "title": "健康告知答疑会，投保前先问清楚",
-      "imageSrc": "/insurance/posters/huodong-05.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "女性健康保障沙龙，把关爱留给自己",
-      "imageSrc": "/insurance/posters/huodong-06.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "养老规划茶话会，提前聊聊未来生活",
-      "imageSrc": "/insurance/posters/huodong-07.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "企业员工保障沟通会，让福利更有温度",
-      "imageSrc": "/insurance/posters/huodong-08.png",
-      "aspectRatio": "3:4",
-      "size": "1008x1344",
-      "message": "fetch failed"
-    },
-    {
-      "title": "车险续保服务日，到期前先检查",
-      "imageSrc": "/insurance/posters/huodong-09.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
-    },
-    {
-      "title": "线上保障答疑夜，睡前把问题问清楚",
-      "imageSrc": "/insurance/posters/huodong-10.png",
-      "aspectRatio": "9:16",
-      "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2275055,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-18T20:18:55.020Z",
+      "normalized": true
     }
-  ]
+  ],
+  "failures": []
 }

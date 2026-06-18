@@ -19,6 +19,8 @@ type MarketingChromeProps = {
   showLocaleSwitch?: boolean;
   infographicOnly?: boolean;
   showExamplesLink?: boolean;
+  showToolsMenu?: boolean;
+  showFooter?: boolean;
   forceLocale?: Locale;
   membershipVariant?: "default" | "insurance";
   showPrimaryCta?: boolean;
@@ -185,6 +187,8 @@ export function MarketingChrome({
   showLocaleSwitch = true,
   infographicOnly = false,
   showExamplesLink = true,
+  showToolsMenu = true,
+  showFooter = true,
   forceLocale,
   membershipVariant = "default",
   showPrimaryCta = true,
@@ -380,12 +384,13 @@ export function MarketingChrome({
           </Link>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
-            <div
-              className="group relative hidden py-2 sm:block"
-              onMouseEnter={openToolsMenu}
-              onMouseLeave={scheduleToolsMenuClose}
-              onFocus={openToolsMenu}
-            >
+            {showToolsMenu ? (
+              <div
+                className="group relative hidden py-2 sm:block"
+                onMouseEnter={openToolsMenu}
+                onMouseLeave={scheduleToolsMenuClose}
+                onFocus={openToolsMenu}
+              >
               <button
                 type="button"
                 onClick={openToolsMenu}
@@ -432,12 +437,13 @@ export function MarketingChrome({
                   ))}
                 </div>
               </div>
-            </div>
+              </div>
+            ) : null}
             {membershipVariant === "insurance" ? (
               <button
                 type="button"
                 onClick={() => setInsuranceMembershipOpen(true)}
-                className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100 min-[430px]:inline-flex"
+                className="hidden h-9 items-center rounded-full bg-zinc-950 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-800 min-[430px]:inline-flex"
               >
                 购买会员
               </button>
@@ -473,75 +479,77 @@ export function MarketingChrome({
 
       <main className="relative z-10 flex-1">{children}</main>
 
-      <footer className="relative z-10 border-t border-zinc-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
-          <div className="grid gap-9 lg:grid-cols-[minmax(260px,0.95fr)_minmax(0,2.05fr)]">
-            <div>
-              <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
-                  <img
-                    src="/logo.png?v=202605241930"
-                    alt="KnowLens.ai"
-                    width={30}
-                    height={30}
-                    className="h-[30px] w-[30px] object-contain"
-                  />
-                </span>
-                <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
-              </Link>
-              <p className="mt-3 max-w-md text-sm leading-6 text-zinc-600">
-                {t(
-                  "Create clear AI infographics, short visual explainers, and structured knowledge visuals from text.",
-                  "把文本变成清晰的信息图、短视频解说和结构化知识视觉。",
-                )}
-              </p>
-              <nav className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
-                <Link href="/about" className="hover:text-zinc-950">
-                  {t("About", "关于")}
+      {showFooter ? (
+        <footer className="relative z-10 border-t border-zinc-200 bg-white/80 backdrop-blur">
+          <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+            <div className="grid gap-9 lg:grid-cols-[minmax(260px,0.95fr)_minmax(0,2.05fr)]">
+              <div>
+                <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
+                    <img
+                      src="/logo.png?v=202605241930"
+                      alt="KnowLens.ai"
+                      width={30}
+                      height={30}
+                      className="h-[30px] w-[30px] object-contain"
+                    />
+                  </span>
+                  <span className="text-sm font-semibold tracking-tight">KnowLens.ai</span>
                 </Link>
-                <Link href="/privacy" className="hover:text-zinc-950">
-                  {t("Privacy", "隐私")}
-                </Link>
-                <Link href="/terms" className="hover:text-zinc-950">
-                  {t("Terms", "条款")}
-                </Link>
-                <Link href="/payment-terms" className="hover:text-zinc-950">
-                  {t("Payment Terms", "支付条款")}
-                </Link>
-                <Link href="/contact" className="hover:text-zinc-950">
-                  {t("Contact", "联系")}
-                </Link>
-              </nav>
-              <p className="mt-5 text-xs text-zinc-500">
-                {t("© 2026 KnowLens.ai · All rights reserved", "© 2026 KnowLens.ai · 保留所有权利")}
-              </p>
-            </div>
-            <nav>
-              <div className="grid gap-6 text-sm text-zinc-600 sm:grid-cols-3">
-                {visibleToolLinkGroups.map((group) => (
-                  <div key={group.title}>
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                      {translateToolGroupTitle(group.title, t)}
-                    </p>
-                    <div className="flex flex-col gap-2.5">
-                      {group.links.map((item) => (
-                        <Link
-                          key={`${item.href}-${item.label}`}
-                          href={item.href}
-                          onClick={(event) => handleToolLinkClick(event, item.href)}
-                          className="hover:text-zinc-950"
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                <p className="mt-3 max-w-md text-sm leading-6 text-zinc-600">
+                  {t(
+                    "Create clear AI infographics, short visual explainers, and structured knowledge visuals from text.",
+                    "把文本变成清晰的信息图、短视频解说和结构化知识视觉。",
+                  )}
+                </p>
+                <nav className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
+                  <Link href="/about" className="hover:text-zinc-950">
+                    {t("About", "关于")}
+                  </Link>
+                  <Link href="/privacy" className="hover:text-zinc-950">
+                    {t("Privacy", "隐私")}
+                  </Link>
+                  <Link href="/terms" className="hover:text-zinc-950">
+                    {t("Terms", "条款")}
+                  </Link>
+                  <Link href="/payment-terms" className="hover:text-zinc-950">
+                    {t("Payment Terms", "支付条款")}
+                  </Link>
+                  <Link href="/contact" className="hover:text-zinc-950">
+                    {t("Contact", "联系")}
+                  </Link>
+                </nav>
+                <p className="mt-5 text-xs text-zinc-500">
+                  {t("© 2026 KnowLens.ai · All rights reserved", "© 2026 KnowLens.ai · 保留所有权利")}
+                </p>
               </div>
-            </nav>
+              <nav>
+                <div className="grid gap-6 text-sm text-zinc-600 sm:grid-cols-3">
+                  {visibleToolLinkGroups.map((group) => (
+                    <div key={group.title}>
+                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                        {translateToolGroupTitle(group.title, t)}
+                      </p>
+                      <div className="flex flex-col gap-2.5">
+                        {group.links.map((item) => (
+                          <Link
+                            key={`${item.href}-${item.label}`}
+                            href={item.href}
+                            onClick={(event) => handleToolLinkClick(event, item.href)}
+                            className="hover:text-zinc-950"
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </nav>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      ) : null}
       <InsuranceMembershipDialog
         open={insuranceMembershipOpen}
         source="insurance_nav_membership"

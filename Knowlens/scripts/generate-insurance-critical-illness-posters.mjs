@@ -2,60 +2,62 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { activityTemplates } from "../src/lib/insurance-activity-templates.js";
 import { buildInsurancePosterPrompt, createInsuranceTemplateFormState } from "../src/lib/insurance-poster-prompt.js";
 
+// Fixed approved entrypoint for insurance poster generation.
+// For new categories, reuse this script instead of creating a new generate-insurance-*-posters.mjs command:
+// node scripts/generate-insurance-critical-illness-posters.mjs --template-module=src/lib/insurance-xxx-templates.js --template-export=xxxTemplates --manifest=xxx-generation-manifest.json
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const outputDir = path.join(projectRoot, "public", "insurance", "posters");
-const manifestPath = path.join(outputDir, "huodong-generation-manifest.json");
 const styleSourcePath = path.join(projectRoot, "src", "app", "insurance", "InsuranceTemplateGallery.tsx");
-const providerTimeoutMs = Number.parseInt(process.env.INSURANCE_ACTIVITY_IMAGE_TIMEOUT_MS || "360000", 10);
 const forceRegenerate = process.argv.includes("--force");
 const normalizeExisting = process.argv.includes("--normalize-existing");
 const onlyArg = process.argv.find((arg) => arg.startsWith("--only="));
 const onlyImageSrc = onlyArg ? onlyArg.slice("--only=".length).trim() : "";
 const onlyImageSrcs = onlyImageSrc.split(",").map((item) => item.trim()).filter(Boolean);
+const templateModuleArg = readCliValue("--template-module") || "src/lib/insurance-critical-illness-templates.js";
+const templateExportArg = readCliValue("--template-export") || "criticalIllnessTemplates";
+const manifestArg = readCliValue("--manifest");
+const timeoutEnvArg = readCliValue("--timeout-env") || "INSURANCE_CRITICAL_IMAGE_TIMEOUT_MS";
+const providerTimeoutMs = Number.parseInt(process.env[timeoutEnvArg] || "360000", 10);
 
 const sizeByRatio = {
-  "1:1": "1024x1024",
-  "16:9": "1536x864",
   "9:16": "864x1536",
-  "4:3": "1344x1008",
   "3:4": "1008x1344",
 };
 
 const outputSizeByRatio = {
-  "1:1": { width: 1024, height: 1024 },
-  "16:9": { width: 1536, height: 864 },
   "9:16": { width: 864, height: 1536 },
-  "4:3": { width: 1344, height: 1008 },
   "3:4": { width: 1008, height: 1344 },
 };
 
 const styleByImageSrc = {
-  "huodong-01": "professional-blue",
-  "huodong-02": "storybook-kids",
-  "huodong-03": "handdrawn-care",
-  "huodong-04": "data-explainer",
-  "huodong-05": "medical-fresh",
-  "huodong-06": "watercolor-story",
-  "huodong-07": "light-luxury",
-  "huodong-08": "premium-business",
-  "huodong-09": "flat-illustration",
-  "huodong-10": "black-gold",
-  "huodong-11": "professional-blue",
-  "huodong-12": "storybook-kids",
-  "huodong-13": "brand-tech",
-  "huodong-14": "flat-illustration",
-  "huodong-15": "medical-fresh",
-  "huodong-16": "minimal-white",
-  "huodong-17": "watercolor-story",
-  "huodong-18": "light-luxury",
-  "huodong-19": "premium-business",
-  "huodong-20": "retro-ticket",
+  "zhongji-01": "professional-blue",
+  "zhongji-02": "storybook-kids",
+  "zhongji-03": "minimal-white",
+  "zhongji-04": "handdrawn-care",
+  "zhongji-05": "medical-fresh",
+  "zhongji-06": "glassmorphism",
+  "zhongji-07": "premium-business",
+  "zhongji-08": "light-luxury",
+  "zhongji-09": "flat-illustration",
+  "zhongji-10": "data-explainer",
 };
+
+function readCliValue(name) {
+  const arg = process.argv.find((item) => item.startsWith(`${name}=`));
+  return arg ? arg.slice(name.length + 1).trim() : "";
+}
+
+function resolveTemplateModulePath(value) {
+  const normalized = value.replace(/^\.?\//, "");
+  if (!/^src\/lib\/insurance-[a-z0-9-]+-templates\.js$/i.test(normalized)) {
+    throw new Error(`Unsupported template module path: ${value}`);
+  }
+  return path.join(projectRoot, normalized);
+}
 
 const fallbackInsuranceStyles = {
   "professional-blue": {
@@ -83,30 +85,15 @@ const fallbackInsuranceStyles = {
     prompt:
       "Use a data-tech explainer poster style. deep navy #061222, technology cyan #21D4FD, cool white #F2F6FA. translucent interface layers, thin glowing lines, modular information rhythm, no invented numbers.",
   },
-  "brand-tech": {
-    name: "品牌科技",
-    prompt:
-      "Use a premium brand-tech poster style. brand black #050607, cool white #F5F7FA, technology blue #2F80FF, blue-violet gradient #6D5DF6. futuristic interface texture, transparent panels, cool rim light.",
-  },
   "light-luxury": {
     name: "轻奢金色",
     prompt:
       "Use a light luxury gold poster style. ivory #FFF8E9, deep blue gray #273240, champagne beige #F0DEC1, champagne gold #D6B56D. fine gold borders, silk-like gradients, quiet luxury finish.",
   },
-  "black-gold": {
-    name: "黑金高端",
-    prompt:
-      "Use a black-and-gold premium poster style. matte black #070707, ink navy #081522, champagne gold #D6B56D, warm white #F4EFE3. metallic highlights, cinematic spot lighting, precise luxury finish.",
-  },
   "handdrawn-care": {
     name: "手绘纸感",
     prompt:
       "Use a refined hand-drawn paper poster style. warm paper beige #F3E7D0, pencil gray #4A4A4A, muted olive #7A8F5A, warm orange #F28C28. hand-drawn strokes, pencil grain, organized notebook-like finish.",
-  },
-  "watercolor-story": {
-    name: "水彩柔雾",
-    prompt:
-      "Use a watercolor mist poster style. watercolor blue #A9D8F2, pale green #CDE8D3, warm yellow #F7DA8A, paper white #FFFDF8. wet watercolor edges, soft diffusion, airy narrative finish.",
   },
   "flat-illustration": {
     name: "扁平几何",
@@ -118,10 +105,10 @@ const fallbackInsuranceStyles = {
     prompt:
       "Use a soft colorful storybook poster style. sky blue #BFE3FF, cream yellow #FFF0A8, soft green #C9E8B8, warm white #FFFDF8. soft-edge illustration, crayon-like fine grain, friendly layered rhythm.",
   },
-  "retro-ticket": {
-    name: "复古纸张",
+  "glassmorphism": {
+    name: "玻璃拟态",
     prompt:
-      "Use a refined retro paper poster style. aged paper beige #EAD7B7, deep ink blue #1F3556, muted red #A44A3F, desaturated green #7A8F5A. old paper texture, dashed borders, stable framed layout.",
+      "Use a glassmorphism poster style. ice blue #DCEEFF, cool white #F8FBFF, pale violet #E9E2FF, translucent gray #E8EEF6. frosted glass layers, edge highlights, airy gradients, cool backlight.",
   },
 };
 
@@ -129,14 +116,10 @@ function extractInsuranceStyles() {
   const source = readFileSync(styleSourcePath, "utf8");
   const marker = "const insuranceStyleOptions";
   const start = source.indexOf(marker);
-  if (start < 0) {
-    return fallbackInsuranceStyles;
-  }
+  if (start < 0) return fallbackInsuranceStyles;
   const arrayStart = source.indexOf("[", start);
   const arrayEnd = source.indexOf("\n];", arrayStart);
-  if (arrayStart < 0 || arrayEnd < 0) {
-    return fallbackInsuranceStyles;
-  }
+  if (arrayStart < 0 || arrayEnd < 0) return fallbackInsuranceStyles;
   const literal = source.slice(arrayStart, arrayEnd + 2);
   const styles = Function(`"use strict"; return (${literal});`)();
   return Object.fromEntries(styles.map((style) => [style.id, style]));
@@ -145,16 +128,38 @@ function extractInsuranceStyles() {
 const insuranceStyles = extractInsuranceStyles();
 
 function buildPromptWithInsuranceStyle(template) {
-  const styleKey = Object.entries(styleByImageSrc).find(([needle]) => template.imageSrc.includes(needle))?.[1];
+  const styleKey = template.styleId || Object.entries(styleByImageSrc).find(([needle]) => template.imageSrc.includes(needle))?.[1];
   const style = styleKey ? insuranceStyles[styleKey] : null;
-  if (!style) {
-    return buildInsurancePosterPrompt(template, template.primaryCategory);
-  }
+  if (!style) return buildInsurancePosterPrompt(template, template.primaryCategory);
   return buildInsurancePosterPrompt(template, template.primaryCategory, {
     ...createInsuranceTemplateFormState(template),
     styleName: style.name,
     stylePrompt: style.prompt,
   });
+}
+
+async function loadTemplates() {
+  const modulePath = resolveTemplateModulePath(templateModuleArg);
+  const module = await import(path.toNamespacedPath(modulePath));
+  const templates = module[templateExportArg];
+  if (!Array.isArray(templates)) {
+    throw new Error(`Template export "${templateExportArg}" was not found or is not an array.`);
+  }
+  return templates;
+}
+
+function resolveManifestPath(templates) {
+  if (manifestArg) {
+    const manifestName = path.basename(manifestArg);
+    if (!/^[a-z0-9-]+-generation-manifest\.json$/i.test(manifestName)) {
+      throw new Error(`Unsupported manifest file name: ${manifestArg}`);
+    }
+    return path.join(outputDir, manifestName);
+  }
+  const firstImageSrc = templates.find((template) => typeof template.imageSrc === "string")?.imageSrc || "";
+  const firstFile = path.basename(firstImageSrc, path.extname(firstImageSrc));
+  const prefix = firstFile.replace(/-\d+$/, "") || "insurance";
+  return path.join(outputDir, `${prefix}-generation-manifest.json`);
 }
 
 function parseEnvFile(content) {
@@ -255,17 +260,13 @@ async function generateImage({ endpoint, apiKey, model, prompt, size }) {
     throw new Error(message);
   }
   const imageUrl = parseImageUrl(body);
-  if (!imageUrl) {
-    throw new Error("Image provider response did not include an image URL.");
-  }
+  if (!imageUrl) throw new Error("Image provider response did not include an image URL.");
   return { imageUrl };
 }
 
 async function downloadImage(url, outputPath) {
   const response = await fetch(url, { headers: { Accept: "image/*" } });
-  if (!response.ok) {
-    throw new Error(`download failed: HTTP ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`);
   const contentType = response.headers.get("content-type") || "";
   if (!/^image\//i.test(contentType)) {
     throw new Error(`download returned non-image content type: ${contentType || "unknown"}`);
@@ -280,9 +281,7 @@ async function downloadImage(url, outputPath) {
 
 async function normalizePosterImage(outputPath, aspectRatio) {
   const target = outputSizeByRatio[aspectRatio];
-  if (!target) {
-    throw new Error(`Unsupported aspect ratio: ${aspectRatio}`);
-  }
+  if (!target) throw new Error(`Unsupported aspect ratio: ${aspectRatio}`);
   const source = readFileSync(outputPath);
   const background = await sharp(source)
     .resize(target.width, target.height, { fit: "cover", position: "centre" })
@@ -307,29 +306,39 @@ async function normalizePosterImage(outputPath, aspectRatio) {
 }
 
 async function main() {
+  const templates = await loadTemplates();
+  const manifestPath = resolveManifestPath(templates);
+  const selectedTemplates = templates.filter(
+    (template) =>
+      !onlyImageSrcs.length || onlyImageSrcs.some((imageSrc) => template.imageSrc.includes(imageSrc)),
+  );
+  mkdirSync(outputDir, { recursive: true });
+  if (!selectedTemplates.length) {
+    writeFileSync(manifestPath, JSON.stringify({ generatedAt: new Date().toISOString(), results: [], failures: [] }, null, 2));
+    process.stdout.write(`[manifest] ${path.relative(projectRoot, manifestPath)}\n`);
+    return;
+  }
+
   const env = readEnv();
   const endpoint = resolveGenerationsEndpoint(
     env.IMAGE2_TUZI_PROVIDER_ENDPOINT || env.IMAGE2_PROVIDER_ENDPOINT || "https://api.tu-zi.com/v1/images/generations",
   );
-  const apiKey = env.IMAGE2_TUZI_PROVIDER_API_KEY || env.IMAGE2_PROVIDER_API_KEY || env.PAID_IMAGE_API_KEY || env.PAID_LLM_API_KEY || "";
+  const apiKey =
+    env.IMAGE2_TUZI_PROVIDER_API_KEY ||
+    env.IMAGE2_PROVIDER_API_KEY ||
+    env.PAID_IMAGE_API_KEY ||
+    env.PAID_LLM_API_KEY ||
+    "";
   const model = env.IMAGE2_TUZI_PROVIDER_MODEL || env.IMAGE2_PROVIDER_MODEL || "gpt-image-2";
-  if (!apiKey) {
-    throw new Error("Missing IMAGE2 provider API key.");
-  }
+  if (!apiKey) throw new Error("Missing IMAGE2 provider API key in process environment.");
 
-  mkdirSync(outputDir, { recursive: true });
   const results = [];
   const failures = [];
-  for (const template of activityTemplates) {
-    if (onlyImageSrcs.length && !onlyImageSrcs.some((needle) => template.imageSrc.includes(needle))) {
-      continue;
-    }
+  for (const template of selectedTemplates) {
     const outputPath = path.join(projectRoot, "public", template.imageSrc.replace(/^\//, ""));
     const aspectRatio = template.aspectRatio || "9:16";
     const size = sizeByRatio[aspectRatio];
-    if (!size) {
-      throw new Error(`Unsupported aspect ratio: ${aspectRatio}`);
-    }
+    if (!size) throw new Error(`Unsupported aspect ratio: ${aspectRatio}`);
     if (!forceRegenerate && existsSync(outputPath)) {
       const normalized = normalizeExisting ? await normalizePosterImage(outputPath, aspectRatio) : null;
       const bytes = readFileSync(outputPath).byteLength;
@@ -341,17 +350,21 @@ async function main() {
         bytes,
         width: normalized?.width,
         height: normalized?.height,
-        contentType: "image/png",
         skipped: true,
         normalized: Boolean(normalized),
       });
       process.stdout.write(`[skip] ${template.imageSrc} exists bytes=${bytes}${normalized ? ` normalized=${normalized.width}x${normalized.height}` : ""}\n`);
       continue;
     }
-    const prompt = buildPromptWithInsuranceStyle(template);
     try {
       process.stdout.write(`[generate] ${template.imageSrc} ${aspectRatio} ${size}\n`);
-      const generated = await generateImage({ endpoint, apiKey, model, prompt, size });
+      const generated = await generateImage({
+        endpoint,
+        apiKey,
+        model,
+        prompt: buildPromptWithInsuranceStyle(template),
+        size,
+      });
       const saved = await downloadImage(generated.imageUrl, outputPath);
       const normalized = await normalizePosterImage(outputPath, aspectRatio);
       results.push({
@@ -369,22 +382,13 @@ async function main() {
       process.stdout.write(`[saved] ${template.imageSrc} bytes=${normalized.bytes} normalized=${normalized.width}x${normalized.height}\n`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      failures.push({
-        title: template.title,
-        imageSrc: template.imageSrc,
-        aspectRatio,
-        size,
-        message,
-      });
+      failures.push({ title: template.title, imageSrc: template.imageSrc, aspectRatio, size, message });
       process.stdout.write(`[failed] ${template.imageSrc} ${message}\n`);
     }
   }
-
   writeFileSync(manifestPath, JSON.stringify({ generatedAt: new Date().toISOString(), results, failures }, null, 2));
   process.stdout.write(`[manifest] ${path.relative(projectRoot, manifestPath)}\n`);
-  if (failures.length) {
-    process.exitCode = 1;
-  }
+  if (failures.length) process.exitCode = 1;
 }
 
 main().catch((error) => {

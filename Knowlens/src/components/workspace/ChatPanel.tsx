@@ -1360,15 +1360,15 @@ export const ChatPanel = memo(function ChatPanel({
               {isPlanningNextStep ? (
                 <>
                   <LoaderCircle size={14} className="animate-spin" />
-                  Thinking...
+                  {t("Thinking...", "正在整理...")}
                 </>
               ) : (
-                "Confirm Draft & Next"
+                t("Confirm Draft & Next", "确认文稿，继续下一步")
               )}
             </button>
           </div>
         ) : (
-          <p className="mt-3 text-xs text-zinc-500">Final draft confirmed. Generation will continue from this version.</p>
+          <p className="mt-3 text-xs text-zinc-500">{t("Final draft confirmed. Generation will continue from this version.", "已确认最终文稿，后续会按这个版本继续生成。")}</p>
         )}
       </>
     );
@@ -2727,7 +2727,7 @@ export const ChatPanel = memo(function ChatPanel({
             })}
           </div>
           <div className="mt-3 text-sm text-zinc-600">
-            Current style:
+            当前风格：
             <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">{styleDisplayName(selectedStyle)}</span>
           </div>
         </article>
@@ -2735,9 +2735,9 @@ export const ChatPanel = memo(function ChatPanel({
 
       {showStyleStage ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
-          <h3 className="text-sm font-semibold text-zinc-900">Style Recommendation</h3>
+          <h3 className="text-sm font-semibold text-zinc-900">推荐视觉风格</h3>
           <p className="mt-1 text-[11px] leading-5 text-zinc-400">
-            Select one style card. Hover each card to preview the visual tone and best-fit use cases.
+            选择一个风格卡片。悬停可预览画面调性和适合的使用场景。
           </p>
 
             <div className="mt-3 grid grid-cols-3 gap-3">
@@ -2780,7 +2780,7 @@ export const ChatPanel = memo(function ChatPanel({
           <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-3 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-zinc-600">
-                Current style:
+                当前风格：
                 <span className="ml-1 rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-900">
                   {styleDisplayName(selectedStyle)}
                 </span>
@@ -2794,10 +2794,10 @@ export const ChatPanel = memo(function ChatPanel({
                 {isPlanningStyleStep ? (
                   <>
                     <LoaderCircle size={14} className="animate-spin" />
-                    Thinking...
+                    正在整理...
                   </>
                 ) : (
-                  "Next"
+                  "下一步"
                 )}
               </button>
             </div>
@@ -2808,43 +2808,43 @@ export const ChatPanel = memo(function ChatPanel({
       {showBillingRecord ? (
         <article className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-4 py-4">
           <h3 className="text-sm font-semibold text-zinc-900">
-            {intent === "poster" ? "Poster Billing Summary" : "Generation Billing Summary"}
+            {intent === "poster" ? "海报生成费用确认" : "生成费用确认"}
           </h3>
           <p className="mt-2 text-sm leading-6 text-zinc-700">
-            Review charges before generation.
+            生成前请确认本次将消耗的积分。
           </p>
 
             <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200">
               <div className="grid grid-cols-[160px_minmax(0,1fr)] text-sm">
-                <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Selected Style</p>
+                <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">已选风格</p>
                 <p className="border-b border-zinc-200 px-3 py-2 text-zinc-800">{billingSummary.styleName}</p>
-              <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Language Model</p>
+              <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">文本模型</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
-                {billingSummary.languageModelCredits} credits
+                {billingSummary.languageModelCredits} 积分
                 <span className="ml-1 text-zinc-500">
                   ({billingSummary.languageModelLabel || "Gemini 3"})
                 </span>
               </p>
-              <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">Image Model</p>
+              <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">图片模型</p>
               <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
-                {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} credits
+                {billingSummary.standardOutputCount} × {billingSummary.promoCreditsPerOutput} 积分
                 <span className="ml-1 text-zinc-500">
                   ({imageBillingModelLabel} · {imageBillingDiscountText})
                 </span>
               </p>
               {(billingSummary.ttsNarrationCredits ?? 0) > 0 ? (
                 <>
-                  <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">TTS Narration</p>
+                  <p className="whitespace-nowrap border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500">旁白音频</p>
                   <p className="border-b border-zinc-200 px-3 py-2 text-zinc-700">
-                    {billingSummary.ttsNarrationCredits} credits
+                    {billingSummary.ttsNarrationCredits} 积分
                     <span className="ml-1 text-zinc-500">
-                      ({ttsBillingModelLabel} · {billingSummary.ttsNarrationCharCount ?? 0} chars)
+                      ({ttsBillingModelLabel} · {billingSummary.ttsNarrationCharCount ?? 0} 字符)
                     </span>
                   </p>
                 </>
               ) : null}
-              <p className="whitespace-nowrap border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-600">Total</p>
-              <p className="px-3 py-2 text-base font-semibold text-zinc-900">{billingSummary.totalCost} credits</p>
+              <p className="whitespace-nowrap border-r border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-600">合计</p>
+              <p className="px-3 py-2 text-base font-semibold text-zinc-900">{billingSummary.totalCost} 积分</p>
             </div>
           </div>
 
@@ -2861,17 +2861,17 @@ export const ChatPanel = memo(function ChatPanel({
                 {isPlanningBillingStep ? (
                   <>
                     <LoaderCircle size={14} className="animate-spin" />
-                    Thinking...
+                    正在确认...
                   </>
                 ) : billingConfirmed ? (
-                  "Confirmed, generating..."
+                  "已确认，正在生成..."
                 ) : (
-                  "Confirm Charge & Generate"
+                  "确认消耗积分并生成"
                 )}
               </button>
             ) : (
               <span className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 sm:w-auto">
-                Confirmed
+                已确认
               </span>
             )}
           </div>

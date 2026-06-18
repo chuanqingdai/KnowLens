@@ -15,6 +15,7 @@ import {
   createInsuranceTemplateFormState,
 } from "@/lib/insurance-poster-prompt";
 import { STANDARD_OUTPUT_PROMO_CREDITS } from "@/lib/credit-pricing";
+import { trackInsuranceEvent } from "@/lib/insurance-analytics";
 
 export type InsuranceTemplateCard = {
   title: string;
@@ -38,6 +39,7 @@ export type InsuranceTemplateCard = {
 type InsuranceTemplateGalleryProps = {
   templates: InsuranceTemplateCard[];
   categories: string[];
+  initialCategory?: string;
 };
 
 type SupportedTemplateAspectRatio = "1:1" | "9:16" | "16:9" | "3:4";
@@ -210,7 +212,7 @@ const emptyCategoryDescriptions: Record<string, string> = {
   产品: "适合保险产品亮点说明、配置建议和方案介绍。",
   健康: "适合健康科普、疾病预防、体检提醒和客户教育。",
   保险: "适合保险知识科普、投保提醒、理赔服务和合规提示。",
-  "28种重疾": "适合重疾知识拆解、病种科普和重疾险客户教育。",
+  重疾: "适合重疾知识拆解、配置提醒和重疾险客户教育。",
 };
 
 function buildEmptyCategoryCards(category: string) {
@@ -282,6 +284,27 @@ function createCustomInsuranceTemplate(): InsuranceTemplateCard {
   };
 }
 
+function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory: string) {
+  if (activeCategory === "全部") {
+    return true;
+  }
+  return [template.primaryCategory, template.category, template.secondaryCategory].some((value) =>
+    value ? value.includes(activeCategory) || activeCategory.includes(value) : false,
+  );
+}
+
+function getTemplateAnalyticsDetails(template: InsuranceTemplateCard, isPremium: boolean) {
+  return {
+    templateTitle: template.isCustom ? CUSTOM_INSURANCE_TEMPLATE_TITLE : template.title,
+    primaryCategory: template.primaryCategory,
+    secondaryCategory: template.secondaryCategory,
+    category: template.category,
+    aspectRatio: normalizeAspectRatioChoice(template.aspectRatio),
+    isPremium,
+    isCustom: Boolean(template.isCustom),
+  };
+}
+
 function createBlankInsuranceTemplateForm(): TemplateFormState {
   return {
     title: "",
@@ -308,29 +331,34 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
   const displayCode = toImageErrorDisplayCode(errorCode, message);
   const raw = (message || "").trim();
   if (/timeout|timed out|budget/i.test(raw)) {
-    return `Generation timed out; please retry manually. Code: ${displayCode}.`;
+    return `生成超时，请手动重试。错误码：${displayCode}。`;
   }
   if (/storage|persist|download|asset/i.test(`${errorCode || ""} ${raw}`)) {
-    return `The image could not be saved; please retry manually. Code: ${displayCode}.`;
+    return `图片保存失败，请手动重试。错误码：${displayCode}。`;
   }
   if (/aborted|network|fetch/i.test(raw)) {
-    return `The image request was interrupted; please retry manually. Code: ${displayCode}.`;
+    return `图片请求已中断，请手动重试。错误码：${displayCode}。`;
   }
-  return `The image could not be generated right now; please retry manually. Code: ${displayCode}.`;
+  return `图片暂时无法生成，请手动重试。错误码：${displayCode}。`;
 }
 
 function CasePreview({ template }: { template: InsuranceTemplateCard }) {
   const aspectClass = getAspectClass(template);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
-  if (template.imageSrc) {
+  if (template.imageSrc && !failed) {
     return (
       <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
+        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10" /> : null}
         <Image
           src={template.imageSrc}
           alt={`${template.title}海报`}
           fill
           sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          className="object-cover"
+          className={`object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
         />
       </div>
     );
@@ -386,11 +414,11 @@ function PosterPreview({
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                   <LoaderCircle size={18} className="animate-spin" />
                 </div>
-                <p className="mt-3 text-sm font-semibold text-zinc-900">Generating your poster</p>
+                <p className="mt-3 text-sm font-semibold text-zinc-900">正在生成海报</p>
                 <p className="mt-1 text-xs leading-5 text-zinc-600">
-                  This image area is live. The poster will appear here as soon as rendering finishes.
+                  海报生成完成后会自动显示在这里。
                 </p>
-                <p className="mt-2 text-[11px] font-medium text-zinc-500">Usually 2-3 min per image</p>
+                <p className="mt-2 text-[11px] font-medium text-zinc-500">通常需要 2-3 分钟</p>
               </div>
             </div>
           ) : null}
@@ -409,7 +437,7 @@ function PosterPreview({
                   className="mt-2 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
                 >
                   <RefreshCw size={12} />
-                  Retry
+                  重新生成
                 </button>
               </div>
             </div>
@@ -440,20 +468,25 @@ function EditableBox({
   onChange,
   minHeight = "min-h-10",
   multiline = false,
+  rows = 2,
+  placeholder,
   disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   minHeight?: string;
   multiline?: boolean;
+  rows?: number;
+  placeholder?: string;
   disabled?: boolean;
 }) {
-  const className = `w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm leading-6 text-zinc-800 outline-none transition focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 ${minHeight}`;
+  const className = `w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm leading-6 text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 ${minHeight}`;
   if (multiline) {
     return (
       <textarea
         value={value}
-        rows={2}
+        rows={rows}
+        placeholder={placeholder}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         className={`${className} resize-none`}
@@ -463,6 +496,7 @@ function EditableBox({
   return (
     <input
       value={value}
+      placeholder={placeholder}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       className={className}
@@ -493,8 +527,9 @@ async function downloadPosterImage(imageSrc: string, title: string) {
   }
 }
 
-export function InsuranceTemplateGallery({ templates, categories }: InsuranceTemplateGalleryProps) {
-  const [activeCategory, setActiveCategory] = useState("全部");
+export function InsuranceTemplateGallery({ templates, categories, initialCategory = "全部" }: InsuranceTemplateGalleryProps) {
+  const safeInitialCategory = categories.includes(initialCategory) ? initialCategory : "全部";
+  const [activeCategory, setActiveCategory] = useState(safeInitialCategory);
   const [activeTemplate, setActiveTemplate] = useState<InsuranceTemplateCard | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormState | null>(null);
   const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>({});
@@ -504,10 +539,7 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   const [membershipPaywallOpen, setMembershipPaywallOpen] = useState(false);
   const [membershipPaywallAction, setMembershipPaywallAction] = useState<MembershipGateAction>("generate");
   const filteredTemplates = useMemo(() => {
-    if (activeCategory === "全部") {
-      return templates;
-    }
-    return templates.filter((template) => template.primaryCategory === activeCategory);
+    return templates.filter((template) => templateMatchesCategory(template, activeCategory));
   }, [activeCategory, templates]);
   const emptyCategoryCards = useMemo(() => {
     if (activeCategory === "全部" || filteredTemplates.length > 0) {
@@ -529,6 +561,10 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
 
   useEffect(() => {
+    setActiveCategory(safeInitialCategory);
+  }, [safeInitialCategory]);
+
+  useEffect(() => {
     if (!activeTemplate) {
       return;
     }
@@ -546,6 +582,11 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   }, [activeTemplate]);
 
   const openTemplate = (template: InsuranceTemplateCard) => {
+    trackInsuranceEvent({
+      action: "template_modal_open",
+      message: "Insurance template modal opened.",
+      details: getTemplateAnalyticsDetails(template, isTemplatePremium(template)),
+    });
     setActiveTemplate(template);
     setTemplateForm({
       ...createInsuranceTemplateFormState(template),
@@ -556,6 +597,11 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
 
   const openCustomTemplate = () => {
     const customTemplate = createCustomInsuranceTemplate();
+    trackInsuranceEvent({
+      action: "custom_template_open",
+      message: "Insurance custom poster modal opened.",
+      details: getTemplateAnalyticsDetails(customTemplate, false),
+    });
     setActiveTemplate(customTemplate);
     setTemplateForm(createBlankInsuranceTemplateForm());
     setPosterStateByTitle((prev) => ({
@@ -576,6 +622,16 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   }, []);
 
   const openMembershipPaywall = (action: MembershipGateAction) => {
+    trackInsuranceEvent({
+      action: "membership_paywall_shown",
+      message: "Insurance membership paywall shown.",
+      details: {
+        gateAction: action,
+        activeTemplateTitle: activeTemplate?.isCustom ? CUSTOM_INSURANCE_TEMPLATE_TITLE : activeTemplate?.title,
+        activeTemplateCategory: activeTemplate?.primaryCategory,
+        activeTemplateSecondaryCategory: activeTemplate?.secondaryCategory,
+      },
+    });
     setMembershipPaywallAction(action);
     setActiveTemplate(null);
     setTemplateForm(null);
@@ -583,6 +639,17 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   };
 
   const openCreditsPaywall = (balance: number | null) => {
+    trackInsuranceEvent({
+      action: "credits_paywall_shown",
+      message: "Insurance credits paywall shown.",
+      details: {
+        balance,
+        requiredCredits: INSURANCE_POSTER_GENERATION_CREDITS,
+        activeTemplateTitle: activeTemplate?.isCustom ? CUSTOM_INSURANCE_TEMPLATE_TITLE : activeTemplate?.title,
+        activeTemplateCategory: activeTemplate?.primaryCategory,
+        activeTemplateSecondaryCategory: activeTemplate?.secondaryCategory,
+      },
+    });
     setCreditsPaywallBalance(Number.isFinite(balance) ? balance : null);
     setActiveTemplate(null);
     setTemplateForm(null);
@@ -590,6 +657,13 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   };
 
   const openMembership = () => {
+    trackInsuranceEvent({
+      action: "membership_checkout_click",
+      message: "Insurance membership checkout clicked.",
+      details: {
+        source: "insurance_template_membership",
+      },
+    });
     openInsuranceMembershipCheckout("insurance_template_membership");
   };
 
@@ -634,9 +708,19 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
     }
   };
 
-  const requestOpenTemplate = (template: InsuranceTemplateCard) => {
+  const requestOpenTemplate = (template: InsuranceTemplateCard, placement: "card" | "hover_button" = "card") => {
+    const premium = isTemplatePremium(template);
+    trackInsuranceEvent({
+      action: "template_open_click",
+      message: "Insurance template open clicked.",
+      details: {
+        ...getTemplateAnalyticsDetails(template, premium),
+        placement,
+        activeCategory,
+      },
+    });
     void (async () => {
-      if (isTemplatePremium(template) && !(await verifyMembershipAccess("generate"))) {
+      if (premium && !(await verifyMembershipAccess("generate"))) {
         return;
       }
       openTemplate(template);
@@ -644,15 +728,33 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
   };
 
   const requestDownloadTemplate = (template: InsuranceTemplateCard) => {
+    const premium = isTemplatePremium(template);
     void (async () => {
       const imageSrc = posterStateByTitle[template.title]?.imageSrc || template.imageSrc || "";
+      trackInsuranceEvent({
+        action: "template_download_click",
+        message: "Insurance template download clicked.",
+        details: {
+          ...getTemplateAnalyticsDetails(template, premium),
+          activeCategory,
+          hasImage: Boolean(imageSrc),
+        },
+      });
       if (!imageSrc) {
         return;
       }
-      if (isTemplatePremium(template) && !(await verifyMembershipAccess("download"))) {
+      if (premium && !(await verifyMembershipAccess("download"))) {
         return;
       }
       await downloadPosterImage(imageSrc, template.title);
+      trackInsuranceEvent({
+        action: "template_download_started",
+        message: "Insurance template download started.",
+        details: {
+          ...getTemplateAnalyticsDetails(template, premium),
+          activeCategory,
+        },
+      });
     })();
   };
 
@@ -661,10 +763,26 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
       return;
     }
     void (async () => {
+      trackInsuranceEvent({
+        action: "modal_download_click",
+        message: "Insurance modal download clicked.",
+        details: {
+          ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+          selectedAspectRatio: templateForm?.aspectRatio,
+        },
+      });
       if (activeTemplatePremium && !(await verifyMembershipAccess("download"))) {
         return;
       }
       await downloadPosterImage(activePosterImageSrc, activeTemplate.title);
+      trackInsuranceEvent({
+        action: "modal_download_started",
+        message: "Insurance modal download started.",
+        details: {
+          ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+          selectedAspectRatio: templateForm?.aspectRatio,
+        },
+      });
     })();
   };
 
@@ -679,6 +797,23 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
       ...templateForm,
       styleName: currentStyle.name,
       stylePrompt: currentStyle.prompt,
+    });
+    const generateDetails = {
+      ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+      selectedAspectRatio,
+      selectedStyleId: currentStyle.id,
+      selectedStyleName: currentStyle.name,
+      corePointCount: templateForm.rows.length,
+      hasAuxiliaryInfo: Boolean(templateForm.auxiliaryInfo.trim()),
+      hasOrganizationName: Boolean(templateForm.organizationName.trim()),
+      hasIllustration: Boolean(templateForm.illustration.trim()),
+      promptLength: prompt.length,
+      requiredCredits: INSURANCE_POSTER_GENERATION_CREDITS,
+    };
+    trackInsuranceEvent({
+      action: "generate_click",
+      message: "Insurance poster generate clicked.",
+      details: generateDetails,
     });
     setIsCheckingCredits(true);
 
@@ -732,6 +867,14 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
             aspectRatio: selectedAspectRatio,
           }),
         })
+          .then((response) => {
+            trackInsuranceEvent({
+              action: "generate_request_sent",
+              message: "Insurance poster generation request sent.",
+              details: generateDetails,
+            });
+            return response;
+          })
           .then(async (response) => {
             const payload = (await response.json().catch(() => null)) as
               | {
@@ -760,6 +903,14 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
                 },
               };
             });
+            trackInsuranceEvent({
+              action: "generate_success",
+              message: "Insurance poster generation succeeded.",
+              details: {
+                ...generateDetails,
+                hasImageUrl: Boolean(payload.imageUrl),
+              },
+            });
           })
           .catch((error: Error & { code?: string }) => {
             setPosterStateByTitle((prev) => {
@@ -775,6 +926,15 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
                   errorCode: error.code,
                 },
               };
+            });
+            trackInsuranceEvent({
+              action: "generate_failed",
+              message: "Insurance poster generation failed.",
+              details: {
+                ...generateDetails,
+                errorCode: error.code,
+                errorMessage: error.message,
+              },
             });
           });
       })
@@ -793,6 +953,20 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
     return [template.secondaryCategory || template.primaryCategory];
   };
 
+  const closeActiveTemplate = (reason: "backdrop" | "close_button") => {
+    if (activeTemplate) {
+      trackInsuranceEvent({
+        action: "template_modal_close",
+        message: "Insurance template modal closed.",
+        details: {
+          ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+          reason,
+        },
+      });
+    }
+    setActiveTemplate(null);
+  };
+
   return (
     <>
       <div className="mb-6 flex flex-wrap gap-2 sm:mb-8 sm:gap-3">
@@ -803,7 +977,18 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
             <button
               key={category}
               type="button"
-              onClick={() => setActiveCategory(category)}
+              onClick={() => {
+                trackInsuranceEvent({
+                  action: "category_click",
+                  message: "Insurance category clicked.",
+                  details: {
+                    category,
+                    previousCategory: activeCategory,
+                    templateCount: templates.filter((template) => templateMatchesCategory(template, category)).length,
+                  },
+                });
+                setActiveCategory(category);
+              }}
               className={`inline-flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-medium transition sm:h-12 sm:px-6 sm:text-base ${
                 active
                   ? "bg-zinc-950 text-white"
@@ -827,26 +1012,27 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
           return (
             <article
               key={template.title}
-              onClick={() => requestOpenTemplate(template)}
+              onClick={() => requestOpenTemplate(template, "card")}
               className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
             >
               <div className="relative w-full overflow-hidden bg-zinc-100">
                 <CasePreview template={template} />
                 {premium ? (
-                  <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)] ring-1 ring-amber-500/35">
+                  <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
                     <Crown size={14} fill="currentColor" />
                   </div>
                 ) : null}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
                 <div className="absolute inset-x-0 bottom-3 flex justify-center px-3 opacity-0 transition group-hover:opacity-100">
-                  <div className="flex flex-wrap items-center justify-center gap-2">
+                  <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
                     <button
                       type="button"
                       aria-label={`生成同款：${template.title}`}
                       onClick={(event) => {
                         event.stopPropagation();
-                        requestOpenTemplate(template);
+                        requestOpenTemplate(template, "hover_button");
                       }}
-                      className="relative z-20 inline-flex h-10 items-center justify-center rounded-full bg-orange-500 px-4 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(234,88,12,0.38),0_3px_10px_rgba(15,23,42,0.22)] ring-1 ring-orange-300/70 transition hover:bg-orange-600"
+                      className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
                     >
                       生成同款
                       <ArrowRight size={15} className="ml-1.5" />
@@ -859,7 +1045,7 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
                       event.stopPropagation();
                       requestDownloadTemplate(template);
                     }}
-                    className="relative z-20 inline-flex h-10 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-orange-600 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(234,88,12,0.12)] ring-1 ring-orange-200 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Download size={15} className="mr-1.5" />
                     下载海报
@@ -897,18 +1083,7 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
             key={card.id}
             className="mb-3 block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] sm:mb-4"
           >
-            <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-100">
-              <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-100 via-zinc-200 to-zinc-100" />
-              <div className="absolute inset-0 p-5">
-                <div className="h-full rounded-lg border border-zinc-300/60 bg-white/35 p-4">
-                  <div className="h-3 w-2/3 rounded bg-zinc-300/85" />
-                  <div className="mt-3 h-3 w-1/2 rounded bg-zinc-300/70" />
-                  <div className="mt-8 h-3 w-4/5 rounded bg-zinc-300/70" />
-                  <div className="mt-3 h-3 w-3/5 rounded bg-zinc-300/70" />
-                  <div className="mt-3 h-3 w-2/5 rounded bg-zinc-300/70" />
-                </div>
-              </div>
-            </div>
+            <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-200" />
             <div className="p-3">
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
                 <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
@@ -929,6 +1104,8 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
         ))}
       </div>
 
+      <div className="pt-8 pb-12 text-center text-sm text-zinc-400">已经到底部了</div>
+
       {activeTemplate && templateForm && typeof document !== "undefined"
         ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-stretch justify-stretch p-0 sm:items-center sm:justify-center sm:p-5">
@@ -936,52 +1113,28 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
             type="button"
             aria-label="关闭浮层"
             className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[2px]"
-            onClick={() => setActiveTemplate(null)}
+            onClick={() => closeActiveTemplate("backdrop")}
           />
           <div className="relative grid h-dvh max-h-dvh w-full max-w-5xl grid-rows-[minmax(0,42dvh)_minmax(0,1fr)] overflow-hidden border border-zinc-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] sm:h-[92dvh] sm:max-h-[92dvh] sm:rounded-2xl lg:grid-cols-[minmax(420px,1fr)_500px] lg:grid-rows-none">
             <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
               <button
                 type="button"
-                disabled={!activePosterImageSrc}
-                onClick={requestDownloadActivePoster}
-                className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-950 px-3 text-xs font-medium text-white shadow-[0_10px_24px_rgba(15,23,42,0.24)] transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Download size={14} className="mr-1.5" />
-                下载
-              </button>
-              <button
-                type="button"
                 aria-label="关闭"
-                onClick={() => setActiveTemplate(null)}
+                onClick={() => closeActiveTemplate("close_button")}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm transition hover:bg-zinc-100 hover:text-zinc-900"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="order-2 min-h-0 overflow-y-auto p-4 pb-5 sm:p-5 lg:order-1">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-cyan-700">模板字段</p>
-              <h3 className="mt-1.5 pr-10 text-xl font-semibold tracking-tight text-zinc-950">
-                {activeTemplateIsCustom ? "自定义海报" : "生成同款"}
-              </h3>
+            <div className="order-2 flex min-h-0 flex-col lg:order-1">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-4 sm:p-5">
+                <h3 className="pr-10 text-xl font-semibold tracking-tight text-zinc-950">
+                  {activeTemplateIsCustom ? "自定义海报" : "生成同款"}
+                </h3>
 
-              <div className="mt-4 grid gap-3">
-                {activeTemplateIsCustom ? null : (
-                  <FieldBlock label="分类">
-                    <div className="flex flex-wrap gap-1.5">
-                      {[activeTemplate.primaryCategory, activeTemplate.secondaryCategory].map((label) => (
-                        <span
-                          key={label}
-                          className="inline-flex h-8 items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 text-xs font-medium text-zinc-700"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </FieldBlock>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <FieldBlock label="尺寸">
                     <select
                       aria-label="尺寸"
@@ -1019,86 +1172,103 @@ export function InsuranceTemplateGallery({ templates, categories }: InsuranceTem
                       ))}
                     </select>
                   </FieldBlock>
+                  </div>
+
+                  <FieldBlock label="标题（必填）">
+                    <EditableBox
+                      value={templateForm.title}
+                      placeholder="输入海报主标题"
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, title: value } : prev))}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock label="副标题（选填）">
+                    <EditableBox
+                      value={templateForm.description}
+                      placeholder="输入一句副标题"
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, description: value } : prev))}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock label="核心要点（选填）">
+                    <EditableBox
+                      value={templateForm.rows.join("\n")}
+                      minHeight="min-h-24"
+                      multiline
+                      rows={4}
+                      placeholder={"每行一个核心卖点"}
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, rows: parseCoreRows(value) } : prev))}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock label="辅助信息（选填）">
+                    <EditableBox
+                      value={templateForm.auxiliaryInfo}
+                      placeholder="输入风险提示或备注"
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, auxiliaryInfo: value } : prev))}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock label="机构名称（选填）">
+                    <EditableBox
+                      value={templateForm.organizationName}
+                      placeholder="输入机构名称"
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, organizationName: value } : prev))}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock label="插图元素（选填）">
+                    <EditableBox
+                      value={templateForm.illustration}
+                      minHeight="min-h-20"
+                      multiline
+                      placeholder="描述海报画面元素"
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, illustration: value } : prev))}
+                    />
+                  </FieldBlock>
                 </div>
-
-                <FieldBlock label="标题">
-                  <EditableBox
-                    value={templateForm.title}
-                    disabled={isGenerateActionBusy}
-                    onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, title: value } : prev))}
-                  />
-                </FieldBlock>
-
-                <FieldBlock label="副标题">
-                  <EditableBox
-                    value={templateForm.description}
-                    minHeight="min-h-12"
-                    multiline
-                    disabled={isGenerateActionBusy}
-                    onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, description: value } : prev))}
-                  />
-                </FieldBlock>
-
-                <FieldBlock label="核心要点">
-                  <EditableBox
-                    value={templateForm.rows.join("\n")}
-                    minHeight="min-h-24"
-                    multiline
-                    disabled={isGenerateActionBusy}
-                    onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, rows: parseCoreRows(value) } : prev))}
-                  />
-                </FieldBlock>
-
-                <FieldBlock label="辅助信息">
-                  <EditableBox
-                    value={templateForm.auxiliaryInfo}
-                    disabled={isGenerateActionBusy}
-                    onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, auxiliaryInfo: value } : prev))}
-                  />
-                </FieldBlock>
-
-                <FieldBlock label="机构名称">
-                  <EditableBox
-                    value={templateForm.organizationName}
-                    disabled={isGenerateActionBusy}
-                    onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, organizationName: value } : prev))}
-                  />
-                </FieldBlock>
-
-                <FieldBlock label="插图元素">
-                  <EditableBox
-                    value={templateForm.illustration}
-                    minHeight="min-h-20"
-                    multiline
-                    disabled={isGenerateActionBusy}
-                    onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, illustration: value } : prev))}
-                  />
-                </FieldBlock>
               </div>
 
-              <button
-                type="button"
-                onClick={generateTemplate}
-                disabled={isGenerateActionBusy}
-                className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isCheckingCredits ? (
-                  <>
-                    <LoaderCircle size={16} className="mr-2 animate-spin" />
-                    确认积分
-                  </>
-                ) : isGeneratingPoster ? (
-                  <>
-                    <LoaderCircle size={16} className="mr-2 animate-spin" />
-                    生成中
-                  </>
-                ) : (
-                  <>
-                    生成
-                    <ArrowRight size={16} className="ml-2" />
-                  </>
-                )}
-              </button>
+              <div className="grid grid-cols-2 gap-3 border-t border-zinc-200 bg-white p-4 shadow-[0_-10px_24px_rgba(15,23,42,0.06)] sm:p-5">
+                <button
+                  type="button"
+                  onClick={generateTemplate}
+                  disabled={isGenerateActionBusy}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isCheckingCredits ? (
+                    <>
+                      <LoaderCircle size={16} className="mr-2 animate-spin" />
+                      确认积分
+                    </>
+                  ) : isGeneratingPoster ? (
+                    <>
+                      <LoaderCircle size={16} className="mr-2 animate-spin" />
+                      生成中
+                    </>
+                  ) : (
+                    <>
+                      生成海报
+                      <ArrowRight size={16} className="ml-2" />
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={!activePosterImageSrc}
+                  onClick={requestDownloadActivePoster}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download size={16} className="mr-2" />
+                  下载海报
+                </button>
+              </div>
             </div>
 
             <div className="order-1 flex min-h-0 flex-col overflow-hidden border-b border-zinc-200 bg-zinc-100 lg:order-2 lg:border-b-0 lg:border-l">
