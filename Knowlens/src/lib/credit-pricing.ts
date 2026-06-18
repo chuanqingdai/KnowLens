@@ -1,5 +1,6 @@
 export const STANDARD_OUTPUT_REGULAR_CREDITS = 20;
 export const STANDARD_OUTPUT_PROMO_CREDITS = 6;
+export const DEFAULT_FREE_CREDIT_BALANCE = 0;
 
 export const STANDARD_OUTPUTS_PER_PLAN = {
   starter: 200,
@@ -10,4 +11,3 @@ export const STANDARD_OUTPUTS_PER_PLAN = {
 export function getStandardOutputCredits(usePromo: boolean) {
   return usePromo ? STANDARD_OUTPUT_PROMO_CREDITS : STANDARD_OUTPUT_REGULAR_CREDITS;
 }
-

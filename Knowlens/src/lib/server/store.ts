@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findBillingPlan } from "@/lib/billing-plans";
+import { DEFAULT_FREE_CREDIT_BALANCE } from "@/lib/credit-pricing";
 import { getDb } from "./db";
 import { hasManagedDatabase, pgAll, pgGet, pgRun, pgTransaction, pgTxGet, pgTxRun } from "./postgres";
 
@@ -358,7 +359,7 @@ export async function appendCreditRecordDb(input: {
           .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
           .all(scopeEmail) as Array<{ balance?: number }>;
       })();
-  const latestBalance = rows[0]?.balance ?? 50;
+  const latestBalance = rows[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE;
   const balance = latestBalance + input.delta;
   const id = `record-${randomUUID()}`;
   const sqlText =
@@ -420,7 +421,7 @@ export async function applyCreditRecordAtomic(input: {
         "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
         [scopeEmail],
       )) as { balance?: number } | undefined;
-      const latestBalance = Number(latest?.balance ?? 50);
+      const latestBalance = Number(latest?.balance ?? DEFAULT_FREE_CREDIT_BALANCE);
       const nextBalance = latestBalance + input.delta;
       if (input.rejectNegativeBalance && nextBalance < 0) {
         return {
@@ -474,7 +475,7 @@ export async function applyCreditRecordAtomic(input: {
     const rows = db
       .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
       .all(scopeEmail) as Array<{ balance?: number }>;
-    const latestBalance = rows[0]?.balance ?? 50;
+    const latestBalance = rows[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE;
     const nextBalance = latestBalance + input.delta;
     if (input.rejectNegativeBalance && nextBalance < 0) {
       db.exec("ROLLBACK");
@@ -555,7 +556,7 @@ export async function applyImageGenerationRefundAtomic(input: {
         )) as { balance?: number } | undefined;
         return {
           applied: false as const,
-          balance: Number(latest?.balance ?? 50),
+          balance: Number(latest?.balance ?? DEFAULT_FREE_CREDIT_BALANCE),
           duplicate: true,
         };
       }
@@ -578,7 +579,7 @@ export async function applyImageGenerationRefundAtomic(input: {
         "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
         [scopeEmail],
       )) as { balance?: number } | undefined;
-      const latestBalance = Number(latest?.balance ?? 50);
+      const latestBalance = Number(latest?.balance ?? DEFAULT_FREE_CREDIT_BALANCE);
       const nextBalance = latestBalance + amount;
       const creditRecordId = `record-${randomUUID()}`;
       await pgTxRun(
@@ -637,7 +638,7 @@ export async function applyImageGenerationRefundAtomic(input: {
       db.exec("COMMIT");
       return {
         applied: false as const,
-        balance: Number(latest?.balance ?? 50),
+        balance: Number(latest?.balance ?? DEFAULT_FREE_CREDIT_BALANCE),
         duplicate: true,
       };
     }
@@ -656,7 +657,7 @@ export async function applyImageGenerationRefundAtomic(input: {
     const latest = db
       .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
       .get(scopeEmail) as { balance?: number } | undefined;
-    const latestBalance = Number(latest?.balance ?? 50);
+    const latestBalance = Number(latest?.balance ?? DEFAULT_FREE_CREDIT_BALANCE);
     const nextBalance = latestBalance + amount;
     const creditRecordId = `record-${randomUUID()}`;
     db.prepare(
@@ -956,7 +957,7 @@ export async function ensureSubscriptionCreditsCurrent(email: string) {
           "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
           [normalizedEmail],
         )) as { balance?: number } | undefined;
-        const latestBalance = Math.max(0, Number(latestBalanceRow?.balance ?? 50));
+        const latestBalance = Math.max(0, Number(latestBalanceRow?.balance ?? DEFAULT_FREE_CREDIT_BALANCE));
         if (latestBalance > 0) {
           await pgTxRun(
             tx,
@@ -1021,7 +1022,7 @@ export async function ensureSubscriptionCreditsCurrent(email: string) {
         const latestBalanceRow = db
           .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
           .get(normalizedEmail) as { balance?: number } | undefined;
-        const latestBalance = Math.max(0, Number(latestBalanceRow?.balance ?? 50));
+        const latestBalance = Math.max(0, Number(latestBalanceRow?.balance ?? DEFAULT_FREE_CREDIT_BALANCE));
         if (latestBalance > 0) {
           db.prepare(
             `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
@@ -1413,7 +1414,7 @@ export async function applyBillingFulfillmentAtomic(input: {
         "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
         [normalizedEmail],
       )) as { balance?: number } | undefined;
-      const previousBalance = Number(previous?.balance ?? 50);
+      const previousBalance = Number(previous?.balance ?? DEFAULT_FREE_CREDIT_BALANCE);
       const nextBalance = previousBalance + input.monthlyCredits;
       await pgTxRun(
         tx,
@@ -1502,7 +1503,7 @@ export async function applyBillingFulfillmentAtomic(input: {
     const balanceRows = db
       .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
       .all(normalizedEmail) as Array<{ balance?: number }>;
-    const previousBalance = balanceRows[0]?.balance ?? 50;
+    const previousBalance = balanceRows[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE;
     const nextBalance = previousBalance + input.monthlyCredits;
     const creditRecordId = `record-${randomUUID()}`;
     db.prepare(

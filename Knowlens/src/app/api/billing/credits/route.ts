@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { DEFAULT_FREE_CREDIT_BALANCE } from "@/lib/credit-pricing";
 import { nextAuthOptions } from "@/lib/nextAuth";
 import { sweepAbandonedImageGenerationJobsForUser } from "@/lib/server/image-generation-jobs";
 import {
@@ -108,7 +109,7 @@ export async function GET() {
     message: "Read current billing credits state.",
     details: {
       creditsAmount: 0,
-      balance: records[0]?.balance ?? 50,
+      balance: records[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE,
       durationMs: Date.now() - requestStartedAt,
       membershipStatus: subscription?.status,
       planType: subscription?.cycle,
@@ -120,7 +121,7 @@ export async function GET() {
     ok: true,
     email,
     records,
-    balance: records[0]?.balance ?? 50,
+    balance: records[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE,
     subscription,
   });
 }

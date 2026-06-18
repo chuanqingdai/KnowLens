@@ -5,15 +5,23 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  InsuranceMembershipDialog,
+  openInsuranceMembershipCheckout,
+} from "@/components/billing/InsuranceMembershipDialog";
 import { LocalizedMarketingText } from "@/components/i18n/LocalizedMarketingText";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
-import { useLocale } from "@/components/i18n/LocaleProvider";
+import { useLocale, type Locale } from "@/components/i18n/LocaleProvider";
 import { usePathname, useRouter } from "next/navigation";
 
 type MarketingChromeProps = {
   children: React.ReactNode;
   showLocaleSwitch?: boolean;
   infographicOnly?: boolean;
+  showExamplesLink?: boolean;
+  forceLocale?: Locale;
+  membershipVariant?: "default" | "insurance";
+  showPrimaryCta?: boolean;
 };
 
 const toolLinkGroups = [
@@ -172,8 +180,16 @@ function translateToolGroupTitle(title: string, t: (en: string, zh: string) => s
   return title;
 }
 
-export function MarketingChrome({ children, showLocaleSwitch = true, infographicOnly = false }: MarketingChromeProps) {
-  const { t } = useLocale();
+export function MarketingChrome({
+  children,
+  showLocaleSwitch = true,
+  infographicOnly = false,
+  showExamplesLink = true,
+  forceLocale,
+  membershipVariant = "default",
+  showPrimaryCta = true,
+}: MarketingChromeProps) {
+  const { locale, setLocale, t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const { status } = useSession();
@@ -181,14 +197,30 @@ export function MarketingChrome({ children, showLocaleSwitch = true, infographic
   const [oneTapTriggered, setOneTapTriggered] = useState(false);
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [insuranceMembershipOpen, setInsuranceMembershipOpen] = useState(false);
   const toolsMenuCloseTimer = useRef<number | null>(null);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const currentMarketingPath = normalizeMarketingPath(pathname || "/");
   const visibleToolLinkGroups = useMemo(
-    () => (infographicOnly ? toolLinkGroups.filter((group) => group.title !== "Video Tools") : toolLinkGroups),
-    [infographicOnly],
+    () => {
+      const groups = infographicOnly ? toolLinkGroups.filter((group) => group.title !== "Video Tools") : toolLinkGroups;
+      if (showExamplesLink) {
+        return groups;
+      }
+      return groups.map((group) => ({
+        ...group,
+        links: group.links.filter((link) => link.href !== "/infographic-examples"),
+      }));
+    },
+    [infographicOnly, showExamplesLink],
   );
+
+  useEffect(() => {
+    if (forceLocale && locale !== forceLocale) {
+      setLocale(forceLocale);
+    }
+  }, [forceLocale, locale, setLocale]);
 
   function handleToolLinkClick(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
     setToolsMenuOpen(false);
@@ -401,28 +433,40 @@ export function MarketingChrome({ children, showLocaleSwitch = true, infographic
                 </div>
               </div>
             </div>
-            <Link
-              href="/membership"
-              className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100 min-[430px]:inline-flex"
-            >
-              {t("Pricing", "价格")}
-            </Link>
-            <button
-              type="button"
-              aria-label={t("Generate Free", "免费生成")}
-              onClick={() => {
-                router.push("/app");
-              }}
-              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-zinc-900 px-2.5 text-xs font-medium text-white hover:bg-zinc-700 sm:px-3"
-            >
-              <span aria-hidden="true" className="hidden min-[360px]:inline">
-                {t("Generate Free", "免费生成")}
-              </span>
-              <span aria-hidden="true" className="min-[360px]:hidden">
-                {t("Generate", "生成")}
-              </span>
-              <ArrowRight size={13} />
-            </button>
+            {membershipVariant === "insurance" ? (
+              <button
+                type="button"
+                onClick={() => setInsuranceMembershipOpen(true)}
+                className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100 min-[430px]:inline-flex"
+              >
+                购买会员
+              </button>
+            ) : (
+              <Link
+                href="/membership"
+                className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3 text-xs text-zinc-700 hover:bg-zinc-100 min-[430px]:inline-flex"
+              >
+                {t("Pricing", "价格")}
+              </Link>
+            )}
+            {showPrimaryCta ? (
+              <button
+                type="button"
+                aria-label={t("Generate Free", "免费生成")}
+                onClick={() => {
+                  router.push("/app");
+                }}
+                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-zinc-900 px-2.5 text-xs font-medium text-white hover:bg-zinc-700 sm:px-3"
+              >
+                <span aria-hidden="true" className="hidden min-[360px]:inline">
+                  {t("Generate Free", "免费生成")}
+                </span>
+                <span aria-hidden="true" className="min-[360px]:hidden">
+                  {t("Generate", "生成")}
+                </span>
+                <ArrowRight size={13} />
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -498,6 +542,16 @@ export function MarketingChrome({ children, showLocaleSwitch = true, infographic
           </div>
         </div>
       </footer>
+      <InsuranceMembershipDialog
+        open={insuranceMembershipOpen}
+        source="insurance_nav_membership"
+        contextLabel="保险页顶部导航"
+        onClose={() => setInsuranceMembershipOpen(false)}
+        onUpgrade={() => {
+          setInsuranceMembershipOpen(false);
+          openInsuranceMembershipCheckout("insurance_nav_membership");
+        }}
+      />
     </div>
   );
 }

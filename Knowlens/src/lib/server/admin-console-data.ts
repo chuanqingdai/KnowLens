@@ -1,4 +1,5 @@
 import { createAdminConsoleMockData, type AdminConsoleData } from "@/lib/admin/adminConsoleMock";
+import { DEFAULT_FREE_CREDIT_BALANCE } from "@/lib/credit-pricing";
 import { getDb } from "@/lib/server/db";
 import { hasManagedDatabase, pgAll } from "@/lib/server/postgres";
 
@@ -284,7 +285,7 @@ export async function getAdminConsoleData(): Promise<AdminConsoleData> {
       registeredAt: iso(user.created_at ?? user.updated_at),
       subscriptionStatus: normalizeSubscriptionStatus(subscription?.status),
       status: "active",
-      creditBalance: numberValue(latestCredit?.balance, 50),
+      creditBalance: numberValue(latestCredit?.balance, DEFAULT_FREE_CREDIT_BALANCE),
       creditConsumed: credits
         .filter((credit) => numberValue(credit.delta) < 0)
         .reduce((sum, credit) => sum + Math.abs(numberValue(credit.delta)), 0),

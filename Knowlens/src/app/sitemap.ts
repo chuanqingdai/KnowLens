@@ -35,6 +35,7 @@ const publicRoutes = [
   "/process-infographic-generator",
   "/recipe-infographic-maker",
   "/infographic-examples",
+  "/insurance",
   "/ai-poster-generator",
   "/ai-carousel-generator",
   "/ai-explainer-videos",

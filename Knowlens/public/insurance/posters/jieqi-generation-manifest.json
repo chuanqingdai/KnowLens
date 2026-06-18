@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-06-18T13:03:23.537Z",
+  "results": [
+    {
+      "title": "夏至已至，把清凉和安心都带上",
+      "imageSrc": "/insurance/posters/jieqi-01.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2155878,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "白昼渐长，家的责任也要看见",
+      "imageSrc": "/insurance/posters/jieqi-02.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 1822412,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "夏至养生，也别忽略保障清单",
+      "imageSrc": "/insurance/posters/jieqi-03.png",
+      "aspectRatio": "4:3",
+      "size": "1344x1008",
+      "bytes": 1860551,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "小暑微热，出行多留一份心",
+      "imageSrc": "/insurance/posters/jieqi-04.png",
+      "aspectRatio": "16:9",
+      "size": "1536x864",
+      "bytes": 1967378,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "小暑来了，给父母多一份照看",
+      "imageSrc": "/insurance/posters/jieqi-05.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2841117,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "小暑保单小检查，安心过盛夏",
+      "imageSrc": "/insurance/posters/jieqi-06.png",
+      "aspectRatio": "1:1",
+      "size": "1024x1024",
+      "bytes": 1875720,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "大暑将近，健康风险也要提前看",
+      "imageSrc": "/insurance/posters/jieqi-07.png",
+      "aspectRatio": "4:3",
+      "size": "1344x1008",
+      "bytes": 1985011,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "大暑炎炎，孩子的保障别缺席",
+      "imageSrc": "/insurance/posters/jieqi-08.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 3018714,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "热浪里，也要给未来留余地",
+      "imageSrc": "/insurance/posters/jieqi-09.png",
+      "aspectRatio": "1:1",
+      "size": "1024x1024",
+      "bytes": 2150707,
+      "contentType": "image/png",
+      "skipped": true
+    },
+    {
+      "title": "七月盛夏，把保障安排得更清楚",
+      "imageSrc": "/insurance/posters/jieqi-10.png",
+      "aspectRatio": "16:9",
+      "size": "1536x864",
+      "bytes": 2072296,
+      "contentType": "image/png",
+      "skipped": true
+    }
+  ],
+  "failures": []
+}

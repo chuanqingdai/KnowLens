@@ -1,3 +1,5 @@
+import { DEFAULT_FREE_CREDIT_BALANCE } from "@/lib/credit-pricing";
+
 export type BillingCycle = "monthly" | "yearly";
 export type SubscriptionStatus = "inactive" | "active" | "canceling" | "canceled";
 
@@ -252,7 +254,7 @@ export function appendCreditRecord(
   }
   const scopeEmail = input.userEmail ?? email;
   const existing = getCreditRecords(scopeEmail);
-  const latestBalance = existing[0]?.balance ?? 50;
+  const latestBalance = existing[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE;
   const nextBalance = latestBalance + input.delta;
   const nextRecord: CreditRecord = {
     id: `record-${Date.now()}`,
