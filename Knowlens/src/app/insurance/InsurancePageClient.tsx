@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ArrowRight, Sparkles } from "lucide-react";
 import {
@@ -18,6 +18,8 @@ type InsurancePageClientProps = {
 };
 
 export function InsurancePageClient({ templates, categories, initialCategory }: InsurancePageClientProps) {
+  const [activeSection, setActiveSection] = useState<"showcase" | "mine">("showcase");
+
   useEffect(() => {
     trackInsuranceEvent({
       action: "page_view",
@@ -87,10 +89,37 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
         </section>
 
         <section id="templates" className="scroll-mt-20">
-          <div className="mb-5 sm:mb-7">
-            <h2 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">精选案例</h2>
+          <div className="mb-5 border-b border-zinc-200 sm:mb-7">
+            <button
+              type="button"
+              onClick={() => setActiveSection("showcase")}
+              className={`inline-flex h-11 items-center border-b-2 px-1 text-sm font-medium transition sm:h-12 sm:px-1 sm:text-base ${
+                activeSection === "showcase"
+                  ? "border-zinc-950 text-zinc-950"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950"
+              }`}
+            >
+              精选案例
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection("mine")}
+              className={`ml-6 inline-flex h-11 items-center border-b-2 px-1 text-sm font-medium transition sm:ml-8 sm:h-12 sm:px-1 sm:text-base ${
+                activeSection === "mine"
+                  ? "border-zinc-950 text-zinc-950"
+                  : "border-transparent text-zinc-500 hover:text-zinc-950"
+              }`}
+            >
+              我的
+            </button>
           </div>
-          <InsuranceTemplateGallery templates={templates} categories={categories} initialCategory={initialCategory} />
+          <InsuranceTemplateGallery
+            key={activeSection}
+            templates={templates}
+            categories={categories}
+            initialCategory={initialCategory}
+            mode={activeSection}
+          />
         </section>
       </div>
     </MarketingChrome>

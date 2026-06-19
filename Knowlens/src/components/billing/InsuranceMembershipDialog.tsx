@@ -19,8 +19,8 @@ const freeBenefits = [
 const annualBenefits = [
   "解锁所有保险海报模板",
   "一键生成同款，快速发朋友圈",
-  "下载高清海报，长期展业复用",
-  "6000 积分，可生成 1000 张图",
+  "适合私域营销与长期展业",
+  "会员有效期 1 年",
 ];
 
 function trackInsuranceMembership(action: string, source: string, message?: string) {
@@ -134,7 +134,7 @@ export function InsuranceMembershipDialog({
               <span className="pb-1 text-xs text-zinc-500 line-through">原价 399元/年</span>
             </div>
             <p className="mt-2 inline-flex rounded-full bg-white/10 px-3 py-1 text-sm font-medium text-amber-200">
-              含 6000 积分，可生成 1000 张图
+              含 6000 积分，1000次生图和下载
             </p>
             <ul className="mt-4 space-y-2.5 text-sm leading-5 text-zinc-100">
               {annualBenefits.map((benefit) => (

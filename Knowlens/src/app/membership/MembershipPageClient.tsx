@@ -129,15 +129,13 @@ const plans: Plan[] = [
     yearlyPrice: 199,
     yearlyEquivalent: 199,
     monthlyCredits: 6000,
-    usage: "6,000 credits per year, up to ~1,000 insurance posters annually.",
+    usage: "Includes 6,000 credits and up to 1,000 insurance image generations and downloads.",
     pricePrefix: "¥",
     creditUnitLabel: "credits / year",
     yearlyOnly: true,
     features: [
-      "6,000 credits per year",
       "Unlock all insurance poster templates",
       "Generate matching insurance posters in one click",
-      "HD insurance poster download",
       "Designed for private-domain marketing and long-term outreach",
       "One-year insurance membership access",
     ],
@@ -239,12 +237,10 @@ const planZh: Record<BillingPlanId, { name: string; subtitle: string; usage: str
   insurance: {
     name: "保险包年会员",
     subtitle: "适合保险海报生成、朋友圈展业和全年客户触达。",
-    usage: "一年 6,000 积分，约可生成 1,000 张保险海报。",
+    usage: "含 6,000 积分，1,000 次生图和下载。",
     features: [
-      "一年 6,000 积分",
       "解锁全部保险海报模板",
       "一键生成保险同款海报",
-      "支持高清保险海报下载",
       "适合私域营销与长期展业",
       "会员权益有效期 1 年",
     ],
@@ -387,6 +383,19 @@ function readPreferredMembershipCycle() {
   }
 }
 
+function readInitialMembershipState() {
+  const membershipSource = readMembershipSource();
+  const preferredPlanId = readPreferredMembershipPlan();
+  const preferredCycle = readPreferredMembershipCycle();
+  const isInsuranceFlow =
+    preferredPlanId === "insurance" || membershipSource.toLowerCase().includes("insurance");
+  return {
+    membershipSource,
+    preferredPlanId,
+    billingCycle: preferredCycle || (isInsuranceFlow ? "yearly" : "monthly"),
+  };
+}
+
 function formatPlanPriceValue(value: number, prefix = "$") {
   return `${prefix}${formatUsd(value)}`;
 }
@@ -395,9 +404,10 @@ export default function MembershipPage() {
   const router = useRouter();
   const { locale, t } = useLocale();
   const { data: session, status: sessionStatus } = useSession();
-  const [membershipSource, setMembershipSource] = useState("unknown");
-  const [preferredPlanId, setPreferredPlanId] = useState<BillingPlanId | null>(null);
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
+  const [initialMembershipState] = useState(readInitialMembershipState);
+  const [membershipSource] = useState(initialMembershipState.membershipSource);
+  const [preferredPlanId] = useState<BillingPlanId | null>(initialMembershipState.preferredPlanId);
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>(initialMembershipState.billingCycle);
   const [toast, setToast] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState(0);
   const [payingPlanId, setPayingPlanId] = useState<BillingPlanId | null>(null);
@@ -431,23 +441,6 @@ export default function MembershipPage() {
   }, [membershipSource]);
   const isInsuranceMembershipFlow =
     preferredPlanId === "insurance" || membershipSource.toLowerCase().includes("insurance");
-
-  useEffect(() => {
-    const nextMembershipSource = readMembershipSource();
-    const nextPreferredPlanId = readPreferredMembershipPlan();
-    const nextPreferredCycle = readPreferredMembershipCycle();
-    const nextInsuranceFlow =
-      nextPreferredPlanId === "insurance" || nextMembershipSource.toLowerCase().includes("insurance");
-    setMembershipSource(nextMembershipSource);
-    setPreferredPlanId(nextPreferredPlanId);
-    setBillingCycle(nextPreferredCycle || (nextInsuranceFlow ? "yearly" : "monthly"));
-  }, []);
-
-  useEffect(() => {
-    if (isInsuranceMembershipFlow && billingCycle !== "yearly") {
-      setBillingCycle("yearly");
-    }
-  }, [billingCycle, isInsuranceMembershipFlow]);
 
   const trackTelemetry = useCallback(async (event: TelemetryEventInput) => {
     try {

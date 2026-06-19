@@ -14,6 +14,7 @@ import {
   buildInsurancePosterPrompt,
   createInsuranceTemplateFormState,
 } from "@/lib/insurance-poster-prompt";
+import { appendCreditRecordOnServer } from "@/lib/billing";
 import { STANDARD_OUTPUT_PROMO_CREDITS } from "@/lib/credit-pricing";
 import { trackInsuranceEvent } from "@/lib/insurance-analytics";
 
@@ -42,6 +43,7 @@ type InsuranceTemplateGalleryProps = {
   templates: InsuranceTemplateCard[];
   categories: string[];
   initialCategory?: string;
+  mode?: "showcase" | "mine";
 };
 
 type SupportedTemplateAspectRatio = "1:1" | "9:16" | "16:9" | "3:4";
@@ -87,6 +89,8 @@ type MyPosterRecord = GeneratedPosterHistoryItem & {
 };
 type MembershipGateAction = "generate" | "download";
 type BillingCreditsPayload = {
+  ok?: boolean;
+  email?: string;
   balance?: number;
   subscription?: {
     status?: string;
@@ -95,7 +99,6 @@ type BillingCreditsPayload = {
 
 const INSURANCE_POSTER_GENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const CUSTOM_INSURANCE_TEMPLATE_TITLE = "自定义海报";
-const MY_POSTERS_CATEGORY = "我的";
 const INSURANCE_POSTER_STATE_STORAGE_KEY = "knowlens:insurance:poster-state:v1";
 const TEMPLATE_INITIAL_LOAD_COUNT = 8;
 const TEMPLATE_LOAD_BATCH_SIZE = 8;
@@ -306,7 +309,7 @@ function createCustomInsuranceTemplate(): InsuranceTemplateCard {
 }
 
 function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory: string) {
-  if (activeCategory === "全部" || activeCategory === MY_POSTERS_CATEGORY) {
+  if (activeCategory === "全部") {
     return true;
   }
   return [template.primaryCategory, template.category, template.secondaryCategory].some((value) =>
@@ -411,11 +414,27 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
   return `图片暂时无法生成，请手动重试。错误码：${displayCode}。`;
 }
 
-function getGalleryPreviewImageSrc(imageSrc: string) {
-  if (!imageSrc.startsWith("/")) {
-    return imageSrc;
+function loadStoredPosterState() {
+  if (typeof window === "undefined") {
+    return {};
   }
-  return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=640&q=75`;
+  try {
+    const raw = window.localStorage.getItem(INSURANCE_POSTER_STATE_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const nextState: Record<string, GeneratedPosterState> = {};
+    for (const [key, value] of Object.entries(parsed || {})) {
+      const sanitized = sanitizeGeneratedPosterState(value);
+      if (sanitized) {
+        nextState[key] = sanitized;
+      }
+    }
+    return nextState;
+  } catch {
+    return {};
+  }
 }
 
 function formatGeneratedPosterTime(createdAt: number) {
@@ -435,7 +454,6 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
   const aspectClass = getAspectClass(template);
   const originalImageSrc = template.imageSrc || "";
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const [displayImageSrc, setDisplayImageSrc] = useState(() => getGalleryPreviewImageSrc(originalImageSrc));
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -444,7 +462,7 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
     if (image?.complete && image.naturalWidth > 0) {
       setLoaded(true);
     }
-  }, [displayImageSrc]);
+  }, [originalImageSrc]);
 
   if (originalImageSrc) {
     return (
@@ -462,19 +480,14 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
           // eslint-disable-next-line @next/next/no-img-element
           <img
             ref={imageRef}
-            src={displayImageSrc}
+            src={originalImageSrc}
             alt={`${template.title}海报`}
             loading={eager ? "eager" : "lazy"}
             decoding="async"
             className="absolute inset-0 z-10 h-full w-full object-contain"
             onLoad={() => setLoaded(true)}
-            onError={() => {
-              if (displayImageSrc !== originalImageSrc) {
-                setDisplayImageSrc(originalImageSrc);
-                return;
-              }
-              setFailed(true);
-            }}
+            onError={() => setFailed(true)}
+            referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
           />
         )}
       </div>
@@ -672,23 +685,29 @@ async function downloadPosterImage(imageSrc: string, title: string): Promise<Pos
   }
 }
 
-export function InsuranceTemplateGallery({ templates, categories, initialCategory = "全部" }: InsuranceTemplateGalleryProps) {
+export function InsuranceTemplateGallery({
+  templates,
+  categories,
+  initialCategory = "全部",
+  mode = "showcase",
+}: InsuranceTemplateGalleryProps) {
   const safeInitialCategory = categories.includes(initialCategory) ? initialCategory : "全部";
   const [activeCategory, setActiveCategory] = useState(safeInitialCategory);
   const [visibleTemplateCount, setVisibleTemplateCount] = useState(TEMPLATE_INITIAL_LOAD_COUNT);
   const [activeTemplate, setActiveTemplate] = useState<InsuranceTemplateCard | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormState | null>(null);
-  const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>({});
+  const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>(loadStoredPosterState);
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
   const downloadToastTimerRef = useRef<number | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [isCheckingCredits, setIsCheckingCredits] = useState(false);
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
+  const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
   const [membershipPaywallOpen, setMembershipPaywallOpen] = useState(false);
   const [membershipPaywallAction, setMembershipPaywallAction] = useState<MembershipGateAction>("generate");
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
-  const isMyCategory = activeCategory === MY_POSTERS_CATEGORY;
+  const isMineMode = mode === "mine";
   const templateByTitle = useMemo(() => new Map(templates.map((template) => [template.title, template])), [templates]);
   const filteredTemplates = useMemo(() => {
     return templates.filter((template) => templateMatchesCategory(template, activeCategory));
@@ -727,11 +746,11 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     return records.sort((left, right) => right.createdAt - left.createdAt);
   }, [customTemplate, posterStateByTitle, templateByTitle]);
   const emptyCategoryCards = useMemo(() => {
-    if (isMyCategory || activeCategory === "全部" || filteredTemplates.length > 0) {
+    if (isMineMode || activeCategory === "全部" || filteredTemplates.length > 0) {
       return [];
     }
     return buildEmptyCategoryCards(activeCategory);
-  }, [activeCategory, filteredTemplates.length, isMyCategory]);
+  }, [activeCategory, filteredTemplates.length, isMineMode]);
   const visibleTemplates = useMemo(
     () => filteredTemplates.slice(0, visibleTemplateCount),
     [filteredTemplates, visibleTemplateCount],
@@ -740,7 +759,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     () => myPosterRecords.slice(0, visibleTemplateCount),
     [myPosterRecords, visibleTemplateCount],
   );
-  const activeCollectionSize = isMyCategory ? myPosterRecords.length : filteredTemplates.length;
+  const activeCollectionSize = isMineMode ? myPosterRecords.length : filteredTemplates.length;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize;
   const loadMoreTemplates = useCallback(() => {
     setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
@@ -759,26 +778,6 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   };
   const activeTemplatePremium = activeTemplate ? isTemplatePremium(activeTemplate) : false;
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(INSURANCE_POSTER_STATE_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const nextState: Record<string, GeneratedPosterState> = {};
-      for (const [key, value] of Object.entries(parsed || {})) {
-        const sanitized = sanitizeGeneratedPosterState(value);
-        if (sanitized) {
-          nextState[key] = sanitized;
-        }
-      }
-      setPosterStateByTitle(nextState);
-    } catch {
-      // Ignore invalid local cache and rebuild from fresh interactions.
-    }
-  }, []);
 
   useEffect(() => {
     try {
@@ -858,7 +857,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     });
   };
 
-  const openCustomTemplate = () => {
+  const openCustomTemplate = useCallback(() => {
     trackInsuranceEvent({
       action: "custom_template_open",
       message: "Insurance custom poster modal opened.",
@@ -878,13 +877,13 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         posterDescription: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.posterDescription,
       },
     }));
-  };
+  }, [customTemplate]);
 
   useEffect(() => {
     const onCustomPoster = () => openCustomTemplate();
     window.addEventListener(INSURANCE_CUSTOM_POSTER_EVENT, onCustomPoster);
     return () => window.removeEventListener(INSURANCE_CUSTOM_POSTER_EVENT, onCustomPoster);
-  }, []);
+  }, [openCustomTemplate]);
 
   const openMembershipPaywall = (action: MembershipGateAction) => {
     trackInsuranceEvent({
@@ -903,11 +902,12 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     setMembershipPaywallOpen(true);
   };
 
-  const openCreditsPaywall = (balance: number | null) => {
+  const openCreditsPaywall = (balance: number | null, action: MembershipGateAction) => {
     trackInsuranceEvent({
       action: "credits_paywall_shown",
       message: "Insurance credits paywall shown.",
       details: {
+        action,
         balance,
         requiredCredits: INSURANCE_POSTER_GENERATION_CREDITS,
         activeTemplateTitle: activeTemplate?.isCustom ? CUSTOM_INSURANCE_TEMPLATE_TITLE : activeTemplate?.title,
@@ -915,6 +915,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         activeTemplateSecondaryCategory: activeTemplate?.secondaryCategory,
       },
     });
+    setCreditsPaywallAction(action);
     setCreditsPaywallBalance(Number.isFinite(balance) ? balance : null);
     setActiveTemplate(null);
     setTemplateForm(null);
@@ -932,45 +933,114 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     openInsuranceMembershipCheckout("insurance_template_membership");
   };
 
+  const fetchBillingCredits = async () => {
+    const response = await fetch("/api/billing/credits", {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => null)) as BillingCreditsPayload | null;
+    return {
+      ok: response.ok && Boolean(payload?.ok),
+      payload,
+    };
+  };
+
   const verifyMembershipAccess = async (action: MembershipGateAction) => {
     try {
-      const response = await fetch("/api/billing/credits", {
-        method: "GET",
-        credentials: "include",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      const payload = (await response.json().catch(() => null)) as BillingCreditsPayload | null;
-      if (response.ok && hasActiveMembership(payload?.subscription)) {
-        return true;
+      const { ok, payload } = await fetchBillingCredits();
+      if (ok && hasActiveMembership(payload?.subscription)) {
+        return payload;
       }
       openMembershipPaywall(action);
-      return false;
+      return null;
     } catch {
       openMembershipPaywall(action);
-      return false;
+      return null;
     }
   };
 
-  const verifyCreditsBeforeGeneration = async () => {
+  const verifyCreditsForAction = async (action: MembershipGateAction) => {
     try {
-      const response = await fetch("/api/billing/credits", {
-        method: "GET",
-        credentials: "include",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      const payload = (await response.json().catch(() => null)) as BillingCreditsPayload | null;
+      const { ok, payload } = await fetchBillingCredits();
       const balance = Number(payload?.balance ?? 0);
-      if (!response.ok || !Number.isFinite(balance) || balance < INSURANCE_POSTER_GENERATION_CREDITS) {
-        openCreditsPaywall(Number.isFinite(balance) ? balance : null);
-        return false;
+      if (!ok || !Number.isFinite(balance) || balance < INSURANCE_POSTER_GENERATION_CREDITS) {
+        openCreditsPaywall(Number.isFinite(balance) ? balance : null, action);
+        return null;
       }
-      return true;
+      return {
+        email: payload?.email?.trim() || undefined,
+        balance,
+      };
     } catch {
-      openCreditsPaywall(null);
-      return false;
+      openCreditsPaywall(null, action);
+      return null;
     }
+  };
+
+  const isInsufficientCreditsError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return /INSUFFICIENT|NOT_ENOUGH|BILLING_CREDITS/i.test(message);
+  };
+
+  const consumeInsuranceCredits = async ({
+    action,
+    title,
+    balance,
+    email,
+  }: {
+    action: MembershipGateAction;
+    title: string;
+    balance: number;
+    email?: string;
+  }) => {
+    const actionLabel = action === "download" ? "高级公共海报下载" : "保险海报生图";
+    await appendCreditRecordOnServer(
+      {
+        type: "consume",
+        description: `${title} · ${actionLabel}（${INSURANCE_POSTER_GENERATION_CREDITS} 积分）`,
+        delta: -INSURANCE_POSTER_GENERATION_CREDITS,
+        projectTitle: title,
+        entrySource: "insurance_template_gallery",
+        estimatedCreditsCost: INSURANCE_POSTER_GENERATION_CREDITS,
+        creditsBefore: balance,
+        creditsAfter: Math.max(0, balance - INSURANCE_POSTER_GENERATION_CREDITS),
+        creditBalanceSource: "server_synced_balance",
+        consumeResult: "success",
+      },
+      email,
+    );
+  };
+
+  const refundInsuranceCredits = async ({
+    title,
+    balance,
+    email,
+    reason,
+  }: {
+    title: string;
+    balance: number;
+    email?: string;
+    reason: string;
+  }) => {
+    const refundLabel = reason.includes("download") ? "下载失败退回积分" : "生图失败退回积分";
+    await appendCreditRecordOnServer(
+      {
+        type: "refund",
+        description: `${title} · ${refundLabel}（${INSURANCE_POSTER_GENERATION_CREDITS} 积分）`,
+        delta: INSURANCE_POSTER_GENERATION_CREDITS,
+        projectTitle: title,
+        entrySource: "insurance_template_gallery",
+        estimatedCreditsCost: INSURANCE_POSTER_GENERATION_CREDITS,
+        creditsBefore: balance,
+        creditsAfter: balance + INSURANCE_POSTER_GENERATION_CREDITS,
+        creditBalanceSource: "server_synced_balance",
+        consumeResult: "success",
+        refundReason: reason,
+      },
+      email,
+    );
   };
 
   const requestOpenTemplate = (template: InsuranceTemplateCard, placement: "card" | "hover_button" = "card") => {
@@ -995,7 +1065,9 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const requestDownloadTemplate = (template: InsuranceTemplateCard) => {
     const premium = isTemplatePremium(template);
     void (async () => {
-      const imageSrc = posterStateByTitle[template.title]?.imageSrc || template.imageSrc || "";
+      const posterState = posterStateByTitle[template.title];
+      const imageSrc = posterState?.imageSrc || template.imageSrc || "";
+      const shouldChargeDownloadCredits = premium && !(posterState?.currentCreatedAt && posterState.imageSrc);
       trackInsuranceEvent({
         action: "template_download_click",
         message: "Insurance template download clicked.",
@@ -1011,6 +1083,33 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       if (premium && !(await verifyMembershipAccess("download"))) {
         return;
       }
+      let consumedDownloadCredits = false;
+      let consumedBalance = 0;
+      let consumedEmail: string | undefined;
+      if (shouldChargeDownloadCredits) {
+        const billingState = await verifyCreditsForAction("download");
+        if (!billingState) {
+          return;
+        }
+        consumedBalance = billingState.balance;
+        consumedEmail = billingState.email;
+        try {
+          await consumeInsuranceCredits({
+            action: "download",
+            title: template.title,
+            balance: billingState.balance,
+            email: billingState.email,
+          });
+          consumedDownloadCredits = true;
+        } catch (error) {
+          if (isInsufficientCreditsError(error)) {
+            openCreditsPaywall(billingState.balance, "download");
+            return;
+          }
+          showDownloadToast("积分扣除失败，请稍后重试", 3200);
+          return;
+        }
+      }
       showDownloadToast("正在下载海报中...");
       try {
         const result = await downloadPosterImage(imageSrc, template.title);
@@ -1021,6 +1120,14 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
           result === "image-opened" ? 4200 : 3200,
         );
       } catch {
+        if (consumedDownloadCredits) {
+          void refundInsuranceCredits({
+            title: template.title,
+            balance: Math.max(0, consumedBalance - INSURANCE_POSTER_GENERATION_CREDITS),
+            email: consumedEmail,
+            reason: "insurance_download_failed",
+          }).catch(() => undefined);
+        }
         showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
         return;
       }
@@ -1051,6 +1158,35 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       if (activeTemplatePremium && !(await verifyMembershipAccess("download"))) {
         return;
       }
+      const shouldChargeDownloadCredits =
+        activeTemplatePremium && !(activePosterState?.currentCreatedAt && activePosterState?.imageSrc);
+      let consumedDownloadCredits = false;
+      let consumedBalance = 0;
+      let consumedEmail: string | undefined;
+      if (shouldChargeDownloadCredits) {
+        const billingState = await verifyCreditsForAction("download");
+        if (!billingState) {
+          return;
+        }
+        consumedBalance = billingState.balance;
+        consumedEmail = billingState.email;
+        try {
+          await consumeInsuranceCredits({
+            action: "download",
+            title: activeTemplate.title,
+            balance: billingState.balance,
+            email: billingState.email,
+          });
+          consumedDownloadCredits = true;
+        } catch (error) {
+          if (isInsufficientCreditsError(error)) {
+            openCreditsPaywall(billingState.balance, "download");
+            return;
+          }
+          showDownloadToast("积分扣除失败，请稍后重试", 3200);
+          return;
+        }
+      }
       showDownloadToast("正在下载海报中...");
       try {
         const result = await downloadPosterImage(activePosterImageSrc, activeTemplate.title);
@@ -1061,6 +1197,14 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
           result === "image-opened" ? 4200 : 3200,
         );
       } catch {
+        if (consumedDownloadCredits) {
+          void refundInsuranceCredits({
+            title: activeTemplate.title,
+            balance: Math.max(0, consumedBalance - INSURANCE_POSTER_GENERATION_CREDITS),
+            email: consumedEmail,
+            reason: "insurance_modal_download_failed",
+          }).catch(() => undefined);
+        }
         showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
         return;
       }
@@ -1159,17 +1303,28 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     });
     setIsCheckingCredits(true);
 
-    void (activeTemplatePremium ? verifyMembershipAccess("generate") : Promise.resolve(true))
-      .then((hasMembershipAccess) => {
-        if (!hasMembershipAccess) {
+    void (activeTemplatePremium ? verifyMembershipAccess("generate") : Promise.resolve({}))
+      .then((membershipState) => {
+        if (!membershipState) {
           setIsCheckingCredits(false);
-          return false;
+          return null;
         }
-        return verifyCreditsBeforeGeneration();
+        return verifyCreditsForAction("generate");
       })
-      .then((hasEnoughCredits) => {
+      .then((billingState) => {
         setIsCheckingCredits(false);
-        if (!hasEnoughCredits) {
+        if (!billingState) {
+          return;
+        }
+        return consumeInsuranceCredits({
+          action: "generate",
+          title: posterTitleSnapshot,
+          balance: billingState.balance,
+          email: billingState.email,
+        }).then(() => billingState);
+      })
+      .then((billingState) => {
+        if (!billingState) {
           return;
         }
         setPosterStateByTitle((prev) => {
@@ -1263,6 +1418,12 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
             });
           })
           .catch((error: Error & { code?: string }) => {
+            void refundInsuranceCredits({
+              title: posterTitleSnapshot,
+              balance: Math.max(0, billingState.balance - INSURANCE_POSTER_GENERATION_CREDITS),
+              email: billingState.email,
+              reason: "insurance_generate_failed",
+            }).catch(() => undefined);
             setPosterStateByTitle((prev) => {
               const current = prev[templateKey];
               return {
@@ -1291,9 +1452,13 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
             });
           });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         setIsCheckingCredits(false);
-        openCreditsPaywall(null);
+        if (isInsufficientCreditsError(error)) {
+          openCreditsPaywall(null, "generate");
+          return;
+        }
+        openCreditsPaywall(null, "generate");
       });
   };
 
@@ -1330,43 +1495,43 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         </div>
       ) : null}
 
-      <div className="mb-6 flex flex-wrap gap-2 sm:mb-8 sm:gap-3">
-        {categories.map((category) => {
-          const active = category === activeCategory;
-          const categoryRecordCount = category === MY_POSTERS_CATEGORY
-            ? myPosterRecords.length
-            : templates.filter((template) => templateMatchesCategory(template, category)).length;
+      {!isMineMode ? (
+        <div className="mb-6 flex flex-wrap gap-2 sm:mb-8 sm:gap-3">
+          {categories.map((category) => {
+            const active = category === activeCategory;
+            const categoryRecordCount = templates.filter((template) => templateMatchesCategory(template, category)).length;
 
-          return (
-            <button
-              key={category}
-              type="button"
-              onClick={() => {
-                trackInsuranceEvent({
-                  action: "category_click",
-                  message: "Insurance category clicked.",
-                  details: {
-                    category,
-                    previousCategory: activeCategory,
-                    templateCount: categoryRecordCount,
-                  },
-                });
-                setVisibleTemplateCount(TEMPLATE_INITIAL_LOAD_COUNT);
-                setActiveCategory(category);
-              }}
-              className={`inline-flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-medium transition sm:h-12 sm:px-6 sm:text-base ${
-                active
-                  ? "bg-zinc-950 text-white"
-                  : "bg-transparent text-zinc-600 hover:bg-white hover:text-zinc-950"
-              }`}
-            >
-              {category}
-            </button>
-          );
-        })}
-      </div>
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => {
+                  trackInsuranceEvent({
+                    action: "category_click",
+                    message: "Insurance category clicked.",
+                    details: {
+                      category,
+                      previousCategory: activeCategory,
+                      templateCount: categoryRecordCount,
+                    },
+                  });
+                  setVisibleTemplateCount(TEMPLATE_INITIAL_LOAD_COUNT);
+                  setActiveCategory(category);
+                }}
+                className={`inline-flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-medium transition sm:h-12 sm:px-6 sm:text-base ${
+                  active
+                    ? "bg-zinc-950 text-white"
+                    : "bg-transparent text-zinc-600 hover:bg-white hover:text-zinc-950"
+                }`}
+              >
+                {category}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
-      {isMyCategory && myPosterRecords.length === 0 ? (
+      {isMineMode && myPosterRecords.length === 0 ? (
         <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center">
           <div>
             <p className="text-lg font-medium text-zinc-900">没有生成记录</p>
@@ -1375,11 +1540,10 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         </div>
       ) : (
         <div className="columns-2 [column-gap:0.75rem] sm:[column-gap:1rem] lg:columns-3 xl:columns-4">
-          {isMyCategory
+          {isMineMode
             ? visibleMyPosterRecords.map((record, index) => {
                 const aspectClass = getAspectClassFromRatio(record.aspectRatio);
                 const originalImageSrc = record.imageSrc;
-                const displayImageSrc = originalImageSrc.startsWith("/") ? getGalleryPreviewImageSrc(originalImageSrc) : originalImageSrc;
                 return (
                   <article
                     key={record.id}
@@ -1389,7 +1553,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
                     <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={displayImageSrc}
+                        src={originalImageSrc}
                         alt={`${record.posterTitle || "我的海报"}海报`}
                         loading={index < TEMPLATE_INITIAL_LOAD_COUNT ? "eager" : "lazy"}
                         decoding="async"
@@ -1532,7 +1696,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         </div>
       )}
 
-      {!(isMyCategory && myPosterRecords.length === 0) ? (
+      {!(isMineMode && myPosterRecords.length === 0) ? (
         <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
           {hasMoreTemplates ? (
             <button
@@ -1790,7 +1954,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
             <InsuranceMembershipDialog
               open={creditsPaywallOpen}
               source="insurance_template_credits_paywall"
-              contextLabel={`积分不足：生成需要 ${INSURANCE_POSTER_GENERATION_CREDITS} 积分${
+              contextLabel={`积分不足：${creditsPaywallAction === "download" ? "下载需要" : "生成需要"} ${INSURANCE_POSTER_GENERATION_CREDITS} 积分${
                 creditsPaywallBalance === null ? "" : `，当前余额 ${creditsPaywallBalance} 积分`
               }`}
               onClose={() => setCreditsPaywallOpen(false)}

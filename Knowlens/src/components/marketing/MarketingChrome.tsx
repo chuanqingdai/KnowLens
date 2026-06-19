@@ -12,6 +12,7 @@ import {
 import { LocalizedMarketingText } from "@/components/i18n/LocalizedMarketingText";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale, type Locale } from "@/components/i18n/LocaleProvider";
+import { BILLING_CREDITS_REFRESH_EVENT } from "@/lib/billing";
 import { usePathname, useRouter } from "next/navigation";
 
 type MarketingChromeProps = {
@@ -24,6 +25,15 @@ type MarketingChromeProps = {
   forceLocale?: Locale;
   membershipVariant?: "default" | "insurance";
   showPrimaryCta?: boolean;
+};
+
+type InsuranceHeaderBillingState = {
+  balance: number;
+  subscription: {
+    status?: string;
+    planId?: string;
+    planName?: string;
+  } | null;
 };
 
 const toolLinkGroups = [
@@ -202,10 +212,22 @@ export function MarketingChrome({
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [insuranceMembershipOpen, setInsuranceMembershipOpen] = useState(false);
+  const [insuranceHeaderBilling, setInsuranceHeaderBilling] = useState<InsuranceHeaderBillingState | null>(null);
+  const [insuranceBillingRefreshVersion, setInsuranceBillingRefreshVersion] = useState(0);
   const toolsMenuCloseTimer = useRef<number | null>(null);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const currentMarketingPath = normalizeMarketingPath(pathname || "/");
+  const isInsuranceChrome = membershipVariant === "insurance";
+  const isAuthenticated = status === "authenticated";
+  const insuranceBillingLoaded = !isAuthenticated || insuranceHeaderBilling !== null;
+  const insuranceMembershipStatus = insuranceHeaderBilling?.subscription?.status || "";
+  const insuranceMemberActive =
+    insuranceMembershipStatus === "active" || insuranceMembershipStatus === "canceling";
+  const insuranceBalanceLabel =
+    typeof insuranceHeaderBilling?.balance === "number"
+      ? insuranceHeaderBilling.balance.toLocaleString("zh-CN")
+      : "--";
   const visibleToolLinkGroups = useMemo(
     () => {
       const groups = infographicOnly ? toolLinkGroups.filter((group) => group.title !== "Video Tools") : toolLinkGroups;
@@ -221,6 +243,57 @@ export function MarketingChrome({
   );
 
   useEffect(() => {
+    if (!isInsuranceChrome || typeof window === "undefined") {
+      return;
+    }
+    const handleCreditsRefresh = () => {
+      setInsuranceBillingRefreshVersion((current) => current + 1);
+    };
+    window.addEventListener(BILLING_CREDITS_REFRESH_EVENT, handleCreditsRefresh);
+    return () => window.removeEventListener(BILLING_CREDITS_REFRESH_EVENT, handleCreditsRefresh);
+  }, [isInsuranceChrome]);
+
+  useEffect(() => {
+    if (!isInsuranceChrome || !isAuthenticated) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void fetch("/api/billing/credits", {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              ok?: boolean;
+              balance?: number;
+              subscription?: { status?: string; planId?: string; planName?: string } | null;
+            }
+          | null;
+        if (!response.ok || !payload?.ok) {
+          setInsuranceHeaderBilling({ balance: 0, subscription: null });
+          return;
+        }
+        setInsuranceHeaderBilling({
+          balance: Number.isFinite(payload.balance) ? Number(payload.balance) : 0,
+          subscription: payload.subscription ?? null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        setInsuranceHeaderBilling({ balance: 0, subscription: null });
+      });
+
+    return () => controller.abort();
+  }, [insuranceBillingRefreshVersion, isAuthenticated, isInsuranceChrome]);
+
+  useEffect(() => {
     if (forceLocale && locale !== forceLocale) {
       setLocale(forceLocale);
     }
@@ -233,6 +306,14 @@ export function MarketingChrome({
     }
     event.preventDefault();
     window.location.reload();
+  }
+
+  function openInsuranceLogin() {
+    const callbackUrl =
+      typeof window !== "undefined"
+        ? `${window.location.pathname || "/insurance"}${window.location.search || ""}`
+        : "/insurance";
+    router.push(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/insurance")}`);
   }
 
   function openToolsMenu() {
@@ -440,13 +521,34 @@ export function MarketingChrome({
               </div>
             ) : null}
             {membershipVariant === "insurance" ? (
-              <button
-                type="button"
-                onClick={() => setInsuranceMembershipOpen(true)}
-                className="hidden h-9 items-center rounded-full bg-zinc-950 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-800 min-[430px]:inline-flex"
-              >
-                购买会员
-              </button>
+              <>
+                {status === "unauthenticated" ? (
+                  <button
+                    type="button"
+                    onClick={openInsuranceLogin}
+                    className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 min-[430px]:inline-flex"
+                  >
+                    登录
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/membership/credits")}
+                    className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 min-[430px]:inline-flex"
+                  >
+                    剩余积分 {insuranceBalanceLabel}
+                  </button>
+                )}
+                {status === "unauthenticated" || (insuranceBillingLoaded && !insuranceMemberActive) ? (
+                  <button
+                    type="button"
+                    onClick={() => setInsuranceMembershipOpen(true)}
+                    className="hidden h-9 items-center rounded-full bg-zinc-950 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-800 min-[430px]:inline-flex"
+                  >
+                    购买会员
+                  </button>
+                ) : null}
+              </>
             ) : (
               <Link
                 href="/membership"

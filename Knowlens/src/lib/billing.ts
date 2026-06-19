@@ -37,6 +37,7 @@ export type CheckoutReturnNotice = {
 const SUBSCRIPTION_KEY = "knowlens_subscription_v1";
 const CREDIT_RECORDS_KEY = "knowlens_credit_records_v1";
 const CHECKOUT_RETURN_NOTICE_KEY = "knowlens-checkout-return-notice-v1";
+export const BILLING_CREDITS_REFRESH_EVENT = "knowlens:billing-credits-refresh";
 
 function normalizeScope(email?: string | null) {
   const value = (email ?? "").trim().toLowerCase();
@@ -60,6 +61,13 @@ function safeParse<T>(raw: string | null): T | null {
 
 function isClient() {
   return typeof window !== "undefined";
+}
+
+export function emitBillingCreditsRefresh() {
+  if (!isClient()) {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(BILLING_CREDITS_REFRESH_EVENT));
 }
 
 export function getSubscription(): SubscriptionSnapshot | null {
@@ -242,6 +250,7 @@ export async function appendCreditRecordOnServer(
   }
   const records = Array.isArray(payload.records) ? payload.records : [];
   setCreditRecords(records, scopeEmail);
+  emitBillingCreditsRefresh();
   return records[0] ?? null;
 }
 
@@ -332,5 +341,6 @@ export async function syncCreditRecordsFromServer(email?: string | null) {
   if (payload.subscription) {
     saveSubscription(payload.subscription, scopeEmail);
   }
+  emitBillingCreditsRefresh();
   return records;
 }
