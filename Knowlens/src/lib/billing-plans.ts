@@ -1,4 +1,4 @@
-export type BillingPlanId = "starter" | "pro" | "scale";
+export type BillingPlanId = "starter" | "pro" | "scale" | "insurance";
 export type BillingCycle = "monthly" | "yearly";
 
 export type BillingPlanCatalogItem = {
@@ -7,6 +7,8 @@ export type BillingPlanCatalogItem = {
   monthlyCredits: number;
   monthlyPrice: number;
   yearlyPrice: number;
+  displayNameZh?: string;
+  allowedCycles?: BillingCycle[];
 };
 
 export const BILLING_PLAN_CATALOG: BillingPlanCatalogItem[] = [
@@ -31,8 +33,36 @@ export const BILLING_PLAN_CATALOG: BillingPlanCatalogItem[] = [
     monthlyPrice: 59,
     yearlyPrice: 489.9,
   },
+  {
+    id: "insurance",
+    name: "Insurance Annual",
+    displayNameZh: "保险包年会员",
+    monthlyCredits: 6000,
+    monthlyPrice: 199,
+    yearlyPrice: 199,
+    allowedCycles: ["yearly"],
+  },
 ];
 
 export function findBillingPlan(planId: string) {
   return BILLING_PLAN_CATALOG.find((plan) => plan.id === planId) ?? null;
+}
+
+export function getBillingPlanDefaultCycle(planId: string): BillingCycle {
+  const plan = findBillingPlan(planId);
+  if (plan?.allowedCycles?.length === 1) {
+    return plan.allowedCycles[0];
+  }
+  return "monthly";
+}
+
+export function isBillingPlanCycleSupported(planId: string, cycle: BillingCycle) {
+  const plan = findBillingPlan(planId);
+  if (!plan) {
+    return false;
+  }
+  if (!plan.allowedCycles?.length) {
+    return true;
+  }
+  return plan.allowedCycles.includes(cycle);
 }

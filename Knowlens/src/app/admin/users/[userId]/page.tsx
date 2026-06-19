@@ -5,7 +5,13 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Copy, ExternalLink, Gift, Loader2, X } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { BILLING_PLAN_CATALOG, type BillingCycle, type BillingPlanId } from "@/lib/billing-plans";
+import {
+  BILLING_PLAN_CATALOG,
+  getBillingPlanDefaultCycle,
+  isBillingPlanCycleSupported,
+  type BillingCycle,
+  type BillingPlanId,
+} from "@/lib/billing-plans";
 
 type UserDetailResponse = {
   user: {
@@ -244,6 +250,22 @@ export default function AdminUserDetailPage() {
     errorCount: number;
     latestAt: string | null;
   } | null>(null);
+  const selectedGiftPlan = useMemo(
+    () => BILLING_PLAN_CATALOG.find((plan) => plan.id === giftPlanId) ?? null,
+    [giftPlanId],
+  );
+  const selectedGiftPlanSupportsMonthly = selectedGiftPlan
+    ? isBillingPlanCycleSupported(selectedGiftPlan.id, "monthly")
+    : true;
+
+  useEffect(() => {
+    if (!selectedGiftPlan) {
+      return;
+    }
+    if (!isBillingPlanCycleSupported(selectedGiftPlan.id, giftCycle)) {
+      setGiftCycle(getBillingPlanDefaultCycle(selectedGiftPlan.id));
+    }
+  }, [giftCycle, selectedGiftPlan]);
 
   useEffect(() => {
     if (!userId) {
@@ -384,7 +406,7 @@ export default function AdminUserDetailPage() {
     if (!data?.user?.id || giftLoading) {
       return;
     }
-    const selectedPlan = BILLING_PLAN_CATALOG.find((plan) => plan.id === giftPlanId);
+    const selectedPlan = selectedGiftPlan;
     if (!selectedPlan) {
       setGiftError("请选择有效的会员套餐。");
       return;
@@ -443,7 +465,8 @@ export default function AdminUserDetailPage() {
       setGiftPlanId("starter");
       setGiftCycle("monthly");
       setGiftReason("");
-      setGiftSuccess(`已开通 ${selectedPlan.name}${giftCycle === "yearly" ? " 年度" : " 月度"}会员。`);
+      const selectedPlanName = selectedPlan.displayNameZh || selectedPlan.name;
+      setGiftSuccess(`已开通 ${selectedPlanName}${giftCycle === "yearly" ? " 年度" : " 月度"}会员。`);
       window.setTimeout(() => setGiftSuccess(""), 2600);
     } catch (fetchError) {
       setGiftError(fetchError instanceof Error ? fetchError.message : "开通会员失败。");
@@ -589,7 +612,7 @@ export default function AdminUserDetailPage() {
                   开通会员
                 </div>
                 <p className="mt-1 text-[11px] leading-5 text-zinc-500">
-                  直接为用户开通与线上一致的会员权限，并发放对应月度积分。
+                  直接为用户开通与线上一致的会员权限，并发放对应积分。保险包年会员会自动按一年有效期发放 6000 积分。
                 </p>
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <select
@@ -599,19 +622,25 @@ export default function AdminUserDetailPage() {
                   >
                     {BILLING_PLAN_CATALOG.map((plan) => (
                       <option key={plan.id} value={plan.id}>
-                        {plan.name}
+                        {plan.displayNameZh || plan.name}
                       </option>
                     ))}
                   </select>
                   <select
                     value={giftCycle}
+                    disabled={!selectedGiftPlanSupportsMonthly}
                     onChange={(event) => setGiftCycle(event.target.value as BillingCycle)}
-                    className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
+                    className="h-8 rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
                   >
                     <option value="monthly">月度会员</option>
                     <option value="yearly">年度会员</option>
                   </select>
                 </div>
+                {!selectedGiftPlanSupportsMonthly ? (
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                    当前套餐仅支持年度开通，授予后立即生效 1 年，并发放 6000 积分。
+                  </p>
+                ) : null}
                 <input
                   type="text"
                   value={giftReason}

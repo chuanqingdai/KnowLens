@@ -1,17 +1,14 @@
 {
-  "generatedAt": "2026-06-18T16:13:18.988Z",
+  "generatedAt": "2026-06-19T14:19:11.632Z",
   "results": [
     {
-      "title": "轻享门诊医疗险",
-      "imageSrc": "/insurance/posters/chanpin-16.png",
+      "title": "第一次买医疗险，要问哪几个问题",
+      "imageSrc": "/insurance/posters/chanpin-40.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "bytes": 2198683,
-      "width": 864,
-      "height": 1536,
-      "contentType": "image/png",
-      "generatedAt": "2026-06-18T16:13:18.986Z",
-      "normalized": true
+      "bytes": 2357124,
+      "skipped": true,
+      "normalized": false
     }
   ],
   "failures": []

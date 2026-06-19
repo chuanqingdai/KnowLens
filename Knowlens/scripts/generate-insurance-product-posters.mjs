@@ -154,7 +154,7 @@ function extractInsuranceStyles() {
 const insuranceStyles = extractInsuranceStyles();
 
 function buildPromptWithInsuranceStyle(template) {
-  const styleKey = Object.entries(styleByImageSrc).find(([needle]) => template.imageSrc.includes(needle))?.[1];
+  const styleKey = template.styleId || Object.entries(styleByImageSrc).find(([needle]) => template.imageSrc.includes(needle))?.[1];
   const style = styleKey ? insuranceStyles[styleKey] : null;
   if (!style) return buildInsurancePosterPrompt(template, template.primaryCategory);
   return buildInsurancePosterPrompt(template, template.primaryCategory, {

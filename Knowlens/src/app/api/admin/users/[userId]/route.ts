@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findBillingPlan, type BillingCycle, type BillingPlanId } from "@/lib/billing-plans";
+import {
+  findBillingPlan,
+  getBillingPlanDefaultCycle,
+  isBillingPlanCycleSupported,
+  type BillingCycle,
+  type BillingPlanId,
+} from "@/lib/billing-plans";
 import { getDb } from "@/lib/server/db";
 import { requireAdminEmail } from "@/lib/server/admin-auth";
 import { hasManagedDatabase, pgAll, pgGet } from "@/lib/server/postgres";
@@ -654,12 +660,16 @@ export async function POST(
 
   if (body.action === "gift_membership") {
     const planId = String(body.planId || "").trim() as BillingPlanId;
-    const cycle: BillingCycle = body.cycle === "yearly" ? "yearly" : "monthly";
+    const requestedCycle: BillingCycle = body.cycle === "yearly" ? "yearly" : "monthly";
     const plan = findBillingPlan(planId);
 
     if (!plan) {
       return NextResponse.json({ error: "Unsupported membership plan." }, { status: 400 });
     }
+
+    const cycle = isBillingPlanCycleSupported(plan.id, requestedCycle)
+      ? requestedCycle
+      : getBillingPlanDefaultCycle(plan.id);
 
     const startedAt = new Date();
     const renewAt = addMonths(startedAt, cycle === "yearly" ? 12 : 1);

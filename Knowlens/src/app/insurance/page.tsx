@@ -341,6 +341,7 @@ const visibleTemplates = orderInsuranceTemplatesForShowcase(templates.filter(has
 
 const showcaseCategories = [
   "全部",
+  "我的",
   "日签",
   "生日",
   "节日",

@@ -51,6 +51,14 @@ type InsuranceStyleOption = {
   prompt: string;
 };
 type GenerationStatus = "ready" | "generating" | "failed";
+type GeneratedPosterHistoryItem = {
+  id: string;
+  imageSrc: string;
+  createdAt: number;
+  aspectRatio?: SupportedTemplateAspectRatio;
+  posterTitle?: string;
+  posterDescription?: string;
+};
 type TemplateFormState = {
   title: string;
   description: string;
@@ -65,9 +73,17 @@ type GeneratedPosterState = {
   status: GenerationStatus;
   imageSrc: string;
   aspectRatio?: SupportedTemplateAspectRatio;
-  history: Array<{ id: string; imageSrc: string; createdAt: number; aspectRatio?: SupportedTemplateAspectRatio }>;
+  history: GeneratedPosterHistoryItem[];
+  currentCreatedAt?: number;
+  posterTitle?: string;
+  posterDescription?: string;
   errorMessage?: string;
   errorCode?: string;
+};
+type MyPosterRecord = GeneratedPosterHistoryItem & {
+  templateKey: string;
+  template: InsuranceTemplateCard;
+  isCurrent: boolean;
 };
 type MembershipGateAction = "generate" | "download";
 type BillingCreditsPayload = {
@@ -79,6 +95,8 @@ type BillingCreditsPayload = {
 
 const INSURANCE_POSTER_GENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const CUSTOM_INSURANCE_TEMPLATE_TITLE = "自定义海报";
+const MY_POSTERS_CATEGORY = "我的";
+const INSURANCE_POSTER_STATE_STORAGE_KEY = "knowlens:insurance:poster-state:v1";
 const TEMPLATE_INITIAL_LOAD_COUNT = 8;
 const TEMPLATE_LOAD_BATCH_SIZE = 8;
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
@@ -288,12 +306,60 @@ function createCustomInsuranceTemplate(): InsuranceTemplateCard {
 }
 
 function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory: string) {
-  if (activeCategory === "全部") {
+  if (activeCategory === "全部" || activeCategory === MY_POSTERS_CATEGORY) {
     return true;
   }
   return [template.primaryCategory, template.category, template.secondaryCategory].some((value) =>
     value ? value.includes(activeCategory) || activeCategory.includes(value) : false,
   );
+}
+
+function isSupportedAspectRatio(value: unknown): value is SupportedTemplateAspectRatio {
+  return value === "1:1" || value === "9:16" || value === "16:9" || value === "3:4";
+}
+
+function sanitizeGeneratedPosterHistoryItem(value: unknown): GeneratedPosterHistoryItem | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const imageSrc = typeof raw.imageSrc === "string" ? raw.imageSrc.trim() : "";
+  const createdAt = typeof raw.createdAt === "number" ? raw.createdAt : Number(raw.createdAt);
+  if (!imageSrc || !Number.isFinite(createdAt)) {
+    return null;
+  }
+  return {
+    id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : `${imageSrc}-${createdAt}`,
+    imageSrc,
+    createdAt,
+    aspectRatio: isSupportedAspectRatio(raw.aspectRatio) ? raw.aspectRatio : undefined,
+    posterTitle: typeof raw.posterTitle === "string" ? raw.posterTitle : undefined,
+    posterDescription: typeof raw.posterDescription === "string" ? raw.posterDescription : undefined,
+  };
+}
+
+function sanitizeGeneratedPosterState(value: unknown): GeneratedPosterState | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const status = raw.status === "ready" || raw.status === "generating" || raw.status === "failed" ? raw.status : "ready";
+  const imageSrc = typeof raw.imageSrc === "string" ? raw.imageSrc : "";
+  const history = Array.isArray(raw.history)
+    ? raw.history.map(sanitizeGeneratedPosterHistoryItem).filter((item): item is GeneratedPosterHistoryItem => Boolean(item))
+    : [];
+  return {
+    status,
+    imageSrc,
+    aspectRatio: isSupportedAspectRatio(raw.aspectRatio) ? raw.aspectRatio : undefined,
+    history,
+    currentCreatedAt:
+      typeof raw.currentCreatedAt === "number" && Number.isFinite(raw.currentCreatedAt) ? raw.currentCreatedAt : undefined,
+    posterTitle: typeof raw.posterTitle === "string" ? raw.posterTitle : undefined,
+    posterDescription: typeof raw.posterDescription === "string" ? raw.posterDescription : undefined,
+    errorMessage: typeof raw.errorMessage === "string" ? raw.errorMessage : undefined,
+    errorCode: typeof raw.errorCode === "string" ? raw.errorCode : undefined,
+  };
 }
 
 function getTemplateAnalyticsDetails(template: InsuranceTemplateCard, isPremium: boolean) {
@@ -350,6 +416,19 @@ function getGalleryPreviewImageSrc(imageSrc: string) {
     return imageSrc;
   }
   return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=640&q=75`;
+}
+
+function formatGeneratedPosterTime(createdAt: number) {
+  try {
+    return new Date(createdAt).toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 }
 
 function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
@@ -608,23 +687,64 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
   const [membershipPaywallOpen, setMembershipPaywallOpen] = useState(false);
   const [membershipPaywallAction, setMembershipPaywallAction] = useState<MembershipGateAction>("generate");
+  const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
+  const isMyCategory = activeCategory === MY_POSTERS_CATEGORY;
+  const templateByTitle = useMemo(() => new Map(templates.map((template) => [template.title, template])), [templates]);
   const filteredTemplates = useMemo(() => {
     return templates.filter((template) => templateMatchesCategory(template, activeCategory));
   }, [activeCategory, templates]);
+  const myPosterRecords = useMemo(() => {
+    const records: MyPosterRecord[] = [];
+    for (const [templateKey, state] of Object.entries(posterStateByTitle)) {
+      const template = templateByTitle.get(templateKey) || (templateKey === CUSTOM_INSURANCE_TEMPLATE_TITLE ? customTemplate : null);
+      if (!template) {
+        continue;
+      }
+      if (state.currentCreatedAt && state.imageSrc) {
+        records.push({
+          id: `${templateKey}-current-${state.currentCreatedAt}`,
+          imageSrc: state.imageSrc,
+          createdAt: state.currentCreatedAt,
+          aspectRatio: state.aspectRatio,
+          posterTitle: state.posterTitle || template.title,
+          posterDescription: state.posterDescription || template.description,
+          templateKey,
+          template,
+          isCurrent: true,
+        });
+      }
+      for (const item of state.history) {
+        records.push({
+          ...item,
+          posterTitle: item.posterTitle || template.title,
+          posterDescription: item.posterDescription || template.description,
+          templateKey,
+          template,
+          isCurrent: false,
+        });
+      }
+    }
+    return records.sort((left, right) => right.createdAt - left.createdAt);
+  }, [customTemplate, posterStateByTitle, templateByTitle]);
   const emptyCategoryCards = useMemo(() => {
-    if (activeCategory === "全部" || filteredTemplates.length > 0) {
+    if (isMyCategory || activeCategory === "全部" || filteredTemplates.length > 0) {
       return [];
     }
     return buildEmptyCategoryCards(activeCategory);
-  }, [activeCategory, filteredTemplates.length]);
+  }, [activeCategory, filteredTemplates.length, isMyCategory]);
   const visibleTemplates = useMemo(
     () => filteredTemplates.slice(0, visibleTemplateCount),
     [filteredTemplates, visibleTemplateCount],
   );
-  const hasMoreTemplates = visibleTemplateCount < filteredTemplates.length;
+  const visibleMyPosterRecords = useMemo(
+    () => myPosterRecords.slice(0, visibleTemplateCount),
+    [myPosterRecords, visibleTemplateCount],
+  );
+  const activeCollectionSize = isMyCategory ? myPosterRecords.length : filteredTemplates.length;
+  const hasMoreTemplates = visibleTemplateCount < activeCollectionSize;
   const loadMoreTemplates = useCallback(() => {
-    setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, filteredTemplates.length));
-  }, [filteredTemplates.length]);
+    setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
+  }, [activeCollectionSize]);
 
   const activePosterState = activeTemplate ? posterStateByTitle[activeTemplate.title] : undefined;
   const isGeneratingPoster = activePosterState?.status === "generating";
@@ -639,6 +759,34 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   };
   const activeTemplatePremium = activeTemplate ? isTemplatePremium(activeTemplate) : false;
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(INSURANCE_POSTER_STATE_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const nextState: Record<string, GeneratedPosterState> = {};
+      for (const [key, value] of Object.entries(parsed || {})) {
+        const sanitized = sanitizeGeneratedPosterState(value);
+        if (sanitized) {
+          nextState[key] = sanitized;
+        }
+      }
+      setPosterStateByTitle(nextState);
+    } catch {
+      // Ignore invalid local cache and rebuild from fresh interactions.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(INSURANCE_POSTER_STATE_STORAGE_KEY, JSON.stringify(posterStateByTitle));
+    } catch {
+      // Ignore persistence failures and keep in-memory state usable.
+    }
+  }, [posterStateByTitle]);
 
   useEffect(() => {
     return () => {
@@ -711,7 +859,6 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   };
 
   const openCustomTemplate = () => {
-    const customTemplate = createCustomInsuranceTemplate();
     trackInsuranceEvent({
       action: "custom_template_open",
       message: "Insurance custom poster modal opened.",
@@ -722,10 +869,13 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     setPosterStateByTitle((prev) => ({
       ...prev,
       [CUSTOM_INSURANCE_TEMPLATE_TITLE]: {
-        status: "ready",
-        imageSrc: "",
-        aspectRatio: "9:16",
-        history: [],
+        status: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.status || "ready",
+        imageSrc: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.imageSrc || "",
+        aspectRatio: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.aspectRatio || "9:16",
+        history: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.history || [],
+        currentCreatedAt: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.currentCreatedAt,
+        posterTitle: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.posterTitle,
+        posterDescription: prev[CUSTOM_INSURANCE_TEMPLATE_TITLE]?.posterDescription,
       },
     }));
   };
@@ -925,6 +1075,57 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     })();
   };
 
+  const openMyPosterRecord = (record: MyPosterRecord, placement: "card" | "hover_button" = "card") => {
+    trackInsuranceEvent({
+      action: "my_poster_open_click",
+      message: "My generated insurance poster opened.",
+      details: {
+        templateTitle: record.templateKey,
+        placement,
+        isCustom: Boolean(record.template.isCustom),
+        createdAt: record.createdAt,
+      },
+    });
+    setPosterStateByTitle((prev) => {
+      const current = prev[record.templateKey];
+      return {
+        ...prev,
+        [record.templateKey]: {
+          status: "ready",
+          imageSrc: record.imageSrc,
+          aspectRatio:
+            record.aspectRatio ||
+            current?.aspectRatio ||
+            normalizeAspectRatioChoice(record.template.aspectRatio),
+          history: current?.history || [],
+          currentCreatedAt: record.createdAt,
+          posterTitle: record.posterTitle || current?.posterTitle || record.template.title,
+          posterDescription: record.posterDescription || current?.posterDescription || record.template.description,
+          errorCode: undefined,
+          errorMessage: undefined,
+        },
+      };
+    });
+    if (record.template.isCustom) {
+      setActiveTemplate(customTemplate);
+      setTemplateForm({
+        ...createBlankInsuranceTemplateForm(),
+        title: record.posterTitle || "",
+        description: record.posterDescription || "",
+        aspectRatio: record.aspectRatio || "9:16",
+      });
+      return;
+    }
+    setActiveTemplate(record.template);
+    setTemplateForm({
+      ...createInsuranceTemplateFormState(record.template),
+      title: record.posterTitle || createInsuranceTemplateFormState(record.template).title,
+      description: record.posterDescription || createInsuranceTemplateFormState(record.template).description,
+      aspectRatio: record.aspectRatio || normalizeAspectRatioChoice(record.template.aspectRatio),
+      styleId: record.template.styleId || insuranceStyleOptions[0].id,
+    });
+  };
+
   const generateTemplate = () => {
     if (!activeTemplate || !templateForm || isGenerateActionBusy) {
       return;
@@ -932,6 +1133,8 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     const templateKey = activeTemplate.title;
     const selectedAspectRatio = templateForm.aspectRatio;
     const currentStyle = getStyleOption(templateForm.styleId);
+    const posterTitleSnapshot = templateForm.title.trim() || activeTemplate.title;
+    const posterDescriptionSnapshot = templateForm.description.trim() || activeTemplate.description || "";
     const prompt = buildInsurancePosterPrompt(activeTemplate, activeTemplate.primaryCategory, {
       ...templateForm,
       styleName: currentStyle.name,
@@ -977,12 +1180,14 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
             history: [],
           };
           const archived =
-            current.imageSrc && current.status !== "generating"
+            current.imageSrc && current.status !== "generating" && current.currentCreatedAt
               ? {
-                  id: `${templateKey}-${Date.now()}`,
+                  id: `${templateKey}-${current.currentCreatedAt}`,
                   imageSrc: current.imageSrc,
-                  createdAt: Date.now(),
+                  createdAt: current.currentCreatedAt,
                   aspectRatio: current.aspectRatio || normalizeAspectRatioChoice(activeTemplate.aspectRatio),
+                  posterTitle: current.posterTitle || activeTemplate.title,
+                  posterDescription: current.posterDescription || activeTemplate.description,
                 }
               : null;
           return {
@@ -992,6 +1197,9 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
               imageSrc: current.imageSrc || activeTemplate.imageSrc || "",
               aspectRatio: selectedAspectRatio,
               history: archived ? [archived, ...current.history].slice(0, 8) : current.history,
+              currentCreatedAt: current.currentCreatedAt,
+              posterTitle: current.posterTitle,
+              posterDescription: current.posterDescription,
               errorMessage: undefined,
               errorCode: undefined,
             },
@@ -1037,6 +1245,9 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
                   imageSrc: payload.imageUrl || "",
                   aspectRatio: selectedAspectRatio,
                   history: current?.history || [],
+                  currentCreatedAt: Date.now(),
+                  posterTitle: posterTitleSnapshot,
+                  posterDescription: posterDescriptionSnapshot,
                   errorMessage: undefined,
                   errorCode: undefined,
                 },
@@ -1061,6 +1272,9 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
                   imageSrc: current?.imageSrc || activeTemplate.imageSrc || "",
                   aspectRatio: selectedAspectRatio,
                   history: current?.history || [],
+                  currentCreatedAt: current?.currentCreatedAt,
+                  posterTitle: current?.posterTitle,
+                  posterDescription: current?.posterDescription,
                   errorMessage: error.message || "Generation failed. Please retry this card.",
                   errorCode: error.code,
                 },
@@ -1119,6 +1333,9 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       <div className="mb-6 flex flex-wrap gap-2 sm:mb-8 sm:gap-3">
         {categories.map((category) => {
           const active = category === activeCategory;
+          const categoryRecordCount = category === MY_POSTERS_CATEGORY
+            ? myPosterRecords.length
+            : templates.filter((template) => templateMatchesCategory(template, category)).length;
 
           return (
             <button
@@ -1131,7 +1348,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
                   details: {
                     category,
                     previousCategory: activeCategory,
-                    templateCount: templates.filter((template) => templateMatchesCategory(template, category)).length,
+                    templateCount: categoryRecordCount,
                   },
                 });
                 setVisibleTemplateCount(TEMPLATE_INITIAL_LOAD_COUNT);
@@ -1149,83 +1366,145 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         })}
       </div>
 
-      <div className="columns-2 [column-gap:0.75rem] sm:[column-gap:1rem] lg:columns-3 xl:columns-4">
-        {visibleTemplates.map((template, index) => {
-          const likes = [8, 5, 13, 7, 11, 4, 10, 6, 3, 9, 2, 12][index % 12];
-          const views = [68, 34, 96, 52, 81, 29, 73, 41, 24, 59, 18, 88][index % 12];
-          const labels = getCardLabels(template);
-          const premium = isTemplatePremium(template);
-          const canDownload = Boolean(posterStateByTitle[template.title]?.imageSrc || template.imageSrc);
-
-          return (
-            <article
-              key={template.title}
-              onClick={() => requestOpenTemplate(template, "card")}
-              className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
-            >
-              <div className="relative w-full overflow-hidden bg-zinc-100">
-                <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
-                {premium ? (
-                  <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
-                    <Crown size={14} fill="currentColor" />
-                  </div>
-                ) : null}
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
-                <div className="absolute inset-x-0 bottom-3 flex justify-center px-3 opacity-0 transition group-hover:opacity-100">
-                  <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
-                    <button
-                      type="button"
-                      aria-label={`生成同款：${template.title}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        requestOpenTemplate(template, "hover_button");
-                      }}
-                      className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
-                    >
-                      生成同款
-                      <ArrowRight size={15} className="ml-1.5" />
-                    </button>
-                  <button
-                    type="button"
-                    aria-label={`下载海报：${template.title}`}
-                    disabled={!canDownload}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      requestDownloadTemplate(template);
-                    }}
-                    className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+      {isMyCategory && myPosterRecords.length === 0 ? (
+        <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center">
+          <div>
+            <p className="text-lg font-medium text-zinc-900">没有生成记录</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-500">生成过的保险海报会按时间顺序显示在这里。</p>
+          </div>
+        </div>
+      ) : (
+        <div className="columns-2 [column-gap:0.75rem] sm:[column-gap:1rem] lg:columns-3 xl:columns-4">
+          {isMyCategory
+            ? visibleMyPosterRecords.map((record, index) => {
+                const aspectClass = getAspectClassFromRatio(record.aspectRatio);
+                const originalImageSrc = record.imageSrc;
+                const displayImageSrc = originalImageSrc.startsWith("/") ? getGalleryPreviewImageSrc(originalImageSrc) : originalImageSrc;
+                return (
+                  <article
+                    key={record.id}
+                    onClick={() => openMyPosterRecord(record, "card")}
+                    className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
-                    <Download size={15} className="mr-1.5" />
-                    下载海报
-                  </button>
-                  </div>
-                </div>
-              </div>
-              <div className="p-2.5 sm:p-3">
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-                  {labels.map((label) => (
-                    <span
-                      key={label}
-                      className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-                <h3 className="mt-2.5 text-[13px] font-medium leading-5 text-zinc-900 sm:mt-3 sm:text-[15px] sm:leading-6">
-                  {template.title}
-                </h3>
-                <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
-                  {template.description}
-                </p>
-                <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500 sm:mt-3 sm:text-xs">
-                  <span>♡ {likes}</span>
-                  <span className="shrink-0 whitespace-nowrap tabular-nums">{views} 次浏览</span>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+                    <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={displayImageSrc}
+                        alt={`${record.posterTitle || "我的海报"}海报`}
+                        loading={index < TEMPLATE_INITIAL_LOAD_COUNT ? "eager" : "lazy"}
+                        decoding="async"
+                        className="absolute inset-0 h-full w-full object-contain"
+                        referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
+                      />
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
+                      <div className="absolute inset-x-0 bottom-3 flex justify-center px-3 opacity-0 transition group-hover:opacity-100">
+                        <div className="flex items-center justify-center rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
+                          <button
+                            type="button"
+                            aria-label={`查看海报：${record.posterTitle || record.template.title}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openMyPosterRecord(record, "hover_button");
+                            }}
+                            className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
+                          >
+                            查看海报
+                            <ArrowRight size={15} className="ml-1.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-2.5 sm:p-3">
+                      <h3 className="text-[13px] font-medium leading-5 text-zinc-900 sm:text-[15px] sm:leading-6">
+                        {record.posterTitle || record.template.title}
+                      </h3>
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
+                        {record.posterDescription || "已生成的保险海报记录"}
+                      </p>
+                      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500 sm:mt-3 sm:text-xs">
+                        <span>{record.isCurrent ? "最新生成" : "历史记录"}</span>
+                        <span className="shrink-0 whitespace-nowrap tabular-nums">{formatGeneratedPosterTime(record.createdAt)}</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })
+            : visibleTemplates.map((template, index) => {
+                const likes = [8, 5, 13, 7, 11, 4, 10, 6, 3, 9, 2, 12][index % 12];
+                const views = [68, 34, 96, 52, 81, 29, 73, 41, 24, 59, 18, 88][index % 12];
+                const labels = getCardLabels(template);
+                const premium = isTemplatePremium(template);
+                const canDownload = Boolean(posterStateByTitle[template.title]?.imageSrc || template.imageSrc);
+
+                return (
+                  <article
+                    key={template.title}
+                    onClick={() => requestOpenTemplate(template, "card")}
+                    className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
+                  >
+                    <div className="relative w-full overflow-hidden bg-zinc-100">
+                      <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
+                      {premium ? (
+                        <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
+                          <Crown size={14} fill="currentColor" />
+                        </div>
+                      ) : null}
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
+                      <div className="absolute inset-x-0 bottom-3 flex justify-center px-3 opacity-0 transition group-hover:opacity-100">
+                        <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
+                          <button
+                            type="button"
+                            aria-label={`生成同款：${template.title}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestOpenTemplate(template, "hover_button");
+                            }}
+                            className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
+                          >
+                            生成同款
+                            <ArrowRight size={15} className="ml-1.5" />
+                          </button>
+                        <button
+                          type="button"
+                          aria-label={`下载海报：${template.title}`}
+                          disabled={!canDownload}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            requestDownloadTemplate(template);
+                          }}
+                          className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Download size={15} className="mr-1.5" />
+                          下载海报
+                        </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-2.5 sm:p-3">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                        {labels.map((label) => (
+                          <span
+                            key={label}
+                            className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                      <h3 className="mt-2.5 text-[13px] font-medium leading-5 text-zinc-900 sm:mt-3 sm:text-[15px] sm:leading-6">
+                        {template.title}
+                      </h3>
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
+                        {template.description}
+                      </p>
+                      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500 sm:mt-3 sm:text-xs">
+                        <span>♡ {likes}</span>
+                        <span className="shrink-0 whitespace-nowrap tabular-nums">{views} 次浏览</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
         {emptyCategoryCards.map((card) => (
           <article
             key={card.id}
@@ -1250,21 +1529,24 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
             </div>
           </article>
         ))}
-      </div>
+        </div>
+      )}
 
-      <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
-        {hasMoreTemplates ? (
-          <button
-            type="button"
-            onClick={loadMoreTemplates}
-            className="inline-flex h-10 items-center rounded-full border border-zinc-200 bg-white px-4 font-medium text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:text-zinc-950"
-          >
-            加载更多
-          </button>
-        ) : (
-          "已经到底部了"
-        )}
-      </div>
+      {!(isMyCategory && myPosterRecords.length === 0) ? (
+        <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
+          {hasMoreTemplates ? (
+            <button
+              type="button"
+              onClick={loadMoreTemplates}
+              className="inline-flex h-10 items-center rounded-full border border-zinc-200 bg-white px-4 font-medium text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:text-zinc-950"
+            >
+              加载更多
+            </button>
+          ) : (
+            "已经到底部了"
+          )}
+        </div>
+      ) : null}
 
       {activeTemplate && templateForm && typeof document !== "undefined"
         ? createPortal(

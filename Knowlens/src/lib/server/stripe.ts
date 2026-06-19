@@ -52,6 +52,9 @@ export function getStripePaymentLink(planId: string, cycle: "monthly" | "yearly"
       monthly: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO_MONTHLY,
       yearly: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_PRO_YEARLY,
     },
+    insurance: {
+      yearly: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_INSURANCE_YEARLY,
+    },
   };
   const value = map[planId]?.[cycle]?.trim();
   return value || null;
@@ -95,6 +98,9 @@ export function getStripePriceId(planId: string, cycle: "monthly" | "yearly") {
       monthly: process.env.NEXT_PUBLIC_STRIPE_BUSINESS_MONTHLY,
       yearly: process.env.NEXT_PUBLIC_STRIPE_BUSINESS_YEARLY,
     },
+    insurance: {
+      yearly: process.env.NEXT_PUBLIC_STRIPE_INSURANCE_YEARLY,
+    },
   };
   const value = map[planId]?.[cycle]?.trim();
   return value || null;
@@ -113,6 +119,9 @@ export function getStripeProductId(planId: string, cycle: "monthly" | "yearly") 
     scale: {
       monthly: process.env.NEXT_PUBLIC_STRIPE_BUSINESS_PRODUCT_MONTHLY,
       yearly: process.env.NEXT_PUBLIC_STRIPE_BUSINESS_PRODUCT_YEARLY,
+    },
+    insurance: {
+      yearly: process.env.NEXT_PUBLIC_STRIPE_INSURANCE_PRODUCT_YEARLY,
     },
   };
   const value = map[planId]?.[cycle]?.trim();

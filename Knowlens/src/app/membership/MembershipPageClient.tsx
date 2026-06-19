@@ -31,6 +31,9 @@ type Plan = {
   yearlyEquivalent: number;
   monthlyCredits: number;
   usage: string;
+  pricePrefix?: string;
+  creditUnitLabel?: string;
+  yearlyOnly?: boolean;
   recommended?: boolean;
   features: string[];
   supportedTextModels: string[];
@@ -117,6 +120,29 @@ const plans: Plan[] = [
     ],
     supportedTextModels: SHARED_TEXT_MODELS,
     supportedImageModels: SHARED_IMAGE_MODELS,
+  },
+  {
+    id: "insurance",
+    name: "Insurance Annual",
+    subtitle: "Best for insurance poster generation, private-domain marketing, and year-round customer outreach.",
+    monthlyPrice: 199,
+    yearlyPrice: 199,
+    yearlyEquivalent: 199,
+    monthlyCredits: 6000,
+    usage: "6,000 credits per year, up to ~1,000 insurance posters annually.",
+    pricePrefix: "¥",
+    creditUnitLabel: "credits / year",
+    yearlyOnly: true,
+    features: [
+      "6,000 credits per year",
+      "Unlock all insurance poster templates",
+      "Generate matching insurance posters in one click",
+      "HD insurance poster download",
+      "Designed for private-domain marketing and long-term outreach",
+      "One-year insurance membership access",
+    ],
+    supportedTextModels: ["GPT-image2"],
+    supportedImageModels: [],
   },
 ];
 
@@ -210,6 +236,19 @@ const planZh: Record<BillingPlanId, { name: string; subtitle: string; usage: str
       "使用 Image2 模型，积分消耗更优惠",
     ],
   },
+  insurance: {
+    name: "保险包年会员",
+    subtitle: "适合保险海报生成、朋友圈展业和全年客户触达。",
+    usage: "一年 6,000 积分，约可生成 1,000 张保险海报。",
+    features: [
+      "一年 6,000 积分",
+      "解锁全部保险海报模板",
+      "一键生成保险同款海报",
+      "支持高清保险海报下载",
+      "适合私域营销与长期展业",
+      "会员权益有效期 1 年",
+    ],
+  },
 };
 
 const faqZh: Record<string, { q: string; a: string }> = {
@@ -258,6 +297,8 @@ function formatUsd(value: number) {
 const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
 const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
 const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
+const MEMBERSHIP_PREFERRED_PLAN_KEY = "knowlens:membership-preferred-plan";
+const MEMBERSHIP_PREFERRED_CYCLE_KEY = "knowlens:membership-preferred-cycle";
 const PAYMENT_CTA_CLASS =
   "border border-transparent bg-zinc-900 text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)]";
 const SECONDARY_PAYMENT_CTA_CLASS =
@@ -322,10 +363,40 @@ function clearPendingCheckout() {
   window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
 }
 
+function readPreferredMembershipPlan() {
+  if (typeof window === "undefined") {
+    return null as BillingPlanId | null;
+  }
+  try {
+    const value = window.sessionStorage.getItem(MEMBERSHIP_PREFERRED_PLAN_KEY)?.trim() as BillingPlanId | undefined;
+    return value || null;
+  } catch {
+    return null as BillingPlanId | null;
+  }
+}
+
+function readPreferredMembershipCycle() {
+  if (typeof window === "undefined") {
+    return null as BillingCycle | null;
+  }
+  try {
+    const value = window.sessionStorage.getItem(MEMBERSHIP_PREFERRED_CYCLE_KEY)?.trim();
+    return value === "monthly" || value === "yearly" ? value : null;
+  } catch {
+    return null as BillingCycle | null;
+  }
+}
+
+function formatPlanPriceValue(value: number, prefix = "$") {
+  return `${prefix}${formatUsd(value)}`;
+}
+
 export default function MembershipPage() {
   const router = useRouter();
   const { locale, t } = useLocale();
   const { data: session, status: sessionStatus } = useSession();
+  const [membershipSource, setMembershipSource] = useState("unknown");
+  const [preferredPlanId, setPreferredPlanId] = useState<BillingPlanId | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [toast, setToast] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState(0);
@@ -339,7 +410,6 @@ export default function MembershipPage() {
   const processedSessionRef = useRef<string | null>(null);
   const membershipExposureLoggedRef = useRef(false);
   const currentEmail = (session?.user?.email ?? "").trim().toLowerCase();
-  const membershipSource = readMembershipSource();
   const [, setRefreshVersion] = useState(0);
   const [returnPath] = useState(() => {
     if (typeof window === "undefined") {
@@ -359,6 +429,25 @@ export default function MembershipPage() {
   const resolveMembershipSource = useCallback(() => {
     return membershipSource || "unknown";
   }, [membershipSource]);
+  const isInsuranceMembershipFlow =
+    preferredPlanId === "insurance" || membershipSource.toLowerCase().includes("insurance");
+
+  useEffect(() => {
+    const nextMembershipSource = readMembershipSource();
+    const nextPreferredPlanId = readPreferredMembershipPlan();
+    const nextPreferredCycle = readPreferredMembershipCycle();
+    const nextInsuranceFlow =
+      nextPreferredPlanId === "insurance" || nextMembershipSource.toLowerCase().includes("insurance");
+    setMembershipSource(nextMembershipSource);
+    setPreferredPlanId(nextPreferredPlanId);
+    setBillingCycle(nextPreferredCycle || (nextInsuranceFlow ? "yearly" : "monthly"));
+  }, []);
+
+  useEffect(() => {
+    if (isInsuranceMembershipFlow && billingCycle !== "yearly") {
+      setBillingCycle("yearly");
+    }
+  }, [billingCycle, isInsuranceMembershipFlow]);
 
   const trackTelemetry = useCallback(async (event: TelemetryEventInput) => {
     try {
@@ -588,11 +677,13 @@ export default function MembershipPage() {
     return plans.map((plan) => {
       const monthly = plan.monthlyPrice;
       const yearly = plan.yearlyPrice;
-      const cyclePrice = billingCycle === "monthly" ? monthly : yearly;
-      const cycleUnit = billingCycle === "monthly" ? t("/mo", "/月") : t("/yr", "/年");
+      const effectiveCycle = plan.yearlyOnly ? "yearly" : billingCycle;
+      const cyclePrice = effectiveCycle === "monthly" ? monthly : yearly;
+      const cycleUnit = effectiveCycle === "monthly" ? t("/mo", "/月") : t("/yr", "/年");
       const monthlyEquivalent = billingCycle === "yearly" ? plan.yearlyEquivalent : monthly;
       return {
         ...plan,
+        effectiveCycle,
         cyclePrice,
         cycleUnit,
         yearly,
@@ -600,6 +691,11 @@ export default function MembershipPage() {
       };
     });
   }, [billingCycle, t]);
+  const visiblePlans = useMemo(() => {
+    return isInsuranceMembershipFlow
+      ? plansWithCyclePrice.filter((plan) => plan.id === "insurance")
+      : plansWithCyclePrice.filter((plan) => plan.id !== "insurance");
+  }, [isInsuranceMembershipFlow, plansWithCyclePrice]);
 
   async function handlePay(plan: Plan) {
     const isPaying = Boolean(payingPlanId);
@@ -607,6 +703,7 @@ export default function MembershipPage() {
       return;
     }
     setPayingPlanId(plan.id);
+    const effectiveCycle: BillingCycle = plan.yearlyOnly ? "yearly" : billingCycle;
     if (sessionStatus === "loading") {
       setToast("Checking your account. Please try again in a second.");
       setPayingPlanId(null);
@@ -620,7 +717,7 @@ export default function MembershipPage() {
       source: eventSource,
       details: {
         planId: plan.id,
-        cycle: billingCycle,
+        cycle: effectiveCycle,
         authenticated: Boolean(currentEmail),
         path: "/membership",
       },
@@ -628,7 +725,7 @@ export default function MembershipPage() {
     if (!currentEmail) {
       const pendingCheckout = {
         planId: plan.id,
-        cycle: billingCycle,
+        cycle: effectiveCycle,
         startedAt: new Date().toISOString(),
         source: eventSource,
       };
@@ -641,7 +738,7 @@ export default function MembershipPage() {
         source: eventSource,
         details: {
           planId: plan.id,
-          cycle: billingCycle,
+          cycle: effectiveCycle,
           callbackUrl: "/membership",
         },
       });
@@ -662,13 +759,13 @@ export default function MembershipPage() {
     try {
       savePendingCheckout({
         planId: plan.id,
-        cycle: billingCycle,
+        cycle: effectiveCycle,
         startedAt: new Date().toISOString(),
         source: eventSource,
       });
       setPendingCheckoutMeta({
         planId: plan.id,
-        cycle: billingCycle,
+        cycle: effectiveCycle,
         startedAt: new Date().toISOString(),
         source: eventSource,
       });
@@ -679,7 +776,7 @@ export default function MembershipPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planId: plan.id,
-          cycle: billingCycle,
+          cycle: effectiveCycle,
           source: membershipSource,
         }),
         signal: controller.signal,
@@ -700,7 +797,7 @@ export default function MembershipPage() {
       if (data.sessionId) {
         const nextPendingCheckout = {
           planId: plan.id,
-          cycle: billingCycle,
+          cycle: effectiveCycle,
           startedAt: new Date().toISOString(),
           sessionId: data.sessionId,
           source: eventSource,
@@ -718,7 +815,7 @@ export default function MembershipPage() {
         source: eventSource,
         details: {
           planId: plan.id,
-          cycle: billingCycle,
+          cycle: effectiveCycle,
           fallback: Boolean(data.fallback),
           sessionId: data.sessionId ?? null,
           path: "/membership",
@@ -760,7 +857,7 @@ export default function MembershipPage() {
         message,
         details: {
           planId: plan.id,
-          cycle: billingCycle,
+          cycle: effectiveCycle,
           path: "/membership",
         },
       });
@@ -776,7 +873,9 @@ export default function MembershipPage() {
       <div className="relative z-10 mx-auto flex min-h-screen w-full items-end justify-center p-0 sm:items-center sm:p-5">
         <div className="w-full max-w-6xl overflow-hidden rounded-t-3xl border border-zinc-200 bg-white shadow-2xl sm:rounded-3xl">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
-            <p className="text-sm font-medium text-zinc-500">Membership</p>
+            <p className="text-sm font-medium text-zinc-500">
+              {isInsuranceMembershipFlow ? t("Insurance Membership", "保险会员") : "Membership"}
+            </p>
             <button
               type="button"
               onClick={() => router.push(returnPath)}
@@ -791,34 +890,40 @@ export default function MembershipPage() {
             <PromoCountdownBanner />
 
             <section className="mt-5 flex justify-center">
-          <div className="inline-flex w-full max-w-[360px] rounded-full border border-zinc-200 bg-zinc-100 p-1">
-            <button
-              type="button"
-              onClick={() => setBillingCycle("monthly")}
-              className={`flex-1 rounded-full px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm ${
-                billingCycle === "monthly"
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-600 hover:text-zinc-900"
-              }`}
-            >
-              {t("Monthly", "月付")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setBillingCycle("yearly")}
-              className={`flex-1 rounded-full px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm ${
-                billingCycle === "yearly"
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-600 hover:text-zinc-900"
-              }`}
-            >
-              {t("Annual (Save 30%)", "年付（省 30%）")}
-            </button>
-          </div>
+              {isInsuranceMembershipFlow ? (
+                <div className="inline-flex w-full max-w-[360px] items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800">
+                  {t("Insurance annual membership only", "保险包年会员，固定 1 年有效期")}
+                </div>
+              ) : (
+                <div className="inline-flex w-full max-w-[360px] rounded-full border border-zinc-200 bg-zinc-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("monthly")}
+                    className={`flex-1 rounded-full px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm ${
+                      billingCycle === "monthly"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-600 hover:text-zinc-900"
+                    }`}
+                  >
+                    {t("Monthly", "月付")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("yearly")}
+                    className={`flex-1 rounded-full px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm ${
+                      billingCycle === "yearly"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-600 hover:text-zinc-900"
+                    }`}
+                  >
+                    {t("Annual (Save 30%)", "年付（省 30%）")}
+                  </button>
+                </div>
+              )}
             </section>
 
             <section className="mt-6 grid gap-3 sm:gap-4 lg:grid-cols-3">
-          {plansWithCyclePrice.map((plan) => (
+          {visiblePlans.map((plan) => (
             <article
               key={plan.id}
               className={`relative flex h-full flex-col rounded-2xl border bg-white p-4 shadow-sm sm:p-5 ${
@@ -837,19 +942,23 @@ export default function MembershipPage() {
               <h2 className="text-lg font-semibold text-zinc-900">{locale === "zh" ? planZh[plan.id].name : plan.name}</h2>
               <p className="mt-1 text-xs leading-5 text-zinc-500">{locale === "zh" ? planZh[plan.id].subtitle : plan.subtitle}</p>
               <p className="mt-1 text-sm text-zinc-500">
-                {plan.monthlyCredits.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {t("credits / month", "积分 / 月")}
+                {plan.monthlyCredits.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}{" "}
+                {plan.id === "insurance"
+                  ? t("credits / year", "积分 / 年")
+                  : t(plan.creditUnitLabel || "credits / month", "积分 / 月")}
               </p>
 
               <div className="mt-4">
                 <p className="text-3xl font-semibold leading-none text-zinc-900">
-                  ${formatUsd(plan.cyclePrice)}
+                  {formatPlanPriceValue(plan.cyclePrice, plan.pricePrefix || "$")}
                   <span className="ml-1 text-base font-medium text-zinc-500">
                     {plan.cycleUnit}
                   </span>
                 </p>
-                {billingCycle === "yearly" ? (
+                {billingCycle === "yearly" && !plan.yearlyOnly ? (
                   <p className="mt-1 text-xs text-zinc-500">
-                    {t("Equivalent to", "折合")} ${formatUsd(plan.monthlyEquivalent)}{t("/mo", "/月")}
+                    {t("Equivalent to", "折合")} {formatPlanPriceValue(plan.monthlyEquivalent, plan.pricePrefix || "$")}
+                    {t("/mo", "/月")}
                   </p>
                 ) : null}
               </div>
@@ -924,9 +1033,11 @@ export default function MembershipPage() {
             </article>
           ))}
             </section>
-            <p className="mt-3 text-xs leading-5 text-amber-800">
-              {t("* GPT-image2 limited-time 70% off offer. Availability windows may change.", "* GPT-image2 限时 7 折活动，活动时间可能调整。")}
-            </p>
+            {!isInsuranceMembershipFlow ? (
+              <p className="mt-3 text-xs leading-5 text-amber-800">
+                {t("* GPT-image2 limited-time 70% off offer. Availability windows may change.", "* GPT-image2 限时 7 折活动，活动时间可能调整。")}
+              </p>
+            ) : null}
 
             <section className="mt-6 rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm sm:px-5">
           <div className="flex items-center justify-between gap-3">

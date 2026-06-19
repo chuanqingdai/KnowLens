@@ -43,6 +43,8 @@ export function openInsuranceMembershipCheckout(source = "insurance_membership_d
   }
   window.sessionStorage.setItem("membership:return-path", "/insurance");
   window.sessionStorage.setItem("knowlens:membership-source", source);
+  window.sessionStorage.setItem("knowlens:membership-preferred-plan", "insurance");
+  window.sessionStorage.setItem("knowlens:membership-preferred-cycle", "yearly");
   window.location.href = "/membership";
 }
 

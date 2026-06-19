@@ -10,7 +10,7 @@ import {
   getStripeServerClient,
   isStripeServerConfigured,
 } from "@/lib/server/stripe";
-import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
+import { findBillingPlan, getBillingPlanDefaultCycle, isBillingPlanCycleSupported, type BillingCycle } from "@/lib/billing-plans";
 import { logOpsEvent } from "@/lib/server/store";
 import {
   attributionSource,
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
     };
 
     const planId = (body.planId ?? "").trim();
-    const cycle = body.cycle === "monthly" ? "monthly" : "yearly";
+    const requestedCycle: BillingCycle = body.cycle === "monthly" ? "monthly" : "yearly";
     const attribution = normalizeAttributionPayload(body.attribution);
     const checkoutSource =
       (attribution ? attributionSource(attribution) : (body.source ?? "unknown").trim().slice(0, 64)) ||
@@ -165,6 +165,9 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ error: "Unknown plan." }, { status: 400 });
     }
+    const cycle = isBillingPlanCycleSupported(plan.id, requestedCycle)
+      ? requestedCycle
+      : getBillingPlanDefaultCycle(plan.id);
     logOpsEvent({
       category: "billing",
       action: "checkout_attempt",
