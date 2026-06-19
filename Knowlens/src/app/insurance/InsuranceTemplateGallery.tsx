@@ -33,6 +33,8 @@ export type InsuranceTemplateCard = {
   illustration: string;
   imageSrc?: string;
   aspectRatio?: "9:16" | "3:4" | "4:5" | "16:11" | "1:1" | "16:9" | "4:3";
+  styleId?: string;
+  isFree?: boolean;
   isCustom?: boolean;
 };
 
@@ -344,20 +346,30 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
 
 function CasePreview({ template }: { template: InsuranceTemplateCard }) {
   const aspectClass = getAspectClass(template);
+  const [naturalAspectRatio, setNaturalAspectRatio] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
   if (template.imageSrc && !failed) {
     return (
-      <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
+      <div
+        className={`relative w-full overflow-hidden bg-zinc-100 ${naturalAspectRatio ? "" : aspectClass}`}
+        style={naturalAspectRatio ? { aspectRatio: naturalAspectRatio } : undefined}
+      >
         {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10" /> : null}
         <Image
           src={template.imageSrc}
           alt={`${template.title}海报`}
           fill
           sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          className={`object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
-          onLoad={() => setLoaded(true)}
+          className={`object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            if (image.naturalWidth && image.naturalHeight) {
+              setNaturalAspectRatio(`${image.naturalWidth} / ${image.naturalHeight}`);
+            }
+            setLoaded(true);
+          }}
           onError={() => setFailed(true)}
         />
       </div>
@@ -554,6 +566,9 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const selectedStyle = getStyleOption(templateForm?.styleId);
   const activePosterImageSrc = activePosterState?.imageSrc || activeTemplate?.imageSrc || "";
   const isTemplatePremium = (template: InsuranceTemplateCard) => {
+    if (template.isFree) {
+      return false;
+    }
     const templateIndex = templates.findIndex((item) => item.title === template.title);
     return templateIndex < 0 || templateIndex % FREE_TEMPLATE_INTERVAL !== 0;
   };
@@ -591,7 +606,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     setTemplateForm({
       ...createInsuranceTemplateFormState(template),
       aspectRatio: normalizeAspectRatioChoice(template.aspectRatio),
-      styleId: insuranceStyleOptions[0].id,
+      styleId: template.styleId || insuranceStyleOptions[0].id,
     });
   };
 
@@ -1013,7 +1028,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
             <article
               key={template.title}
               onClick={() => requestOpenTemplate(template, "card")}
-              className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
+              className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
             >
               <div className="relative w-full overflow-hidden bg-zinc-100">
                 <CasePreview template={template} />

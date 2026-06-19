@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { InsurancePageClient } from "@/app/insurance/InsurancePageClient";
 import type { InsuranceTemplateCard } from "@/app/insurance/InsuranceTemplateGallery";
+import { availableInsuranceTemplateImages } from "@/lib/insurance-available-template-images";
 import { activityTemplates } from "@/lib/insurance-activity-templates";
 import { criticalIllnessTemplates } from "@/lib/insurance-critical-illness-templates";
 import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
@@ -64,8 +63,8 @@ export const metadata: Metadata = {
 };
 
 const templates: InsuranceTemplateCard[] = [
-  ...(dailyQuoteTemplates as InsuranceTemplateCard[]),
   ...(festivalTemplates as InsuranceTemplateCard[]),
+  ...(dailyQuoteTemplates as InsuranceTemplateCard[]),
   ...(solarTermTemplates as InsuranceTemplateCard[]),
   ...(activityTemplates as InsuranceTemplateCard[]),
   ...(productTemplates as InsuranceTemplateCard[]),
@@ -249,7 +248,7 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
   if (!template.imageSrc.startsWith("/")) {
     return true;
   }
-  return existsSync(path.join(process.cwd(), "public", template.imageSrc));
+  return availableInsuranceTemplateImages.has(template.imageSrc);
 }
 
 const visibleTemplates = templates.filter(hasAvailableTemplateImage);

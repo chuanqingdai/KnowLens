@@ -1,15 +1,227 @@
 {
-  "generatedAt": "2026-06-18T10:27:30.225Z",
+  "generatedAt": "2026-06-19T00:30:07.699Z",
   "results": [
     {
       "title": "端午安康，愿家人常伴",
       "imageSrc": "/insurance/posters/duanwu-01.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "bytes": 1831669,
+      "bytes": 3373719,
+      "width": 864,
+      "height": 1536,
       "contentType": "image/png",
-      "generatedAt": "2026-06-18T10:27:30.223Z"
+      "generatedAt": "2026-06-19T00:02:27.037Z",
+      "normalized": true
+    },
+    {
+      "title": "粽叶青青，平安随行",
+      "imageSrc": "/insurance/posters/duanwu-03.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2861111,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:05:13.154Z",
+      "normalized": true
+    },
+    {
+      "title": "艾草清香，健康常在",
+      "imageSrc": "/insurance/posters/duanwu-04.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3258627,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:06:06.923Z",
+      "normalized": true
+    },
+    {
+      "title": "陪父母过端午，也陪他们安心",
+      "imageSrc": "/insurance/posters/duanwu-05.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3348791,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:07:04.456Z",
+      "normalized": true
+    },
+    {
+      "title": "端午团圆，岁岁安康",
+      "imageSrc": "/insurance/posters/duanwu-07.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 3572035,
+      "width": 1008,
+      "height": 1344,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:14:19.928Z",
+      "normalized": true
+    },
+    {
+      "title": "龙舟破浪，愿你一路顺遂",
+      "imageSrc": "/insurance/posters/duanwu-08.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3333835,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:15:20.860Z",
+      "normalized": true
+    },
+    {
+      "title": "粽香入夏，守护入心",
+      "imageSrc": "/insurance/posters/duanwu-09.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2002394,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:16:12.446Z",
+      "normalized": true
+    },
+    {
+      "title": "五月端阳，万事安康",
+      "imageSrc": "/insurance/posters/duanwu-11.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3303925,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:21:02.058Z",
+      "normalized": true
+    },
+    {
+      "title": "清风过端午，安心过日子",
+      "imageSrc": "/insurance/posters/duanwu-12.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2696641,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:21:57.031Z",
+      "normalized": true
+    },
+    {
+      "title": "粽叶裹牵挂，平安送给你",
+      "imageSrc": "/insurance/posters/duanwu-13.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3223168,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:22:55.925Z",
+      "normalized": true
+    },
+    {
+      "title": "艾叶悬门，福气常临",
+      "imageSrc": "/insurance/posters/duanwu-15.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3550830,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:25:46.656Z",
+      "normalized": true
+    },
+    {
+      "title": "端午小长假，平安是归途",
+      "imageSrc": "/insurance/posters/duanwu-16.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1742369,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:26:35.675Z",
+      "normalized": true
+    },
+    {
+      "title": "一口软糯，一年顺遂",
+      "imageSrc": "/insurance/posters/duanwu-17.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2893724,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:27:25.586Z",
+      "normalized": true
+    },
+    {
+      "title": "龙舟鼓响，好事登场",
+      "imageSrc": "/insurance/posters/duanwu-18.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 2876730,
+      "width": 1008,
+      "height": 1344,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:28:27.336Z",
+      "normalized": true
+    },
+    {
+      "title": "端午有礼，心意有你",
+      "imageSrc": "/insurance/posters/duanwu-19.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3141504,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:29:23.127Z",
+      "normalized": true
+    },
+    {
+      "title": "愿你眼前有暖，身边有安",
+      "imageSrc": "/insurance/posters/duanwu-20.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1995233,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T00:30:07.699Z",
+      "normalized": true
     }
   ],
-  "failures": []
+  "failures": [
+    {
+      "title": "一枚粽香，一份安心",
+      "imageSrc": "/insurance/posters/duanwu-02.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "fetch failed"
+    },
+    {
+      "title": "孩子端午快乐，成长稳稳向前",
+      "imageSrc": "/insurance/posters/duanwu-06.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "terminated"
+    },
+    {
+      "title": "端午寄安康，守护在身旁",
+      "imageSrc": "/insurance/posters/duanwu-10.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "message": "terminated"
+    },
+    {
+      "title": "家有粽香，心有安宁",
+      "imageSrc": "/insurance/posters/duanwu-14.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "message": "fetch failed"
+    }
+  ]
 }
