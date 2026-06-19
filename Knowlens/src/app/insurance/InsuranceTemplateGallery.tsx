@@ -349,7 +349,7 @@ function getGalleryPreviewImageSrc(imageSrc: string) {
   if (!imageSrc.startsWith("/")) {
     return imageSrc;
   }
-  return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=640&q=72`;
+  return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=640&q=75`;
 }
 
 function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
