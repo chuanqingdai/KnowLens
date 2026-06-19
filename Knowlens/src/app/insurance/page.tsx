@@ -70,7 +70,7 @@ export const metadata: Metadata = {
   },
 };
 
-const templates: InsuranceTemplateCard[] = [
+const baseTemplates: InsuranceTemplateCard[] = [
   ...(festivalTemplates as InsuranceTemplateCard[]),
   ...(dailyQuoteTemplates as InsuranceTemplateCard[]),
   ...(solarTermTemplates as InsuranceTemplateCard[]),
@@ -273,75 +273,61 @@ function getTemplateIdentity(template: InsuranceTemplateCard) {
   return template.imageSrc || `${template.primaryCategory}:${template.secondaryCategory}:${template.title}`;
 }
 
-function isFreeTemplate(template: InsuranceTemplateCard) {
-  return template.isFree === true;
-}
+function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTemplateCard[]) {
+  const dailyTemplates = availableTemplates.filter((template) => template.primaryCategory === "日签");
+  const dailyFreeCount = Math.max(0, Math.round(dailyTemplates.length * 0.4));
+  const freeDailyIds = new Set(dailyTemplates.slice(0, dailyFreeCount).map(getTemplateIdentity));
 
-function isDuanwuTemplate(template: InsuranceTemplateCard) {
-  const imageSrc = template.imageSrc || "";
-  return template.primaryCategory === "节日" && (template.title.includes("端午") || imageSrc.includes("/duanwu"));
-}
-
-function pickPremiumLeadTemplates(availableTemplates: InsuranceTemplateCard[], excludedIds: Set<string>) {
-  const preferredCategories = ["日签", "产品", "重疾", "活动", "健康", "保险", "节气", "品宣"];
-  const premiumTemplates = availableTemplates.filter(
-    (template) => !excludedIds.has(getTemplateIdentity(template)) && !isFreeTemplate(template),
-  );
-  const selected: InsuranceTemplateCard[] = [];
-  const selectedIds = new Set<string>();
-
-  for (const category of preferredCategories) {
-    const match = premiumTemplates.find(
-      (template) =>
-        !selectedIds.has(getTemplateIdentity(template)) &&
-        (template.primaryCategory === category || template.category === category),
-    );
-    if (match) {
-      selected.push(match);
-      selectedIds.add(getTemplateIdentity(match));
+  return availableTemplates.map((template) => {
+    const identity = getTemplateIdentity(template);
+    if (template.primaryCategory === "节日" || template.primaryCategory === "节气") {
+      return { ...template, isFree: true };
     }
-    if (selected.length >= 10) {
-      return selected;
+    if (template.primaryCategory === "日签") {
+      return { ...template, isFree: freeDailyIds.has(identity) };
     }
-  }
-
-  for (const template of premiumTemplates) {
-    const id = getTemplateIdentity(template);
-    if (!selectedIds.has(id)) {
-      selected.push(template);
-      selectedIds.add(id);
-    }
-    if (selected.length >= 10) {
-      break;
-    }
-  }
-
-  return selected;
+    return { ...template, isFree: false };
+  });
 }
 
 function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[]) {
-  const freeLeadTemplates = availableTemplates
-    .filter((template) => isFreeTemplate(template) && isDuanwuTemplate(template))
-    .slice(0, 10);
-  const leadIds = new Set(freeLeadTemplates.map(getTemplateIdentity));
-  const premiumLeadTemplates = pickPremiumLeadTemplates(availableTemplates, leadIds);
+  const categoryOrder = ["节日", "日签", "节气", "活动", "产品", "健康", "保险", "重疾", "品宣", "生日"];
+  const grouped = new Map<string, InsuranceTemplateCard[]>();
+  const extras: InsuranceTemplateCard[] = [];
 
-  for (const template of premiumLeadTemplates) {
-    leadIds.add(getTemplateIdentity(template));
+  for (const template of availableTemplates) {
+    const category = template.primaryCategory || template.category;
+    if (!categoryOrder.includes(category)) {
+      extras.push(template);
+      continue;
+    }
+    const current = grouped.get(category) || [];
+    current.push(template);
+    grouped.set(category, current);
   }
 
-  return [
-    ...freeLeadTemplates,
-    ...premiumLeadTemplates,
-    ...availableTemplates.filter((template) => !leadIds.has(getTemplateIdentity(template))),
-  ];
+  const ordered: InsuranceTemplateCard[] = [];
+  let hasRemaining = true;
+  while (hasRemaining) {
+    hasRemaining = false;
+    for (const category of categoryOrder) {
+      const queue = grouped.get(category);
+      if (queue && queue.length > 0) {
+        ordered.push(queue.shift() as InsuranceTemplateCard);
+        hasRemaining = true;
+      }
+    }
+  }
+
+  return [...ordered, ...extras];
 }
 
-const visibleTemplates = orderInsuranceTemplatesForShowcase(templates.filter(hasAvailableTemplateImage));
+const visibleTemplates = orderInsuranceTemplatesForShowcase(
+  applyInsuranceTemplateAccessStrategy(baseTemplates.filter(hasAvailableTemplateImage)),
+);
 
 const showcaseCategories = [
   "全部",
-  "我的",
   "日签",
   "生日",
   "节日",
