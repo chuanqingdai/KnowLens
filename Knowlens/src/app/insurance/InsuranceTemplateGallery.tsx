@@ -344,34 +344,57 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
   return `图片暂时无法生成，请手动重试。错误码：${displayCode}。`;
 }
 
-function CasePreview({ template }: { template: InsuranceTemplateCard }) {
+function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
   const aspectClass = getAspectClass(template);
   const [naturalAspectRatio, setNaturalAspectRatio] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [useDirectImage, setUseDirectImage] = useState(false);
   const [failed, setFailed] = useState(false);
 
   if (template.imageSrc && !failed) {
+    const handleImageLoad = (image: HTMLImageElement) => {
+      if (image.naturalWidth && image.naturalHeight) {
+        setNaturalAspectRatio(`${image.naturalWidth} / ${image.naturalHeight}`);
+      }
+      setLoaded(true);
+    };
+
     return (
       <div
         className={`relative w-full overflow-hidden bg-zinc-100 ${naturalAspectRatio ? "" : aspectClass}`}
         style={naturalAspectRatio ? { aspectRatio: naturalAspectRatio } : undefined}
       >
         {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10" /> : null}
-        <Image
-          src={template.imageSrc}
-          alt={`${template.title}海报`}
-          fill
-          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          className={`object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
-          onLoad={(event) => {
-            const image = event.currentTarget;
-            if (image.naturalWidth && image.naturalHeight) {
-              setNaturalAspectRatio(`${image.naturalWidth} / ${image.naturalHeight}`);
-            }
-            setLoaded(true);
-          }}
-          onError={() => setFailed(true)}
-        />
+        {useDirectImage ? (
+          // Fall back to the public asset directly when the Next image optimizer/lazy loader fails.
+          // This avoids a permanently blank masonry card on mobile Safari.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={template.imageSrc}
+            alt={`${template.title}海报`}
+            loading={eager ? "eager" : "lazy"}
+            decoding="async"
+            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${
+              loaded ? "opacity-100" : "opacity-0"
+            }`}
+            onLoad={(event) => handleImageLoad(event.currentTarget)}
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <Image
+            src={template.imageSrc}
+            alt={`${template.title}海报`}
+            fill
+            loading={eager ? "eager" : "lazy"}
+            sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 50vw"
+            className={`object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+            onLoad={(event) => handleImageLoad(event.currentTarget)}
+            onError={() => {
+              setLoaded(false);
+              setUseDirectImage(true);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -1031,7 +1054,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
               className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
             >
               <div className="relative w-full overflow-hidden bg-zinc-100">
-                <CasePreview template={template} />
+                <CasePreview template={template} eager={index < 24} />
                 {premium ? (
                   <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
                     <Crown size={14} fill="currentColor" />
