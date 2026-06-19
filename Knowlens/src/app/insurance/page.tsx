@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { InsurancePageClient } from "@/app/insurance/InsurancePageClient";
 import type { InsuranceTemplateCard } from "@/app/insurance/InsuranceTemplateGallery";
-import { availableInsuranceTemplateImages } from "@/lib/insurance-available-template-images";
 import { activityTemplates } from "@/lib/insurance-activity-templates";
 import { criticalIllnessTemplates } from "@/lib/insurance-critical-illness-templates";
 import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
 import { festivalTemplates } from "@/lib/insurance-festival-templates";
+import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
+import { productMarketingTemplates } from "@/lib/insurance-product-marketing-templates";
 import { productTemplates } from "@/lib/insurance-product-templates";
 import { solarTermTemplates } from "@/lib/insurance-solar-term-templates";
 
@@ -69,6 +72,8 @@ const templates: InsuranceTemplateCard[] = [
   ...(activityTemplates as InsuranceTemplateCard[]),
   ...(productTemplates as InsuranceTemplateCard[]),
   ...(criticalIllnessTemplates as InsuranceTemplateCard[]),
+  ...(marketingInsuranceTemplates as InsuranceTemplateCard[]),
+  ...(productMarketingTemplates as InsuranceTemplateCard[]),
   {
     title: "成人重疾险，给家庭多一份底气",
     category: "品宣",
@@ -248,27 +253,79 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
   if (!template.imageSrc.startsWith("/")) {
     return true;
   }
-  return availableInsuranceTemplateImages.has(template.imageSrc);
+  const localImagePath = path.join(process.cwd(), "public", template.imageSrc.replace(/^\/+/, ""));
+  return existsSync(localImagePath);
 }
 
-function getInsuranceTemplateDisplayPriority(template: InsuranceTemplateCard, index: number) {
+function getTemplateIdentity(template: InsuranceTemplateCard) {
+  return template.imageSrc || `${template.primaryCategory}:${template.secondaryCategory}:${template.title}`;
+}
+
+function isFreeTemplate(template: InsuranceTemplateCard) {
+  return template.isFree === true;
+}
+
+function isDuanwuTemplate(template: InsuranceTemplateCard) {
   const imageSrc = template.imageSrc || "";
-  const isDuanwuFreePoster =
-    template.isFree === true &&
-    template.primaryCategory === "节日" &&
-    template.title.includes("端午") &&
-    imageSrc.includes("/duanwu-free-");
-  if (isDuanwuFreePoster) {
-    return index;
-  }
-  return 1_000 + index;
+  return template.primaryCategory === "节日" && (template.title.includes("端午") || imageSrc.includes("/duanwu"));
 }
 
-const visibleTemplates = templates
-  .map((template, index) => ({ template, priority: getInsuranceTemplateDisplayPriority(template, index) }))
-  .filter(({ template }) => hasAvailableTemplateImage(template))
-  .sort((a, b) => a.priority - b.priority)
-  .map(({ template }) => template);
+function pickPremiumLeadTemplates(availableTemplates: InsuranceTemplateCard[], excludedIds: Set<string>) {
+  const preferredCategories = ["日签", "产品", "重疾", "活动", "健康", "保险", "节气", "品宣"];
+  const premiumTemplates = availableTemplates.filter(
+    (template) => !excludedIds.has(getTemplateIdentity(template)) && !isFreeTemplate(template),
+  );
+  const selected: InsuranceTemplateCard[] = [];
+  const selectedIds = new Set<string>();
+
+  for (const category of preferredCategories) {
+    const match = premiumTemplates.find(
+      (template) =>
+        !selectedIds.has(getTemplateIdentity(template)) &&
+        (template.primaryCategory === category || template.category === category),
+    );
+    if (match) {
+      selected.push(match);
+      selectedIds.add(getTemplateIdentity(match));
+    }
+    if (selected.length >= 10) {
+      return selected;
+    }
+  }
+
+  for (const template of premiumTemplates) {
+    const id = getTemplateIdentity(template);
+    if (!selectedIds.has(id)) {
+      selected.push(template);
+      selectedIds.add(id);
+    }
+    if (selected.length >= 10) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[]) {
+  const freeLeadTemplates = availableTemplates
+    .filter((template) => isFreeTemplate(template) && isDuanwuTemplate(template))
+    .slice(0, 10);
+  const leadIds = new Set(freeLeadTemplates.map(getTemplateIdentity));
+  const premiumLeadTemplates = pickPremiumLeadTemplates(availableTemplates, leadIds);
+
+  for (const template of premiumLeadTemplates) {
+    leadIds.add(getTemplateIdentity(template));
+  }
+
+  return [
+    ...freeLeadTemplates,
+    ...premiumLeadTemplates,
+    ...availableTemplates.filter((template) => !leadIds.has(getTemplateIdentity(template))),
+  ];
+}
+
+const visibleTemplates = orderInsuranceTemplatesForShowcase(templates.filter(hasAvailableTemplateImage));
 
 const showcaseCategories = [
   "全部",

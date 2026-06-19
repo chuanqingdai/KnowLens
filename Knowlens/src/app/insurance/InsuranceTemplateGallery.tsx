@@ -80,7 +80,6 @@ type BillingCreditsPayload = {
 const INSURANCE_POSTER_GENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const CUSTOM_INSURANCE_TEMPLATE_TITLE = "自定义海报";
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
-const FREE_TEMPLATE_INTERVAL = 10;
 
 const insuranceStyleOptions: InsuranceStyleOption[] = [
   {
@@ -577,7 +576,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const [templateForm, setTemplateForm] = useState<TemplateFormState | null>(null);
   const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>({});
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
-  const downloadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const downloadToastTimerRef = useRef<number | null>(null);
   const [isCheckingCredits, setIsCheckingCredits] = useState(false);
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
@@ -599,11 +598,10 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const selectedStyle = getStyleOption(templateForm?.styleId);
   const activePosterImageSrc = activePosterState?.imageSrc || activeTemplate?.imageSrc || "";
   const isTemplatePremium = (template: InsuranceTemplateCard) => {
-    if (template.isFree) {
+    if (template.isCustom || template.isFree === true) {
       return false;
     }
-    const templateIndex = templates.findIndex((item) => item.title === template.title);
-    return templateIndex < 0 || templateIndex % FREE_TEMPLATE_INTERVAL !== 0;
+    return true;
   };
   const activeTemplatePremium = activeTemplate ? isTemplatePremium(activeTemplate) : false;
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);

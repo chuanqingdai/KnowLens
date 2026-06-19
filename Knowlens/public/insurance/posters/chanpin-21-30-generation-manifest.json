@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-06-19T07:36:24.552Z",
+  "results": [
+    {
+      "title": "恒护百万医疗险",
+      "imageSrc": "/insurance/posters/chanpin-21.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2198178,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "星芽少儿成长重疾险",
+      "imageSrc": "/insurance/posters/chanpin-22.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3028564,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "悦行全球旅行险",
+      "imageSrc": "/insurance/posters/chanpin-23.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 3363540,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "顶梁柱家责定寿",
+      "imageSrc": "/insurance/posters/chanpin-24.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2558803,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "青松长期护理险",
+      "imageSrc": "/insurance/posters/chanpin-25.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3017383,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "安心家财守护险",
+      "imageSrc": "/insurance/posters/chanpin-26.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 2870111,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "她悦特定疾病险",
+      "imageSrc": "/insurance/posters/chanpin-27.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2475915,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "雇安心小微团险",
+      "imageSrc": "/insurance/posters/chanpin-28.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2342533,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "宠伴安心医疗险",
+      "imageSrc": "/insurance/posters/chanpin-29.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2346832,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "稳享养老年金计划",
+      "imageSrc": "/insurance/posters/chanpin-30.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2681864,
+      "skipped": true,
+      "normalized": false
+    }
+  ],
+  "failures": []
+}
