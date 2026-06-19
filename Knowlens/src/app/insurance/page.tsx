@@ -3,13 +3,18 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { InsurancePageClient } from "@/app/insurance/InsurancePageClient";
 import type { InsuranceTemplateCard } from "@/app/insurance/InsuranceTemplateGallery";
+import { availableInsuranceTemplateImages } from "@/lib/insurance-available-template-images";
 import { activityTemplates } from "@/lib/insurance-activity-templates";
 import { criticalIllnessTemplates } from "@/lib/insurance-critical-illness-templates";
 import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
 import { festivalTemplates } from "@/lib/insurance-festival-templates";
+import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
+import { productMarketingTemplates } from "@/lib/insurance-product-marketing-templates";
+import { productScienceTemplates } from "@/lib/insurance-product-science-templates";
 import { productTemplates } from "@/lib/insurance-product-templates";
 import { solarTermTemplates } from "@/lib/insurance-solar-term-templates";
+import { wealthProductTemplates } from "@/lib/insurance-wealth-product-templates";
 
 const siteOrigin = "https://knowlens.ai";
 const pagePath = "/insurance";
@@ -72,6 +77,10 @@ const templates: InsuranceTemplateCard[] = [
   ...(productTemplates as InsuranceTemplateCard[]),
   ...(criticalIllnessTemplates as InsuranceTemplateCard[]),
   ...(marketingInsuranceTemplates as InsuranceTemplateCard[]),
+  ...(productMarketingTemplates as InsuranceTemplateCard[]),
+  ...(liabilityProductTemplates as InsuranceTemplateCard[]),
+  ...(wealthProductTemplates as InsuranceTemplateCard[]),
+  ...(productScienceTemplates as InsuranceTemplateCard[]),
   {
     title: "成人重疾险，给家庭多一份底气",
     category: "品宣",
@@ -249,6 +258,9 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
     return false;
   }
   if (!template.imageSrc.startsWith("/")) {
+    return true;
+  }
+  if (availableInsuranceTemplateImages.has(template.imageSrc)) {
     return true;
   }
   const localImagePath = path.join(process.cwd(), "public", template.imageSrc.replace(/^\/+/, ""));
