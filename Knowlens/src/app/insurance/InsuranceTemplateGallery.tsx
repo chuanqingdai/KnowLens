@@ -345,13 +345,21 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
 
 function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
   const aspectClass = getAspectClass(template);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [template.imageSrc]);
 
   if (template.imageSrc) {
     return (
       <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
-        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10" /> : null}
+        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-0" /> : null}
         {failed ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-100 px-4 text-center">
             <div>
@@ -363,13 +371,12 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
           // Native image loading is more reliable inside CSS multi-column masonry on mobile Safari.
           // eslint-disable-next-line @next/next/no-img-element
           <img
+            ref={imageRef}
             src={template.imageSrc}
             alt={`${template.title}海报`}
             loading={eager ? "eager" : "lazy"}
             decoding="async"
-            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${
-              loaded ? "opacity-100" : "opacity-0"
-            }`}
+            className="absolute inset-0 z-10 h-full w-full object-contain"
             onLoad={() => setLoaded(true)}
             onError={() => setFailed(true)}
           />
@@ -1109,7 +1116,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
               className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
             >
               <div className="relative w-full overflow-hidden bg-zinc-100">
-                <CasePreview template={template} eager={index < 24} />
+                <CasePreview template={template} eager={index < 4} />
                 {premium ? (
                   <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
                     <Crown size={14} fill="currentColor" />
