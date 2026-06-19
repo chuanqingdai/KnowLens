@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
@@ -346,28 +346,22 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
 
 function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
   const aspectClass = getAspectClass(template);
-  const [naturalAspectRatio, setNaturalAspectRatio] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [useDirectImage, setUseDirectImage] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  if (template.imageSrc && !failed) {
-    const handleImageLoad = (image: HTMLImageElement) => {
-      if (image.naturalWidth && image.naturalHeight) {
-        setNaturalAspectRatio(`${image.naturalWidth} / ${image.naturalHeight}`);
-      }
-      setLoaded(true);
-    };
-
+  if (template.imageSrc) {
     return (
-      <div
-        className={`relative w-full overflow-hidden bg-zinc-100 ${naturalAspectRatio ? "" : aspectClass}`}
-        style={naturalAspectRatio ? { aspectRatio: naturalAspectRatio } : undefined}
-      >
+      <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
         {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10" /> : null}
-        {useDirectImage ? (
-          // Fall back to the public asset directly when the Next image optimizer/lazy loader fails.
-          // This avoids a permanently blank masonry card on mobile Safari.
+        {failed ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-100 px-4 text-center">
+            <div>
+              <p className="text-xs font-medium text-zinc-500">海报暂未加载</p>
+              <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-zinc-400">{template.title}</p>
+            </div>
+          </div>
+        ) : (
+          // Native image loading is more reliable inside CSS multi-column masonry on mobile Safari.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={template.imageSrc}
@@ -377,22 +371,8 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
             className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${
               loaded ? "opacity-100" : "opacity-0"
             }`}
-            onLoad={(event) => handleImageLoad(event.currentTarget)}
+            onLoad={() => setLoaded(true)}
             onError={() => setFailed(true)}
-          />
-        ) : (
-          <Image
-            src={template.imageSrc}
-            alt={`${template.title}海报`}
-            fill
-            loading={eager ? "eager" : "lazy"}
-            sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 50vw"
-            className={`object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
-            onLoad={(event) => handleImageLoad(event.currentTarget)}
-            onError={() => {
-              setLoaded(false);
-              setUseDirectImage(true);
-            }}
           />
         )}
       </div>
@@ -539,9 +519,35 @@ function EditableBox({
   );
 }
 
-async function downloadPosterImage(imageSrc: string, title: string) {
-  if (!imageSrc) return;
+type PosterDownloadResult = "download-triggered" | "image-opened";
+
+function getSafePosterFilename(title: string) {
   const safeTitle = title.replace(/[\\/:*?"<>|]/g, "").trim() || "insurance-poster";
+  return `${safeTitle}.png`;
+}
+
+function isAppleMobileBrowser() {
+  const userAgent = window.navigator.userAgent;
+  const isIOSDevice = /iPad|iPhone|iPod/.test(userAgent);
+  const isIPadOSDesktopMode = userAgent.includes("Macintosh") && window.navigator.maxTouchPoints > 1;
+  return isIOSDevice || isIPadOSDesktopMode;
+}
+
+function openImageInNewTab(imageSrc: string) {
+  const opened = window.open(imageSrc, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    window.location.href = imageSrc;
+  }
+}
+
+async function downloadPosterImage(imageSrc: string, title: string): Promise<PosterDownloadResult> {
+  if (!imageSrc) throw new Error("missing image source");
+  const filename = getSafePosterFilename(title);
+
+  if (isAppleMobileBrowser()) {
+    openImageInNewTab(imageSrc);
+    return "image-opened";
+  }
 
   try {
     const response = await fetch(imageSrc);
@@ -552,13 +558,15 @@ async function downloadPosterImage(imageSrc: string, title: string) {
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `${safeTitle}.png`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    return "download-triggered";
   } catch {
-    window.open(imageSrc, "_blank", "noopener,noreferrer");
+    openImageInNewTab(imageSrc);
+    return "image-opened";
   }
 }
 
@@ -568,6 +576,8 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const [activeTemplate, setActiveTemplate] = useState<InsuranceTemplateCard | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormState | null>(null);
   const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>({});
+  const [downloadToast, setDownloadToast] = useState<string | null>(null);
+  const downloadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isCheckingCredits, setIsCheckingCredits] = useState(false);
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
@@ -599,8 +609,23 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
 
   useEffect(() => {
-    setActiveCategory(safeInitialCategory);
-  }, [safeInitialCategory]);
+    return () => {
+      if (downloadToastTimerRef.current) {
+        window.clearTimeout(downloadToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showDownloadToast = (message = "正在下载海报中...", duration = 2200) => {
+    setDownloadToast(message);
+    if (downloadToastTimerRef.current) {
+      window.clearTimeout(downloadToastTimerRef.current);
+    }
+    downloadToastTimerRef.current = window.setTimeout(() => {
+      setDownloadToast(null);
+      downloadToastTimerRef.current = null;
+    }, duration);
+  };
 
   useEffect(() => {
     if (!activeTemplate) {
@@ -784,7 +809,19 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       if (premium && !(await verifyMembershipAccess("download"))) {
         return;
       }
-      await downloadPosterImage(imageSrc, template.title);
+      showDownloadToast("正在下载海报中...");
+      try {
+        const result = await downloadPosterImage(imageSrc, template.title);
+        showDownloadToast(
+          result === "image-opened"
+            ? "已打开海报图片，可长按保存或使用浏览器分享保存"
+            : "已触发下载，请查看浏览器下载记录或文件夹",
+          result === "image-opened" ? 4200 : 3200,
+        );
+      } catch {
+        showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
+        return;
+      }
       trackInsuranceEvent({
         action: "template_download_started",
         message: "Insurance template download started.",
@@ -812,7 +849,19 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       if (activeTemplatePremium && !(await verifyMembershipAccess("download"))) {
         return;
       }
-      await downloadPosterImage(activePosterImageSrc, activeTemplate.title);
+      showDownloadToast("正在下载海报中...");
+      try {
+        const result = await downloadPosterImage(activePosterImageSrc, activeTemplate.title);
+        showDownloadToast(
+          result === "image-opened"
+            ? "已打开海报图片，可长按保存或使用浏览器分享保存"
+            : "已触发下载，请查看浏览器下载记录或文件夹",
+          result === "image-opened" ? 4200 : 3200,
+        );
+      } catch {
+        showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
+        return;
+      }
       trackInsuranceEvent({
         action: "modal_download_started",
         message: "Insurance modal download started.",
@@ -1007,6 +1056,14 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
 
   return (
     <>
+      {downloadToast ? (
+        <div className="fixed inset-x-0 bottom-6 z-[10000] flex justify-center px-4 sm:bottom-8">
+          <div className="max-w-[min(92vw,420px)] rounded-2xl bg-zinc-950 px-5 py-3 text-center text-sm font-medium leading-6 text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] sm:rounded-full">
+            {downloadToast}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-6 flex flex-wrap gap-2 sm:mb-8 sm:gap-3">
         {categories.map((category) => {
           const active = category === activeCategory;
