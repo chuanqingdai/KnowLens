@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-06-19T03:16:37.825Z",
+  "results": [
+    {
+      "title": "端午清安",
+      "imageSrc": "/insurance/posters/duanwu-free-11.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3615190,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:03:32.276Z",
+      "normalized": true
+    },
+    {
+      "title": "端午迎祥",
+      "imageSrc": "/insurance/posters/duanwu-free-12.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3765663,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:04:32.756Z",
+      "normalized": true
+    },
+    {
+      "title": "端午粽香",
+      "imageSrc": "/insurance/posters/duanwu-free-13.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 3251755,
+      "width": 1008,
+      "height": 1344,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:05:32.856Z",
+      "normalized": true
+    },
+    {
+      "title": "端午康宁",
+      "imageSrc": "/insurance/posters/duanwu-free-14.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3154827,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:06:34.208Z",
+      "normalized": true
+    },
+    {
+      "title": "端午福至",
+      "imageSrc": "/insurance/posters/duanwu-free-15.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3205787,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:07:37.927Z",
+      "normalized": true
+    },
+    {
+      "title": "端午长安",
+      "imageSrc": "/insurance/posters/duanwu-free-16.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3296085,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:08:41.175Z",
+      "normalized": true
+    },
+    {
+      "title": "端午瑞气",
+      "imageSrc": "/insurance/posters/duanwu-free-17.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 3795788,
+      "width": 1008,
+      "height": 1344,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:09:56.357Z",
+      "normalized": true
+    },
+    {
+      "title": "端午嘉礼",
+      "imageSrc": "/insurance/posters/duanwu-free-18.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3479752,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:14:25.501Z",
+      "normalized": true
+    },
+    {
+      "title": "端午万顺",
+      "imageSrc": "/insurance/posters/duanwu-free-19.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3524374,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:15:28.602Z",
+      "normalized": true
+    },
+    {
+      "title": "端午和美",
+      "imageSrc": "/insurance/posters/duanwu-free-20.png",
+      "aspectRatio": "3:4",
+      "size": "1008x1344",
+      "bytes": 3195530,
+      "width": 1008,
+      "height": 1344,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T03:16:37.825Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

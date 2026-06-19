@@ -251,7 +251,24 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
   return availableInsuranceTemplateImages.has(template.imageSrc);
 }
 
-const visibleTemplates = templates.filter(hasAvailableTemplateImage);
+function getInsuranceTemplateDisplayPriority(template: InsuranceTemplateCard, index: number) {
+  const imageSrc = template.imageSrc || "";
+  const isDuanwuFreePoster =
+    template.isFree === true &&
+    template.primaryCategory === "节日" &&
+    template.title.includes("端午") &&
+    imageSrc.includes("/duanwu-free-");
+  if (isDuanwuFreePoster) {
+    return index;
+  }
+  return 1_000 + index;
+}
+
+const visibleTemplates = templates
+  .map((template, index) => ({ template, priority: getInsuranceTemplateDisplayPriority(template, index) }))
+  .filter(({ template }) => hasAvailableTemplateImage(template))
+  .sort((a, b) => a.priority - b.priority)
+  .map(({ template }) => template);
 
 const showcaseCategories = [
   "全部",
