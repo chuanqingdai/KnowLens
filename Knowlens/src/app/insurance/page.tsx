@@ -8,7 +8,6 @@ import { criticalIllnessTemplates } from "@/lib/insurance-critical-illness-templ
 import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
 import { festivalTemplates } from "@/lib/insurance-festival-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
-import { productMarketingTemplates } from "@/lib/insurance-product-marketing-templates";
 import { productTemplates } from "@/lib/insurance-product-templates";
 import { solarTermTemplates } from "@/lib/insurance-solar-term-templates";
 
@@ -73,7 +72,6 @@ const templates: InsuranceTemplateCard[] = [
   ...(productTemplates as InsuranceTemplateCard[]),
   ...(criticalIllnessTemplates as InsuranceTemplateCard[]),
   ...(marketingInsuranceTemplates as InsuranceTemplateCard[]),
-  ...(productMarketingTemplates as InsuranceTemplateCard[]),
   {
     title: "成人重疾险，给家庭多一份底气",
     category: "品宣",
