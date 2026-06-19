@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
@@ -79,6 +79,8 @@ type BillingCreditsPayload = {
 
 const INSURANCE_POSTER_GENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const CUSTOM_INSURANCE_TEMPLATE_TITLE = "自定义海报";
+const TEMPLATE_INITIAL_LOAD_COUNT = 8;
+const TEMPLATE_LOAD_BATCH_SIZE = 8;
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
 
 const insuranceStyleOptions: InsuranceStyleOption[] = [
@@ -343,9 +345,18 @@ function toImageFailureSentence(message?: string, errorCode?: string) {
   return `图片暂时无法生成，请手动重试。错误码：${displayCode}。`;
 }
 
+function getGalleryPreviewImageSrc(imageSrc: string) {
+  if (!imageSrc.startsWith("/")) {
+    return imageSrc;
+  }
+  return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=640&q=72`;
+}
+
 function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
   const aspectClass = getAspectClass(template);
+  const originalImageSrc = template.imageSrc || "";
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const [displayImageSrc, setDisplayImageSrc] = useState(() => getGalleryPreviewImageSrc(originalImageSrc));
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -354,12 +365,12 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
     if (image?.complete && image.naturalWidth > 0) {
       setLoaded(true);
     }
-  }, [template.imageSrc]);
+  }, [displayImageSrc]);
 
-  if (template.imageSrc) {
+  if (originalImageSrc) {
     return (
       <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
-        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-0" /> : null}
+        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-0 animate-pulse" /> : null}
         {failed ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-100 px-4 text-center">
             <div>
@@ -372,13 +383,19 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
           // eslint-disable-next-line @next/next/no-img-element
           <img
             ref={imageRef}
-            src={template.imageSrc}
+            src={displayImageSrc}
             alt={`${template.title}海报`}
             loading={eager ? "eager" : "lazy"}
             decoding="async"
             className="absolute inset-0 z-10 h-full w-full object-contain"
             onLoad={() => setLoaded(true)}
-            onError={() => setFailed(true)}
+            onError={() => {
+              if (displayImageSrc !== originalImageSrc) {
+                setDisplayImageSrc(originalImageSrc);
+                return;
+              }
+              setFailed(true);
+            }}
           />
         )}
       </div>
@@ -579,11 +596,13 @@ async function downloadPosterImage(imageSrc: string, title: string): Promise<Pos
 export function InsuranceTemplateGallery({ templates, categories, initialCategory = "全部" }: InsuranceTemplateGalleryProps) {
   const safeInitialCategory = categories.includes(initialCategory) ? initialCategory : "全部";
   const [activeCategory, setActiveCategory] = useState(safeInitialCategory);
+  const [visibleTemplateCount, setVisibleTemplateCount] = useState(TEMPLATE_INITIAL_LOAD_COUNT);
   const [activeTemplate, setActiveTemplate] = useState<InsuranceTemplateCard | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormState | null>(null);
   const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>({});
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
   const downloadToastTimerRef = useRef<number | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [isCheckingCredits, setIsCheckingCredits] = useState(false);
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
@@ -598,6 +617,14 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
     }
     return buildEmptyCategoryCards(activeCategory);
   }, [activeCategory, filteredTemplates.length]);
+  const visibleTemplates = useMemo(
+    () => filteredTemplates.slice(0, visibleTemplateCount),
+    [filteredTemplates, visibleTemplateCount],
+  );
+  const hasMoreTemplates = visibleTemplateCount < filteredTemplates.length;
+  const loadMoreTemplates = useCallback(() => {
+    setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, filteredTemplates.length));
+  }, [filteredTemplates.length]);
 
   const activePosterState = activeTemplate ? posterStateByTitle[activeTemplate.title] : undefined;
   const isGeneratingPoster = activePosterState?.status === "generating";
@@ -620,6 +647,26 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasMoreTemplates) {
+      return;
+    }
+    const node = loadMoreRef.current;
+    if (!node) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadMoreTemplates();
+        }
+      },
+      { rootMargin: "640px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filteredTemplates.length, hasMoreTemplates, loadMoreTemplates]);
 
   const showDownloadToast = (message = "正在下载海报中...", duration = 2200) => {
     setDownloadToast(message);
@@ -1087,6 +1134,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
                     templateCount: templates.filter((template) => templateMatchesCategory(template, category)).length,
                   },
                 });
+                setVisibleTemplateCount(TEMPLATE_INITIAL_LOAD_COUNT);
                 setActiveCategory(category);
               }}
               className={`inline-flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-medium transition sm:h-12 sm:px-6 sm:text-base ${
@@ -1102,7 +1150,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
       </div>
 
       <div className="columns-2 [column-gap:0.75rem] sm:[column-gap:1rem] lg:columns-3 xl:columns-4">
-        {filteredTemplates.map((template, index) => {
+        {visibleTemplates.map((template, index) => {
           const likes = [8, 5, 13, 7, 11, 4, 10, 6, 3, 9, 2, 12][index % 12];
           const views = [68, 34, 96, 52, 81, 29, 73, 41, 24, 59, 18, 88][index % 12];
           const labels = getCardLabels(template);
@@ -1116,7 +1164,7 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
               className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
             >
               <div className="relative w-full overflow-hidden bg-zinc-100">
-                <CasePreview template={template} eager={index < 4} />
+                <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
                 {premium ? (
                   <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
                     <Crown size={14} fill="currentColor" />
@@ -1204,7 +1252,19 @@ export function InsuranceTemplateGallery({ templates, categories, initialCategor
         ))}
       </div>
 
-      <div className="pt-8 pb-12 text-center text-sm text-zinc-400">已经到底部了</div>
+      <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
+        {hasMoreTemplates ? (
+          <button
+            type="button"
+            onClick={loadMoreTemplates}
+            className="inline-flex h-10 items-center rounded-full border border-zinc-200 bg-white px-4 font-medium text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:text-zinc-950"
+          >
+            加载更多
+          </button>
+        ) : (
+          "已经到底部了"
+        )}
+      </div>
 
       {activeTemplate && templateForm && typeof document !== "undefined"
         ? createPortal(

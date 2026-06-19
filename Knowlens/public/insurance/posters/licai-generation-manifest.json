@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-19T10:14:05.534Z",
+  "generatedAt": "2026-06-19T12:53:31.307Z",
   "results": [
     {
       "title": "理财不是冲动下单，是先把未来想清楚",
@@ -7,146 +7,180 @@
       "aspectRatio": "9:16",
       "size": "864x1536",
       "bytes": 2593577,
-      "width": 864,
-      "height": 1536,
-      "contentType": "image/png",
-      "generatedAt": "2026-06-19T10:05:42.388Z",
-      "normalized": true
-    }
-  ],
-  "failures": [
+      "skipped": true,
+      "normalized": false
+    },
     {
       "title": "年金产品，重点不是热闹，是现金流",
       "imageSrc": "/insurance/posters/licai-02.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "This operation was aborted"
+      "bytes": 2303881,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "养老理财，越早规划越不慌",
       "imageSrc": "/insurance/posters/licai-03.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2697325,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "教育金，不是焦虑，是提前准备",
       "imageSrc": "/insurance/posters/licai-04.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2886578,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "家庭资产配置，不是钱多了才需要",
       "imageSrc": "/insurance/posters/licai-05.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2306594,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "外币理财，先看风险，再看心动",
       "imageSrc": "/insurance/posters/licai-06.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2753405,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "稳健型理财，也要先看适不适合自己",
       "imageSrc": "/insurance/posters/licai-07.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 1522246,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "节日理财营销，别只会讲福利",
       "imageSrc": "/insurance/posters/licai-08.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 3027406,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "理财产品上市，先把逻辑讲明白",
       "imageSrc": "/insurance/posters/licai-09.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2390213,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "家庭现金流，才是理财产品的真正用处",
       "imageSrc": "/insurance/posters/licai-10.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 1783424,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "理财直播预告，讲人话才有人听",
       "imageSrc": "/insurance/posters/licai-11.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2214233,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "财富管理，不是高净值客户的专利",
       "imageSrc": "/insurance/posters/licai-12.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2513232,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "保险理财，别只听别人说稳不稳",
       "imageSrc": "/insurance/posters/licai-13.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2347070,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "财富传承，越早聊越不尴尬",
       "imageSrc": "/insurance/posters/licai-14.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2630740,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "短期目标和长期目标，别放一个篮子里",
       "imageSrc": "/insurance/posters/licai-15.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2280607,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "客户问理财，先别急着推荐产品",
       "imageSrc": "/insurance/posters/licai-16.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 1631433,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "开门红卖理财，卖的是规划不是口号",
       "imageSrc": "/insurance/posters/licai-17.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 3297826,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "财富自由不是一句话，是很多年安排出来的",
       "imageSrc": "/insurance/posters/licai-18.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2904235,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "理财产品推荐，别只会讲卖点",
       "imageSrc": "/insurance/posters/licai-19.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2292133,
+      "skipped": true,
+      "normalized": false
     },
     {
       "title": "好理财文案，不催人下单，只帮人想清楚",
       "imageSrc": "/insurance/posters/licai-20.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "message": "fetch failed"
+      "bytes": 2184842,
+      "skipped": true,
+      "normalized": false
     }
-  ]
+  ],
+  "failures": []
 }
