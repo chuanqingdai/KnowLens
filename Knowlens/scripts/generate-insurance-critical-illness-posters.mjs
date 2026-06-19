@@ -21,7 +21,8 @@ const templateModuleArg = readCliValue("--template-module") || "src/lib/insuranc
 const templateExportArg = readCliValue("--template-export") || "criticalIllnessTemplates";
 const manifestArg = readCliValue("--manifest");
 const timeoutEnvArg = readCliValue("--timeout-env") || "INSURANCE_CRITICAL_IMAGE_TIMEOUT_MS";
-const providerTimeoutMs = Number.parseInt(process.env[timeoutEnvArg] || "360000", 10);
+const timeoutMsArg = readCliValue("--timeout-ms");
+const providerTimeoutMs = Number.parseInt(timeoutMsArg || process.env[timeoutEnvArg] || "360000", 10);
 
 const sizeByRatio = {
   "9:16": "864x1536",
