@@ -39,6 +39,9 @@ function isPaidCheckout(session: Stripe.Checkout.Session) {
 async function parseStripeEvent(request: Request) {
   const payload = await request.text();
   if (!isStripeServerConfigured()) {
+    if (process.env.NODE_ENV !== "production") {
+      return JSON.parse(payload) as Stripe.Event;
+    }
     throw new Error("Stripe is not configured.");
   }
   const stripe = getStripeServerClient();

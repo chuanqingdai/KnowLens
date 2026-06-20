@@ -6,6 +6,7 @@ import { ArrowRight, ChevronDown } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  consumeInsuranceAutoCheckoutIntent,
   InsuranceMembershipDialog,
   openInsuranceMembershipCheckout,
 } from "@/components/billing/InsuranceMembershipDialog";
@@ -214,6 +215,7 @@ export function MarketingChrome({
   const [insuranceMembershipOpen, setInsuranceMembershipOpen] = useState(false);
   const [insuranceHeaderBilling, setInsuranceHeaderBilling] = useState<InsuranceHeaderBillingState | null>(null);
   const [insuranceBillingRefreshVersion, setInsuranceBillingRefreshVersion] = useState(0);
+  const insuranceAutoCheckoutTriggeredRef = useRef(false);
   const toolsMenuCloseTimer = useRef<number | null>(null);
   const isLanding = useMemo(() => pathname === "/" || pathname === "/landing", [pathname]);
   const oneTapClientId = process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
@@ -292,6 +294,18 @@ export function MarketingChrome({
 
     return () => controller.abort();
   }, [insuranceBillingRefreshVersion, isAuthenticated, isInsuranceChrome]);
+
+  useEffect(() => {
+    if (!isInsuranceChrome || !isAuthenticated || insuranceAutoCheckoutTriggeredRef.current) {
+      return;
+    }
+    const intent = consumeInsuranceAutoCheckoutIntent();
+    if (!intent) {
+      return;
+    }
+    insuranceAutoCheckoutTriggeredRef.current = true;
+    void openInsuranceMembershipCheckout(intent.source || "insurance_auto_checkout_after_login");
+  }, [isAuthenticated, isInsuranceChrome]);
 
   useEffect(() => {
     if (forceLocale && locale !== forceLocale) {

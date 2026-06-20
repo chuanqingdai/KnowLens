@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Check, X } from "lucide-react";
 
 type InsuranceMembershipDialogProps = {
@@ -23,6 +23,64 @@ const annualBenefits = [
   "会员有效期 1 年",
 ];
 
+const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
+const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
+const MEMBERSHIP_PREFERRED_PLAN_KEY = "knowlens:membership-preferred-plan";
+const MEMBERSHIP_PREFERRED_CYCLE_KEY = "knowlens:membership-preferred-cycle";
+const INSURANCE_AUTO_CHECKOUT_KEY = "knowlens:insurance:auto-checkout:v1";
+const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
+
+type PendingCheckout = {
+  planId: string;
+  cycle: "yearly";
+  startedAt: string;
+  sessionId?: string;
+  source?: string;
+};
+
+function savePendingCheckout(input: PendingCheckout) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(input));
+}
+
+function clearPendingCheckout() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+}
+
+function saveInsuranceAutoCheckoutIntent(source: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(
+    INSURANCE_AUTO_CHECKOUT_KEY,
+    JSON.stringify({
+      source,
+      createdAt: new Date().toISOString(),
+    }),
+  );
+}
+
+export function consumeInsuranceAutoCheckoutIntent() {
+  if (typeof window === "undefined") {
+    return null as { source?: string } | null;
+  }
+  const raw = window.sessionStorage.getItem(INSURANCE_AUTO_CHECKOUT_KEY);
+  window.sessionStorage.removeItem(INSURANCE_AUTO_CHECKOUT_KEY);
+  if (!raw) {
+    return null as { source?: string } | null;
+  }
+  try {
+    return JSON.parse(raw) as { source?: string } | null;
+  } catch {
+    return null as { source?: string } | null;
+  }
+}
+
 function trackInsuranceMembership(action: string, source: string, message?: string) {
   void fetch("/api/telemetry/event", {
     method: "POST",
@@ -39,13 +97,85 @@ function trackInsuranceMembership(action: string, source: string, message?: stri
 
 export function openInsuranceMembershipCheckout(source = "insurance_membership_dialog") {
   if (typeof window === "undefined") {
-    return;
+    return Promise.resolve();
   }
   window.sessionStorage.setItem("membership:return-path", "/insurance");
-  window.sessionStorage.setItem("knowlens:membership-source", source);
-  window.sessionStorage.setItem("knowlens:membership-preferred-plan", "insurance");
-  window.sessionStorage.setItem("knowlens:membership-preferred-cycle", "yearly");
-  window.location.href = "/membership";
+  window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, source);
+  window.sessionStorage.setItem(MEMBERSHIP_PREFERRED_PLAN_KEY, "insurance");
+  window.sessionStorage.setItem(MEMBERSHIP_PREFERRED_CYCLE_KEY, "yearly");
+
+  const startedAt = new Date().toISOString();
+  const pendingCheckout: PendingCheckout = {
+    planId: "insurance",
+    cycle: "yearly",
+    startedAt,
+    source,
+  };
+  savePendingCheckout(pendingCheckout);
+
+  const callbackUrl = `${window.location.pathname || "/insurance"}${window.location.search || ""}`;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), CHECKOUT_REQUEST_TIMEOUT_MS);
+
+  return fetch("/api/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      planId: "insurance",
+      cycle: "yearly",
+      source,
+    }),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (response.status === 401) {
+        saveInsuranceAutoCheckoutIntent(source);
+        window.location.assign(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/insurance")}`);
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        checkoutUrl?: string;
+        directCheckoutUrl?: string;
+        error?: string;
+        sessionId?: string | null;
+      };
+
+      if (!response.ok || !data.ok || !data.checkoutUrl) {
+        throw new Error(data.error || "Unable to create checkout session.");
+      }
+
+      if (data.sessionId) {
+        savePendingCheckout({
+          ...pendingCheckout,
+          sessionId: data.sessionId,
+        });
+      }
+
+      const directCheckoutUrl = (data.directCheckoutUrl || "").trim();
+      const redirectCheckoutUrl = data.checkoutUrl.trim();
+      const preferredCheckoutUrl = directCheckoutUrl || redirectCheckoutUrl;
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible") {
+          window.location.replace(redirectCheckoutUrl);
+        }
+      }, 2500);
+      window.location.assign(preferredCheckoutUrl);
+    })
+    .catch((error: unknown) => {
+      clearPendingCheckout();
+      const message =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "创建支付会话超时，请稍后重试。"
+          : error instanceof Error
+            ? error.message
+            : "创建支付会话失败，请稍后重试。";
+      window.alert(message);
+    })
+    .finally(() => {
+      window.clearTimeout(timeoutId);
+    });
 }
 
 export function InsuranceMembershipDialog({
@@ -55,6 +185,8 @@ export function InsuranceMembershipDialog({
   onClose,
   onUpgrade,
 }: InsuranceMembershipDialogProps) {
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -72,7 +204,10 @@ export function InsuranceMembershipDialog({
       onUpgrade();
       return;
     }
-    openInsuranceMembershipCheckout(source);
+    setSubmitting(true);
+    void openInsuranceMembershipCheckout(source).finally(() => {
+      setSubmitting(false);
+    });
   };
 
   return (
@@ -147,9 +282,10 @@ export function InsuranceMembershipDialog({
             <button
               type="button"
               onClick={upgrade}
+              disabled={submitting}
               className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-amber-100"
             >
-              开通包年会员
+              {submitting ? "跳转支付中..." : "开通包年会员"}
               <ArrowRight size={15} />
             </button>
           </section>
