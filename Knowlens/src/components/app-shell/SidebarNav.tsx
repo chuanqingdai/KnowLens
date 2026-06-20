@@ -82,7 +82,7 @@ export function SidebarNav({
             <LoaderCircle size={17} className="animate-spin" />
           ) : (
             <Image
-              src="/logo.png?v=20260524"
+              src="/logo.png?v=202606201230"
               alt="KnowLens.ai"
               width={28}
               height={28}
@@ -206,7 +206,7 @@ export function SidebarNav({
                   </span>
                 ) : (
                   <Image
-                    src="/logo.png?v=20260524"
+                    src="/logo.png?v=202606201230"
                     alt="KnowLens.ai"
                     width={30}
                     height={30}

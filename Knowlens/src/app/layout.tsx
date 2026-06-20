@@ -62,14 +62,14 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/favicon-48x48.png", sizes: "48x48", type: "image/png" },
-      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon-16x16.png?v=202606201230", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png?v=202606201230", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-48x48.png?v=202606201230", sizes: "48x48", type: "image/png" },
+      { url: "/icon-192x192.png?v=202606201230", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512x512.png?v=202606201230", sizes: "512x512", type: "image/png" },
     ],
-    shortcut: "/favicon-32x32.png",
-    apple: "/apple-touch-icon.png",
+    shortcut: "/favicon-32x32.png?v=202606201230",
+    apple: "/apple-touch-icon.png?v=202606201230",
   },
   manifest: "/manifest.webmanifest",
 };

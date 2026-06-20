@@ -477,7 +477,7 @@ export function MarketingChrome({
           <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
               <img
-                src="/logo.png?v=202605241930"
+                src="/logo.png?v=202606201230"
                 alt="KnowLens.ai"
                 width={30}
                 height={30}
@@ -612,7 +612,7 @@ export function MarketingChrome({
                 <Link href="/" className="inline-flex items-center gap-2" aria-label="Go to KnowLens.ai landing page">
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm">
                     <img
-                      src="/logo.png?v=202605241930"
+                      src="/logo.png?v=202606201230"
                       alt="KnowLens.ai"
                       width={30}
                       height={30}
