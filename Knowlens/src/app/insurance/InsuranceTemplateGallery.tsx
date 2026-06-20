@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { AlertCircle, ArrowRight, Crown, Download, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, ChevronDown, Crown, Download, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { INSURANCE_CUSTOM_POSTER_EVENT } from "@/app/insurance/InsuranceCustomPosterButton";
 import {
   InsuranceMembershipDialog,
@@ -71,6 +71,10 @@ type TemplateFormState = {
   aspectRatio: SupportedTemplateAspectRatio;
   styleId: string;
 };
+type ProductSelectOption<T extends string> = {
+  value: T;
+  label: string;
+};
 type GeneratedPosterState = {
   status: GenerationStatus;
   imageSrc: string;
@@ -128,6 +132,10 @@ const INSURANCE_WORKSPACE_IMAGE_POLL_INTERVAL_MS = 2500;
 const INSURANCE_WORKSPACE_IMAGE_POLL_TIMEOUT_MS = 660000;
 const INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY = "duomi,gptsapi";
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
+const aspectRatioSelectOptions: ProductSelectOption<SupportedTemplateAspectRatio>[] = aspectRatioOptions.map((ratio) => ({
+  value: ratio,
+  label: ratio,
+}));
 
 const insuranceStyleOptions: InsuranceStyleOption[] = [
   {
@@ -615,6 +623,103 @@ function FieldBlock({
       <span className="text-[11px] font-medium text-zinc-500">{label}</span>
       <div className="mt-1">{children}</div>
     </label>
+  );
+}
+
+function ProductSelect<T extends string>({
+  ariaLabel,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: T;
+  options: ProductSelectOption<T>[];
+  disabled?: boolean;
+  onChange: (value: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selectedOption = options.find((option) => option.value === value) || options[0];
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function closeOnOutsidePress(event: MouseEvent | TouchEvent) {
+      const root = rootRef.current;
+      if (root && !root.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsidePress);
+    document.addEventListener("touchstart", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePress);
+      document.removeEventListener("touchstart", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-sm shadow-sm outline-none transition ${
+          open
+            ? "border-zinc-400 bg-white text-zinc-950 ring-4 ring-zinc-950/[0.04]"
+            : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50"
+        } disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400 disabled:opacity-70`}
+      >
+        <span className="truncate">{selectedOption?.label || "请选择"}</span>
+        <ChevronDown size={16} className={`shrink-0 text-zinc-400 transition ${open ? "rotate-180 text-zinc-700" : ""}`} />
+      </button>
+
+      {open ? (
+        <div
+          role="listbox"
+          aria-label={ariaLabel}
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-[80] max-h-72 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_35px_rgba(15,23,42,0.18)] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-400"
+        >
+          {options.map((option) => {
+            const selected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition ${
+                  selected ? "bg-zinc-100 font-medium text-zinc-950" : "text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950"
+                }`}
+              >
+                <span className="truncate">{option.label}</span>
+                {selected ? <Check size={14} className="shrink-0 text-zinc-900" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1985,7 +2090,7 @@ export function InsuranceTemplateGallery({
                 type="button"
                 aria-label="关闭"
                 onClick={() => closeActiveTemplate("close_button")}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 shadow-sm transition hover:bg-zinc-100 hover:text-zinc-900"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-950 bg-zinc-950 text-white shadow-sm transition hover:bg-zinc-800"
               >
                 <X size={16} />
               </button>
@@ -2000,41 +2105,32 @@ export function InsuranceTemplateGallery({
                 <div className="mt-4 grid gap-3">
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <FieldBlock label="尺寸">
-                    <select
-                      aria-label="尺寸"
+                    <ProductSelect
+                      ariaLabel="尺寸"
                       value={templateForm.aspectRatio}
                       disabled={isGenerateActionBusy}
-                      onChange={(event) =>
+                      options={aspectRatioSelectOptions}
+                      onChange={(value) =>
                         setTemplateForm((prev) =>
-                          prev ? { ...prev, aspectRatio: event.target.value as SupportedTemplateAspectRatio } : prev,
+                          prev ? { ...prev, aspectRatio: value } : prev,
                         )
                       }
-                      className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {aspectRatioOptions.map((ratio) => (
-                        <option key={ratio} value={ratio}>
-                          {ratio}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </FieldBlock>
 
                   <FieldBlock label="风格">
-                    <select
-                      aria-label="风格"
+                    <ProductSelect
+                      ariaLabel="风格"
                       value={selectedStyle.id}
                       disabled={isGenerateActionBusy}
-                      onChange={(event) =>
-                        setTemplateForm((prev) => (prev ? { ...prev, styleId: event.target.value } : prev))
+                      options={insuranceStyleOptions.map((style) => ({
+                        value: style.id,
+                        label: style.name,
+                      }))}
+                      onChange={(value) =>
+                        setTemplateForm((prev) => (prev ? { ...prev, styleId: value } : prev))
                       }
-                      className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {insuranceStyleOptions.map((style) => (
-                        <option key={style.id} value={style.id}>
-                          {style.name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </FieldBlock>
                   </div>
 

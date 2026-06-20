@@ -99,7 +99,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
                   : "border-transparent text-zinc-500 hover:text-zinc-950"
               }`}
             >
-              精选案例
+              精选海报
             </button>
             <button
               type="button"
