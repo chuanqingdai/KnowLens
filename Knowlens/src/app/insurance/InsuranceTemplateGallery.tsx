@@ -138,10 +138,6 @@ const INSURANCE_WORKSPACE_IMAGE_POLL_INTERVAL_MS = 2500;
 const INSURANCE_WORKSPACE_IMAGE_POLL_TIMEOUT_MS = 660000;
 const INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY = "duomi,gptsapi";
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
-const aspectRatioSelectOptions: ProductSelectOption<SupportedTemplateAspectRatio>[] = aspectRatioOptions.map((ratio) => ({
-  value: ratio,
-  label: ratio,
-}));
 
 const insuranceStyleOptions: InsuranceStyleOption[] = [
   {
@@ -654,39 +650,77 @@ function PosterPreview({
   const previewAspectRatio = posterState?.aspectRatio || aspectRatio || normalizeAspectRatioChoice(template.aspectRatio);
   const aspectClass = getAspectClassFromRatio(previewAspectRatio);
   const fitClass = previewAspectRatio === "9:16" ? "h-full max-w-full" : "w-full max-h-full";
-  const imageSrc = posterState?.imageSrc || template.imageSrc;
+  const generatedImageSrc = posterState?.imageSrc || "";
+  const imageSrc = generatedImageSrc || template.imageSrc;
   const [failedImageSrc, setFailedImageSrc] = useState("");
+  const [loadedImageSrc, setLoadedImageSrc] = useState("");
   const isGenerating = posterState?.status === "generating";
   const isFailed = posterState?.status === "failed";
   const fallbackImageSrc = template.imageSrc && template.imageSrc !== imageSrc ? template.imageSrc : "";
   const imageFailed = Boolean(imageSrc && failedImageSrc === imageSrc);
   const previewImageSrc = imageFailed && fallbackImageSrc ? fallbackImageSrc : imageSrc;
+  const shouldRenderPreviewImage = Boolean(previewImageSrc && !(imageFailed && !fallbackImageSrc));
+  const previewImageLoaded = Boolean(previewImageSrc && loadedImageSrc === previewImageSrc);
+  const showImageLoadingShimmer = Boolean(shouldRenderPreviewImage && !previewImageLoaded);
+
+  useEffect(() => {
+    if (!generatedImageSrc || isGenerating) {
+      return;
+    }
+    let cancelled = false;
+    const probe = new window.Image();
+    probe.onload = () => {
+      if (!cancelled) {
+        setFailedImageSrc((current) => (current === generatedImageSrc ? "" : current));
+        setLoadedImageSrc(generatedImageSrc);
+      }
+    };
+    probe.onerror = () => {
+      if (!cancelled) {
+        setFailedImageSrc(generatedImageSrc);
+      }
+    };
+    probe.referrerPolicy = "no-referrer";
+    probe.src = generatedImageSrc;
+    return () => {
+      cancelled = true;
+    };
+  }, [generatedImageSrc, isGenerating]);
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden bg-zinc-100">
       {previewImageSrc ? (
         <div className={`relative overflow-hidden bg-zinc-100 ${aspectClass} ${fitClass}`}>
-          {canUseNextImageForInsuranceSrc(previewImageSrc) ? (
+          {showImageLoadingShimmer ? (
+            <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10 transition-opacity duration-500" />
+          ) : null}
+          {shouldRenderPreviewImage && canUseNextImageForInsuranceSrc(previewImageSrc) ? (
             <Image
               src={previewImageSrc}
               alt={`${template.title}海报`}
               fill
               sizes="500px"
-              className="object-contain"
+              className={`object-contain transition-opacity duration-500 ${
+                previewImageLoaded ? "opacity-100" : "opacity-0"
+              }`}
               priority
+              onLoad={() => setLoadedImageSrc(previewImageSrc)}
               onError={() => setFailedImageSrc(previewImageSrc)}
             />
-          ) : (
+          ) : shouldRenderPreviewImage ? (
             // image2 returns signed external image URLs that are not part of Next image remote config.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={previewImageSrc}
               alt={`${template.title}海报`}
-              className="absolute inset-0 h-full w-full object-contain"
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-500 ${
+                previewImageLoaded ? "opacity-100" : "opacity-0"
+              }`}
               referrerPolicy="no-referrer"
+              onLoad={() => setLoadedImageSrc(previewImageSrc)}
               onError={() => setFailedImageSrc(previewImageSrc)}
             />
-          )}
+          ) : null}
           {imageFailed && !fallbackImageSrc ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-100 px-5 text-center">
               <div>
@@ -2297,21 +2331,6 @@ export function InsuranceTemplateGallery({
                 </h3>
 
                 <div className="mt-4 grid gap-3">
-                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <FieldBlock label="尺寸">
-                    <ProductSelect
-                      ariaLabel="尺寸"
-                      value={templateForm.aspectRatio}
-                      disabled={isGenerateActionBusy}
-                      options={aspectRatioSelectOptions}
-                      onChange={(value) =>
-                        setTemplateForm((prev) =>
-                          prev ? { ...prev, aspectRatio: value } : prev,
-                        )
-                      }
-                    />
-                  </FieldBlock>
-
                   <FieldBlock label="风格">
                     <ProductSelect
                       ariaLabel="风格"
@@ -2326,7 +2345,6 @@ export function InsuranceTemplateGallery({
                       }
                     />
                   </FieldBlock>
-                  </div>
 
                   <FieldBlock label="标题（必填）">
                     <EditableBox
