@@ -7,6 +7,11 @@ import { useRouter } from "next/navigation";
 import { getCreditRecords, type CreditRecord } from "@/lib/billing";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 
+const MEMBERSHIP_RETURN_PATH_KEY = "membership:return-path";
+const MEMBERSHIP_SOURCE_KEY = "knowlens:membership-source";
+const MEMBERSHIP_PREFERRED_PLAN_KEY = "knowlens:membership-preferred-plan";
+const MEMBERSHIP_PREFERRED_CYCLE_KEY = "knowlens:membership-preferred-cycle";
+
 function formatDate(input: string, locale: "en" | "zh") {
   return new Date(input).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
     month: "2-digit",
@@ -77,13 +82,34 @@ export default function CreditRecordsPage() {
     return { income, cost, balance };
   }, [records]);
 
+  function handleBack() {
+    let returnPath = "/membership";
+    if (typeof window !== "undefined") {
+      try {
+        const storedPath = window.sessionStorage.getItem(MEMBERSHIP_RETURN_PATH_KEY);
+        if (storedPath?.startsWith("/") && storedPath !== "/membership/credits") {
+          returnPath = storedPath;
+        }
+        if (returnPath.startsWith("/insurance")) {
+          window.sessionStorage.removeItem(MEMBERSHIP_RETURN_PATH_KEY);
+          window.sessionStorage.removeItem(MEMBERSHIP_SOURCE_KEY);
+          window.sessionStorage.removeItem(MEMBERSHIP_PREFERRED_PLAN_KEY);
+          window.sessionStorage.removeItem(MEMBERSHIP_PREFERRED_CYCLE_KEY);
+        }
+      } catch {
+        returnPath = "/membership";
+      }
+    }
+    router.push(returnPath);
+  }
+
   return (
     <main className="min-h-screen bg-[#f7f7f8]">
       <header className="fixed inset-x-0 top-0 z-40 h-14 border-b border-zinc-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-full w-full max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
           <button
             type="button"
-            onClick={() => router.push("/membership")}
+            onClick={handleBack}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-100"
           >
             <ArrowLeft size={14} />

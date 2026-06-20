@@ -96,12 +96,37 @@ type BillingCreditsPayload = {
     status?: string;
   } | null;
 };
+type InsuranceWorkspaceImageTask = {
+  taskId?: string;
+  index?: number;
+  status?: string;
+  imageUrl?: string;
+  renderUrl?: string;
+  rawImageUrl?: string;
+  error?: string;
+  errorCode?: string;
+  errorMessage?: string;
+};
+type InsuranceWorkspaceImageJobPayload = {
+  ok?: boolean;
+  error?: string;
+  code?: string;
+  job?: {
+    id?: string;
+    runId?: string;
+    status?: string;
+  };
+  tasks?: InsuranceWorkspaceImageTask[];
+};
 
 const INSURANCE_POSTER_GENERATION_CREDITS = STANDARD_OUTPUT_PROMO_CREDITS;
 const CUSTOM_INSURANCE_TEMPLATE_TITLE = "自定义海报";
 const INSURANCE_POSTER_STATE_STORAGE_KEY = "knowlens:insurance:poster-state:v1";
 const TEMPLATE_INITIAL_LOAD_COUNT = 8;
 const TEMPLATE_LOAD_BATCH_SIZE = 8;
+const INSURANCE_WORKSPACE_IMAGE_POLL_INTERVAL_MS = 2500;
+const INSURANCE_WORKSPACE_IMAGE_POLL_TIMEOUT_MS = 660000;
+const INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY = "duomi,gptsapi";
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
 
 const insuranceStyleOptions: InsuranceStyleOption[] = [
@@ -685,6 +710,218 @@ async function downloadPosterImage(imageSrc: string, title: string): Promise<Pos
   }
 }
 
+function resolveInsuranceWorkspaceImageSize(aspectRatio: SupportedTemplateAspectRatio) {
+  if (aspectRatio === "1:1") return "1024x1024";
+  if (aspectRatio === "16:9") return "1792x1024";
+  if (aspectRatio === "3:4") return "1152x1536";
+  return "1024x1792";
+}
+
+function getInsuranceWorkspaceReadyImageUrl(payload: InsuranceWorkspaceImageJobPayload | null) {
+  const readyStatuses = new Set(["asset_ready", "completed", "success", "succeeded"]);
+  const readyTask = payload?.tasks?.find((task) => {
+    const status = (task.status || "").trim().toLowerCase();
+    const imageUrl = task.imageUrl || task.renderUrl || task.rawImageUrl || "";
+    return imageUrl && (!status || readyStatuses.has(status));
+  });
+  return readyTask?.imageUrl || readyTask?.renderUrl || readyTask?.rawImageUrl || "";
+}
+
+function getInsuranceWorkspaceError(payload: InsuranceWorkspaceImageJobPayload | null) {
+  const task = payload?.tasks?.find((item) => item.error || item.errorMessage || item.errorCode);
+  return {
+    code: payload?.code || task?.errorCode || "IMAGE_GENERATION_FAILED",
+    message: payload?.error || task?.error || task?.errorMessage || "图片生成失败，请稍后重试。",
+  };
+}
+
+async function readInsuranceWorkspaceJson(response: Response) {
+  return (await response.json().catch(() => null)) as InsuranceWorkspaceImageJobPayload | null;
+}
+
+async function pollInsuranceWorkspaceImageJob(jobId: string, initialPayload: InsuranceWorkspaceImageJobPayload | null) {
+  const activeTaskStatuses = new Set(["queued", "generating", "asset_downloading"]);
+  const terminalTaskStatuses = new Set([
+    "asset_ready",
+    "completed",
+    "success",
+    "succeeded",
+    "billing_failed",
+    "failed",
+    "timed_out",
+    "timeout",
+    "error",
+    "cancelled",
+    "canceled",
+  ]);
+  const terminalJobStatuses = new Set(["completed", "completed_with_errors", "billing_failed", "failed", "timed_out"]);
+  const startedAt = Date.now();
+  let latestPayload = initialPayload;
+
+  while (Date.now() - startedAt < INSURANCE_WORKSPACE_IMAGE_POLL_TIMEOUT_MS) {
+    const readyImageUrl = getInsuranceWorkspaceReadyImageUrl(latestPayload);
+    if (readyImageUrl) {
+      return {
+        imageUrl: readyImageUrl,
+        payload: latestPayload,
+      };
+    }
+
+    const jobStatus = (latestPayload?.job?.status || "").trim().toLowerCase();
+    const tasks = latestPayload?.tasks || [];
+    const activeTasks = tasks.filter((task) => activeTaskStatuses.has((task.status || "").trim().toLowerCase()));
+    const taskStatuses = tasks.map((task) => (task.status || "").trim().toLowerCase()).filter(Boolean);
+    const allTasksTerminal = taskStatuses.length > 0 && taskStatuses.every((status) => terminalTaskStatuses.has(status));
+    if (terminalJobStatuses.has(jobStatus) || allTasksTerminal) {
+      const error = getInsuranceWorkspaceError(latestPayload);
+      throw new Error(`${error.code}: ${error.message}`);
+    }
+
+    if (activeTasks.length) {
+      const runTask = activeTasks[0];
+      const runResponse = await fetch("/api/workspace/image/tasks/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          jobId,
+          taskId: runTask.taskId,
+        }),
+      });
+      const runPayload = await readInsuranceWorkspaceJson(runResponse);
+      if (runPayload?.job?.id || runPayload?.tasks?.length) {
+        latestPayload = runPayload;
+      }
+      if (!runResponse.ok) {
+        const error = getInsuranceWorkspaceError(runPayload || latestPayload);
+        throw new Error(`${error.code}: ${error.message}`);
+      }
+    } else {
+      const statusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+        method: "GET",
+        credentials: "same-origin",
+      });
+      const statusPayload = await readInsuranceWorkspaceJson(statusResponse);
+      if (statusPayload?.job?.id || statusPayload?.tasks?.length) {
+        latestPayload = statusPayload;
+      }
+      if (!statusResponse.ok) {
+        const error = getInsuranceWorkspaceError(statusPayload || latestPayload);
+        throw new Error(`${error.code}: ${error.message}`);
+      }
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, INSURANCE_WORKSPACE_IMAGE_POLL_INTERVAL_MS));
+  }
+
+  const finalStatusResponse = await fetch(`/api/workspace/image/jobs/${encodeURIComponent(jobId)}`, {
+    method: "GET",
+    credentials: "same-origin",
+  }).catch(() => null);
+  if (finalStatusResponse?.ok) {
+    const finalPayload = await readInsuranceWorkspaceJson(finalStatusResponse);
+    const readyImageUrl = getInsuranceWorkspaceReadyImageUrl(finalPayload);
+    if (readyImageUrl) {
+      return {
+        imageUrl: readyImageUrl,
+        payload: finalPayload,
+      };
+    }
+  }
+
+  throw new Error("IMAGE_JOB_POLL_TIMEOUT: 图片生成超时，请稍后在“我的”中查看或重新生成。");
+}
+
+async function generateInsurancePosterViaWorkspaceImageJob({
+  prompt,
+  aspectRatio,
+  title,
+}: {
+  prompt: string;
+  aspectRatio: SupportedTemplateAspectRatio;
+  title: string;
+}) {
+  const runId = `insurance-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+  const idempotencyKey = `${runId}-${getSafePosterFilename(title).replace(/\.png$/i, "").slice(0, 48)}`;
+  const task = {
+    index: 1,
+    outputType: "poster",
+    aspectRatio,
+    size: resolveInsuranceWorkspaceImageSize(aspectRatio),
+    prompt,
+    model: "gpt-image-2",
+    quality: "standard",
+    response_format: "url",
+  };
+  const basePayload = {
+    intent: "poster",
+    normalizedDirection: "poster",
+    ratio: aspectRatio,
+    normalizedRatio: aspectRatio,
+    imageModel: "gpt-image-2",
+    imageModelPolicy: INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY,
+    runId,
+    idempotencyKey,
+    tasks: [task],
+    clientContext: {
+      source: "insurance_template_gallery",
+      title,
+      providerPolicy: INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY,
+    },
+  };
+  const prepareResponse = await fetch("/api/workspace/image/generate-batch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      ...basePayload,
+      action: "prepare",
+    }),
+  });
+  const preparePayload = await readInsuranceWorkspaceJson(prepareResponse);
+  if (!prepareResponse.ok || !preparePayload?.ok) {
+    const error = getInsuranceWorkspaceError(preparePayload);
+    throw new Error(`${error.code}: ${error.message}`);
+  }
+
+  const preparedImageUrl = getInsuranceWorkspaceReadyImageUrl(preparePayload);
+  if (preparedImageUrl) {
+    return {
+      imageUrl: preparedImageUrl,
+      payload: preparePayload,
+    };
+  }
+
+  const jobId = (preparePayload.job?.id || "").trim();
+  if (!jobId) {
+    throw new Error("IMAGE_JOB_ID_MISSING: 生成任务缺少 jobId，请重试。");
+  }
+
+  const activateResponse = await fetch("/api/workspace/image/generate-batch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      ...basePayload,
+      action: "activate",
+      jobId,
+    }),
+  });
+  const activatePayload = await readInsuranceWorkspaceJson(activateResponse);
+  if (!activateResponse.ok || !activatePayload?.ok) {
+    const error = getInsuranceWorkspaceError(activatePayload);
+    throw new Error(`${error.code}: ${error.message}`);
+  }
+
+  return pollInsuranceWorkspaceImageJob(jobId, activatePayload);
+}
+
 export function InsuranceTemplateGallery({
   templates,
   categories,
@@ -830,15 +1067,8 @@ export function InsuranceTemplateGallery({
     if (!activeTemplate) {
       return;
     }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setActiveTemplate(null);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = "";
     };
   }, [activeTemplate]);
@@ -1219,6 +1449,45 @@ export function InsuranceTemplateGallery({
     })();
   };
 
+  const requestDownloadMyPosterRecord = (record: MyPosterRecord, placement: "card" | "hover_button" = "hover_button") => {
+    void (async () => {
+      const title = record.posterTitle || record.template.title;
+      trackInsuranceEvent({
+        action: "my_poster_download_click",
+        message: "My generated insurance poster download clicked.",
+        details: {
+          templateTitle: record.templateKey,
+          placement,
+          isCustom: Boolean(record.template.isCustom),
+          createdAt: record.createdAt,
+        },
+      });
+      showDownloadToast("正在下载海报中...");
+      try {
+        const result = await downloadPosterImage(record.imageSrc, title);
+        showDownloadToast(
+          result === "image-opened"
+            ? "已打开海报图片，可长按保存或使用浏览器分享保存"
+            : "已触发下载，请查看浏览器下载记录或文件夹",
+          result === "image-opened" ? 4200 : 3200,
+        );
+      } catch {
+        showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
+        return;
+      }
+      trackInsuranceEvent({
+        action: "my_poster_download_started",
+        message: "My generated insurance poster download started.",
+        details: {
+          templateTitle: record.templateKey,
+          placement,
+          isCustom: Boolean(record.template.isCustom),
+          createdAt: record.createdAt,
+        },
+      });
+    })();
+  };
+
   const openMyPosterRecord = (record: MyPosterRecord, placement: "card" | "hover_button" = "card") => {
     trackInsuranceEvent({
       action: "my_poster_open_click",
@@ -1361,43 +1630,24 @@ export function InsuranceTemplateGallery({
           };
         });
 
-        void fetch("/api/insurance/poster-generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt,
-            aspectRatio: selectedAspectRatio,
-          }),
+        void generateInsurancePosterViaWorkspaceImageJob({
+          prompt,
+          aspectRatio: selectedAspectRatio,
+          title: posterTitleSnapshot,
         })
-          .then((response) => {
+          .then((result) => {
             trackInsuranceEvent({
               action: "generate_request_sent",
-              message: "Insurance poster generation request sent.",
+              message: "Insurance poster generation job started.",
               details: generateDetails,
             });
-            return response;
-          })
-          .then(async (response) => {
-            const payload = (await response.json().catch(() => null)) as
-              | {
-                  ok?: boolean;
-                  imageUrl?: string;
-                  error?: { code?: string; message?: string; detail?: string };
-                }
-              | null;
-            if (!response.ok || !payload?.ok || !payload.imageUrl) {
-              const message = payload?.error?.message || `generation failed (${response.status})`;
-              const error = new Error(message) as Error & { code?: string };
-              error.code = payload?.error?.code;
-              throw error;
-            }
             setPosterStateByTitle((prev) => {
               const current = prev[templateKey];
               return {
                 ...prev,
                 [templateKey]: {
                   status: "ready",
-                  imageSrc: payload.imageUrl || "",
+                  imageSrc: result.imageUrl || "",
                   aspectRatio: selectedAspectRatio,
                   history: current?.history || [],
                   currentCreatedAt: Date.now(),
@@ -1413,7 +1663,8 @@ export function InsuranceTemplateGallery({
               message: "Insurance poster generation succeeded.",
               details: {
                 ...generateDetails,
-                hasImageUrl: Boolean(payload.imageUrl),
+                hasImageUrl: Boolean(result.imageUrl),
+                workspaceJobId: result.payload?.job?.id,
               },
             });
           })
@@ -1471,7 +1722,7 @@ export function InsuranceTemplateGallery({
     return [template.secondaryCategory || template.primaryCategory];
   };
 
-  const closeActiveTemplate = (reason: "backdrop" | "close_button") => {
+  const closeActiveTemplate = (reason: "close_button") => {
     if (activeTemplate) {
       trackInsuranceEvent({
         action: "template_modal_close",
@@ -1560,20 +1811,32 @@ export function InsuranceTemplateGallery({
                         className="absolute inset-0 h-full w-full object-contain"
                         referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
                       />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
-                      <div className="absolute inset-x-0 bottom-3 flex justify-center px-3 opacity-0 transition group-hover:opacity-100">
-                        <div className="flex items-center justify-center rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
+                      <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center px-3 opacity-0 transition hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+                        <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
                           <button
                             type="button"
-                            aria-label={`查看海报：${record.posterTitle || record.template.title}`}
+                            aria-label={`重新生成：${record.posterTitle || record.template.title}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               openMyPosterRecord(record, "hover_button");
                             }}
                             className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
                           >
-                            查看海报
-                            <ArrowRight size={15} className="ml-1.5" />
+                            <RefreshCw size={15} className="mr-1.5" />
+                            重新生成
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`下载海报：${record.posterTitle || record.template.title}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestDownloadMyPosterRecord(record, "hover_button");
+                            }}
+                            className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50"
+                          >
+                            <Download size={15} className="mr-1.5" />
+                            下载海报
                           </button>
                         </div>
                       </div>
@@ -1613,8 +1876,8 @@ export function InsuranceTemplateGallery({
                           <Crown size={14} fill="currentColor" />
                         </div>
                       ) : null}
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
-                      <div className="absolute inset-x-0 bottom-3 flex justify-center px-3 opacity-0 transition group-hover:opacity-100">
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
+                      <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center px-3 opacity-0 transition hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
                         <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
                           <button
                             type="button"
@@ -1628,19 +1891,19 @@ export function InsuranceTemplateGallery({
                             生成同款
                             <ArrowRight size={15} className="ml-1.5" />
                           </button>
-                        <button
-                          type="button"
-                          aria-label={`下载海报：${template.title}`}
-                          disabled={!canDownload}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            requestDownloadTemplate(template);
-                          }}
-                          className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <Download size={15} className="mr-1.5" />
-                          下载海报
-                        </button>
+                          <button
+                            type="button"
+                            aria-label={`下载海报：${template.title}`}
+                            disabled={!canDownload}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestDownloadTemplate(template);
+                            }}
+                            className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Download size={15} className="mr-1.5" />
+                            下载海报
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1715,19 +1978,14 @@ export function InsuranceTemplateGallery({
       {activeTemplate && templateForm && typeof document !== "undefined"
         ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-stretch justify-stretch p-0 sm:items-center sm:justify-center sm:p-5">
-          <button
-            type="button"
-            aria-label="关闭浮层"
-            className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[2px]"
-            onClick={() => closeActiveTemplate("backdrop")}
-          />
+          <div aria-hidden="true" className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[2px]" />
           <div className="relative grid h-dvh max-h-dvh w-full max-w-5xl grid-rows-[minmax(0,42dvh)_minmax(0,1fr)] overflow-hidden border border-zinc-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] sm:h-[92dvh] sm:max-h-[92dvh] sm:rounded-2xl lg:grid-cols-[minmax(420px,1fr)_500px] lg:grid-rows-none">
-            <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+            <div className="absolute right-3 top-3 z-40 flex items-center gap-2">
               <button
                 type="button"
                 aria-label="关闭"
                 onClick={() => closeActiveTemplate("close_button")}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm transition hover:bg-zinc-100 hover:text-zinc-900"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 shadow-sm transition hover:bg-zinc-100 hover:text-zinc-900"
               >
                 <X size={16} />
               </button>

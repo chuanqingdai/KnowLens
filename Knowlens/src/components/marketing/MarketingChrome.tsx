@@ -37,6 +37,8 @@ type InsuranceHeaderBillingState = {
   } | null;
 };
 
+const MEMBERSHIP_RETURN_PATH_KEY = "membership:return-path";
+
 const toolLinkGroups = [
   {
     title: "Infographic Tools",
@@ -330,6 +332,13 @@ export function MarketingChrome({
     router.push(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/insurance")}`);
   }
 
+  function openInsuranceCredits() {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(MEMBERSHIP_RETURN_PATH_KEY, pathname || "/insurance");
+    }
+    router.push("/membership/credits");
+  }
+
   function openToolsMenu() {
     if (toolsMenuCloseTimer.current) {
       window.clearTimeout(toolsMenuCloseTimer.current);
@@ -547,7 +556,7 @@ export function MarketingChrome({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => router.push("/membership/credits")}
+                    onClick={openInsuranceCredits}
                     className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 min-[430px]:inline-flex"
                   >
                     剩余积分 {insuranceBalanceLabel}
