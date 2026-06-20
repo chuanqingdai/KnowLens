@@ -205,29 +205,53 @@ function readNestedUrl(candidate) {
   return typeof candidate.url === "string" ? candidate.url.trim() : "";
 }
 
-function parseImageUrl(payload) {
-  if (!payload || typeof payload !== "object") return "";
+function readNestedBase64(candidate) {
+  if (!candidate || typeof candidate !== "object") return "";
+  const fields = [
+    candidate.b64_json,
+    candidate.base64,
+    candidate.image_base64,
+    candidate.imageBase64,
+  ];
+  for (const value of fields) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function parseGeneratedImage(payload) {
+  if (!payload || typeof payload !== "object") return { imageUrl: "", imageBase64: "" };
   const data = Array.isArray(payload.data) ? payload.data : [];
   if (data.length) {
     const url = readNestedUrl(data[0]);
-    if (url) return url;
+    if (url) return { imageUrl: url, imageBase64: "" };
+    const imageBase64 = readNestedBase64(data[0]);
+    if (imageBase64) return { imageUrl: "", imageBase64 };
   }
   const images = Array.isArray(payload.images) ? payload.images : [];
   if (images.length) {
     const url = readNestedUrl(images[0]);
-    if (url) return url;
+    if (url) return { imageUrl: url, imageBase64: "" };
+    const imageBase64 = readNestedBase64(images[0]);
+    if (imageBase64) return { imageUrl: "", imageBase64 };
   }
-  if (typeof payload.url === "string" && payload.url.trim()) return payload.url.trim();
+  if (typeof payload.url === "string" && payload.url.trim()) return { imageUrl: payload.url.trim(), imageBase64: "" };
+  const payloadBase64 = readNestedBase64(payload);
+  if (payloadBase64) return { imageUrl: "", imageBase64: payloadBase64 };
   const output = Array.isArray(payload.output) ? payload.output : [];
   if (output.length) {
     const url = readNestedUrl(output[0]);
-    if (url) return url;
+    if (url) return { imageUrl: url, imageBase64: "" };
+    const imageBase64 = readNestedBase64(output[0]);
+    if (imageBase64) return { imageUrl: "", imageBase64 };
   }
   if (payload.result && typeof payload.result === "object") {
     const url = readNestedUrl(payload.result);
-    if (url) return url;
+    if (url) return { imageUrl: url, imageBase64: "" };
+    const imageBase64 = readNestedBase64(payload.result);
+    if (imageBase64) return { imageUrl: "", imageBase64 };
   }
-  return "";
+  return { imageUrl: "", imageBase64: "" };
 }
 
 async function generateImage({ endpoint, apiKey, model, prompt, size }) {
@@ -260,9 +284,11 @@ async function generateImage({ endpoint, apiKey, model, prompt, size }) {
     const message = body?.error?.message || rawText.slice(0, 500) || `HTTP ${response.status}`;
     throw new Error(message);
   }
-  const imageUrl = parseImageUrl(body);
-  if (!imageUrl) throw new Error("Image provider response did not include an image URL.");
-  return { imageUrl };
+  const generated = parseGeneratedImage(body);
+  if (!generated.imageUrl && !generated.imageBase64) {
+    throw new Error("Image provider response did not include an image payload.");
+  }
+  return generated;
 }
 
 async function downloadImage(url, outputPath) {
@@ -278,6 +304,17 @@ async function downloadImage(url, outputPath) {
   }
   writeFileSync(outputPath, buffer);
   return { bytes: buffer.byteLength, contentType };
+}
+
+async function saveBase64Image(imageBase64, outputPath) {
+  const buffer = Buffer.from(imageBase64, "base64");
+  if (buffer.byteLength < 10_000) {
+    throw new Error(`decoded image is unexpectedly small: ${buffer.byteLength} bytes`);
+  }
+  writeFileSync(outputPath, buffer);
+  const metadata = await sharp(buffer).metadata();
+  const format = metadata.format || "png";
+  return { bytes: buffer.byteLength, contentType: `image/${format}` };
 }
 
 async function normalizePosterImage(outputPath, aspectRatio) {
@@ -366,7 +403,9 @@ async function main() {
         prompt: buildPromptWithInsuranceStyle(template),
         size,
       });
-      const saved = await downloadImage(generated.imageUrl, outputPath);
+      const saved = generated.imageUrl
+        ? await downloadImage(generated.imageUrl, outputPath)
+        : await saveBase64Image(generated.imageBase64, outputPath);
       const normalized = await normalizePosterImage(outputPath, aspectRatio);
       results.push({
         title: template.title,
