@@ -71,7 +71,7 @@ export default function AuthPage() {
     (process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true" || process.env.NODE_ENV !== "production");
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function AuthPage() {
       return;
     }
     if (window.google?.accounts?.id) {
-      setGisReady(true);
+      queueMicrotask(() => setGisReady(true));
       return;
     }
     const scriptId = "knowlens-google-gsi-auth";
@@ -140,7 +140,7 @@ export default function AuthPage() {
       width: 360,
       locale: "en",
     });
-    setGisRendered(true);
+    queueMicrotask(() => setGisRendered(true));
   }, [callbackUrl, gisReady, gisRendered, mounted, oneTapClientId]);
 
   useEffect(() => {
@@ -148,11 +148,13 @@ export default function AuthPage() {
       return;
     }
     if (authError) {
-      setIsGoogleLoading(false);
-      setIsLocalLoginLoading(false);
+      queueMicrotask(() => {
+        setIsGoogleLoading(false);
+        setIsLocalLoginLoading(false);
+      });
     }
     if (authError || localErrorCode) {
-      setLocalErrorCode(null);
+      queueMicrotask(() => setLocalErrorCode(null));
     }
   }, [authError, localErrorCode, mounted]);
 
@@ -199,7 +201,7 @@ export default function AuthPage() {
         style={{
           backgroundColor: "#f6f7f9",
           backgroundImage:
-            "linear-gradient(rgba(24,24,27,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.035) 1px, transparent 1px), linear-gradient(rgba(24,24,27,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.055) 1px, transparent 1px), radial-gradient(circle at 16% 18%, rgba(59,130,246,0.08), transparent 42%), radial-gradient(circle at 84% 26%, rgba(20,184,166,0.07), transparent 38%), radial-gradient(circle at 60% 74%, rgba(236,72,153,0.05), transparent 36%)",
+            "linear-gradient(rgba(24,24,27,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.035) 1px, transparent 1px), linear-gradient(rgba(24,24,27,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.05) 1px, transparent 1px), radial-gradient(circle at 16% 18%, rgba(59,130,246,0.035), transparent 40%), radial-gradient(circle at 84% 26%, rgba(20,184,166,0.03), transparent 36%), radial-gradient(circle at 60% 74%, rgba(236,72,153,0.025), transparent 34%)",
           backgroundSize: "24px 24px, 24px 24px, 120px 120px, 120px 120px, auto, auto, auto",
           backgroundPosition: "0 0, 0 0, -1px -1px, -1px -1px, 0 0, 0 0, 0 0",
         }}
@@ -211,16 +213,10 @@ export default function AuthPage() {
         <h1 className="mt-2 text-[34px] font-semibold leading-[1.12] tracking-tight text-zinc-900">
           {t("Sign in to KnowLens", "登录 KnowLens")}
         </h1>
-        <p className="mt-3 text-sm leading-6 text-zinc-600">
-          {t(
-            "Sign in to get 50 free credits and start creating infographics, slides, and explainer videos.",
-            "登录即可获得 50 积分，开始生成信息图、演示文稿和讲解视频。",
-          )}
-        </p>
 
         <div
           ref={googleButtonRef}
-          className={`mt-5 flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white ${
+          className={`mt-6 flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white ${
             gisRendered ? "p-1.5" : "p-0"
           }`}
         >
@@ -244,7 +240,7 @@ export default function AuthPage() {
               {isGoogleLoading ? (
                 <Loader2 size={15} className="animate-spin text-white/90" />
               ) : (
-                <span className="drop-shadow-[0_0.5px_2px_rgba(255,255,255,0.95)]">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white">
                   <GoogleMark />
                 </span>
               )}

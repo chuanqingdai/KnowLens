@@ -110,7 +110,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
                   : "border-transparent text-zinc-500 hover:text-zinc-950"
               }`}
             >
-              我的
+              我的海报
             </button>
           </div>
           <InsuranceTemplateGallery

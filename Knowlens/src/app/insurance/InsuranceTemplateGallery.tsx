@@ -100,6 +100,9 @@ type BillingCreditsPayload = {
     status?: string;
   } | null;
 };
+
+const SHOWCASE_CATEGORY_ORDER = ["节日", "节气", "日签", "活动", "产品", "健康", "保险", "重疾", "品宣", "生日"];
+
 type InsuranceWorkspaceImageTask = {
   taskId?: string;
   index?: number;
@@ -107,6 +110,9 @@ type InsuranceWorkspaceImageTask = {
   imageUrl?: string;
   renderUrl?: string;
   rawImageUrl?: string;
+  image_url?: string;
+  render_url?: string;
+  raw_image_url?: string;
   error?: string;
   errorCode?: string;
   errorMessage?: string;
@@ -299,6 +305,10 @@ function getAspectClassFromRatio(aspectRatio?: SupportedTemplateAspectRatio) {
   return "aspect-[9/16]";
 }
 
+function canUseNextImageForInsuranceSrc(imageSrc: string) {
+  return imageSrc.startsWith("/") && !imageSrc.startsWith("/api/");
+}
+
 function normalizeAspectRatioChoice(aspectRatio?: string): SupportedTemplateAspectRatio {
   return aspectRatioOptions.includes(aspectRatio as SupportedTemplateAspectRatio)
     ? (aspectRatio as SupportedTemplateAspectRatio)
@@ -348,6 +358,106 @@ function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory
   return [template.primaryCategory, template.category, template.secondaryCategory].some((value) =>
     value ? value.includes(activeCategory) || activeCategory.includes(value) : false,
   );
+}
+
+function getTemplateIdentity(template: InsuranceTemplateCard) {
+  return template.imageSrc || `${template.primaryCategory}:${template.secondaryCategory}:${template.title}`;
+}
+
+function hashStringToNumber(input: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function getShowcaseShuffleScore(template: InsuranceTemplateCard, seed: number) {
+  return hashStringToNumber(`${seed}:${getTemplateIdentity(template)}`);
+}
+
+function getClientSeasonalPriority(template: InsuranceTemplateCard) {
+  const imageSrc = template.imageSrc || "";
+  const secondaryCategory = template.secondaryCategory || "";
+  const title = template.title || "";
+
+  if (imageSrc.includes("/father-")) return 10_000;
+  if (imageSrc.includes("/xiazhi-")) return 9_000;
+  if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) return 8_000;
+  if (imageSrc.includes("/duanwu-")) return 7_000;
+  return 0;
+}
+
+function sortShowcaseTemplatesForRefresh(templates: InsuranceTemplateCard[], seed: number) {
+  return [...templates].sort((left, right) => {
+    const priorityDelta = getClientSeasonalPriority(right) - getClientSeasonalPriority(left);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+    const shuffleDelta = getShowcaseShuffleScore(left, seed) - getShowcaseShuffleScore(right, seed);
+    if (shuffleDelta !== 0) {
+      return shuffleDelta;
+    }
+    return getTemplateIdentity(left).localeCompare(getTemplateIdentity(right));
+  });
+}
+
+function orderShowcaseTemplatesForRefresh(
+  templates: InsuranceTemplateCard[],
+  activeCategory: string,
+  seed: number,
+) {
+  if (seed === 0) {
+    return templates;
+  }
+  if (activeCategory !== "全部") {
+    return sortShowcaseTemplatesForRefresh(templates, seed + hashStringToNumber(activeCategory));
+  }
+
+  const grouped = new Map<string, InsuranceTemplateCard[]>();
+  const extras: InsuranceTemplateCard[] = [];
+  for (const template of templates) {
+    const category = template.primaryCategory || template.category;
+    if (!SHOWCASE_CATEGORY_ORDER.includes(category)) {
+      extras.push(template);
+      continue;
+    }
+    const current = grouped.get(category) || [];
+    current.push(template);
+    grouped.set(category, current);
+  }
+
+  for (const [category, categoryTemplates] of grouped) {
+    grouped.set(category, sortShowcaseTemplatesForRefresh(categoryTemplates, seed + hashStringToNumber(category)));
+  }
+
+  const ordered: InsuranceTemplateCard[] = [];
+  let hasRemaining = true;
+  while (hasRemaining) {
+    hasRemaining = false;
+    for (const category of SHOWCASE_CATEGORY_ORDER) {
+      const queue = grouped.get(category);
+      if (queue && queue.length > 0) {
+        ordered.push(queue.shift() as InsuranceTemplateCard);
+        hasRemaining = true;
+      }
+    }
+  }
+
+  return [...ordered, ...sortShowcaseTemplatesForRefresh(extras, seed)];
+}
+
+function createShowcaseRefreshSeed() {
+  if (typeof window === "undefined") {
+    return 0;
+  }
+  const buffer = new Uint32Array(1);
+  window.crypto?.getRandomValues(buffer);
+  if (buffer[0]) {
+    return buffer[0];
+  }
+  return Math.floor(Math.random() * 0xffffffff);
 }
 
 function isSupportedAspectRatio(value: unknown): value is SupportedTemplateAspectRatio {
@@ -545,32 +655,59 @@ function PosterPreview({
   const aspectClass = getAspectClassFromRatio(previewAspectRatio);
   const fitClass = previewAspectRatio === "9:16" ? "h-full max-w-full" : "w-full max-h-full";
   const imageSrc = posterState?.imageSrc || template.imageSrc;
+  const [failedImageSrc, setFailedImageSrc] = useState("");
   const isGenerating = posterState?.status === "generating";
   const isFailed = posterState?.status === "failed";
+  const fallbackImageSrc = template.imageSrc && template.imageSrc !== imageSrc ? template.imageSrc : "";
+  const imageFailed = Boolean(imageSrc && failedImageSrc === imageSrc);
+  const previewImageSrc = imageFailed && fallbackImageSrc ? fallbackImageSrc : imageSrc;
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden bg-zinc-100">
-      {imageSrc ? (
+      {previewImageSrc ? (
         <div className={`relative overflow-hidden bg-zinc-100 ${aspectClass} ${fitClass}`}>
-          {imageSrc.startsWith("/") ? (
+          {canUseNextImageForInsuranceSrc(previewImageSrc) ? (
             <Image
-              src={imageSrc}
+              src={previewImageSrc}
               alt={`${template.title}海报`}
               fill
               sizes="500px"
               className="object-contain"
               priority
+              onError={() => setFailedImageSrc(previewImageSrc)}
             />
           ) : (
             // image2 returns signed external image URLs that are not part of Next image remote config.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={imageSrc}
+              src={previewImageSrc}
               alt={`${template.title}海报`}
               className="absolute inset-0 h-full w-full object-contain"
               referrerPolicy="no-referrer"
+              onError={() => setFailedImageSrc(previewImageSrc)}
             />
           )}
+          {imageFailed && !fallbackImageSrc ? (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-100 px-5 text-center">
+              <div>
+                <p className="text-sm font-semibold text-zinc-700">生成图加载失败</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">请点击重新生成，或稍后在“我的海报”中查看。</p>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="mt-3 inline-flex h-8 items-center gap-1 rounded-md bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-700"
+                >
+                  <RefreshCw size={12} />
+                  重新生成
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {imageFailed && fallbackImageSrc ? (
+            <div className="absolute inset-x-3 top-3 z-20 rounded-full bg-white/92 px-3 py-1.5 text-center text-[11px] font-medium text-zinc-600 shadow-sm">
+              生成图加载失败，当前显示原模板图，请重试
+            </div>
+          ) : null}
           {isGenerating ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/62 backdrop-blur-[2px]">
               <div className="mx-5 flex max-w-[320px] flex-col items-center rounded-2xl border border-zinc-200 bg-white/96 px-5 py-4 text-center shadow-[0_16px_34px_rgba(15,23,42,0.14)]">
@@ -822,14 +959,57 @@ function resolveInsuranceWorkspaceImageSize(aspectRatio: SupportedTemplateAspect
   return "1024x1792";
 }
 
+function appendKnowLensRenderAttemptToken(imageUrl: string, token: string) {
+  const trimmed = imageUrl.trim();
+  if (!trimmed || !token.trim()) {
+    return trimmed;
+  }
+  const isRelativeKnowLensAsset = trimmed.startsWith("/api/workspace/image/assets/");
+  const isAbsoluteKnowLensAsset = /^https?:\/\/[^/]+\/api\/workspace\/image\/assets\//i.test(trimmed);
+  if (!isRelativeKnowLensAsset && !isAbsoluteKnowLensAsset) {
+    return trimmed;
+  }
+  try {
+    const baseOrigin =
+      typeof window !== "undefined" && window.location?.origin ? window.location.origin : "http://localhost";
+    const parsed = new URL(trimmed, baseOrigin);
+    parsed.searchParams.set("rk", token.trim());
+    if (isRelativeKnowLensAsset) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return parsed.toString();
+  } catch {
+    const joiner = trimmed.includes("?") ? "&" : "?";
+    return `${trimmed}${joiner}rk=${encodeURIComponent(token.trim())}`;
+  }
+}
+
 function getInsuranceWorkspaceReadyImageUrl(payload: InsuranceWorkspaceImageJobPayload | null) {
   const readyStatuses = new Set(["asset_ready", "completed", "success", "succeeded"]);
   const readyTask = payload?.tasks?.find((task) => {
     const status = (task.status || "").trim().toLowerCase();
-    const imageUrl = task.imageUrl || task.renderUrl || task.rawImageUrl || "";
+    const imageUrl =
+      task.renderUrl ||
+      task.render_url ||
+      task.imageUrl ||
+      task.image_url ||
+      task.rawImageUrl ||
+      task.raw_image_url ||
+      "";
     return imageUrl && (!status || readyStatuses.has(status));
   });
-  return readyTask?.imageUrl || readyTask?.renderUrl || readyTask?.rawImageUrl || "";
+  const imageUrl =
+    readyTask?.renderUrl ||
+    readyTask?.render_url ||
+    readyTask?.imageUrl ||
+    readyTask?.image_url ||
+    readyTask?.rawImageUrl ||
+    readyTask?.raw_image_url ||
+    "";
+  return appendKnowLensRenderAttemptToken(
+    imageUrl,
+    `insurance-${payload?.job?.id || readyTask?.taskId || Date.now()}`,
+  );
 }
 
 function getInsuranceWorkspaceError(payload: InsuranceWorkspaceImageJobPayload | null) {
@@ -936,7 +1116,7 @@ async function pollInsuranceWorkspaceImageJob(jobId: string, initialPayload: Ins
     }
   }
 
-  throw new Error("IMAGE_JOB_POLL_TIMEOUT: 图片生成超时，请稍后在“我的”中查看或重新生成。");
+  throw new Error("IMAGE_JOB_POLL_TIMEOUT: 图片生成超时，请稍后在“我的海报”中查看或重新生成。");
 }
 
 async function generateInsurancePosterViaWorkspaceImageJob({
@@ -1048,12 +1228,17 @@ export function InsuranceTemplateGallery({
   const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
   const [membershipPaywallOpen, setMembershipPaywallOpen] = useState(false);
   const [membershipPaywallAction, setMembershipPaywallAction] = useState<MembershipGateAction>("generate");
+  const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
   const templateByTitle = useMemo(() => new Map(templates.map((template) => [template.title, template])), [templates]);
   const filteredTemplates = useMemo(() => {
-    return templates.filter((template) => templateMatchesCategory(template, activeCategory));
-  }, [activeCategory, templates]);
+    const matchedTemplates = templates.filter((template) => templateMatchesCategory(template, activeCategory));
+    if (isMineMode) {
+      return matchedTemplates;
+    }
+    return orderShowcaseTemplatesForRefresh(matchedTemplates, activeCategory, showcaseRefreshSeed);
+  }, [activeCategory, isMineMode, showcaseRefreshSeed, templates]);
   const myPosterRecords = useMemo(() => {
     const records: MyPosterRecord[] = [];
     for (const [templateKey, state] of Object.entries(posterStateByTitle)) {
@@ -1118,6 +1303,13 @@ export function InsuranceTemplateGallery({
     }
     return true;
   };
+
+  useEffect(() => {
+    if (isMineMode) {
+      return;
+    }
+    queueMicrotask(() => setShowcaseRefreshSeed(createShowcaseRefreshSeed()));
+  }, [isMineMode]);
   const activeTemplatePremium = activeTemplate ? isTemplatePremium(activeTemplate) : false;
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
 
@@ -1950,9 +2142,11 @@ export function InsuranceTemplateGallery({
                       <h3 className="text-[13px] font-medium leading-5 text-zinc-900 sm:text-[15px] sm:leading-6">
                         {record.posterTitle || record.template.title}
                       </h3>
-                      <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
-                        {record.posterDescription || "已生成的保险海报记录"}
-                      </p>
+                      {record.posterDescription ? (
+                        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
+                          {record.posterDescription}
+                        </p>
+                      ) : null}
                       <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500 sm:mt-3 sm:text-xs">
                         <span>{record.isCurrent ? "最新生成" : "历史记录"}</span>
                         <span className="shrink-0 whitespace-nowrap tabular-nums">{formatGeneratedPosterTime(record.createdAt)}</span>
@@ -2270,7 +2464,7 @@ export function InsuranceTemplateGallery({
                         className="relative h-16 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 transition hover:border-zinc-400"
                         title={new Date(item.createdAt).toLocaleString("zh-CN")}
                       >
-                        {item.imageSrc.startsWith("/") ? (
+                        {canUseNextImageForInsuranceSrc(item.imageSrc) ? (
                           <Image src={item.imageSrc} alt="" fill sizes="44px" className="object-cover" />
                         ) : (
                           // image2 history items can be signed external URLs.

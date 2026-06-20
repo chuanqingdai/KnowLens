@@ -284,26 +284,56 @@ function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
   const title = template.title || "";
 
   if (imageSrc.includes("/father-")) {
-    return 10_000 + getTemplateFileNumber(template, "father");
+    return 10_000;
   }
   if (imageSrc.includes("/xiazhi-")) {
-    return 9_000 + getTemplateFileNumber(template, "xiazhi");
+    return 9_000;
   }
   if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) {
-    return 8_000 + getTemplateFileNumber(template, "duanwu-free");
+    return 8_000;
   }
   if (imageSrc.includes("/duanwu-")) {
-    return 7_000 + getTemplateFileNumber(template, "duanwu");
+    return 7_000;
   }
 
   return 0;
 }
 
-function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[]) {
+function hashStringToNumber(input: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function getTemplateShuffleScore(template: InsuranceTemplateCard, seed: number) {
+  const identity = getTemplateIdentity(template);
+  return hashStringToNumber(`${seed}:${identity}`);
+}
+
+function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: number) {
   return [...templates].sort((left, right) => {
     const priorityDelta = getSeasonalTemplatePriority(right) - getSeasonalTemplatePriority(left);
     if (priorityDelta !== 0) {
       return priorityDelta;
+    }
+    const shuffleDelta = getTemplateShuffleScore(left, seed) - getTemplateShuffleScore(right, seed);
+    if (shuffleDelta !== 0) {
+      return shuffleDelta;
+    }
+    const fileNumberDelta =
+      getTemplateFileNumber(right, "father") +
+      getTemplateFileNumber(right, "xiazhi") +
+      getTemplateFileNumber(right, "duanwu-free") +
+      getTemplateFileNumber(right, "duanwu") -
+      (getTemplateFileNumber(left, "father") +
+        getTemplateFileNumber(left, "xiazhi") +
+        getTemplateFileNumber(left, "duanwu-free") +
+        getTemplateFileNumber(left, "duanwu"));
+    if (fileNumberDelta !== 0) {
+      return fileNumberDelta;
     }
     return 0;
   });
@@ -326,7 +356,7 @@ function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTempl
   });
 }
 
-function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[]) {
+function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[], seed: number) {
   const categoryOrder = ["节日", "节气", "日签", "活动", "产品", "健康", "保险", "重疾", "品宣", "生日"];
   const grouped = new Map<string, InsuranceTemplateCard[]>();
   const extras: InsuranceTemplateCard[] = [];
@@ -343,7 +373,7 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
   }
 
   for (const [category, templates] of grouped) {
-    grouped.set(category, sortTemplatesWithinCategory(templates));
+    grouped.set(category, sortTemplatesWithinCategory(templates, seed + hashStringToNumber(category)));
   }
 
   const ordered: InsuranceTemplateCard[] = [];
@@ -359,11 +389,12 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
     }
   }
 
-  return [...ordered, ...sortTemplatesWithinCategory(extras)];
+  return [...ordered, ...sortTemplatesWithinCategory(extras, seed)];
 }
 
 const visibleTemplates = orderInsuranceTemplatesForShowcase(
   applyInsuranceTemplateAccessStrategy(baseTemplates.filter(hasAvailableTemplateImage)),
+  0,
 );
 
 const showcaseCategories = [
