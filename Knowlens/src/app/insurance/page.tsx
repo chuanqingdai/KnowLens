@@ -8,6 +8,11 @@ import { activityTemplates } from "@/lib/insurance-activity-templates";
 import { criticalIllnessTemplates } from "@/lib/insurance-critical-illness-templates";
 import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
 import { festivalTemplates } from "@/lib/insurance-festival-templates";
+import { gaoding067InsuranceTemplates } from "@/lib/insurance-gaoding-067-templates";
+import { gaoding068InsuranceTemplates } from "@/lib/insurance-gaoding-068-templates";
+import { gaodingExtractedInsuranceTemplates } from "@/lib/insurance-gaoding-extracted-templates";
+import { gaodingFinanceInsuranceTemplates } from "@/lib/insurance-gaoding-finance-templates";
+import { gaodingPensionInsuranceTemplates } from "@/lib/insurance-gaoding-pension-templates";
 import { businessInsuranceTemplates } from "@/lib/insurance-business-templates";
 import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
@@ -16,6 +21,8 @@ import { productScienceTemplates } from "@/lib/insurance-product-science-templat
 import { productTemplates } from "@/lib/insurance-product-templates";
 import { solarTermTemplates } from "@/lib/insurance-solar-term-templates";
 import { wealthProductTemplates } from "@/lib/insurance-wealth-product-templates";
+import { insuranceXibaoSimpleTemplates } from "@/lib/insurance-xibao-simple-templates";
+import { insuranceXibaoTemplates } from "@/lib/insurance-xibao-templates";
 
 const siteOrigin = "https://knowlens.ai";
 const pagePath = "/insurance";
@@ -71,6 +78,13 @@ export const metadata: Metadata = {
 };
 
 const baseTemplates: InsuranceTemplateCard[] = [
+  ...(gaodingFinanceInsuranceTemplates as InsuranceTemplateCard[]),
+  ...(gaodingPensionInsuranceTemplates as InsuranceTemplateCard[]),
+  ...(insuranceXibaoSimpleTemplates as InsuranceTemplateCard[]),
+  ...(insuranceXibaoTemplates as InsuranceTemplateCard[]),
+  ...(gaoding068InsuranceTemplates as InsuranceTemplateCard[]),
+  ...(gaoding067InsuranceTemplates as InsuranceTemplateCard[]),
+  ...(gaodingExtractedInsuranceTemplates as InsuranceTemplateCard[]),
   ...(festivalTemplates as InsuranceTemplateCard[]),
   ...(dailyQuoteTemplates as InsuranceTemplateCard[]),
   ...(solarTermTemplates as InsuranceTemplateCard[]),
@@ -278,6 +292,21 @@ function getTemplateFileNumber(template: InsuranceTemplateCard, prefix: string) 
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
+function getRecentTemplatePriority(template: InsuranceTemplateCard) {
+  const gaodingMatch = template.imageSrc?.match(/\/insurance\/posters\/gaoding-(\d+)\.png$/);
+  if (!gaodingMatch) {
+    return 0;
+  }
+  const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+  if (fileNumber >= 151) return 600;
+  if (fileNumber >= 121) return 550;
+  if (fileNumber >= 111) return 500;
+  if (fileNumber >= 91) return 450;
+  if (fileNumber >= 61) return 400;
+  if (fileNumber >= 31) return 350;
+  return 300;
+}
+
 function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
   const imageSrc = template.imageSrc || "";
   const secondaryCategory = template.secondaryCategory || "";
@@ -319,6 +348,10 @@ function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: n
     if (priorityDelta !== 0) {
       return priorityDelta;
     }
+    const recentDelta = getRecentTemplatePriority(right) - getRecentTemplatePriority(left);
+    if (recentDelta !== 0) {
+      return recentDelta;
+    }
     const shuffleDelta = getTemplateShuffleScore(left, seed) - getTemplateShuffleScore(right, seed);
     if (shuffleDelta !== 0) {
       return shuffleDelta;
@@ -357,7 +390,49 @@ function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTempl
 }
 
 function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[], seed: number) {
-  const categoryOrder = ["节日", "节气", "日签", "活动", "产品", "健康", "保险", "重疾", "品宣", "生日"];
+  const categoryOrder = [
+    "节日",
+    "节气",
+    "日签",
+    "喜报",
+    "理财",
+    "养老",
+    "活动",
+    "产品",
+    "理赔",
+    "车险",
+    "健康",
+    "保险",
+    "重疾",
+    "品宣",
+    "生日",
+  ];
+  const categoryRoundOrder = [
+    "节日",
+    "节气",
+    "日签",
+    "节日",
+    "节气",
+    "日签",
+    "喜报",
+    "理财",
+    "养老",
+    "节日",
+    "节气",
+    "日签",
+    "活动",
+    "产品",
+    "理赔",
+    "车险",
+    "节日",
+    "节气",
+    "日签",
+    "健康",
+    "保险",
+    "重疾",
+    "品宣",
+    "生日",
+  ];
   const grouped = new Map<string, InsuranceTemplateCard[]>();
   const extras: InsuranceTemplateCard[] = [];
 
@@ -380,7 +455,7 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
   let hasRemaining = true;
   while (hasRemaining) {
     hasRemaining = false;
-    for (const category of categoryOrder) {
+    for (const category of categoryRoundOrder) {
       const queue = grouped.get(category);
       if (queue && queue.length > 0) {
         ordered.push(queue.shift() as InsuranceTemplateCard);
@@ -406,6 +481,11 @@ const showcaseCategories = [
   "节气",
   "活动",
   "产品",
+  "喜报",
+  "理赔",
+  "车险",
+  "养老",
+  "理财",
   "健康",
   "保险",
   "重疾",

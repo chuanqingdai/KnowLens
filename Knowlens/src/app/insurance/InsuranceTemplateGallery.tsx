@@ -101,7 +101,49 @@ type BillingCreditsPayload = {
   } | null;
 };
 
-const SHOWCASE_CATEGORY_ORDER = ["节日", "节气", "日签", "活动", "产品", "健康", "保险", "重疾", "品宣", "生日"];
+const SHOWCASE_CATEGORY_ORDER = [
+  "节日",
+  "节气",
+  "日签",
+  "喜报",
+  "理财",
+  "养老",
+  "活动",
+  "产品",
+  "理赔",
+  "车险",
+  "健康",
+  "保险",
+  "重疾",
+  "品宣",
+  "生日",
+];
+const SHOWCASE_CATEGORY_ROUND_ORDER = [
+  "节日",
+  "节气",
+  "日签",
+  "节日",
+  "节气",
+  "日签",
+  "喜报",
+  "理财",
+  "养老",
+  "节日",
+  "节气",
+  "日签",
+  "活动",
+  "产品",
+  "理赔",
+  "车险",
+  "节日",
+  "节气",
+  "日签",
+  "健康",
+  "保险",
+  "重疾",
+  "品宣",
+  "生日",
+];
 
 type InsuranceWorkspaceImageTask = {
   taskId?: string;
@@ -269,6 +311,11 @@ const emptyCategoryDescriptions: Record<string, string> = {
   节气: "适合二十四节气问候、健康提醒和轻量品牌露出。",
   活动: "适合沙龙邀约、直播预告、客户答疑会和报名转化。",
   产品: "适合保险产品亮点说明、配置建议和方案介绍。",
+  喜报: "适合保险团队业绩战报、签单捷报、荣誉榜单和增员表彰。",
+  理赔: "适合理赔流程、报案方式、材料清单和理赔案例说明。",
+  车险: "适合车险产品对比、续保提醒、车主服务和用车风险教育。",
+  养老: "适合养老金规划、年金险说明、养老现金流和退休安排。",
+  理财: "适合存款保险、年金分红、寿险投资价值和财富规划科普。",
   健康: "适合健康科普、疾病预防、体检提醒和客户教育。",
   保险: "适合保险知识科普、投保提醒、理赔服务和合规提示。",
   重疾: "适合重疾知识拆解、配置提醒和重疾险客户教育。",
@@ -351,9 +398,7 @@ function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory
   if (activeCategory === "全部") {
     return true;
   }
-  return [template.primaryCategory, template.category, template.secondaryCategory].some((value) =>
-    value ? value.includes(activeCategory) || activeCategory.includes(value) : false,
-  );
+  return [template.primaryCategory, template.category].some((value) => value === activeCategory);
 }
 
 function getTemplateIdentity(template: InsuranceTemplateCard) {
@@ -385,11 +430,30 @@ function getClientSeasonalPriority(template: InsuranceTemplateCard) {
   return 0;
 }
 
+function getClientRecentTemplatePriority(template: InsuranceTemplateCard) {
+  const gaodingMatch = template.imageSrc?.match(/\/insurance\/posters\/gaoding-(\d+)\.png$/);
+  if (!gaodingMatch) {
+    return 0;
+  }
+  const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+  if (fileNumber >= 151) return 600;
+  if (fileNumber >= 121) return 550;
+  if (fileNumber >= 111) return 500;
+  if (fileNumber >= 91) return 450;
+  if (fileNumber >= 61) return 400;
+  if (fileNumber >= 31) return 350;
+  return 300;
+}
+
 function sortShowcaseTemplatesForRefresh(templates: InsuranceTemplateCard[], seed: number) {
   return [...templates].sort((left, right) => {
     const priorityDelta = getClientSeasonalPriority(right) - getClientSeasonalPriority(left);
     if (priorityDelta !== 0) {
       return priorityDelta;
+    }
+    const recentDelta = getClientRecentTemplatePriority(right) - getClientRecentTemplatePriority(left);
+    if (recentDelta !== 0) {
+      return recentDelta;
     }
     const shuffleDelta = getShowcaseShuffleScore(left, seed) - getShowcaseShuffleScore(right, seed);
     if (shuffleDelta !== 0) {
@@ -432,7 +496,7 @@ function orderShowcaseTemplatesForRefresh(
   let hasRemaining = true;
   while (hasRemaining) {
     hasRemaining = false;
-    for (const category of SHOWCASE_CATEGORY_ORDER) {
+    for (const category of SHOWCASE_CATEGORY_ROUND_ORDER) {
       const queue = grouped.get(category);
       if (queue && queue.length > 0) {
         ordered.push(queue.shift() as InsuranceTemplateCard);

@@ -22,6 +22,7 @@ const templateExportArg = readCliValue("--template-export") || "criticalIllnessT
 const manifestArg = readCliValue("--manifest");
 const timeoutEnvArg = readCliValue("--timeout-env") || "INSURANCE_CRITICAL_IMAGE_TIMEOUT_MS";
 const timeoutMsArg = readCliValue("--timeout-ms");
+const responseFormatArg = readCliValue("--response-format") || "url";
 const providerTimeoutMs = Number.parseInt(timeoutMsArg || process.env[timeoutEnvArg] || "360000", 10);
 
 const sizeByRatio = {
@@ -255,6 +256,7 @@ function parseGeneratedImage(payload) {
 }
 
 async function generateImage({ endpoint, apiKey, model, prompt, size }) {
+  const responseFormat = responseFormatArg === "b64_json" ? "b64_json" : "url";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
   const response = await fetch(endpoint, {
@@ -270,7 +272,7 @@ async function generateImage({ endpoint, apiKey, model, prompt, size }) {
       size,
       quality: "standard",
       n: 1,
-      response_format: "url",
+      response_format: responseFormat,
     }),
   }).finally(() => clearTimeout(timeout));
   const rawText = await response.text();
