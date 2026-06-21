@@ -16,7 +16,7 @@ export function createInsuranceTemplateFormState(template) {
 
 export function buildInsurancePosterPrompt(template, category, form = createInsuranceTemplateFormState(template)) {
   const aspectRatio = form.aspectRatio || template.aspectRatio || "9:16";
-  const stylePrompt = form.stylePrompt
+  const rawStylePrompt = form.stylePrompt
     ? `${form.styleName || "Selected style"}: ${form.stylePrompt}`
     : template.prompt;
   const title = typeof form.title === "string" ? form.title.trim() : "";
@@ -25,7 +25,7 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
     ? form.rows.map((row) => (typeof row === "string" ? row.trim() : "")).filter(Boolean)
     : [];
   const auxiliaryInfo = typeof form.auxiliaryInfo === "string" ? form.auxiliaryInfo.trim() : "";
-  const illustration = typeof form.illustration === "string" ? form.illustration.trim() : "";
+  const visualLayout = typeof form.illustration === "string" ? form.illustration.trim() : "";
   const resolvedOrganizationName =
     typeof form.organizationName === "string" ? form.organizationName.trim() : organizationName;
   const coreCount = rows.length;
@@ -36,28 +36,13 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
     auxiliaryInfo,
     resolvedOrganizationName,
   ].filter(Boolean);
-  const compositionParts = [
-    title ? "place the title as the strongest visual text" : "",
-    description ? "place the subtitle below or near the title" : "",
-    rows.length ? "present core information as readable lines, icon cards, or structured modules, with each item treated as one short headline plus one concise explanation when the copy contains a colon" : "",
-    auxiliaryInfo || resolvedOrganizationName ? "keep footer text small and restrained" : "",
-    !auxiliaryInfo && !resolvedOrganizationName ? "use the lower area for illustration, atmosphere, or clean breathing space instead of footer copy" : "",
-  ].filter(Boolean);
-  const layoutAvoidMixing = [
-    description ? "subtitle" : "",
-    auxiliaryInfo ? "auxiliary information" : "",
-    resolvedOrganizationName ? "organization name" : "",
-  ].filter(Boolean);
-  const coreCountGuidance = coreCount
-    ? `The provided core information count is ${coreCount}. Insurance posters may naturally use 3 to 6 core groups depending on category, copy density, and aspect ratio; use the provided count exactly, without forcing four groups.`
-    : "";
-  const layoutConstraint = rows.length
-    ? `Layout constraints: The core content area contains exactly the core information from the whitelist. ${coreCountGuidance} Do not invent a fixed count or add unprovided items${layoutAvoidMixing.length ? `, and do not mix ${layoutAvoidMixing.join(", ")} into the core content area` : ""}.`
-    : "Layout constraints: Use only the provided whitelist text. Do not invent core points, labels, numbers, subtitles, footer text, or explanatory copy.";
+  const copyConstraint = rows.length
+    ? `Copy/content rule: Use the provided title, subtitle, and ${coreCount} core information items as the only content source. Image2 may choose the best visual hierarchy, grouping, chart/table/card treatment, and spacing for readability, but must not add unprovided facts, figures, labels, or marketing claims.`
+    : "Copy/content rule: Use only the provided title/subtitle/footer text. Do not invent core points, labels, numbers, subtitles, footer text, or explanatory copy.";
   const footerTexts = [auxiliaryInfo, resolvedOrganizationName].filter(Boolean);
   const footerConstraint = footerTexts.length
-    ? `Footer constraints: The bottom footer must show ${footerTexts.map((copy) => `「${copy}」`).join(" and ")} exactly once. If space is tight, reduce footer font size or place footer text on two lines. Do not replace footer text with any insurance company, brand, logo, watermark, license name, or placeholder text. Do not attach icons, badges, buttons, labels, or card containers to footer text.`
-    : "Footer constraints: Auxiliary information and organization name are empty. Do not render footer text, footer bar, company, brand, logo, watermark, license name, placeholder text, or any copy that looks like a disclaimer. Rebalance the layout naturally without leaving an empty footer slot.";
+    ? `Footer rule: If a footer is visually appropriate, show ${footerTexts.map((copy) => `「${copy}」`).join(" and ")} exactly once.`
+    : "Footer rule: No auxiliary information or organization name is provided; do not add disclaimer, company, logo, watermark, or placeholder footer text.";
   const avoidFieldLabels = [
     title ? "标题" : "",
     description ? "副标题" : "",
@@ -71,19 +56,23 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
         ...visibleCopy.map((copy) => `「${copy}」`),
       ]
     : ["Text: No visible text is provided. Do not render any text, label, number, company name, logo text, watermark, or placeholder copy."];
-  const subjectLine = illustration ? `Subject/illustration: ${illustration}` : "";
+  const visualLayoutLine = visualLayout
+    ? `Visual guidance: ${visualLayout} Treat this as high-level art direction and reference imagery, not a rigid wireframe.`
+    : "";
+  const image2LayoutRule =
+    "Layout: Trust Image2's native layout ability. Create a polished poster with one clear visual focus, integrated infographic composition, readable hierarchy, natural whitespace, and a strong top-to-bottom scan path. Do not overfit to a mechanical grid if a more editorial layout looks better.";
 
   return [
     "Use case: ads-marketing",
     `Asset type: Chinese insurance marketing poster, ${aspectRatio} layout`,
     `Primary request: Create a polished insurance poster for this scene. Scene category is context only and must not appear as visible text: ${category} / ${template.secondaryCategory}.`,
-    `Style/medium: ${stylePrompt} Premium commercial insurance poster, cohesive visual system, refined Chinese typography, harmonious palette, soft lighting, clean hierarchy.`,
-    `Composition/framing: ${compositionParts.length ? `${compositionParts.join("; ")}. ` : ""}Use a stable mobile poster layout with clear negative space.`,
-    subjectLine,
+    `Style/medium: ${rawStylePrompt} Premium commercial insurance poster, cohesive visual system, refined Chinese typography, harmonious palette, soft lighting, clean hierarchy.`,
+    visualLayoutLine,
+    image2LayoutRule,
     ...textWhitelistLines,
-    layoutConstraint,
+    copyConstraint,
     footerConstraint,
-    `Avoid: ${avoidFieldLabels.length ? `visible field labels such as ${avoidFieldLabels.join("、")}; ` : ""}visible category words such as 分类、一级分类、二级分类、品宣; real insurance company names; any text or numbers inside illustrations, icons, shields, documents, badges, stairs, cards, or backgrounds.`,
+    `Avoid: ${avoidFieldLabels.length ? `visible field labels such as ${avoidFieldLabels.join("、")}; ` : ""}visible category words such as 分类、一级分类、二级分类、品宣; real insurance company names; unprovided text or numbers inside decorative illustrations, icons, shields, documents, badges, stairs, cards, or backgrounds.`,
     "Quality: high-resolution, elegant, unified, professional, trustworthy Chinese insurance marketing design, crisp readable typography, balanced spacing, no clutter, no watermark, no fake logo, no fabricated numbers or extra copy.",
   ].filter(Boolean).join("\n");
 }

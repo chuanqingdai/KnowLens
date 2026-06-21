@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-19T23:47:24.498Z",
+  "results": [
+    {
+      "title": "小红书保险科普小红书封面配图",
+      "imageSrc": "/insurance/posters/yewu-86.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2031934,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:41:00.643Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险理赔资料准备清单知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-87.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2202100,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:41:57.799Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险保单体检清单知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-88.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2278110,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:42:55.125Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险家庭保障顺序知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-89.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3170985,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:46:20.100Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险企业团险福利关怀知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-90.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2313151,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:47:24.498Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

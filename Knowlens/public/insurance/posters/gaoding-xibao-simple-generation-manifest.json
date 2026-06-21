@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-06-21T00:52:08.220Z",
+  "results": [
+    {
+      "title": "喜报",
+      "imageSrc": "/insurance/posters/gaoding-111.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2998660,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "贺报",
+      "imageSrc": "/insurance/posters/gaoding-112.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3100098,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "荣耀战报",
+      "imageSrc": "/insurance/posters/gaoding-113.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2841716,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "捷报",
+      "imageSrc": "/insurance/posters/gaoding-114.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3080169,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "喜报",
+      "imageSrc": "/insurance/posters/gaoding-115.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3268174,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "喜讯",
+      "imageSrc": "/insurance/posters/gaoding-116.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3137726,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "贺报",
+      "imageSrc": "/insurance/posters/gaoding-117.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2832351,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "喜报",
+      "imageSrc": "/insurance/posters/gaoding-118.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3118629,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "战报",
+      "imageSrc": "/insurance/posters/gaoding-119.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3010865,
+      "skipped": true,
+      "normalized": false
+    },
+    {
+      "title": "喜报",
+      "imageSrc": "/insurance/posters/gaoding-120.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2801974,
+      "skipped": true,
+      "normalized": false
+    }
+  ],
+  "failures": []
+}

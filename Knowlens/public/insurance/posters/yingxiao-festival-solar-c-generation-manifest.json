@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-20T02:48:38.051Z",
+  "results": [
+    {
+      "title": "夏至安康，愿长夏生欢",
+      "imageSrc": "/insurance/posters/yingxiao-61.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3398153,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:44:24.704Z",
+      "normalized": true
+    },
+    {
+      "title": "夏至已至，愿心有清凉",
+      "imageSrc": "/insurance/posters/yingxiao-62.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2799323,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:45:32.092Z",
+      "normalized": true
+    },
+    {
+      "title": "夏至晴好，愿日日安然",
+      "imageSrc": "/insurance/posters/yingxiao-63.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3347315,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:46:28.932Z",
+      "normalized": true
+    },
+    {
+      "title": "夏至清和，愿家人常安",
+      "imageSrc": "/insurance/posters/yingxiao-64.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3161641,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:47:37.630Z",
+      "normalized": true
+    },
+    {
+      "title": "夏至风来，愿诸事顺遂",
+      "imageSrc": "/insurance/posters/yingxiao-65.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3248529,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:48:38.051Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

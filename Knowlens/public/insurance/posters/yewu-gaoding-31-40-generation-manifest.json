@@ -1,0 +1,122 @@
+{
+  "generatedAt": "2026-06-20T03:45:26.340Z",
+  "results": [
+    {
+      "title": "保险理赔案例解析",
+      "imageSrc": "/insurance/posters/yewu-31.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2720904,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:32:48.226Z",
+      "normalized": true
+    },
+    {
+      "title": "财富恒久远 安享每一程",
+      "imageSrc": "/insurance/posters/yewu-32.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2703896,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:33:56.675Z",
+      "normalized": true
+    },
+    {
+      "title": "规划养老 安享未来",
+      "imageSrc": "/insurance/posters/yewu-33.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2513723,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:35:03.102Z",
+      "normalized": true
+    },
+    {
+      "title": "保险必读百科",
+      "imageSrc": "/insurance/posters/yewu-34.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2234250,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:35:58.943Z",
+      "normalized": true
+    },
+    {
+      "title": "守护家庭 托付安心",
+      "imageSrc": "/insurance/posters/yewu-35.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3189575,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:37:04.753Z",
+      "normalized": true
+    },
+    {
+      "title": "爱在山中 陪伴守护",
+      "imageSrc": "/insurance/posters/yewu-36.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2620263,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:38:12.044Z",
+      "normalized": true
+    },
+    {
+      "title": "保险科普",
+      "imageSrc": "/insurance/posters/yewu-37.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2126844,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:39:13.181Z",
+      "normalized": true
+    },
+    {
+      "title": "家庭财产保险 守护爱家",
+      "imageSrc": "/insurance/posters/yewu-39.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2624009,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:43:55.841Z",
+      "normalized": true
+    },
+    {
+      "title": "保险消费者安全教育",
+      "imageSrc": "/insurance/posters/yewu-40.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2506559,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:45:26.340Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "长期医疗险",
+      "imageSrc": "/insurance/posters/yewu-38.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "response_format=url requested but image data[0] still contains b64_json; check RESPONSE_CACHE_IMAGE_ENABLED, RESPONSE_CACHE_IMAGE_DIRECTORY and RESPONSE_CACHE_IMAGE_BASEURL"
+    }
+  ]
+}

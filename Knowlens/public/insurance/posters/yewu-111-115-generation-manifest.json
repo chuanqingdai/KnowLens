@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-06-20T01:02:00.155Z",
+  "results": [
+    {
+      "title": "金融保险宣传推广科技风海报",
+      "imageSrc": "/insurance/posters/yewu-111.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2198216,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T00:55:01.553Z",
+      "normalized": true
+    },
+    {
+      "title": "金融汽车保险理赔知识科普介绍宣传长图海报",
+      "imageSrc": "/insurance/posters/yewu-112.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2251555,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T00:55:59.063Z",
+      "normalized": true
+    },
+    {
+      "title": "金融重疾保险知识科普2.5D手机海报套装",
+      "imageSrc": "/insurance/posters/yewu-113.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2385308,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T00:57:00.880Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险理赔须知注意事项科普手机海报套装",
+      "imageSrc": "/insurance/posters/yewu-115.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2322749,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:02:00.155Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融保险政策资讯科技活力手机海报",
+      "imageSrc": "/insurance/posters/yewu-114.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

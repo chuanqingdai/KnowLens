@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-06-20T01:21:28.111Z",
+  "results": [
+    {
+      "title": "金融车险购买攻略避坑指南宣传海报",
+      "imageSrc": "/insurance/posters/yewu-52.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2501536,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:18:25.608Z",
+      "normalized": true
+    },
+    {
+      "title": "金融重疾险理赔案例知识科普海报",
+      "imageSrc": "/insurance/posters/yewu-53.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2497595,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:19:27.466Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险泛知识科普简约海报",
+      "imageSrc": "/insurance/posters/yewu-54.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1305202,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:20:19.698Z",
+      "normalized": true
+    },
+    {
+      "title": "金融医疗保险问题解答知识科普插画海报",
+      "imageSrc": "/insurance/posters/yewu-55.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2831822,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:21:28.111Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融车险避坑对比指南知识科普海报",
+      "imageSrc": "/insurance/posters/yewu-51.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "fetch failed"
+    }
+  ]
+}

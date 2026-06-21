@@ -116,14 +116,20 @@ const fallbackInsuranceStyles = {
 
 function extractInsuranceStyles() {
   const source = readFileSync(styleSourcePath, "utf8");
-  const marker = "const insuranceStyleOptions";
-  const start = source.indexOf(marker);
-  if (start < 0) return fallbackInsuranceStyles;
-  const arrayStart = source.indexOf("[", start);
-  const arrayEnd = source.indexOf("\n];", arrayStart);
-  if (arrayStart < 0 || arrayEnd < 0) return fallbackInsuranceStyles;
-  const literal = source.slice(arrayStart, arrayEnd + 2);
-  const styles = Function(`"use strict"; return (${literal});`)();
+  const readStyleArray = (marker) => {
+    const start = source.indexOf(marker);
+    if (start < 0) return [];
+    const arrayStart = source.indexOf("[", start);
+    const arrayEnd = source.indexOf("\n];", arrayStart);
+    if (arrayStart < 0 || arrayEnd < 0) return [];
+    const literal = source.slice(arrayStart, arrayEnd + 2);
+    return Function(`"use strict"; return (${literal});`)();
+  };
+  const styles = [
+    ...readStyleArray("const insuranceStyleOptions"),
+    ...readStyleArray("const kepuStyleOptions"),
+  ];
+  if (!styles.length) return fallbackInsuranceStyles;
   return Object.fromEntries(styles.map((style) => [style.id, style]));
 }
 
@@ -142,8 +148,8 @@ function buildPromptWithInsuranceStyle(template) {
 
 async function loadTemplates() {
   const modulePath = resolveTemplateModulePath(templateModuleArg);
-  const module = await import(path.toNamespacedPath(modulePath));
-  const templates = module[templateExportArg];
+  const templateModule = await import(path.toNamespacedPath(modulePath));
+  const templates = templateModule[templateExportArg];
   if (!Array.isArray(templates)) {
     throw new Error(`Template export "${templateExportArg}" was not found or is not an array.`);
   }
@@ -270,7 +276,7 @@ async function generateImage({ endpoint, apiKey, model, prompt, size }) {
       model,
       prompt,
       size,
-      quality: "standard",
+      quality: "auto",
       n: 1,
       response_format: responseFormat,
     }),
@@ -323,21 +329,11 @@ async function normalizePosterImage(outputPath, aspectRatio) {
   const target = outputSizeByRatio[aspectRatio];
   if (!target) throw new Error(`Unsupported aspect ratio: ${aspectRatio}`);
   const source = readFileSync(outputPath);
-  const background = await sharp(source)
-    .resize(target.width, target.height, { fit: "cover", position: "centre" })
-    .blur(20)
-    .modulate({ brightness: 1.04, saturation: 0.82 })
-    .png()
-    .toBuffer();
-  const foreground = await sharp(source)
+  const normalized = await sharp(source)
     .resize(target.width, target.height, {
-      fit: "contain",
-      background: { r: 248, g: 250, b: 252, alpha: 0 },
+      fit: "cover",
+      position: "centre",
     })
-    .png()
-    .toBuffer();
-  const normalized = await sharp(background)
-    .composite([{ input: foreground, left: 0, top: 0 }])
     .png()
     .toBuffer();
   writeFileSync(outputPath, normalized);

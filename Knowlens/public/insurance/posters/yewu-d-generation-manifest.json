@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-06-19T16:27:58.799Z",
+  "results": [],
+  "failures": [
+    {
+      "title": "医疗险保险科普对话小红书配图",
+      "imageSrc": "/insurance/posters/yewu-34.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "fetch failed"
+    },
+    {
+      "title": "少儿医保保险科普分栏小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-35.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "response_format=url requested but image data[0] still contains b64_json; check RESPONSE_CACHE_IMAGE_ENABLED, RESPONSE_CACHE_IMAGE_DIRECTORY and RESPONSE_CACHE_IMAGE_BASEURL"
+    },
+    {
+      "title": "医疗险保险科普分栏对比小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-36.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "response_format=url requested but image data[0] still contains b64_json; check RESPONSE_CACHE_IMAGE_ENABLED, RESPONSE_CACHE_IMAGE_DIRECTORY and RESPONSE_CACHE_IMAGE_BASEURL"
+    },
+    {
+      "title": "医保保险指南保险科普小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-37.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-06-20T04:05:25.333Z",
+  "results": [
+    {
+      "title": "稳定定期寿险",
+      "imageSrc": "/insurance/posters/yewu-41.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2346580,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:46:40.380Z",
+      "normalized": true
+    },
+    {
+      "title": "一生无忧 健康保障",
+      "imageSrc": "/insurance/posters/yewu-42.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2475281,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:47:42.613Z",
+      "normalized": true
+    },
+    {
+      "title": "家庭意外险 避坑指南",
+      "imageSrc": "/insurance/posters/yewu-43.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2402482,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:48:40.982Z",
+      "normalized": true
+    },
+    {
+      "title": "存款保险",
+      "imageSrc": "/insurance/posters/yewu-44.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2294741,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:52:02.796Z",
+      "normalized": true
+    },
+    {
+      "title": "全面保障 重疾无忧",
+      "imageSrc": "/insurance/posters/yewu-45.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2251454,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:55:32.682Z",
+      "normalized": true
+    },
+    {
+      "title": "保险六大真理",
+      "imageSrc": "/insurance/posters/yewu-46.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2545456,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T03:59:44.137Z",
+      "normalized": true
+    },
+    {
+      "title": "护身福·少儿意外险",
+      "imageSrc": "/insurance/posters/yewu-47.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3064333,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:00:47.718Z",
+      "normalized": true
+    },
+    {
+      "title": "终身癌症医疗险",
+      "imageSrc": "/insurance/posters/yewu-48.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2354671,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:02:08.485Z",
+      "normalized": true
+    },
+    {
+      "title": "畅聊大医疗生态+",
+      "imageSrc": "/insurance/posters/yewu-49.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2853169,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:03:45.984Z",
+      "normalized": true
+    },
+    {
+      "title": "保险精英峰会",
+      "imageSrc": "/insurance/posters/yewu-50.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2555915,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:05:25.333Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

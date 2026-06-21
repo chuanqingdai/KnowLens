@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-06-19T16:38:41.160Z",
+  "results": [
+    {
+      "title": "医疗险保险科普对话小红书配图",
+      "imageSrc": "/insurance/posters/yewu-34.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2163328,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:36:35.557Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险险种科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-43.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1501420,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:37:41.453Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "父母保险怎么挑保险分享大字小红书封面小红书",
+      "imageSrc": "/insurance/posters/yewu-49.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "fetch failed"
+    }
+  ]
+}

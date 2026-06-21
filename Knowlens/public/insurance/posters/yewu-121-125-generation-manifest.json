@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-06-20T01:12:56.432Z",
+  "results": [
+    {
+      "title": "金融保险政策资讯科技活力手机海报",
+      "imageSrc": "/insurance/posters/yewu-114.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2822488,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:10:45.181Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险理赔注意事项知识科普理念推广手机海报",
+      "imageSrc": "/insurance/posters/yewu-121.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2943594,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:11:52.787Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险基金产品介绍推荐营销创意海报",
+      "imageSrc": "/insurance/posters/yewu-122.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2540422,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:12:56.432Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

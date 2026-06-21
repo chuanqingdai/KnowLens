@@ -32,6 +32,14 @@ img {
   border-radius: 10px;
 }
 
+.insurance-page-shell img {
+  border-radius: 0 !important;
+}
+
+.insurance-template-poster-image.insurance-template-poster-image {
+  border-radius: 0 !important;
+}
+
 /* Unified interactive behavior for clickable controls. */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]),

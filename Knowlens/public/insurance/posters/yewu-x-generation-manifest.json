@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-06-20T00:09:22.763Z",
+  "results": [
+    {
+      "title": "金融保险寿险配置思路知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-101.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2417356,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:57:28.867Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险宠物医疗险知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-104.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2867789,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T00:08:24.842Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险重疾复盘知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-105.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2372588,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T00:09:22.763Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融保险医保补充知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-102.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    },
+    {
+      "title": "金融保险新人顾问展业知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-103.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "response_format=url requested but image data[0] still contains b64_json; check RESPONSE_CACHE_IMAGE_ENABLED, RESPONSE_CACHE_IMAGE_DIRECTORY and RESPONSE_CACHE_IMAGE_BASEURL"
+    }
+  ]
+}

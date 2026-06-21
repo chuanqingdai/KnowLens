@@ -12,8 +12,10 @@ import { gaoding067InsuranceTemplates } from "@/lib/insurance-gaoding-067-templa
 import { gaoding068InsuranceTemplates } from "@/lib/insurance-gaoding-068-templates";
 import { gaodingExtractedInsuranceTemplates } from "@/lib/insurance-gaoding-extracted-templates";
 import { gaodingFinanceInsuranceTemplates } from "@/lib/insurance-gaoding-finance-templates";
+import { gaodingKepuInsuranceTemplates } from "@/lib/insurance-gaoding-kepu-templates";
 import { gaodingPensionInsuranceTemplates } from "@/lib/insurance-gaoding-pension-templates";
 import { businessInsuranceTemplates } from "@/lib/insurance-business-templates";
+import { hongKongInsuranceTemplates } from "@/lib/insurance-hongkong-templates";
 import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
 import { productMarketingTemplates } from "@/lib/insurance-product-marketing-templates";
@@ -29,6 +31,7 @@ const pagePath = "/insurance";
 const pageLink = `${siteOrigin}${pagePath}`;
 const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
 const heroImageUrl = `${siteOrigin}${heroImagePath}`;
+const hideHongKongInsuranceTemplates = true;
 
 export const metadata: Metadata = {
   title: "保险模板中心 | 保险营销内容生成 | KnowLens.ai",
@@ -78,6 +81,8 @@ export const metadata: Metadata = {
 };
 
 const baseTemplates: InsuranceTemplateCard[] = [
+  ...(hideHongKongInsuranceTemplates ? [] : (hongKongInsuranceTemplates as InsuranceTemplateCard[])),
+  ...(gaodingKepuInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingFinanceInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingPensionInsuranceTemplates as InsuranceTemplateCard[]),
   ...(insuranceXibaoSimpleTemplates as InsuranceTemplateCard[]),
@@ -298,6 +303,7 @@ function getRecentTemplatePriority(template: InsuranceTemplateCard) {
     return 0;
   }
   const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+  if (fileNumber >= 181) return 650;
   if (fileNumber >= 151) return 600;
   if (fileNumber >= 121) return 550;
   if (fileNumber >= 111) return 500;
@@ -312,11 +318,14 @@ function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
   const secondaryCategory = template.secondaryCategory || "";
   const title = template.title || "";
 
+  if (imageSrc.includes("/hongkong-")) {
+    return 9_500;
+  }
   if (imageSrc.includes("/father-")) {
-    return 10_000;
+    return 900;
   }
   if (imageSrc.includes("/xiazhi-")) {
-    return 9_000;
+    return 850;
   }
   if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) {
     return 8_000;
@@ -392,46 +401,54 @@ function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTempl
 function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[], seed: number) {
   const categoryOrder = [
     "节日",
-    "节气",
+    "科普",
     "日签",
     "喜报",
-    "理财",
-    "养老",
-    "活动",
+    "节气",
     "产品",
     "理赔",
+    "养老",
+    "理财",
     "车险",
-    "健康",
-    "保险",
     "重疾",
+    "健康",
     "品宣",
     "生日",
+    "活动",
+    "保险",
   ];
   const categoryRoundOrder = [
     "节日",
-    "节气",
-    "日签",
-    "节日",
-    "节气",
+    "科普",
     "日签",
     "喜报",
-    "理财",
-    "养老",
-    "节日",
     "节气",
-    "日签",
-    "活动",
     "产品",
+    "日签",
     "理赔",
+    "节日",
+    "养老",
+    "节气",
+    "理财",
+    "日签",
     "车险",
     "节日",
-    "节气",
+    "重疾",
     "日签",
     "健康",
-    "保险",
-    "重疾",
+    "节气",
     "品宣",
     "生日",
+    "产品",
+    "活动",
+    "保险",
+    "科普",
+    "理赔",
+    "养老",
+    "理财",
+    "车险",
+    "重疾",
+    "健康",
   ];
   const grouped = new Map<string, InsuranceTemplateCard[]>();
   const extras: InsuranceTemplateCard[] = [];
@@ -475,21 +492,23 @@ const visibleTemplates = orderInsuranceTemplatesForShowcase(
 const showcaseCategories = [
   "全部",
   "日签",
-  "生日",
   "节日",
-  "品宣",
   "节气",
-  "活动",
-  "产品",
+  "科普",
   "喜报",
+  "产品",
   "理赔",
-  "车险",
   "养老",
   "理财",
-  "健康",
-  "保险",
+  "车险",
   "重疾",
-];
+  "健康",
+  "品宣",
+  "生日",
+  "活动",
+  "保险",
+  "港险",
+].filter((category) => !hideHongKongInsuranceTemplates || category !== "港险");
 
 type InsurancePageProps = {
   searchParams?: Promise<{

@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-06-19T23:11:05.438Z",
+  "results": [
+    {
+      "title": "车险保险科普避坑对比指南PK对错VS小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-51.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1650701,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:02:44.166Z",
+      "normalized": true
+    },
+    {
+      "title": "车险购买保险攻略避坑指南汽车金融保险销售小红书封面",
+      "imageSrc": "/insurance/posters/yewu-52.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2662238,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:03:38.461Z",
+      "normalized": true
+    },
+    {
+      "title": "重疾险保险科普理赔案例小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-53.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2510834,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:04:36.135Z",
+      "normalized": true
+    },
+    {
+      "title": "保险科普泛知识简约小红书封面配图",
+      "imageSrc": "/insurance/posters/yewu-54.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1226322,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:06:09.877Z",
+      "normalized": true
+    },
+    {
+      "title": "金融医疗保险知识科普问题解答插画小红书配图",
+      "imageSrc": "/insurance/posters/yewu-55.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2720747,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:07:08.310Z",
+      "normalized": true
+    },
+    {
+      "title": "金融养老保险知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-57.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2465281,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:11:05.438Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融保险养老产品知识科普轻透感简约小红书配图",
+      "imageSrc": "/insurance/posters/yewu-56.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-06-19T23:13:39.650Z",
+  "results": [
+    {
+      "title": "金融保险一图读懂产品介绍插画小红书配图",
+      "imageSrc": "/insurance/posters/yewu-66.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2878205,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:05:43.526Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险理念推广投保注意事项知识科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-67.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3025116,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:08:34.450Z",
+      "normalized": true
+    },
+    {
+      "title": "金融重疾险知识科普理念推广小红书配图",
+      "imageSrc": "/insurance/posters/yewu-69.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2508240,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:12:33.370Z",
+      "normalized": true
+    },
+    {
+      "title": "企业人事养老保险科普攻略小红书配图",
+      "imageSrc": "/insurance/posters/yewu-70.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2446807,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:13:39.650Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融健康保险知识科普插画小红书配图",
+      "imageSrc": "/insurance/posters/yewu-65.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    },
+    {
+      "title": "金融保险科普小红书封面配图套系",
+      "imageSrc": "/insurance/posters/yewu-68.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-06-20T04:39:01.341Z",
+  "results": [
+    {
+      "title": "投保理念分享",
+      "imageSrc": "/insurance/posters/yewu-103.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2426028,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:39:01.340Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

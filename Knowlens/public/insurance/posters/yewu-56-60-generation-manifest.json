@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-20T01:24:27.561Z",
+  "results": [
+    {
+      "title": "金融养老保险产品知识科普简约海报",
+      "imageSrc": "/insurance/posters/yewu-56.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2467870,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:18:23.987Z",
+      "normalized": true
+    },
+    {
+      "title": "金融养老保险知识科普海报",
+      "imageSrc": "/insurance/posters/yewu-57.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2436008,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:19:19.909Z",
+      "normalized": true
+    },
+    {
+      "title": "金融重疾保险产品科普指南海报",
+      "imageSrc": "/insurance/posters/yewu-58.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2474584,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:22:31.014Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险理念推广知识科普3D海报",
+      "imageSrc": "/insurance/posters/yewu-59.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2532927,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:23:27.435Z",
+      "normalized": true
+    },
+    {
+      "title": "金融寿险知识科普理念推广海报",
+      "imageSrc": "/insurance/posters/yewu-60.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2760978,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:24:27.561Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

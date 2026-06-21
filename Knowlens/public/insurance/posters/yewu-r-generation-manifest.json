@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-06-19T23:48:20.110Z",
+  "results": [
+    {
+      "title": "金融保险零用钱投资理财科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-76.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2392024,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:41:13.719Z",
+      "normalized": true
+    },
+    {
+      "title": "金融年金保险产品科普理念推广小红书配图",
+      "imageSrc": "/insurance/posters/yewu-78.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2346350,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:46:27.757Z",
+      "normalized": true
+    },
+    {
+      "title": "金融养老保险知识科普理念推广小红书配图",
+      "imageSrc": "/insurance/posters/yewu-79.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2350319,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:47:24.150Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险新人投保指南知识科普2.5D小红书配图",
+      "imageSrc": "/insurance/posters/yewu-80.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2135002,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T23:48:20.110Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融保险知识科普手帐风小红书配图aigc",
+      "imageSrc": "/insurance/posters/yewu-77.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

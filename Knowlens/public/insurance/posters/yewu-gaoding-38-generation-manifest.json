@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-06-20T04:37:41.646Z",
+  "results": [
+    {
+      "title": "长期医疗险",
+      "imageSrc": "/insurance/posters/yewu-38.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2356724,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:37:41.645Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

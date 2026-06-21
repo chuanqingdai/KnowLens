@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-20T02:26:27.244Z",
+  "results": [
+    {
+      "title": "父亲节快乐，愿岁月温柔以待",
+      "imageSrc": "/insurance/posters/yingxiao-51.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3333367,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:22:46.302Z",
+      "normalized": true
+    },
+    {
+      "title": "父爱如山，愿家常安",
+      "imageSrc": "/insurance/posters/yingxiao-52.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2835191,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:23:35.026Z",
+      "normalized": true
+    },
+    {
+      "title": "奥林匹克日，愿热爱奔向远方",
+      "imageSrc": "/insurance/posters/yingxiao-53.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3527113,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:24:30.281Z",
+      "normalized": true
+    },
+    {
+      "title": "国际禁毒日，愿青春向阳而生",
+      "imageSrc": "/insurance/posters/yingxiao-54.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3270637,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:25:26.795Z",
+      "normalized": true
+    },
+    {
+      "title": "七一建党节，愿山河锦绣",
+      "imageSrc": "/insurance/posters/yingxiao-55.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3523358,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:26:27.244Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

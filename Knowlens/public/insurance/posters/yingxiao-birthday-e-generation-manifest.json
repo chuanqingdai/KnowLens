@@ -1,0 +1,74 @@
+{
+  "generatedAt": "2026-06-20T02:16:08.222Z",
+  "results": [
+    {
+      "title": "愿成长有收获，愿生活有安定",
+      "imageSrc": "/insurance/posters/yingxiao-46.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3083132,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:10:05.890Z",
+      "normalized": true
+    },
+    {
+      "title": "把最真诚的祝福，留给今天的你",
+      "imageSrc": "/insurance/posters/yingxiao-47.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2650643,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:10:59.637Z",
+      "normalized": true
+    },
+    {
+      "title": "今天，送你一份温柔的生日问候",
+      "imageSrc": "/insurance/posters/yingxiao-48.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2699415,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:11:58.148Z",
+      "normalized": true
+    },
+    {
+      "title": "愿新一岁的你，依旧有爱有光",
+      "imageSrc": "/insurance/posters/yingxiao-49.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2650723,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:12:59.175Z",
+      "normalized": true
+    },
+    {
+      "title": "生日快乐，愿往后皆是好时光",
+      "imageSrc": "/insurance/posters/yingxiao-50.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2807875,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:16:08.222Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "在今天，认真祝你万事胜意",
+      "imageSrc": "/insurance/posters/yingxiao-45.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "terminated"
+    }
+  ]
+}

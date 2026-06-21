@@ -1,0 +1,122 @@
+{
+  "generatedAt": "2026-06-20T04:36:10.578Z",
+  "results": [
+    {
+      "title": "财富传承 乐享未来",
+      "imageSrc": "/insurance/posters/yewu-101.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2538462,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:19:13.850Z",
+      "normalized": true
+    },
+    {
+      "title": "共创共赢",
+      "imageSrc": "/insurance/posters/yewu-102.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2557216,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:20:07.116Z",
+      "normalized": true
+    },
+    {
+      "title": "重疾险 您的性价比之选",
+      "imageSrc": "/insurance/posters/yewu-104.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2483840,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:28:38.934Z",
+      "normalized": true
+    },
+    {
+      "title": "保险进阶宝典",
+      "imageSrc": "/insurance/posters/yewu-105.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2572634,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:30:13.704Z",
+      "normalized": true
+    },
+    {
+      "title": "品质精选 年金保险",
+      "imageSrc": "/insurance/posters/yewu-106.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2448653,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:31:15.533Z",
+      "normalized": true
+    },
+    {
+      "title": "货运险",
+      "imageSrc": "/insurance/posters/yewu-107.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2572604,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:32:11.851Z",
+      "normalized": true
+    },
+    {
+      "title": "每一份珍贵都值得守护",
+      "imageSrc": "/insurance/posters/yewu-108.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2572309,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:34:12.782Z",
+      "normalized": true
+    },
+    {
+      "title": "重疾险 全新升级",
+      "imageSrc": "/insurance/posters/yewu-109.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2270318,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:35:13.094Z",
+      "normalized": true
+    },
+    {
+      "title": "投保必备指南",
+      "imageSrc": "/insurance/posters/yewu-110.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1568555,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T04:36:10.578Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "投保理念分享",
+      "imageSrc": "/insurance/posters/yewu-103.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "terminated"
+    }
+  ]
+}

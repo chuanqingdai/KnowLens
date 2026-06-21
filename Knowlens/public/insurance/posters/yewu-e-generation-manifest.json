@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-06-19T16:34:17.736Z",
+  "results": [
+    {
+      "title": "金融保险投保理念推广知识科普趣味感小红书配图",
+      "imageSrc": "/insurance/posters/yewu-41.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2600401,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:20:39.452Z",
+      "normalized": true
+    },
+    {
+      "title": "小红书保险重疾险推荐科普笔记",
+      "imageSrc": "/insurance/posters/yewu-42.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2249677,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:21:46.151Z",
+      "normalized": true
+    },
+    {
+      "title": "小红书简约插画风保险知识科普清新感小红书封面",
+      "imageSrc": "/insurance/posters/yewu-44.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2715711,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:34:17.736Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "金融保险险种科普小红书配图",
+      "imageSrc": "/insurance/posters/yewu-43.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "terminated"
+    }
+  ]
+}

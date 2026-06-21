@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-06-20T01:30:22.653Z",
+  "results": [
+    {
+      "title": "金融车险避坑对比指南知识科普海报",
+      "imageSrc": "/insurance/posters/yewu-51.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1902144,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:28:18.220Z",
+      "normalized": true
+    },
+    {
+      "title": "金融健康保险知识科普插画海报",
+      "imageSrc": "/insurance/posters/yewu-65.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2720468,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:30:22.653Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

@@ -3,10 +3,11 @@ type InsuranceAnalyticsDetails = Record<string, unknown>;
 type InsuranceAnalyticsInput = {
   action: string;
   message?: string;
+  status?: "ok" | "error" | "info";
   details?: InsuranceAnalyticsDetails;
 };
 
-export function trackInsuranceEvent({ action, message, details = {} }: InsuranceAnalyticsInput) {
+export function trackInsuranceEvent({ action, message, status = "info", details = {} }: InsuranceAnalyticsInput) {
   if (typeof window === "undefined") {
     return;
   }
@@ -30,7 +31,7 @@ export function trackInsuranceEvent({ action, message, details = {} }: Insurance
   const payload = JSON.stringify({
     category: "insurance",
     action: eventName,
-    status: "info",
+    status,
     source: "insurance",
     message,
     details: normalizedDetails,

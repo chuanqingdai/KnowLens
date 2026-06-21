@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-20T02:58:21.338Z",
+  "results": [
+    {
+      "title": "小暑安康，愿清风入怀",
+      "imageSrc": "/insurance/posters/yingxiao-66.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3360850,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:52:07.175Z",
+      "normalized": true
+    },
+    {
+      "title": "小暑初来，愿心静身安",
+      "imageSrc": "/insurance/posters/yingxiao-67.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3043174,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:55:19.562Z",
+      "normalized": true
+    },
+    {
+      "title": "小暑纳凉，愿一夏无忧",
+      "imageSrc": "/insurance/posters/yingxiao-68.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3650604,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:56:24.285Z",
+      "normalized": true
+    },
+    {
+      "title": "小暑荷香，愿岁月清甜",
+      "imageSrc": "/insurance/posters/yingxiao-69.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2779570,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:57:18.440Z",
+      "normalized": true
+    },
+    {
+      "title": "小暑清欢，愿平安常在",
+      "imageSrc": "/insurance/posters/yingxiao-70.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3293497,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T02:58:21.338Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

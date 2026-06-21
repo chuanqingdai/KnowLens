@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-06-19T16:09:54.056Z",
+  "results": [
+    {
+      "title": "推荐无忧保·老年综合意外险",
+      "imageSrc": "/insurance/posters/yewu-46.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2431200,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:04:12.774Z",
+      "normalized": true
+    },
+    {
+      "title": "保险指南保险攻略攻略趣味emoji小红书动态封面",
+      "imageSrc": "/insurance/posters/yewu-48.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2165548,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:06:54.047Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "无忧保·老年综合意外险",
+      "imageSrc": "/insurance/posters/yewu-47.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    },
+    {
+      "title": "父母保险怎么挑保险分享大字小红书封面小红书",
+      "imageSrc": "/insurance/posters/yewu-49.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    },
+    {
+      "title": "女生适合买的保险推荐收藏小红书封面",
+      "imageSrc": "/insurance/posters/yewu-50.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

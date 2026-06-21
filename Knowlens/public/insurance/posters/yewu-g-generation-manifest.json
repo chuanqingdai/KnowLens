@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-06-19T16:38:40.486Z",
+  "results": [
+    {
+      "title": "少儿医保保险科普分栏小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-35.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2905350,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:36:36.383Z",
+      "normalized": true
+    },
+    {
+      "title": "医疗险保险科普分栏对比小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-36.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1368197,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:37:38.589Z",
+      "normalized": true
+    },
+    {
+      "title": "医保保险指南保险科普小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-37.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2389534,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:38:40.486Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

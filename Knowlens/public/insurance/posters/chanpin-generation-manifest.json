@@ -1,14 +1,17 @@
 {
-  "generatedAt": "2026-06-19T14:19:11.632Z",
+  "generatedAt": "2026-06-19T14:41:48.748Z",
   "results": [
     {
-      "title": "第一次买医疗险，要问哪几个问题",
-      "imageSrc": "/insurance/posters/chanpin-40.png",
+      "title": "医保高频线上办事指南",
+      "imageSrc": "/insurance/posters/chanpin-37.png",
       "aspectRatio": "9:16",
       "size": "864x1536",
-      "bytes": 2357124,
-      "skipped": true,
-      "normalized": false
+      "bytes": 2401304,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T14:41:48.748Z",
+      "normalized": true
     }
   ],
   "failures": []

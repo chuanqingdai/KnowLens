@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-20T01:54:40.322Z",
+  "results": [
+    {
+      "title": "新的一岁，把安心也安排上",
+      "imageSrc": "/insurance/posters/yingxiao-26.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2715332,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:51:04.934Z",
+      "normalized": true
+    },
+    {
+      "title": "生日快乐，愿这一岁更从容",
+      "imageSrc": "/insurance/posters/yingxiao-31.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2734748,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:51:58.049Z",
+      "normalized": true
+    },
+    {
+      "title": "新岁开启，愿美好如约而至",
+      "imageSrc": "/insurance/posters/yingxiao-32.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2851329,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:52:52.486Z",
+      "normalized": true
+    },
+    {
+      "title": "愿你这一岁，平安顺遂",
+      "imageSrc": "/insurance/posters/yingxiao-33.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2731835,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:53:47.115Z",
+      "normalized": true
+    },
+    {
+      "title": "生日快乐，愿每天都被温柔以待",
+      "imageSrc": "/insurance/posters/yingxiao-34.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2668133,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:54:40.322Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

@@ -103,46 +103,54 @@ type BillingCreditsPayload = {
 
 const SHOWCASE_CATEGORY_ORDER = [
   "节日",
-  "节气",
+  "科普",
   "日签",
   "喜报",
-  "理财",
-  "养老",
-  "活动",
+  "节气",
   "产品",
   "理赔",
+  "养老",
+  "理财",
   "车险",
-  "健康",
-  "保险",
   "重疾",
+  "健康",
   "品宣",
   "生日",
+  "活动",
+  "保险",
 ];
 const SHOWCASE_CATEGORY_ROUND_ORDER = [
   "节日",
-  "节气",
-  "日签",
-  "节日",
-  "节气",
+  "科普",
   "日签",
   "喜报",
-  "理财",
-  "养老",
-  "节日",
   "节气",
-  "日签",
-  "活动",
   "产品",
+  "日签",
   "理赔",
+  "节日",
+  "养老",
+  "节气",
+  "理财",
+  "日签",
   "车险",
   "节日",
-  "节气",
+  "重疾",
   "日签",
   "健康",
-  "保险",
-  "重疾",
+  "节气",
   "品宣",
   "生日",
+  "产品",
+  "活动",
+  "保险",
+  "科普",
+  "理赔",
+  "养老",
+  "理财",
+  "车险",
+  "重疾",
+  "健康",
 ];
 
 type InsuranceWorkspaceImageTask = {
@@ -304,6 +312,41 @@ const insuranceStyleOptions: InsuranceStyleOption[] = [
   },
 ];
 
+const kepuStyleOptions: InsuranceStyleOption[] = [
+  {
+    id: "kepu-handdrawn-paper",
+    name: "科普手绘",
+    prompt:
+      "Use a warm hand-drawn educational poster style. warm paper beige #F3E7D0, ink black #1F1A16, muted brown #9A5B2E, olive green #7A8F5A, and soft rust #B85A32. Chinese brush-style title, tidy handwritten annotation typography, readable Chinese body text. pencil grain, watercolor wash, light paper fibers, gentle ink bleed, handmade icons, calm warm lighting, friendly knowledge-sharing mood.",
+  },
+  {
+    id: "kepu-ink-notes",
+    name: "科普墨迹",
+    prompt:
+      "Use an elegant ink-note educational poster style. rice paper white #F8EEDB, ink black #171717, tea brown #8A5A32, muted cinnabar #B6462A, and pale leaf green #9BAF78. expressive Chinese calligraphy title, clean serif-sans body typography, delicate handwritten emphasis marks. dry-brush texture, faint ink wash, paper speckles, scholarly calm atmosphere, soft natural light.",
+  },
+  {
+    id: "kepu-soft-watercolor",
+    name: "科普水彩",
+    prompt:
+      "Use a soft watercolor educational poster style. cream paper #FFF4E2, mist blue #BFDDF2, sage green #BFD3B1, warm apricot #F2C49B, and charcoal #2F2A24. gentle brush-style Chinese title, clear rounded body typography, small neat annotation text. translucent watercolor edges, light pigment blooms, soft diffusion, airy texture, approachable family advisory mood.",
+  },
+  {
+    id: "kepu-vintage-manual",
+    name: "科普手册",
+    prompt:
+      "Use a vintage knowledge-manual poster style. aged paper #EAD7B7, deep ink brown #2B2118, muted red #A44A3F, faded olive #7D8A5D, and warm cream #FFF4DF. bold Chinese serif title, legible printed body text, small stamp-like annotation typography. old book paper grain, subtle print dots, lightly faded ink, antique stationery details, trustworthy reference-book mood.",
+  },
+  {
+    id: "kepu-clean-doodle",
+    name: "科普涂鸦",
+    prompt:
+      "Use a clean doodle educational poster style. warm white #FFF9EF, graphite #333333, soft blue #8DBCE8, muted yellow #F4D77A, and gentle coral #E79A80. friendly handwritten Chinese title, crisp readable body text, simple marker-style emphasis. neat doodle icons, thin sketch lines, soft highlighter strokes, light paper texture, relaxed but professional explainer mood.",
+  },
+];
+
+const allInsuranceStyleOptions = [...insuranceStyleOptions, ...kepuStyleOptions];
+
 const emptyCategoryDescriptions: Record<string, string> = {
   日签: "适合代理人每日早安问候、客户轻触达和朋友圈日常经营。",
   生日: "适合客户生日祝福、续联问候和专属顾问关系维护。",
@@ -311,6 +354,7 @@ const emptyCategoryDescriptions: Record<string, string> = {
   节气: "适合二十四节气问候、健康提醒和轻量品牌露出。",
   活动: "适合沙龙邀约、直播预告、客户答疑会和报名转化。",
   产品: "适合保险产品亮点说明、配置建议和方案介绍。",
+  科普: "适合保险知识、家庭传承、保单规则和客户教育长图。",
   喜报: "适合保险团队业绩战报、签单捷报、荣誉榜单和增员表彰。",
   理赔: "适合理赔流程、报案方式、材料清单和理赔案例说明。",
   车险: "适合车险产品对比、续保提醒、车主服务和用车风险教育。",
@@ -359,7 +403,7 @@ function normalizeAspectRatioChoice(aspectRatio?: string): SupportedTemplateAspe
 }
 
 function getStyleOption(styleId?: string) {
-  return insuranceStyleOptions.find((style) => style.id === styleId) || insuranceStyleOptions[0];
+  return allInsuranceStyleOptions.find((style) => style.id === styleId) || insuranceStyleOptions[0];
 }
 
 function hasActiveMembership(subscription?: BillingCreditsPayload["subscription"]) {
@@ -398,7 +442,11 @@ function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory
   if (activeCategory === "全部") {
     return true;
   }
-  return [template.primaryCategory, template.category].some((value) => value === activeCategory);
+  return getTemplatePrimaryCategory(template) === activeCategory;
+}
+
+function getTemplatePrimaryCategory(template: InsuranceTemplateCard) {
+  return template.primaryCategory || template.category;
 }
 
 function getTemplateIdentity(template: InsuranceTemplateCard) {
@@ -423,8 +471,9 @@ function getClientSeasonalPriority(template: InsuranceTemplateCard) {
   const secondaryCategory = template.secondaryCategory || "";
   const title = template.title || "";
 
-  if (imageSrc.includes("/father-")) return 10_000;
-  if (imageSrc.includes("/xiazhi-")) return 9_000;
+  if (imageSrc.includes("/hongkong-")) return 9_500;
+  if (imageSrc.includes("/father-")) return 900;
+  if (imageSrc.includes("/xiazhi-")) return 850;
   if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) return 8_000;
   if (imageSrc.includes("/duanwu-")) return 7_000;
   return 0;
@@ -436,6 +485,7 @@ function getClientRecentTemplatePriority(template: InsuranceTemplateCard) {
     return 0;
   }
   const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+  if (fileNumber >= 181) return 650;
   if (fileNumber >= 151) return 600;
   if (fileNumber >= 121) return 550;
   if (fileNumber >= 111) return 500;
@@ -661,18 +711,22 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    const image = imageRef.current;
-    if (image?.complete && image.naturalWidth > 0) {
-      setLoaded(true);
-    }
+    const frame = window.requestAnimationFrame(() => {
+      const image = imageRef.current;
+      if (image?.complete && image.naturalWidth > 0) {
+        setLoaded(true);
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [originalImageSrc]);
 
   if (originalImageSrc) {
     return (
-      <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
-        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-0 animate-pulse" /> : null}
+      <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
+        {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-0" /> : null}
         {failed ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-100 px-4 text-center">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white px-4 text-center">
             <div>
               <p className="text-xs font-medium text-zinc-500">海报暂未加载</p>
               <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-zinc-400">{template.title}</p>
@@ -687,9 +741,20 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
             alt={`${template.title}海报`}
             loading={eager ? "eager" : "lazy"}
             decoding="async"
-            className="absolute inset-0 z-10 h-full w-full object-contain"
+            className="insurance-template-poster-image absolute inset-0 z-10 h-full w-full rounded-none bg-white object-cover [transform:translateZ(0)]"
             onLoad={() => setLoaded(true)}
-            onError={() => setFailed(true)}
+            onError={() => {
+              setFailed(true);
+              trackInsuranceEvent({
+                action: "template_preview_image_failed",
+                message: "Insurance template preview image failed to load.",
+                status: "error",
+                details: {
+                  ...getTemplateAnalyticsDetails(template, template.isFree !== true),
+                  imageSrc: originalImageSrc,
+                },
+              });
+            }}
             referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
           />
         )}
@@ -697,7 +762,7 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
     );
   }
 
-  return <div aria-hidden="true" className={`w-full bg-zinc-100 ${aspectClass}`} />;
+  return <div aria-hidden="true" className={`w-full bg-white ${aspectClass}`} />;
 }
 
 function PosterPreview({
@@ -764,7 +829,7 @@ function PosterPreview({
               alt={`${template.title}海报`}
               fill
               sizes="500px"
-              className={`object-contain transition-opacity duration-500 ${
+              className={`rounded-none object-contain transition-opacity duration-500 ${
                 previewImageLoaded ? "opacity-100" : "opacity-0"
               }`}
               priority
@@ -777,7 +842,7 @@ function PosterPreview({
             <img
               src={previewImageSrc}
               alt={`${template.title}海报`}
-              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-500 ${
+              className={`absolute inset-0 h-full w-full rounded-none object-contain transition-opacity duration-500 ${
                 previewImageLoaded ? "opacity-100" : "opacity-0"
               }`}
               referrerPolicy="no-referrer"
@@ -1394,6 +1459,9 @@ export function InsuranceTemplateGallery({
   const isGeneratingPoster = activePosterState?.status === "generating";
   const isGenerateActionBusy = isGeneratingPoster || isCheckingCredits;
   const selectedStyle = getStyleOption(templateForm?.styleId);
+  const availableStyleOptions = activeTemplate?.primaryCategory === "科普" || activeTemplate?.category === "科普"
+    ? [...kepuStyleOptions, ...insuranceStyleOptions]
+    : insuranceStyleOptions;
   const activePosterImageSrc = activePosterState?.imageSrc || activeTemplate?.imageSrc || "";
   const isTemplatePremium = (template: InsuranceTemplateCard) => {
     if (template.isCustom || template.isFree === true) {
@@ -1744,7 +1812,7 @@ export function InsuranceTemplateGallery({
             : "已触发下载，请查看浏览器下载记录或文件夹",
           result === "image-opened" ? 4200 : 3200,
         );
-      } catch {
+      } catch (error) {
         if (consumedDownloadCredits) {
           void refundInsuranceCredits({
             title: template.title,
@@ -1753,6 +1821,16 @@ export function InsuranceTemplateGallery({
             reason: "insurance_download_failed",
           }).catch(() => undefined);
         }
+        trackInsuranceEvent({
+          action: "template_download_failed",
+          message: "Insurance template download failed.",
+          status: "error",
+          details: {
+            ...getTemplateAnalyticsDetails(template, premium),
+            activeCategory,
+            errorMessage: error instanceof Error ? error.message : "download failed",
+          },
+        });
         showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
         return;
       }
@@ -1821,7 +1899,7 @@ export function InsuranceTemplateGallery({
             : "已触发下载，请查看浏览器下载记录或文件夹",
           result === "image-opened" ? 4200 : 3200,
         );
-      } catch {
+      } catch (error) {
         if (consumedDownloadCredits) {
           void refundInsuranceCredits({
             title: activeTemplate.title,
@@ -1830,6 +1908,16 @@ export function InsuranceTemplateGallery({
             reason: "insurance_modal_download_failed",
           }).catch(() => undefined);
         }
+        trackInsuranceEvent({
+          action: "modal_download_failed",
+          message: "Insurance modal download failed.",
+          status: "error",
+          details: {
+            ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+            selectedAspectRatio: templateForm?.aspectRatio,
+            errorMessage: error instanceof Error ? error.message : "download failed",
+          },
+        });
         showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
         return;
       }
@@ -1866,7 +1954,19 @@ export function InsuranceTemplateGallery({
             : "已触发下载，请查看浏览器下载记录或文件夹",
           result === "image-opened" ? 4200 : 3200,
         );
-      } catch {
+      } catch (error) {
+        trackInsuranceEvent({
+          action: "my_poster_download_failed",
+          message: "My generated insurance poster download failed.",
+          status: "error",
+          details: {
+            templateTitle: record.templateKey,
+            placement,
+            isCustom: Boolean(record.template.isCustom),
+            createdAt: record.createdAt,
+            errorMessage: error instanceof Error ? error.message : "download failed",
+          },
+        });
         showDownloadToast("下载未完成，请稍后重试或打开图片长按保存", 3600);
         return;
       }
@@ -2090,6 +2190,7 @@ export function InsuranceTemplateGallery({
             trackInsuranceEvent({
               action: "generate_failed",
               message: "Insurance poster generation failed.",
+              status: "error",
               details: {
                 ...generateDetails,
                 errorCode: error.code,
@@ -2110,11 +2211,11 @@ export function InsuranceTemplateGallery({
 
   const getCardLabels = (template: InsuranceTemplateCard) => {
     if (activeCategory === "全部") {
-      return [template.primaryCategory, template.secondaryCategory].filter(
+      return [getTemplatePrimaryCategory(template), template.secondaryCategory].filter(
         (label, index, labels) => label && labels.indexOf(label) === index,
       );
     }
-    return [template.secondaryCategory || template.primaryCategory];
+    return [template.secondaryCategory || getTemplatePrimaryCategory(template)];
   };
 
   const closeActiveTemplate = (reason: "close_button") => {
@@ -2142,7 +2243,7 @@ export function InsuranceTemplateGallery({
       ) : null}
 
       {!isMineMode ? (
-        <div className="mb-6 flex flex-wrap gap-2 sm:mb-8 sm:gap-3">
+        <div className="mb-5 grid grid-cols-5 gap-x-1 gap-y-2 sm:mb-7 sm:flex sm:flex-wrap sm:gap-x-2 sm:gap-y-2.5">
           {categories.map((category) => {
             const active = category === activeCategory;
             const categoryRecordCount = templates.filter((template) => templateMatchesCategory(template, category)).length;
@@ -2164,7 +2265,7 @@ export function InsuranceTemplateGallery({
                   setVisibleTemplateCount(TEMPLATE_INITIAL_LOAD_COUNT);
                   setActiveCategory(category);
                 }}
-                className={`inline-flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-medium transition sm:h-12 sm:px-6 sm:text-base ${
+                className={`inline-flex h-9 w-full items-center justify-center rounded-full px-0 text-sm font-medium transition sm:h-10 sm:w-auto sm:shrink-0 sm:px-4 sm:text-sm ${
                   active
                     ? "bg-zinc-950 text-white"
                     : "bg-transparent text-zinc-600 hover:bg-white hover:text-zinc-950"
@@ -2196,14 +2297,14 @@ export function InsuranceTemplateGallery({
                     onClick={() => openMyPosterRecord(record, "card")}
                     className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
-                    <div className={`relative w-full overflow-hidden bg-zinc-100 ${aspectClass}`}>
+                    <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={originalImageSrc}
                         alt={`${record.posterTitle || "我的海报"}海报`}
                         loading={index < TEMPLATE_INITIAL_LOAD_COUNT ? "eager" : "lazy"}
                         decoding="async"
-                        className="absolute inset-0 h-full w-full object-contain"
+                        className="insurance-template-poster-image absolute inset-0 h-full w-full rounded-none object-contain"
                         referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
                       />
                       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
@@ -2262,11 +2363,11 @@ export function InsuranceTemplateGallery({
 
                 return (
                   <article
-                    key={template.title}
+                    key={getTemplateIdentity(template)}
                     onClick={() => requestOpenTemplate(template, "card")}
                     className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
-                    <div className="relative w-full overflow-hidden bg-zinc-100">
+                    <div className="relative w-full overflow-hidden bg-white">
                       <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
                       {premium ? (
                         <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
@@ -2400,7 +2501,7 @@ export function InsuranceTemplateGallery({
                       ariaLabel="风格"
                       value={selectedStyle.id}
                       disabled={isGenerateActionBusy}
-                      options={insuranceStyleOptions.map((style) => ({
+                      options={availableStyleOptions.map((style) => ({
                         value: style.id,
                         label: style.name,
                       }))}
@@ -2458,12 +2559,12 @@ export function InsuranceTemplateGallery({
                     />
                   </FieldBlock>
 
-                  <FieldBlock label="插图元素（选填）">
+                  <FieldBlock label="视觉板式（选填）">
                     <EditableBox
                       value={templateForm.illustration}
                       minHeight="min-h-20"
                       multiline
-                      placeholder="描述海报画面元素"
+                      placeholder="描述海报视觉主体、背景元素和信息版式"
                       disabled={isGenerateActionBusy}
                       onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, illustration: value } : prev))}
                     />

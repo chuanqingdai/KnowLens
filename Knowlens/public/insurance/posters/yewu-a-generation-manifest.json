@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-06-19T16:14:50.680Z",
+  "results": [
+    {
+      "title": "养老保险科普小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-38.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2545614,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:13:36.447Z",
+      "normalized": true
+    },
+    {
+      "title": "重疾险保险科普介绍小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-39.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2385103,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-19T16:14:50.680Z",
+      "normalized": true
+    }
+  ],
+  "failures": [
+    {
+      "title": "医疗险保险科普对话小红书配图",
+      "imageSrc": "/insurance/posters/yewu-34.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    },
+    {
+      "title": "少儿医保保险科普分栏小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-35.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    },
+    {
+      "title": "医疗险保险科普分栏对比小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-36.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "terminated"
+    },
+    {
+      "title": "医保保险指南保险科普小红书笔记",
+      "imageSrc": "/insurance/posters/yewu-37.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "message": "This operation was aborted"
+    }
+  ]
+}

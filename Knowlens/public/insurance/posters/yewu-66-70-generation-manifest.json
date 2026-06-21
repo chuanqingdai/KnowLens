@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-20T01:25:13.679Z",
+  "results": [
+    {
+      "title": "金融保险一图读懂产品介绍插画海报",
+      "imageSrc": "/insurance/posters/yewu-66.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3081772,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:20:25.843Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险投保注意事项知识科普海报",
+      "imageSrc": "/insurance/posters/yewu-67.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 3029335,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:21:23.967Z",
+      "normalized": true
+    },
+    {
+      "title": "金融保险知识科普封面套系海报",
+      "imageSrc": "/insurance/posters/yewu-68.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2220092,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:22:43.394Z",
+      "normalized": true
+    },
+    {
+      "title": "金融重疾险知识科普理念推广海报",
+      "imageSrc": "/insurance/posters/yewu-69.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2646958,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:24:03.091Z",
+      "normalized": true
+    },
+    {
+      "title": "金融企业养老保险科普攻略海报",
+      "imageSrc": "/insurance/posters/yewu-70.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2593729,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-20T01:25:13.679Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

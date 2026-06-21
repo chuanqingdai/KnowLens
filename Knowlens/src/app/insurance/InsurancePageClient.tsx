@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { ArrowRight, Sparkles } from "lucide-react";
 import {
@@ -32,6 +32,25 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
     });
   }, [categories.length, initialCategory, templates.length]);
 
+  const selectSection = useCallback(
+    (nextSection: "showcase" | "mine") => {
+      if (activeSection === nextSection) {
+        return;
+      }
+      trackInsuranceEvent({
+        action: "section_tab_click",
+        message: "Insurance section tab clicked.",
+        details: {
+          previousSection: activeSection,
+          nextSection,
+          initialCategory,
+        },
+      });
+      setActiveSection(nextSection);
+    },
+    [activeSection, initialCategory],
+  );
+
   return (
     <MarketingChrome
       showLocaleSwitch={false}
@@ -42,7 +61,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
       showPrimaryCta={false}
       showFooter={false}
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-8 sm:gap-12 sm:px-6 sm:py-10 lg:gap-12 lg:py-10">
+      <div className="insurance-page-shell mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-8 sm:gap-12 sm:px-6 sm:py-10 lg:gap-12 lg:py-10">
         <section className="grid justify-items-center gap-8 py-8 text-center sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:justify-items-stretch lg:py-12 lg:text-left">
           <div className="flex max-w-3xl flex-col items-center lg:items-start">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-700 shadow-sm sm:mb-5 sm:px-4 sm:py-2 sm:text-xs">
@@ -76,7 +95,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
             </div>
           </div>
 
-          <div className="relative aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm sm:rounded-[2rem] lg:max-w-none">
+          <div className="relative aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm sm:rounded-2xl lg:max-w-none">
             <Image
               src="/insurance/hero-insurance-poster-wide.webp"
               alt="保险文案生成海报示例"
@@ -92,7 +111,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
           <div className="mb-5 border-b border-zinc-200 sm:mb-7">
             <button
               type="button"
-              onClick={() => setActiveSection("showcase")}
+              onClick={() => selectSection("showcase")}
               className={`inline-flex h-11 items-center border-b-2 px-1 text-sm font-medium transition sm:h-12 sm:px-1 sm:text-base ${
                 activeSection === "showcase"
                   ? "border-zinc-950 text-zinc-950"
@@ -103,7 +122,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
             </button>
             <button
               type="button"
-              onClick={() => setActiveSection("mine")}
+              onClick={() => selectSection("mine")}
               className={`ml-6 inline-flex h-11 items-center border-b-2 px-1 text-sm font-medium transition sm:ml-8 sm:h-12 sm:px-1 sm:text-base ${
                 activeSection === "mine"
                   ? "border-zinc-950 text-zinc-950"
