@@ -61,7 +61,7 @@ async function parseStripeEvent(request: Request) {
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const sessionId = session.id;
-  const email = (session.customer_email ?? session.metadata?.user_email ?? "").trim().toLowerCase();
+  const email = (session.metadata?.user_email ?? session.customer_email ?? "").trim().toLowerCase();
   const checkoutSource = resolveCheckoutSource(session);
   if (!email) {
     logOpsEvent({

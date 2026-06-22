@@ -47,6 +47,10 @@ function getPlanCurrency(plan: NonNullable<ReturnType<typeof findBillingPlan>>):
   return plan.currency ?? "usd";
 }
 
+function getStripeCustomerEmail(email: string) {
+  return email.replace(/^password:/, "");
+}
+
 function buildRecurringInterval(cycle: BillingCycle) {
   return cycle === "yearly"
     ? { interval: "year" as const, interval_count: 1 }
@@ -141,7 +145,7 @@ async function createProductBackedSubscriptionSession(
     currency: BillingCurrency;
     successUrl: string;
     cancelUrl: string;
-    email: string;
+    customerEmail: string;
     metadata: Record<string, string>;
   },
 ) {
@@ -160,7 +164,7 @@ async function createProductBackedSubscriptionSession(
     ],
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
-    customer_email: input.email,
+    customer_email: input.customerEmail,
     metadata: input.metadata,
     allow_promotion_codes: true,
   });
@@ -246,6 +250,7 @@ export async function POST(request: NextRequest) {
 
     const successUrl = `${siteUrl}/membership?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${siteUrl}/membership?checkout=cancel`;
+    const stripeCustomerEmail = getStripeCustomerEmail(email);
     const recurringPriceId = getStripePriceId(plan.id, cycle);
     const recurringProductId = getStripeProductId(plan.id, cycle);
     const planCurrency = getPlanCurrency(plan);
@@ -300,7 +305,7 @@ export async function POST(request: NextRequest) {
           line_items: [{ price: recurringPriceId, quantity: 1 }],
           success_url: successUrl,
           cancel_url: cancelUrl,
-          customer_email: email,
+          customer_email: stripeCustomerEmail,
           metadata,
           allow_promotion_codes: true,
         });
@@ -330,7 +335,7 @@ export async function POST(request: NextRequest) {
           currency: planCurrency,
           successUrl,
           cancelUrl,
-          email,
+          customerEmail: stripeCustomerEmail,
           metadata,
         });
         sessionMessage = `subscription_price_data_fallback:${recurringProductId}`;
@@ -365,7 +370,7 @@ export async function POST(request: NextRequest) {
         currency: planCurrency,
         successUrl,
         cancelUrl,
-        email,
+        customerEmail: stripeCustomerEmail,
         metadata,
       });
       logOpsEvent({
@@ -408,7 +413,7 @@ export async function POST(request: NextRequest) {
       ],
       success_url: successUrl,
       cancel_url: cancelUrl,
-      customer_email: email,
+      customer_email: stripeCustomerEmail,
       metadata: {
         ...metadata,
         fallback_reason: "missing_recurring_price_id",

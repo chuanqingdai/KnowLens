@@ -60,7 +60,9 @@ export async function POST(request: NextRequest) {
       expand: ["subscription"],
     });
 
-    if (checkout.customer_email?.trim().toLowerCase() !== email) {
+    const metadataUserEmail = checkout.metadata?.user_email?.trim().toLowerCase();
+    const checkoutOwnerEmail = metadataUserEmail || checkout.customer_email?.trim().toLowerCase();
+    if (checkoutOwnerEmail !== email) {
       logOpsEvent({
         category: "billing",
         action: "checkout_finalize_error",
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest) {
         details: {
           sessionId,
           checkoutEmail: checkout.customer_email ?? null,
+          metadataUserEmail: metadataUserEmail ?? null,
         },
       });
       return NextResponse.json({ error: "Checkout session does not belong to current user." }, { status: 403 });
