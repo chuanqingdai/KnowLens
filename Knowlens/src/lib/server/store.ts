@@ -4,7 +4,7 @@ import path from "node:path";
 import { findBillingPlan } from "@/lib/billing-plans";
 import { DEFAULT_FREE_CREDIT_BALANCE } from "@/lib/credit-pricing";
 import { getDb } from "./db";
-import { hasManagedDatabase, pgAll, pgGet, pgRun, pgTransaction, pgTxGet, pgTxRun } from "./postgres";
+import { ensureManagedSchema, hasManagedDatabase, pgAll, pgGet, pgRun, pgTransaction, pgTxGet, pgTxRun } from "./postgres";
 
 type RateLimitResult = {
   allowed: boolean;
@@ -296,6 +296,7 @@ export async function authenticateOrCreatePasswordUser(input: {
   const passwordHash = hashPassword(input.password);
   const selectSql = "SELECT id, email, name, role, password_hash, status FROM users WHERE email = ?";
   if (hasManagedDatabase()) {
+    await ensureManagedSchema();
     const existing = (await pgGet(selectSql, [email])) as
       | { id: string; email: string; name: string; role: "user" | "admin"; password_hash?: string | null; status?: string | null }
       | undefined;

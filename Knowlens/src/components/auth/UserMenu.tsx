@@ -142,7 +142,11 @@ export function UserMenu({ buttonClassName, signOutCallbackUrl = "/auth" }: User
             onClick={() => {
               setOpen(false);
               if (signOutCallbackUrl === false) {
-                void signOut({ redirect: false }).then(() => router.refresh());
+                const currentUrl =
+                  typeof window !== "undefined"
+                    ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+                    : "/";
+                void signOut({ callbackUrl: currentUrl || "/" });
                 return;
               }
               void signOut({ callbackUrl: signOutCallbackUrl });
