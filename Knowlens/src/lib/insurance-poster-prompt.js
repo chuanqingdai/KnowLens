@@ -61,6 +61,12 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
     : "";
   const image2LayoutRule =
     "Layout: Trust Image2's native layout ability. Create a polished poster with one clear visual focus, integrated infographic composition, readable hierarchy, natural whitespace, and a strong top-to-bottom scan path. Do not overfit to a mechanical grid if a more editorial layout looks better.";
+  const isStoryEducationPoster =
+    `${template.primaryCategory || ""} ${template.category || ""} ${template.secondaryCategory || ""} ${visualLayout}`.includes("科普") &&
+    /故事|分镜|漫画|情节|角色|场景/.test(visualLayout);
+  const storyEducationRule = isStoryEducationPoster
+    ? "Story education rule: Present the poster as a coherent illustrated micro-story with one knowledge point only. Use friendly character scenes, a clear problem-to-solution flow, and light infographic support; avoid turning it into a dense legal table or a pile of equal cards."
+    : "";
 
   return [
     "Use case: ads-marketing",
@@ -69,6 +75,7 @@ export function buildInsurancePosterPrompt(template, category, form = createInsu
     `Style/medium: ${rawStylePrompt} Premium commercial insurance poster, cohesive visual system, refined Chinese typography, harmonious palette, soft lighting, clean hierarchy.`,
     visualLayoutLine,
     image2LayoutRule,
+    storyEducationRule,
     ...textWhitelistLines,
     copyConstraint,
     footerConstraint,

@@ -134,7 +134,6 @@ export const availableInsuranceTemplateImages = new Set([
   "/insurance/posters/gaoding-079.png",
   "/insurance/posters/gaoding-080.png",
   "/insurance/posters/gaoding-083.png",
-  "/insurance/posters/gaoding-085.png",
   "/insurance/posters/gaoding-087.png",
   "/insurance/posters/gaoding-088.png",
   "/insurance/posters/gaoding-089.png",

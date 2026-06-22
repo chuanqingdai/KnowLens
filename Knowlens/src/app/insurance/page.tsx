@@ -288,6 +288,23 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
   return existsSync(localImagePath);
 }
 
+function isExpiredSeasonalShowcaseTemplate(template: InsuranceTemplateCard) {
+  const imageSrc = template.imageSrc || "";
+  const title = template.title || "";
+  const secondaryCategory = template.secondaryCategory || "";
+  const categoryText = `${template.primaryCategory || ""} ${template.category || ""} ${secondaryCategory} ${title}`;
+
+  if (imageSrc.includes("/father-") || imageSrc.includes("/xiazhi-") || imageSrc.includes("/duanwu-")) {
+    return true;
+  }
+
+  return (
+    categoryText.includes("父亲节") ||
+    categoryText.includes("夏至") ||
+    categoryText.includes("端午")
+  );
+}
+
 function getTemplateIdentity(template: InsuranceTemplateCard) {
   return template.imageSrc || `${template.primaryCategory}:${template.secondaryCategory}:${template.title}`;
 }
@@ -322,16 +339,16 @@ function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
     return 9_500;
   }
   if (imageSrc.includes("/father-")) {
-    return 900;
+    return -900;
   }
   if (imageSrc.includes("/xiazhi-")) {
-    return 850;
+    return -900;
   }
   if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) {
-    return 8_000;
+    return -900;
   }
   if (imageSrc.includes("/duanwu-")) {
-    return 7_000;
+    return -900;
   }
 
   return 0;
@@ -418,37 +435,39 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
     "保险",
   ];
   const categoryRoundOrder = [
-    "节日",
     "科普",
+    "产品",
     "日签",
     "喜报",
-    "节气",
-    "产品",
-    "日签",
     "理赔",
-    "节日",
     "养老",
-    "节气",
     "理财",
-    "日签",
     "车险",
-    "节日",
     "重疾",
+    "节日",
+    "节气",
     "日签",
     "健康",
-    "节气",
     "品宣",
     "生日",
-    "产品",
     "活动",
     "保险",
     "科普",
+    "产品",
+    "喜报",
     "理赔",
     "养老",
     "理财",
     "车险",
     "重疾",
     "健康",
+    "品宣",
+    "生日",
+    "活动",
+    "保险",
+    "节日",
+    "节气",
+    "日签",
   ];
   const grouped = new Map<string, InsuranceTemplateCard[]>();
   const extras: InsuranceTemplateCard[] = [];
@@ -485,7 +504,11 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
 }
 
 const visibleTemplates = orderInsuranceTemplatesForShowcase(
-  applyInsuranceTemplateAccessStrategy(baseTemplates.filter(hasAvailableTemplateImage)),
+  applyInsuranceTemplateAccessStrategy(
+    baseTemplates
+      .filter(hasAvailableTemplateImage)
+      .filter((template) => !isExpiredSeasonalShowcaseTemplate(template)),
+  ),
   0,
 );
 

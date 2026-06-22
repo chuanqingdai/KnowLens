@@ -102,12 +102,10 @@ type BillingCreditsPayload = {
 };
 
 const SHOWCASE_CATEGORY_ORDER = [
-  "节日",
   "科普",
+  "产品",
   "日签",
   "喜报",
-  "节气",
-  "产品",
   "理赔",
   "养老",
   "理财",
@@ -118,39 +116,43 @@ const SHOWCASE_CATEGORY_ORDER = [
   "生日",
   "活动",
   "保险",
+  "节日",
+  "节气",
 ];
 const SHOWCASE_CATEGORY_ROUND_ORDER = [
-  "节日",
   "科普",
+  "产品",
   "日签",
   "喜报",
-  "节气",
-  "产品",
-  "日签",
   "理赔",
-  "节日",
   "养老",
-  "节气",
   "理财",
-  "日签",
   "车险",
-  "节日",
   "重疾",
+  "节日",
+  "节气",
   "日签",
   "健康",
-  "节气",
   "品宣",
   "生日",
-  "产品",
   "活动",
   "保险",
   "科普",
+  "产品",
+  "喜报",
   "理赔",
   "养老",
   "理财",
   "车险",
   "重疾",
   "健康",
+  "品宣",
+  "生日",
+  "活动",
+  "保险",
+  "节日",
+  "节气",
+  "日签",
 ];
 
 type InsuranceWorkspaceImageTask = {
@@ -445,6 +447,19 @@ function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory
   return getTemplatePrimaryCategory(template) === activeCategory;
 }
 
+function isExpiredSeasonalTemplate(template: InsuranceTemplateCard) {
+  const imageSrc = template.imageSrc || "";
+  const title = template.title || "";
+  const secondaryCategory = template.secondaryCategory || "";
+  const categoryText = `${template.primaryCategory || ""} ${template.category || ""} ${secondaryCategory} ${title}`;
+
+  if (imageSrc.includes("/father-") || imageSrc.includes("/xiazhi-") || imageSrc.includes("/duanwu-")) {
+    return true;
+  }
+
+  return categoryText.includes("父亲节") || categoryText.includes("夏至") || categoryText.includes("端午");
+}
+
 function getTemplatePrimaryCategory(template: InsuranceTemplateCard) {
   return template.primaryCategory || template.category;
 }
@@ -472,10 +487,10 @@ function getClientSeasonalPriority(template: InsuranceTemplateCard) {
   const title = template.title || "";
 
   if (imageSrc.includes("/hongkong-")) return 9_500;
-  if (imageSrc.includes("/father-")) return 900;
-  if (imageSrc.includes("/xiazhi-")) return 850;
-  if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) return 8_000;
-  if (imageSrc.includes("/duanwu-")) return 7_000;
+  if (imageSrc.includes("/father-")) return -900;
+  if (imageSrc.includes("/xiazhi-")) return -900;
+  if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) return -900;
+  if (imageSrc.includes("/duanwu-")) return -900;
   return 0;
 }
 
@@ -1396,7 +1411,9 @@ export function InsuranceTemplateGallery({
   const isMineMode = mode === "mine";
   const templateByTitle = useMemo(() => new Map(templates.map((template) => [template.title, template])), [templates]);
   const filteredTemplates = useMemo(() => {
-    const matchedTemplates = templates.filter((template) => templateMatchesCategory(template, activeCategory));
+    const matchedTemplates = templates
+      .filter((template) => !isExpiredSeasonalTemplate(template))
+      .filter((template) => templateMatchesCategory(template, activeCategory));
     if (isMineMode) {
       return matchedTemplates;
     }
@@ -2295,7 +2312,7 @@ export function InsuranceTemplateGallery({
                   <article
                     key={record.id}
                     onClick={() => openMyPosterRecord(record, "card")}
-                    className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
+                    className="group relative mb-3 inline-block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
                     <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2365,7 +2382,7 @@ export function InsuranceTemplateGallery({
                   <article
                     key={getTemplateIdentity(template)}
                     onClick={() => requestOpenTemplate(template, "card")}
-                    className="group relative mb-3 block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
+                    className="group relative mb-3 inline-block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
                     <div className="relative w-full overflow-hidden bg-white">
                       <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
@@ -2433,7 +2450,7 @@ export function InsuranceTemplateGallery({
         {emptyCategoryCards.map((card) => (
           <article
             key={card.id}
-            className="mb-3 block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] sm:mb-4"
+            className="mb-3 inline-block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.04)] sm:mb-4"
           >
             <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-200" />
             <div className="p-3">
@@ -2460,13 +2477,18 @@ export function InsuranceTemplateGallery({
       {!(isMineMode && myPosterRecords.length === 0) ? (
         <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
           {hasMoreTemplates ? (
-            <button
-              type="button"
-              onClick={loadMoreTemplates}
-              className="inline-flex h-10 items-center rounded-full border border-zinc-200 bg-white px-4 font-medium text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:text-zinc-950"
-            >
-              加载更多
-            </button>
+            <div className="mx-auto grid max-w-md grid-cols-2 gap-3 sm:max-w-xl sm:grid-cols-3">
+              {Array.from({ length: Math.min(TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize - visibleTemplateCount, 3) }).map(
+                (_, index) => (
+                  <div
+                    key={index}
+                    className="h-20 overflow-hidden border border-zinc-200 bg-zinc-100 shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                  >
+                    <div className="h-full w-full animate-pulse bg-gradient-to-r from-zinc-100 via-white to-zinc-100" />
+                  </div>
+                ),
+              )}
+            </div>
           ) : (
             "已经到底部了"
           )}
