@@ -17,10 +17,10 @@ const freeBenefits = [
 ];
 
 const annualBenefits = [
-  "所有保险海报统一按积分使用",
-  "可用于生成同款和下载海报",
-  "适合私域营销与长期展业",
-  "积分不足时随时补充",
+  "节日热点海报快速跟进",
+  "客户沟通更专业有温度",
+  "朋友圈私域获客更省心",
+  "全年展业素材持续更新",
 ];
 
 const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
@@ -32,10 +32,12 @@ const CHECKOUT_REQUEST_TIMEOUT_MS = 25_000;
 
 type PendingCheckout = {
   planId: string;
-  cycle: "yearly";
+  cycle: "yearly" | "one_time";
   startedAt: string;
   sessionId?: string;
   source?: string;
+  purchaseType?: "subscription" | "credit_topup";
+  credits?: number;
 };
 
 function savePendingCheckout(input: PendingCheckout) {
@@ -190,6 +192,91 @@ export function openInsuranceMembershipCheckout(source = "insurance_membership_d
     });
 }
 
+export function openInsuranceCreditTopupCheckout(source = "insurance_credit_topup_dialog") {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+  const callbackUrl = getInsuranceReturnPath();
+  window.sessionStorage.setItem("membership:return-path", callbackUrl);
+  window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, source);
+  window.sessionStorage.setItem(MEMBERSHIP_PREFERRED_PLAN_KEY, "insurance_credits_6000");
+  window.sessionStorage.setItem(MEMBERSHIP_PREFERRED_CYCLE_KEY, "one_time");
+
+  const startedAt = new Date().toISOString();
+  const pendingCheckout: PendingCheckout = {
+    planId: "insurance_credits_6000",
+    cycle: "one_time",
+    startedAt,
+    source,
+    purchaseType: "credit_topup",
+    credits: 6000,
+  };
+  savePendingCheckout(pendingCheckout);
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), CHECKOUT_REQUEST_TIMEOUT_MS);
+
+  return fetch("/api/billing/credits/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (response.status === 401) {
+        saveInsuranceAutoCheckoutIntent(source);
+        window.location.assign(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/baox")}`);
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        checkoutUrl?: string;
+        directCheckoutUrl?: string;
+        error?: string;
+        code?: string;
+        sessionId?: string | null;
+      };
+
+      if (!response.ok || !data.ok || !data.checkoutUrl) {
+        if (data.code === "WECHAT_PAY_UNAVAILABLE") {
+          throw new Error(data.error || "微信支付暂不可用，请先使用银行卡支付，或联系我们协助处理。");
+        }
+        throw new Error(data.error || "创建充值支付会话失败，请稍后重试。");
+      }
+
+      if (data.sessionId) {
+        savePendingCheckout({
+          ...pendingCheckout,
+          sessionId: data.sessionId,
+        });
+      }
+
+      const directCheckoutUrl = (data.directCheckoutUrl || "").trim();
+      const redirectCheckoutUrl = data.checkoutUrl.trim();
+      const preferredCheckoutUrl = directCheckoutUrl || redirectCheckoutUrl;
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible") {
+          window.location.replace(redirectCheckoutUrl);
+        }
+      }, 2500);
+      window.location.assign(preferredCheckoutUrl);
+    })
+    .catch((error: unknown) => {
+      clearPendingCheckout();
+      const message =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "创建充值支付会话超时，请稍后重试。"
+          : error instanceof Error
+            ? error.message
+            : "创建充值支付会话失败，请稍后重试。";
+      window.alert(message);
+    })
+    .finally(() => {
+      window.clearTimeout(timeoutId);
+    });
+}
+
 export function InsuranceMembershipDialog({
   open,
   source = "insurance_membership_dialog",
@@ -211,13 +298,13 @@ export function InsuranceMembershipDialog({
   }
 
   const upgrade = () => {
-    trackInsuranceMembership("insurance_membership_upgrade_clicked", source, contextLabel || "包年积分包");
+    trackInsuranceMembership("insurance_membership_upgrade_clicked", source, contextLabel || "积分充值包");
     if (onUpgrade) {
       onUpgrade();
       return;
     }
     setSubmitting(true);
-    void openInsuranceMembershipCheckout(source).finally(() => {
+    void openInsuranceCreditTopupCheckout(source).finally(() => {
       setSubmitting(false);
     });
   };
@@ -244,10 +331,10 @@ export function InsuranceMembershipDialog({
         <div className="max-h-[calc(100dvh-6.75rem)] overflow-y-auto px-4 pb-5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] sm:max-h-[92dvh] sm:p-6 [&::-webkit-scrollbar]:hidden">
           <div className="pr-10">
             <h3 className="text-[22px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-3xl">
-              补充保险海报积分
+              解锁更多保险营销海报
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
-              保险海报生成和下载统一使用积分。积分不足时，补充后即可继续使用。
+              覆盖日常展业和客户沟通场景，购买后即可生成同款并下载使用。
             </p>
           </div>
 
@@ -274,16 +361,16 @@ export function InsuranceMembershipDialog({
               5 折
             </div>
             <div className="pr-16">
-              <h4 className="text-lg font-semibold">包年积分包</h4>
-              <p className="mt-1 text-sm text-zinc-300">一年保险海报安心用</p>
+              <h4 className="text-lg font-semibold">积分充值包</h4>
+              <p className="mt-1 text-sm text-zinc-300">一次充值，随用随扣</p>
             </div>
             <div className="mt-5 flex flex-wrap items-end gap-x-2 gap-y-1">
               <span className="text-4xl font-semibold tracking-tight">¥199</span>
               <span className="pb-1 text-sm text-zinc-300">/ 年</span>
-              <span className="pb-1 text-xs text-zinc-500 line-through">原价 399元/年</span>
+              <span className="pb-1 text-xs text-zinc-500 line-through">原价 399元</span>
             </div>
             <p className="mt-2 inline-flex rounded-full bg-white/10 px-3 py-1 text-sm font-medium text-amber-200">
-              含 6000 积分，1000次生图和下载
+              一次到账 6000 积分
             </p>
             <ul className="mt-4 space-y-2.5 text-sm leading-5 text-zinc-100">
               {annualBenefits.map((benefit) => (
@@ -299,7 +386,7 @@ export function InsuranceMembershipDialog({
               disabled={submitting}
               className="mt-5 hidden h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-amber-100 sm:inline-flex"
             >
-              {submitting ? "跳转支付中..." : "购买包年积分包"}
+              {submitting ? "跳转支付中..." : "微信/支付宝充值"}
               <ArrowRight size={15} />
             </button>
           </section>
@@ -308,7 +395,7 @@ export function InsuranceMembershipDialog({
         <div className="border-t border-zinc-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:hidden">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-medium text-zinc-500">包年积分包</p>
+              <p className="text-xs font-medium text-zinc-500">积分充值包</p>
               <p className="text-lg font-semibold leading-none text-zinc-950">¥199 <span className="text-xs font-medium text-zinc-500">/ 年</span></p>
             </div>
             <p className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">含 6000 积分</p>
@@ -319,7 +406,7 @@ export function InsuranceMembershipDialog({
             disabled={submitting}
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)] transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {submitting ? "跳转支付中..." : "购买包年积分包"}
+            {submitting ? "跳转支付中..." : "微信/支付宝充值"}
             <ArrowRight size={16} />
           </button>
         </div>

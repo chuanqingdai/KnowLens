@@ -4,6 +4,7 @@ import { nextAuthOptions } from "@/lib/nextAuth";
 import { getStripeServerClient } from "@/lib/server/stripe";
 import { findBillingPlan, type BillingCycle } from "@/lib/billing-plans";
 import {
+  applyCreditTopupFulfillmentAtomic,
   applyBillingFulfillmentAtomic,
   hasBillingFulfillment,
   logOpsEvent,
@@ -19,6 +20,11 @@ function addMonths(date: Date, count: number) {
 
 function parseCycle(value: string | null | undefined): BillingCycle {
   return value === "monthly" ? "monthly" : "yearly";
+}
+
+function parsePositiveInteger(value: string | null | undefined) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
 }
 
 export async function POST(request: NextRequest) {
@@ -111,6 +117,63 @@ export async function POST(request: NextRequest) {
     }
 
     const meta = checkout.metadata ?? {};
+    const checkoutSource = (meta.checkout_source ?? "unknown").trim().slice(0, 64) || "unknown";
+    checkoutSourceForLog = checkoutSource;
+    if (meta.purchase_type === "credit_topup") {
+      const credits = parsePositiveInteger(meta.topup_credits);
+      const packageId = (meta.package_id ?? "credit_topup").trim().slice(0, 80) || "credit_topup";
+      const packageName = (meta.package_name ?? "Credit top-up").trim().slice(0, 120) || "Credit top-up";
+      if (credits <= 0) {
+        return NextResponse.json({ error: "Invalid credit top-up metadata." }, { status: 400 });
+      }
+      if (await hasBillingFulfillment(sessionId)) {
+        logOpsEvent({
+          category: "billing",
+          action: "credit_topup_finalize_duplicate",
+          status: "info",
+          source: checkoutSource,
+          userEmail: email,
+          message: "Finalize duplicate: credit top-up already fulfilled.",
+          details: { sessionId, packageId, credits },
+        });
+        return NextResponse.json({
+          ok: true,
+          checkoutMode: checkout.mode,
+          checkoutSource,
+          credited: false,
+          duplicate: true,
+          purchaseType: "credit_topup",
+          credits,
+        });
+      }
+      const result = await applyCreditTopupFulfillmentAtomic({
+        sessionId,
+        userEmail: email,
+        packageId,
+        packageName,
+        credits,
+        checkoutSource,
+      });
+      logOpsEvent({
+        category: "billing",
+        action: result.applied ? "credit_topup_finalize_success" : "credit_topup_finalize_duplicate",
+        status: result.applied ? "ok" : "info",
+        source: checkoutSource,
+        userEmail: email,
+        message: `${packageId}:${credits}`,
+        details: { sessionId, packageId, credits },
+      });
+      return NextResponse.json({
+        ok: true,
+        checkoutMode: checkout.mode,
+        checkoutSource,
+        credited: result.applied,
+        duplicate: !result.applied,
+        purchaseType: "credit_topup",
+        credits,
+      });
+    }
+
     const planId = (meta.plan_id ?? "").trim();
     const plan = findBillingPlan(planId);
     if (!plan) {
@@ -118,8 +181,6 @@ export async function POST(request: NextRequest) {
     }
 
     const cycle = parseCycle(meta.billing_cycle);
-    const checkoutSource = (meta.checkout_source ?? "unknown").trim().slice(0, 64) || "unknown";
-    checkoutSourceForLog = checkoutSource;
     if (await hasBillingFulfillment(sessionId)) {
       logOpsEvent({
         category: "billing",

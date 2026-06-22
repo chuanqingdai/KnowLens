@@ -302,10 +302,12 @@ const SECONDARY_PAYMENT_CTA_CLASS =
 
 type PendingCheckout = {
   planId: string;
-  cycle: BillingCycle;
+  cycle: BillingCycle | "one_time";
   startedAt: string;
   sessionId?: string;
   source?: string;
+  purchaseType?: "subscription" | "credit_topup";
+  credits?: number;
 };
 
 type TelemetryEventInput = {
@@ -494,6 +496,8 @@ export default function MembershipPage() {
           checkoutMode?: string;
           checkoutSource?: string;
           credited?: boolean;
+          purchaseType?: string;
+          credits?: number;
           plan?: {
             id?: string;
             name?: string;
@@ -502,6 +506,10 @@ export default function MembershipPage() {
 
         if (response.ok && data.ok) {
           const eventSource = data.checkoutSource || resolveMembershipSource();
+          const isCreditTopup = data.purchaseType === "credit_topup";
+          const creditTopupLabel = typeof data.credits === "number" && data.credits > 0
+            ? `${data.credits.toLocaleString("zh-CN")} credits`
+            : "credits";
           void trackTelemetry({
             category: "billing",
             action: "checkout_return_success",
@@ -516,6 +524,8 @@ export default function MembershipPage() {
               credited: Boolean(data.credited),
               cycle: data.cycle,
               checkoutMode: data.checkoutMode,
+              purchaseType: data.purchaseType ?? null,
+              credits: data.credits ?? null,
               planId: data.plan?.id ?? null,
               planName: data.plan?.name ?? null,
               returnPath,
@@ -530,17 +540,25 @@ export default function MembershipPage() {
           setRefreshVersion((prev) => prev + 1);
           saveCheckoutReturnNotice({
             status: "success",
-            message: data.duplicate
-              ? "Membership is active and your credits are ready to use."
-              : "Membership activated successfully. Your credits are ready to use.",
+            message: isCreditTopup
+              ? data.duplicate
+                ? "Credit top-up was already verified. Credits were not added twice."
+                : `Top-up successful. ${creditTopupLabel} are ready to use.`
+              : data.duplicate
+                ? "Membership is active and your credits are ready to use."
+                : "Membership activated successfully. Your credits are ready to use.",
             returnPath,
             source: eventSource,
             createdAt: new Date().toISOString(),
           });
           setToast(
-            data.duplicate
-              ? "Payment already verified earlier. Credits were not added twice."
-              : "Payment verified. Membership and credits are now active.",
+            isCreditTopup
+              ? data.duplicate
+                ? "Payment already verified earlier. Credits were not added twice."
+                : `Payment verified. ${creditTopupLabel} added.`
+              : data.duplicate
+                ? "Payment already verified earlier. Credits were not added twice."
+                : "Payment verified. Membership and credits are now active.",
           );
           router.replace(returnPath);
           return;
@@ -1153,10 +1171,15 @@ export default function MembershipPage() {
           <p className="font-medium">{t("Payment verification is pending", "支付状态待确认")}</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             {pendingCheckoutMeta
-              ? t(
-                  `Plan ${pendingCheckoutMeta.planId} (${pendingCheckoutMeta.cycle}) was started, but verification did not complete yet.`,
-                  `已开始订阅 ${planZh[pendingCheckoutMeta.planId as BillingPlanId]?.name ?? pendingCheckoutMeta.planId}（${pendingCheckoutMeta.cycle === "yearly" ? "年付" : "月付"}），但支付验证尚未完成。`,
-                )
+              ? pendingCheckoutMeta.purchaseType === "credit_topup" || pendingCheckoutMeta.cycle === "one_time"
+                ? t(
+                    `Credit top-up ${pendingCheckoutMeta.planId} was started, but verification did not complete yet.`,
+                    `已开始积分充值${pendingCheckoutMeta.credits ? `（${pendingCheckoutMeta.credits.toLocaleString("zh-CN")} 积分）` : ""}，但支付验证尚未完成。`,
+                  )
+                : t(
+                    `Plan ${pendingCheckoutMeta.planId} (${pendingCheckoutMeta.cycle}) was started, but verification did not complete yet.`,
+                    `已开始订阅 ${planZh[pendingCheckoutMeta.planId as BillingPlanId]?.name ?? pendingCheckoutMeta.planId}（${pendingCheckoutMeta.cycle === "yearly" ? "年付" : "月付"}），但支付验证尚未完成。`,
+                  )
               : t("A checkout session returned, but verification did not complete yet.", "已从支付页返回，但支付验证尚未完成。")}
           </p>
           <div className="mt-2 flex items-center gap-2">

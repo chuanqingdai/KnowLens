@@ -1433,7 +1433,7 @@ export async function recordBillingFulfillment(input: {
   sessionId: string;
   userEmail: string;
   planId: string;
-  cycle: "monthly" | "yearly";
+  cycle: "monthly" | "yearly" | "one_time";
   checkoutSource?: string;
   checkoutStatus?: string;
 }) {
@@ -1455,6 +1455,138 @@ export async function recordBillingFulfillment(input: {
   }
   const { db } = getDb();
   db.prepare(sqlText).run(...params);
+}
+
+export async function applyCreditTopupFulfillmentAtomic(input: {
+  sessionId: string;
+  userEmail: string;
+  packageId: string;
+  packageName: string;
+  credits: number;
+  checkoutSource?: string;
+}) {
+  const normalizedEmail = normalizeScope(input.userEmail);
+  const credits = Math.max(0, Math.round(input.credits));
+  if (!normalizedEmail || normalizedEmail === "guest" || !input.sessionId.trim() || credits <= 0) {
+    throw new Error("A valid signed-in user and credit package are required.");
+  }
+
+  if (hasManagedDatabase()) {
+    return pgTransaction(async (tx) => {
+      const existing = (await pgTxGet(
+        tx,
+        "SELECT session_id as \"sessionId\" FROM billing_fulfillments WHERE session_id = ? LIMIT 1",
+        [input.sessionId],
+      )) as { sessionId?: string } | undefined;
+      if (existing?.sessionId) {
+        return { applied: false as const };
+      }
+
+      const userExisting = (await pgTxGet(tx, "SELECT id FROM users WHERE email = ?", [normalizedEmail])) as
+        | { id?: string }
+        | undefined;
+      const userId = userExisting?.id ?? `u-${randomUUID()}`;
+      await pgTxRun(
+        tx,
+        `INSERT INTO users (id, email, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, 'user', ?, ?)
+         ON CONFLICT(email) DO UPDATE SET
+           updated_at = excluded.updated_at`,
+        [userId, normalizedEmail, normalizedEmail.split("@")[0] || "User", nowIso(), nowIso()],
+      );
+
+      const previous = (await pgTxGet(
+        tx,
+        "SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        [normalizedEmail],
+      )) as { balance?: number } | undefined;
+      const previousBalance = Number(previous?.balance ?? DEFAULT_FREE_CREDIT_BALANCE);
+      const nextBalance = previousBalance + credits;
+      await pgTxRun(
+        tx,
+        `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+         VALUES (?, ?, 'topup', ?, ?, ?, ?, ?, null, null)`,
+        [
+          `record-${randomUUID()}`,
+          nowIso(),
+          `${input.packageName} credited${input.checkoutSource ? ` [source:${input.checkoutSource}]` : ""}`,
+          credits,
+          nextBalance,
+          userId,
+          normalizedEmail,
+        ],
+      );
+      await pgTxRun(
+        tx,
+        `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, checkout_source, checkout_status, created_at)
+         VALUES (?, ?, ?, 'one_time', ?, 'fulfilled', ?)`,
+        [
+          input.sessionId,
+          normalizedEmail,
+          input.packageId.trim().slice(0, 80),
+          input.checkoutSource?.trim().slice(0, 64) || null,
+          nowIso(),
+        ],
+      );
+      return { applied: true as const };
+    });
+  }
+
+  const { db } = getDb();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const existing = db
+      .prepare("SELECT session_id as sessionId FROM billing_fulfillments WHERE session_id = ? LIMIT 1")
+      .get(input.sessionId) as { sessionId?: string } | undefined;
+    if (existing?.sessionId) {
+      db.exec("COMMIT");
+      return { applied: false as const };
+    }
+
+    const userExisting = db.prepare("SELECT id FROM users WHERE email = ?").get(normalizedEmail) as
+      | { id?: string }
+      | undefined;
+    const userId = userExisting?.id ?? `u-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO users (id, email, name, role, created_at, updated_at)
+       VALUES (?, ?, ?, 'user', ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         updated_at = excluded.updated_at`,
+    ).run(userId, normalizedEmail, normalizedEmail.split("@")[0] || "User", nowIso(), nowIso());
+
+    const balanceRows = db
+      .prepare("SELECT balance FROM credit_records WHERE user_email = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .all(normalizedEmail) as Array<{ balance?: number }>;
+    const previousBalance = balanceRows[0]?.balance ?? DEFAULT_FREE_CREDIT_BALANCE;
+    const nextBalance = previousBalance + credits;
+    db.prepare(
+      `INSERT INTO credit_records (id, created_at, type, description, delta, balance, user_id, user_email, project_id, project_title)
+       VALUES (?, ?, 'topup', ?, ?, ?, ?, ?, null, null)`,
+    ).run(
+      `record-${randomUUID()}`,
+      nowIso(),
+      `${input.packageName} credited${input.checkoutSource ? ` [source:${input.checkoutSource}]` : ""}`,
+      credits,
+      nextBalance,
+      userId,
+      normalizedEmail,
+    );
+    db.prepare(
+      `INSERT INTO billing_fulfillments (session_id, user_email, plan_id, cycle, checkout_source, checkout_status, created_at)
+       VALUES (?, ?, ?, 'one_time', ?, 'fulfilled', ?)`,
+    ).run(
+      input.sessionId,
+      normalizedEmail,
+      input.packageId.trim().slice(0, 80),
+      input.checkoutSource?.trim().slice(0, 64) || null,
+      nowIso(),
+    );
+    db.exec("COMMIT");
+    return { applied: true as const };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export async function applyBillingFulfillmentAtomic(input: {

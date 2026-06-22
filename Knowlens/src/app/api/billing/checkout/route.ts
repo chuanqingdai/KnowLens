@@ -418,12 +418,7 @@ export async function POST(request: NextRequest) {
         ...metadata,
         fallback_reason: "missing_recurring_price_id",
       },
-      payment_method_types: ["card", "alipay", "wechat_pay"],
-      payment_method_options: {
-        wechat_pay: {
-          client: "web",
-        },
-      },
+      payment_method_types: ["card", "alipay"],
       allow_promotion_codes: true,
     });
     logOpsEvent({

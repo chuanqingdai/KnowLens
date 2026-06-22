@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   consumeInsuranceAutoCheckoutIntent,
   InsuranceMembershipDialog,
-  openInsuranceMembershipCheckout,
+  openInsuranceCreditTopupCheckout,
 } from "@/components/billing/InsuranceMembershipDialog";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { LocalizedMarketingText } from "@/components/i18n/LocalizedMarketingText";
@@ -238,9 +238,6 @@ export function MarketingChrome({
   const isInsuranceChrome = membershipVariant === "insurance";
   const isAuthenticated = status === "authenticated";
   const insuranceBillingLoaded = !isAuthenticated || insuranceHeaderBilling !== null;
-  const insuranceMembershipStatus = insuranceHeaderBilling?.subscription?.status || "";
-  const insuranceMemberActive =
-    insuranceMembershipStatus === "active" || insuranceMembershipStatus === "canceling";
   const insuranceBalanceLabel =
     typeof insuranceHeaderBilling?.balance === "number"
       ? insuranceHeaderBilling.balance.toLocaleString("zh-CN")
@@ -319,7 +316,7 @@ export function MarketingChrome({
       return;
     }
     insuranceAutoCheckoutTriggeredRef.current = true;
-    void openInsuranceMembershipCheckout(intent.source || "insurance_auto_checkout_after_login");
+    void openInsuranceCreditTopupCheckout(intent.source || "insurance_auto_checkout_after_login");
   }, [isAuthenticated, isInsuranceChrome]);
 
   useEffect(() => {
@@ -578,7 +575,7 @@ export function MarketingChrome({
                     />
                   </>
                 )}
-                {status === "unauthenticated" || (insuranceBillingLoaded && !insuranceMemberActive) ? (
+                {status === "unauthenticated" || insuranceBillingLoaded ? (
                   <button
                     type="button"
                     onClick={() => setInsuranceMembershipOpen(true)}
@@ -698,7 +695,7 @@ export function MarketingChrome({
         onClose={() => setInsuranceMembershipOpen(false)}
         onUpgrade={() => {
           setInsuranceMembershipOpen(false);
-          openInsuranceMembershipCheckout("insurance_nav_membership");
+          openInsuranceCreditTopupCheckout("insurance_nav_credit_topup");
         }}
       />
     </div>

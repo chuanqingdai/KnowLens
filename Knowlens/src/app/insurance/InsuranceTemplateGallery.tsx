@@ -8,7 +8,7 @@ import { AlertCircle, ArrowRight, Check, ChevronDown, Download, LoaderCircle, Re
 import { INSURANCE_CUSTOM_POSTER_EVENT } from "@/app/insurance/InsuranceCustomPosterButton";
 import {
   InsuranceMembershipDialog,
-  openInsuranceMembershipCheckout,
+  openInsuranceCreditTopupCheckout,
 } from "@/components/billing/InsuranceMembershipDialog";
 import {
   buildInsurancePosterPrompt,
@@ -1640,15 +1640,15 @@ export function InsuranceTemplateGallery({
     setCreditsPaywallOpen(true);
   };
 
-  const openMembership = () => {
+  const openCreditTopup = () => {
     trackInsuranceEvent({
-      action: "membership_checkout_click",
-      message: "Insurance membership checkout clicked.",
+      action: "credit_topup_checkout_click",
+      message: "Insurance credit top-up checkout clicked.",
       details: {
-        source: "insurance_template_membership",
+        source: "insurance_template_credit_topup",
       },
     });
-    openInsuranceMembershipCheckout("insurance_template_membership");
+    openInsuranceCreditTopupCheckout("insurance_template_credit_topup");
   };
 
   const fetchBillingCredits = async () => {
@@ -2662,7 +2662,7 @@ export function InsuranceTemplateGallery({
               onClose={() => setCreditsPaywallOpen(false)}
               onUpgrade={() => {
                 setCreditsPaywallOpen(false);
-                openMembership();
+                openCreditTopup();
               }}
             />,
             document.body,

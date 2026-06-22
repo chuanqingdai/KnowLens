@@ -7,6 +7,7 @@ import {
   isStripeServerConfigured,
 } from "@/lib/server/stripe";
 import {
+  applyCreditTopupFulfillmentAtomic,
   applyBillingFulfillmentAtomic,
   getSubscriptionDbByStripeSubscriptionId,
   logOpsEvent,
@@ -34,6 +35,11 @@ function isPaidCheckout(session: Stripe.Checkout.Session) {
     return false;
   }
   return session.payment_status === "paid" || session.payment_status === "no_payment_required";
+}
+
+function parsePositiveInteger(value: string | null | undefined) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
 }
 
 async function parseStripeEvent(request: Request) {
@@ -91,6 +97,43 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       },
     });
     return { ok: true, status: 200, ignored: true };
+  }
+
+  if (session.metadata?.purchase_type === "credit_topup") {
+    const credits = parsePositiveInteger(session.metadata.topup_credits);
+    const packageId = (session.metadata.package_id ?? "credit_topup").trim().slice(0, 80) || "credit_topup";
+    const packageName = (session.metadata.package_name ?? "Credit top-up").trim().slice(0, 120) || "Credit top-up";
+    if (credits <= 0) {
+      logOpsEvent({
+        category: "billing",
+        action: "stripe_webhook_error",
+        status: "error",
+        source: checkoutSource,
+        userEmail: email,
+        code: "STRIPE_WEBHOOK_INVALID_TOPUP_METADATA",
+        message: "Credit top-up checkout completed without valid credit metadata.",
+        details: { sessionId, packageId, credits },
+      });
+      return { ok: false, status: 400, code: "STRIPE_WEBHOOK_INVALID_TOPUP_METADATA" };
+    }
+    const result = await applyCreditTopupFulfillmentAtomic({
+      sessionId,
+      userEmail: email,
+      packageId,
+      packageName,
+      credits,
+      checkoutSource,
+    });
+    logOpsEvent({
+      category: "billing",
+      action: result.applied ? "stripe_credit_topup_fulfilled" : "stripe_credit_topup_duplicate",
+      status: result.applied ? "ok" : "info",
+      source: checkoutSource,
+      userEmail: email,
+      message: `${packageId}:${credits}`,
+      details: { sessionId, packageId, credits },
+    });
+    return { ok: true, status: 200, applied: result.applied };
   }
 
   const planId = (session.metadata?.plan_id ?? "").trim();
