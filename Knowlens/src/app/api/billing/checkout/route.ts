@@ -10,7 +10,12 @@ import {
   getStripeServerClient,
   isStripeServerConfigured,
 } from "@/lib/server/stripe";
-import { findBillingPlan, getBillingPlanDefaultCycle, isBillingPlanCycleSupported, type BillingCycle } from "@/lib/billing-plans";
+import {
+  findBillingPlan,
+  getBillingPlanDefaultCycle,
+  isBillingPlanCycleSupported,
+  type BillingCycle,
+} from "@/lib/billing-plans";
 import { logOpsEvent } from "@/lib/server/store";
 import {
   attributionSource,
@@ -51,6 +56,11 @@ function buildCrossBrowserRedirectUrl(url: string) {
 function hasWechatClientConstraintError(message: string) {
   const normalized = message.toLowerCase();
   return normalized.includes("wechat_pay") && normalized.includes("client");
+}
+
+function isNonRecurringSubscriptionPriceError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("recurring price") && normalized.includes("subscription");
 }
 
 function isDatabaseConnectivityError(error: unknown) {
@@ -115,6 +125,39 @@ async function createCheckoutSessionWithFallback(
     delete (cardOnlyParams as { payment_method_options?: unknown }).payment_method_options;
     return stripe.checkout.sessions.create(cardOnlyParams);
   }
+}
+
+async function createProductBackedSubscriptionSession(
+  stripe: ReturnType<typeof getStripeServerClient>,
+  input: {
+    cycle: BillingCycle;
+    recurringProductId: string;
+    amount: number;
+    successUrl: string;
+    cancelUrl: string;
+    email: string;
+    metadata: Record<string, string>;
+  },
+) {
+  return createCheckoutSessionWithFallback(stripe, {
+    mode: "subscription",
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product: input.recurringProductId,
+          unit_amount: input.amount,
+          recurring: buildRecurringInterval(input.cycle),
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    customer_email: input.email,
+    metadata: input.metadata,
+    allow_promotion_codes: true,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -242,22 +285,55 @@ export async function POST(request: NextRequest) {
     const stripe = getStripeServerClient();
 
     if (recurringPriceId) {
-      const sessionResult = await createCheckoutSessionWithFallback(stripe, {
-        mode: "subscription",
-        line_items: [{ price: recurringPriceId, quantity: 1 }],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        customer_email: email,
-        metadata,
-        allow_promotion_codes: true,
-      });
+      let sessionResult: Awaited<ReturnType<typeof createCheckoutSessionWithFallback>>;
+      let sessionMessage = `subscription_price_id:${recurringPriceId}`;
+      try {
+        sessionResult = await createCheckoutSessionWithFallback(stripe, {
+          mode: "subscription",
+          line_items: [{ price: recurringPriceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          customer_email: email,
+          metadata,
+          allow_promotion_codes: true,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!recurringProductId || !isNonRecurringSubscriptionPriceError(message)) {
+          throw error;
+        }
+        const amount = buildFallbackAmountCents(plan.id, cycle);
+        if (!amount) {
+          throw error;
+        }
+        logOpsEvent({
+          category: "billing",
+          action: "checkout_price_id_fallback",
+          status: "info",
+          source: checkoutSource,
+          userEmail: email,
+          code: "STRIPE_PRICE_NOT_RECURRING",
+          message: `Configured price is not recurring; using product-backed subscription for ${plan.id}:${cycle}.`,
+          details: { planId: plan.id, cycle, priceId: recurringPriceId, attribution, uiSource: body.source ?? null },
+        });
+        sessionResult = await createProductBackedSubscriptionSession(stripe, {
+          cycle,
+          recurringProductId,
+          amount,
+          successUrl,
+          cancelUrl,
+          email,
+          metadata,
+        });
+        sessionMessage = `subscription_price_data_fallback:${recurringProductId}`;
+      }
       logOpsEvent({
         category: "billing",
         action: "checkout_session_created",
         status: "ok",
         source: checkoutSource,
         userEmail: email,
-        message: `subscription_price_id:${recurringPriceId}`,
+        message: sessionMessage,
         details: { planId: plan.id, cycle, attribution, uiSource: body.source ?? null },
       });
       return NextResponse.json({
@@ -274,24 +350,14 @@ export async function POST(request: NextRequest) {
       if (!amount) {
         return NextResponse.json({ error: "Unable to resolve recurring amount." }, { status: 400 });
       }
-      const sessionResult = await createCheckoutSessionWithFallback(stripe, {
-        mode: "subscription",
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product: recurringProductId,
-              unit_amount: amount,
-              recurring: buildRecurringInterval(cycle),
-            },
-            quantity: 1,
-          },
-        ],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        customer_email: email,
+      const sessionResult = await createProductBackedSubscriptionSession(stripe, {
+        cycle,
+        recurringProductId,
+        amount,
+        successUrl,
+        cancelUrl,
+        email,
         metadata,
-        allow_promotion_codes: true,
       });
       logOpsEvent({
         category: "billing",

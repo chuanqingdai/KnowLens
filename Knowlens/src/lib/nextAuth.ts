@@ -193,11 +193,30 @@ export const nextAuthOptions: NextAuthOptions = {
         if (!email || password.length < 6) {
           return null;
         }
-        return authenticateOrCreatePasswordUser({
-          email,
-          password,
-          role: resolveRoleByEmail(email),
-        });
+        try {
+          return await withTimeout(
+            authenticateOrCreatePasswordUser({
+              email,
+              password,
+              role: resolveRoleByEmail(email),
+            }),
+            SIGNIN_DB_TIMEOUT_MS,
+            `Password account sign-in timed out after ${SIGNIN_DB_TIMEOUT_MS}ms.`,
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error ?? "Unknown password sign-in error.");
+          console.error("[next-auth][password-login][failed]", message);
+          safeLogAuthEvent({
+            category: "auth",
+            action: "password_signin_failed",
+            status: "error",
+            source: "password-login",
+            code: "AUTH_PASSWORD_SERVICE_UNAVAILABLE",
+            message,
+            userEmail: email,
+          });
+          throw new Error("AUTH_PASSWORD_SERVICE_UNAVAILABLE");
+        }
       },
     }),
     CredentialsProvider({

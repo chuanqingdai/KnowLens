@@ -3,6 +3,7 @@ import { runManagedSchemaMigration } from "./managed-schema.mjs";
 
 let sqlClient: postgres.Sql | null = null;
 let schemaReadyPromise: Promise<void> | null = null;
+let userPasswordSchemaReadyPromise: Promise<void> | null = null;
 
 function getDatabaseUrl() {
   return (process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
@@ -163,4 +164,52 @@ export async function ensureManagedSchema() {
     throw error;
   });
   return schemaReadyPromise;
+}
+
+function isDuplicateColumnError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
+  return message.includes("column") && message.includes("already exists");
+}
+
+async function addColumnIfMissing(sql: postgres.Sql, tableName: string, columnDefinition: string) {
+  try {
+    await sql.unsafe(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition};`);
+  } catch (error) {
+    if (isDuplicateColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function ensureManagedUserPasswordSchema() {
+  if (!hasManagedDatabase()) {
+    return;
+  }
+  if (userPasswordSchemaReadyPromise) {
+    return userPasswordSchemaReadyPromise;
+  }
+  userPasswordSchemaReadyPromise = (async () => {
+    const sql = getSql();
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        password_hash TEXT,
+        role TEXT NOT NULL DEFAULT 'user',
+        status TEXT NOT NULL DEFAULT 'active',
+        last_login_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+        updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+      );
+    `);
+    await addColumnIfMissing(sql, "users", "password_hash TEXT");
+    await addColumnIfMissing(sql, "users", "status TEXT NOT NULL DEFAULT 'active'");
+    await addColumnIfMissing(sql, "users", "last_login_at TEXT");
+  })().catch((error) => {
+    userPasswordSchemaReadyPromise = null;
+    throw error;
+  });
+  return userPasswordSchemaReadyPromise;
 }

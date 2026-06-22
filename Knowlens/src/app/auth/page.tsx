@@ -136,6 +136,18 @@ export default function AuthPage() {
         "邮箱或密码不正确，请检查后重试。",
       );
     }
+    if (activeError === "AUTH_PASSWORD_SERVICE_UNAVAILABLE") {
+      return t(
+        "Account sign-in is temporarily unavailable. Please try again in a moment.",
+        "账号登录暂时不可用，请稍后再试。",
+      );
+    }
+    if (activeError === "AUTH_PASSWORD_NETWORK") {
+      return t(
+        "The sign-in request did not complete. Please check your network and try again.",
+        "登录请求没有完成，请检查网络后重试。",
+      );
+    }
     if (activeError === "AUTH-PASSWORD-VALIDATION") {
       return t(
         "Please enter a valid email and a password with at least 6 characters.",
@@ -170,6 +182,12 @@ export default function AuthPage() {
     if (activeError === "CredentialsSignin") {
       return "AUTH-PASSWORD-001";
     }
+    if (activeError === "AUTH_PASSWORD_SERVICE_UNAVAILABLE") {
+      return "AUTH-PASSWORD-003";
+    }
+    if (activeError === "AUTH_PASSWORD_NETWORK") {
+      return "AUTH-PASSWORD-004";
+    }
     if (activeError === "AUTH-PASSWORD-VALIDATION") {
       return "AUTH-PASSWORD-002";
     }
@@ -197,12 +215,12 @@ export default function AuthPage() {
         router.replace(callbackUrl);
         return;
       }
+      setLocalErrorCode(result?.error || "CredentialsSignin");
     } catch {
-      // Fall through to the same user-facing retry state as an auth failure.
+      setLocalErrorCode("AUTH_PASSWORD_NETWORK");
     }
     setPassword("");
     setIsPasswordLoading(false);
-    setLocalErrorCode("CredentialsSignin");
   };
 
   return (
