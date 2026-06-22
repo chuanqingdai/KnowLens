@@ -211,34 +211,36 @@ export function InsuranceMembershipDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-[130] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="关闭会员弹窗"
         className="absolute inset-0 bg-zinc-950/50 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      <div className="relative max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-zinc-200 bg-white p-4 shadow-2xl [scrollbar-width:none] [-ms-overflow-style:none] sm:p-6 [&::-webkit-scrollbar]:hidden">
+      <div className="relative max-h-[calc(100dvh-0.75rem)] w-full max-w-3xl overflow-hidden rounded-t-[26px] border border-zinc-200 bg-white shadow-2xl sm:max-h-[92dvh] sm:rounded-3xl">
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-zinc-200 sm:hidden" />
         <button
           type="button"
           aria-label="关闭"
           onClick={onClose}
-          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm hover:bg-zinc-100"
+          className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm hover:bg-zinc-100 sm:right-4 sm:top-4 sm:h-9 sm:w-9"
         >
           <X size={16} />
         </button>
 
-        <div className="pr-10">
-          <h3 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
-            解锁更多保险营销海报
-          </h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
-            免费体验基础模板，升级后解锁高级海报、生成同款和下载权益。
-          </p>
-        </div>
+        <div className="max-h-[calc(100dvh-6.75rem)] overflow-y-auto px-4 pb-5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] sm:max-h-[92dvh] sm:p-6 [&::-webkit-scrollbar]:hidden">
+          <div className="pr-10">
+            <h3 className="text-[22px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-3xl">
+              解锁更多保险营销海报
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+              免费体验基础模板，升级后解锁高级海报、生成同款和下载权益。
+            </p>
+          </div>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-[0.9fr_1.1fr]">
-          <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="mt-5 grid gap-3 md:grid-cols-[0.9fr_1.1fr]">
+          <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3.5 sm:p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h4 className="text-lg font-semibold text-zinc-950">免费版</h4>
@@ -255,7 +257,7 @@ export function InsuranceMembershipDialog({
             </ul>
           </section>
 
-          <section className="relative rounded-2xl border border-zinc-950 bg-zinc-950 p-4 text-white shadow-[0_18px_45px_rgba(15,23,42,0.24)]">
+          <section className="relative rounded-2xl border border-zinc-950 bg-zinc-950 p-3.5 text-white shadow-[0_18px_45px_rgba(15,23,42,0.24)] sm:p-4">
             <div className="absolute right-4 top-4 rounded-full bg-amber-400 px-2.5 py-1 text-xs font-semibold text-zinc-950 shadow-[0_8px_18px_rgba(245,158,11,0.3)]">
               5 折
             </div>
@@ -283,12 +285,31 @@ export function InsuranceMembershipDialog({
               type="button"
               onClick={upgrade}
               disabled={submitting}
-              className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-amber-100"
+              className="mt-5 hidden h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-amber-100 sm:inline-flex"
             >
               {submitting ? "跳转支付中..." : "开通包年会员"}
               <ArrowRight size={15} />
             </button>
           </section>
+          </div>
+        </div>
+        <div className="border-t border-zinc-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:hidden">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-zinc-500">包年会员</p>
+              <p className="text-lg font-semibold leading-none text-zinc-950">¥199 <span className="text-xs font-medium text-zinc-500">/ 年</span></p>
+            </div>
+            <p className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">含 6000 积分</p>
+          </div>
+          <button
+            type="button"
+            onClick={upgrade}
+            disabled={submitting}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)] transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {submitting ? "跳转支付中..." : "开通包年会员"}
+            <ArrowRight size={16} />
+          </button>
         </div>
       </div>
     </div>

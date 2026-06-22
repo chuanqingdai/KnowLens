@@ -689,6 +689,7 @@ export default function MembershipPage() {
       ? plansWithCyclePrice.filter((plan) => plan.id === "insurance")
       : plansWithCyclePrice.filter((plan) => plan.id !== "insurance");
   }, [isInsuranceMembershipFlow, plansWithCyclePrice]);
+  const mobileStickyPlan = isInsuranceMembershipFlow ? visiblePlans[0] : null;
 
   async function handlePay(plan: Plan) {
     const isPaying = Boolean(payingPlanId);
@@ -879,7 +880,7 @@ export default function MembershipPage() {
             </button>
           </div>
 
-          <div className="max-h-[88dvh] overflow-y-auto px-3 pb-8 pt-4 sm:max-h-[86vh] sm:px-6 sm:pt-5 lg:px-8">
+          <div className="max-h-[88dvh] overflow-y-auto px-3 pb-28 pt-4 sm:max-h-[86vh] sm:px-6 sm:pb-8 sm:pt-5 lg:px-8">
             <PromoCountdownBanner />
 
             <section className="mt-5 flex justify-center">
@@ -1109,6 +1110,41 @@ export default function MembershipPage() {
           </div>
             </section>
           </div>
+          {mobileStickyPlan ? (
+            <div className="border-t border-zinc-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:hidden">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-zinc-500">{locale === "zh" ? planZh[mobileStickyPlan.id].name : mobileStickyPlan.name}</p>
+                  <p className="text-lg font-semibold leading-none text-zinc-950">
+                    {formatPlanPriceValue(mobileStickyPlan.cyclePrice, mobileStickyPlan.pricePrefix || "$")}
+                    <span className="ml-1 text-xs font-medium text-zinc-500">{mobileStickyPlan.cycleUnit}</span>
+                  </p>
+                </div>
+                <p className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                  {mobileStickyPlan.monthlyCredits.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {t("credits", "积分")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handlePay(mobileStickyPlan)}
+                disabled={Boolean(payingPlanId) || finalizing}
+                className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition ${PAYMENT_CTA_CLASS} ${
+                  payingPlanId || finalizing ? "cursor-not-allowed opacity-70" : ""
+                }`}
+              >
+                {payingPlanId === mobileStickyPlan.id || finalizing ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <Zap size={16} />
+                )}
+                {payingPlanId === mobileStickyPlan.id
+                  ? t("Opening Checkout...", "正在打开支付页...")
+                  : finalizing
+                    ? t("Verifying Payment...", "正在确认支付...")
+                    : t("Subscribe with Stripe", "通过 Stripe 订阅")}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
