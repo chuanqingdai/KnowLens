@@ -41,15 +41,27 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["ffmpeg-static"],
   staticPageGenerationTimeout: 180,
   async redirects() {
-    if (!canonicalHost || !wwwHost) {
-      return [];
-    }
-    return [
-      {
+    const redirects = [];
+    if (canonicalHost && wwwHost) {
+      redirects.push({
         source: "/:path*",
-        has: [{ type: "host", value: wwwHost }],
+        has: [{ type: "host" as const, value: wwwHost }],
         destination: `https://${canonicalHost}/:path*`,
         permanent: true,
+      });
+    }
+    redirects.push({
+      source: "/insurance",
+      destination: "/baox",
+      permanent: true,
+    });
+    return redirects;
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/baox",
+        destination: "/insurance",
       },
     ];
   },

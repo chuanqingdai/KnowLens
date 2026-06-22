@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { AlertCircle, ArrowRight, Check, ChevronDown, Crown, Download, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, ChevronDown, Download, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { INSURANCE_CUSTOM_POSTER_EVENT } from "@/app/insurance/InsuranceCustomPosterButton";
 import {
   InsuranceMembershipDialog,
@@ -408,10 +408,6 @@ function getStyleOption(styleId?: string) {
   return allInsuranceStyleOptions.find((style) => style.id === styleId) || insuranceStyleOptions[0];
 }
 
-function hasActiveMembership(subscription?: BillingCreditsPayload["subscription"]) {
-  return subscription?.status === "active" || subscription?.status === "canceling";
-}
-
 function parseCoreRows(value: string) {
   return value
     .split("\n")
@@ -419,10 +415,27 @@ function parseCoreRows(value: string) {
     .filter(Boolean);
 }
 
-function formatSupplementalCopy(form: TemplateFormState) {
+function formatPosterCopy(form: TemplateFormState) {
   return [
     form.description,
     ...form.rows,
+  ]
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function applyPosterCopy(form: TemplateFormState, value: string): TemplateFormState {
+  const lines = parseCoreRows(value);
+  return {
+    ...form,
+    description: lines[0] || "",
+    rows: lines.slice(1),
+  };
+}
+
+function formatRemarkCopy(form: TemplateFormState) {
+  return [
     form.auxiliaryInfo,
     form.organizationName,
   ]
@@ -431,14 +444,12 @@ function formatSupplementalCopy(form: TemplateFormState) {
     .join("\n");
 }
 
-function applySupplementalCopy(form: TemplateFormState, value: string): TemplateFormState {
+function applyRemarkCopy(form: TemplateFormState, value: string): TemplateFormState {
   const lines = parseCoreRows(value);
   return {
     ...form,
-    description: lines[0] || "",
-    rows: lines.slice(1),
-    auxiliaryInfo: "",
-    organizationName: "",
+    auxiliaryInfo: lines[0] || "",
+    organizationName: lines.slice(1).join("\n"),
   };
 }
 
@@ -788,7 +799,7 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
                 message: "Insurance template preview image failed to load.",
                 status: "error",
                 details: {
-                  ...getTemplateAnalyticsDetails(template, template.isFree !== true),
+                  ...getTemplateAnalyticsDetails(template, false),
                   imageSrc: originalImageSrc,
                 },
               });
@@ -1427,8 +1438,6 @@ export function InsuranceTemplateGallery({
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
   const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
-  const [membershipPaywallOpen, setMembershipPaywallOpen] = useState(false);
-  const [membershipPaywallAction, setMembershipPaywallAction] = useState<MembershipGateAction>("generate");
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
@@ -1503,20 +1512,12 @@ export function InsuranceTemplateGallery({
     ? [...kepuStyleOptions, ...insuranceStyleOptions]
     : insuranceStyleOptions;
   const activePosterImageSrc = activePosterState?.imageSrc || activeTemplate?.imageSrc || "";
-  const isTemplatePremium = (template: InsuranceTemplateCard) => {
-    if (template.isCustom || template.isFree === true) {
-      return false;
-    }
-    return true;
-  };
-
   useEffect(() => {
     if (isMineMode) {
       return;
     }
     queueMicrotask(() => setShowcaseRefreshSeed(createShowcaseRefreshSeed()));
   }, [isMineMode]);
-  const activeTemplatePremium = activeTemplate ? isTemplatePremium(activeTemplate) : false;
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
 
   useEffect(() => {
@@ -1580,11 +1581,12 @@ export function InsuranceTemplateGallery({
     trackInsuranceEvent({
       action: "template_modal_open",
       message: "Insurance template modal opened.",
-      details: getTemplateAnalyticsDetails(template, isTemplatePremium(template)),
+      details: getTemplateAnalyticsDetails(template, false),
     });
     setActiveTemplate(template);
+    const initialForm = createInsuranceTemplateFormState(template);
     setTemplateForm({
-      ...createInsuranceTemplateFormState(template),
+      ...initialForm,
       aspectRatio: normalizeAspectRatioChoice(template.aspectRatio),
       styleId: template.styleId || insuranceStyleOptions[0].id,
     });
@@ -1617,23 +1619,6 @@ export function InsuranceTemplateGallery({
     window.addEventListener(INSURANCE_CUSTOM_POSTER_EVENT, onCustomPoster);
     return () => window.removeEventListener(INSURANCE_CUSTOM_POSTER_EVENT, onCustomPoster);
   }, [openCustomTemplate]);
-
-  const openMembershipPaywall = (action: MembershipGateAction) => {
-    trackInsuranceEvent({
-      action: "membership_paywall_shown",
-      message: "Insurance membership paywall shown.",
-      details: {
-        gateAction: action,
-        activeTemplateTitle: activeTemplate?.isCustom ? CUSTOM_INSURANCE_TEMPLATE_TITLE : activeTemplate?.title,
-        activeTemplateCategory: activeTemplate?.primaryCategory,
-        activeTemplateSecondaryCategory: activeTemplate?.secondaryCategory,
-      },
-    });
-    setMembershipPaywallAction(action);
-    setActiveTemplate(null);
-    setTemplateForm(null);
-    setMembershipPaywallOpen(true);
-  };
 
   const openCreditsPaywall = (balance: number | null, action: MembershipGateAction) => {
     trackInsuranceEvent({
@@ -1680,20 +1665,6 @@ export function InsuranceTemplateGallery({
     };
   };
 
-  const verifyMembershipAccess = async (action: MembershipGateAction) => {
-    try {
-      const { ok, payload } = await fetchBillingCredits();
-      if (ok && hasActiveMembership(payload?.subscription)) {
-        return payload;
-      }
-      openMembershipPaywall(action);
-      return null;
-    } catch {
-      openMembershipPaywall(action);
-      return null;
-    }
-  };
-
   const verifyCreditsForAction = async (action: MembershipGateAction) => {
     try {
       const { ok, payload } = await fetchBillingCredits();
@@ -1728,7 +1699,7 @@ export function InsuranceTemplateGallery({
     balance: number;
     email?: string;
   }) => {
-    const actionLabel = action === "download" ? "高级公共海报下载" : "保险海报生图";
+    const actionLabel = action === "download" ? "保险海报下载" : "保险海报生图";
     await appendCreditRecordOnServer(
       {
         type: "consume",
@@ -1777,35 +1748,27 @@ export function InsuranceTemplateGallery({
   };
 
   const requestOpenTemplate = (template: InsuranceTemplateCard, placement: "card" | "hover_button" = "card") => {
-    const premium = isTemplatePremium(template);
     trackInsuranceEvent({
       action: "template_open_click",
       message: "Insurance template open clicked.",
       details: {
-        ...getTemplateAnalyticsDetails(template, premium),
+        ...getTemplateAnalyticsDetails(template, false),
         placement,
         activeCategory,
       },
     });
-    void (async () => {
-      if (premium && !(await verifyMembershipAccess("generate"))) {
-        return;
-      }
-      openTemplate(template);
-    })();
+    openTemplate(template);
   };
 
   const requestDownloadTemplate = (template: InsuranceTemplateCard) => {
-    const premium = isTemplatePremium(template);
     void (async () => {
       const posterState = posterStateByTitle[template.title];
       const imageSrc = posterState?.imageSrc || template.imageSrc || "";
-      const shouldChargeDownloadCredits = premium && !(posterState?.currentCreatedAt && posterState.imageSrc);
       trackInsuranceEvent({
         action: "template_download_click",
         message: "Insurance template download clicked.",
         details: {
-          ...getTemplateAnalyticsDetails(template, premium),
+          ...getTemplateAnalyticsDetails(template, false),
           activeCategory,
           hasImage: Boolean(imageSrc),
         },
@@ -1813,35 +1776,28 @@ export function InsuranceTemplateGallery({
       if (!imageSrc) {
         return;
       }
-      if (premium && !(await verifyMembershipAccess("download"))) {
+      let consumedDownloadCredits = false;
+      const billingState = await verifyCreditsForAction("download");
+      if (!billingState) {
         return;
       }
-      let consumedDownloadCredits = false;
-      let consumedBalance = 0;
-      let consumedEmail: string | undefined;
-      if (shouldChargeDownloadCredits) {
-        const billingState = await verifyCreditsForAction("download");
-        if (!billingState) {
+      const consumedBalance = billingState.balance;
+      const consumedEmail = billingState.email;
+      try {
+        await consumeInsuranceCredits({
+          action: "download",
+          title: template.title,
+          balance: billingState.balance,
+          email: billingState.email,
+        });
+        consumedDownloadCredits = true;
+      } catch (error) {
+        if (isInsufficientCreditsError(error)) {
+          openCreditsPaywall(billingState.balance, "download");
           return;
         }
-        consumedBalance = billingState.balance;
-        consumedEmail = billingState.email;
-        try {
-          await consumeInsuranceCredits({
-            action: "download",
-            title: template.title,
-            balance: billingState.balance,
-            email: billingState.email,
-          });
-          consumedDownloadCredits = true;
-        } catch (error) {
-          if (isInsufficientCreditsError(error)) {
-            openCreditsPaywall(billingState.balance, "download");
-            return;
-          }
-          showDownloadToast("积分扣除失败，请稍后重试", 3200);
-          return;
-        }
+        showDownloadToast("积分扣除失败，请稍后重试", 3200);
+        return;
       }
       showDownloadToast("正在下载海报中...");
       try {
@@ -1866,7 +1822,7 @@ export function InsuranceTemplateGallery({
           message: "Insurance template download failed.",
           status: "error",
           details: {
-            ...getTemplateAnalyticsDetails(template, premium),
+            ...getTemplateAnalyticsDetails(template, false),
             activeCategory,
             errorMessage: error instanceof Error ? error.message : "download failed",
           },
@@ -1878,7 +1834,7 @@ export function InsuranceTemplateGallery({
         action: "template_download_started",
         message: "Insurance template download started.",
         details: {
-          ...getTemplateAnalyticsDetails(template, premium),
+          ...getTemplateAnalyticsDetails(template, false),
           activeCategory,
         },
       });
@@ -1894,41 +1850,32 @@ export function InsuranceTemplateGallery({
         action: "modal_download_click",
         message: "Insurance modal download clicked.",
         details: {
-          ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+          ...getTemplateAnalyticsDetails(activeTemplate, false),
           selectedAspectRatio: templateForm?.aspectRatio,
         },
       });
-      if (activeTemplatePremium && !(await verifyMembershipAccess("download"))) {
+      let consumedDownloadCredits = false;
+      const billingState = await verifyCreditsForAction("download");
+      if (!billingState) {
         return;
       }
-      const shouldChargeDownloadCredits =
-        activeTemplatePremium && !(activePosterState?.currentCreatedAt && activePosterState?.imageSrc);
-      let consumedDownloadCredits = false;
-      let consumedBalance = 0;
-      let consumedEmail: string | undefined;
-      if (shouldChargeDownloadCredits) {
-        const billingState = await verifyCreditsForAction("download");
-        if (!billingState) {
+      const consumedBalance = billingState.balance;
+      const consumedEmail = billingState.email;
+      try {
+        await consumeInsuranceCredits({
+          action: "download",
+          title: activeTemplate.title,
+          balance: billingState.balance,
+          email: billingState.email,
+        });
+        consumedDownloadCredits = true;
+      } catch (error) {
+        if (isInsufficientCreditsError(error)) {
+          openCreditsPaywall(billingState.balance, "download");
           return;
         }
-        consumedBalance = billingState.balance;
-        consumedEmail = billingState.email;
-        try {
-          await consumeInsuranceCredits({
-            action: "download",
-            title: activeTemplate.title,
-            balance: billingState.balance,
-            email: billingState.email,
-          });
-          consumedDownloadCredits = true;
-        } catch (error) {
-          if (isInsufficientCreditsError(error)) {
-            openCreditsPaywall(billingState.balance, "download");
-            return;
-          }
-          showDownloadToast("积分扣除失败，请稍后重试", 3200);
-          return;
-        }
+        showDownloadToast("积分扣除失败，请稍后重试", 3200);
+        return;
       }
       showDownloadToast("正在下载海报中...");
       try {
@@ -1953,7 +1900,7 @@ export function InsuranceTemplateGallery({
           message: "Insurance modal download failed.",
           status: "error",
           details: {
-            ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+            ...getTemplateAnalyticsDetails(activeTemplate, false),
             selectedAspectRatio: templateForm?.aspectRatio,
             errorMessage: error instanceof Error ? error.message : "download failed",
           },
@@ -1965,7 +1912,7 @@ export function InsuranceTemplateGallery({
         action: "modal_download_started",
         message: "Insurance modal download started.",
         details: {
-          ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+          ...getTemplateAnalyticsDetails(activeTemplate, false),
           selectedAspectRatio: templateForm?.aspectRatio,
         },
       });
@@ -1985,6 +1932,29 @@ export function InsuranceTemplateGallery({
           createdAt: record.createdAt,
         },
       });
+      let consumedDownloadCredits = false;
+      const billingState = await verifyCreditsForAction("download");
+      if (!billingState) {
+        return;
+      }
+      const consumedBalance = billingState.balance;
+      const consumedEmail = billingState.email;
+      try {
+        await consumeInsuranceCredits({
+          action: "download",
+          title,
+          balance: billingState.balance,
+          email: billingState.email,
+        });
+        consumedDownloadCredits = true;
+      } catch (error) {
+        if (isInsufficientCreditsError(error)) {
+          openCreditsPaywall(billingState.balance, "download");
+          return;
+        }
+        showDownloadToast("积分扣除失败，请稍后重试", 3200);
+        return;
+      }
       showDownloadToast("正在下载海报中...");
       try {
         const result = await downloadPosterImage(record.imageSrc, title);
@@ -1995,6 +1965,14 @@ export function InsuranceTemplateGallery({
           result === "image-opened" ? 4200 : 3200,
         );
       } catch (error) {
+        if (consumedDownloadCredits) {
+          void refundInsuranceCredits({
+            title,
+            balance: Math.max(0, consumedBalance - INSURANCE_POSTER_GENERATION_CREDITS),
+            email: consumedEmail,
+            reason: "insurance_my_poster_download_failed",
+          }).catch(() => undefined);
+        }
         trackInsuranceEvent({
           action: "my_poster_download_failed",
           message: "My generated insurance poster download failed.",
@@ -2065,10 +2043,11 @@ export function InsuranceTemplateGallery({
       return;
     }
     setActiveTemplate(record.template);
+    const recordForm = createInsuranceTemplateFormState(record.template);
     setTemplateForm({
-      ...createInsuranceTemplateFormState(record.template),
-      title: record.posterTitle || createInsuranceTemplateFormState(record.template).title,
-      description: record.posterDescription || createInsuranceTemplateFormState(record.template).description,
+      ...recordForm,
+      title: record.posterTitle || recordForm.title,
+      description: record.posterDescription || recordForm.description,
       aspectRatio: record.aspectRatio || normalizeAspectRatioChoice(record.template.aspectRatio),
       styleId: record.template.styleId || insuranceStyleOptions[0].id,
     });
@@ -2089,7 +2068,7 @@ export function InsuranceTemplateGallery({
       stylePrompt: currentStyle.prompt,
     });
     const generateDetails = {
-      ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+      ...getTemplateAnalyticsDetails(activeTemplate, false),
       selectedAspectRatio,
       selectedStyleId: currentStyle.id,
       selectedStyleName: currentStyle.name,
@@ -2107,17 +2086,10 @@ export function InsuranceTemplateGallery({
     });
     setIsCheckingCredits(true);
 
-    void (activeTemplatePremium ? verifyMembershipAccess("generate") : Promise.resolve({}))
-      .then((membershipState) => {
-        if (!membershipState) {
-          setIsCheckingCredits(false);
-          return null;
-        }
-        return verifyCreditsForAction("generate");
-      })
+    void verifyCreditsForAction("generate")
       .then((billingState) => {
-        setIsCheckingCredits(false);
         if (!billingState) {
+          setIsCheckingCredits(false);
           return;
         }
         return consumeInsuranceCredits({
@@ -2131,6 +2103,7 @@ export function InsuranceTemplateGallery({
         if (!billingState) {
           return;
         }
+        setIsCheckingCredits(false);
         setPosterStateByTitle((prev) => {
           const current = prev[templateKey] || {
             status: "ready",
@@ -2245,7 +2218,7 @@ export function InsuranceTemplateGallery({
           openCreditsPaywall(null, "generate");
           return;
         }
-        openCreditsPaywall(null, "generate");
+        showDownloadToast("积分扣除失败，请稍后重试", 3200);
       });
   };
 
@@ -2264,7 +2237,7 @@ export function InsuranceTemplateGallery({
         action: "template_modal_close",
         message: "Insurance template modal closed.",
         details: {
-          ...getTemplateAnalyticsDetails(activeTemplate, activeTemplatePremium),
+          ...getTemplateAnalyticsDetails(activeTemplate, false),
           reason,
         },
       });
@@ -2398,7 +2371,6 @@ export function InsuranceTemplateGallery({
                 const likes = [8, 5, 13, 7, 11, 4, 10, 6, 3, 9, 2, 12][index % 12];
                 const views = [68, 34, 96, 52, 81, 29, 73, 41, 24, 59, 18, 88][index % 12];
                 const labels = getCardLabels(template);
-                const premium = isTemplatePremium(template);
                 const canDownload = Boolean(posterStateByTitle[template.title]?.imageSrc || template.imageSrc);
 
                 return (
@@ -2409,11 +2381,6 @@ export function InsuranceTemplateGallery({
                   >
                     <div className="relative w-full overflow-hidden bg-white">
                       <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
-                      {premium ? (
-                        <div className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-[0_8px_18px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.58)]">
-                          <Crown size={14} fill="currentColor" />
-                        </div>
-                      ) : null}
                       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
                       <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center px-3 opacity-0 transition hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
                         <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
@@ -2556,7 +2523,7 @@ export function InsuranceTemplateGallery({
                     />
                   </FieldBlock>
 
-                  <FieldBlock label="标题（必填）">
+                  <FieldBlock label="标题">
                     <EditableBox
                       value={templateForm.title}
                       placeholder="输入海报主标题"
@@ -2565,15 +2532,27 @@ export function InsuranceTemplateGallery({
                     />
                   </FieldBlock>
 
-                  <FieldBlock label="补充文案（选填）">
+                  <FieldBlock label="海报文案">
                     <EditableBox
-                      value={formatSupplementalCopy(templateForm)}
-                      minHeight="min-h-36"
+                      value={formatPosterCopy(templateForm)}
+                      minHeight="min-h-[15rem]"
                       multiline
-                      rows={6}
-                      placeholder={"副标题、核心要点、备注或机构信息都可写在这里，每行一条"}
+                      rows={10}
+                      placeholder={"副标题和核心要点写在这里，每行一条"}
                       disabled={isGenerateActionBusy}
-                      onChange={(value) => setTemplateForm((prev) => (prev ? applySupplementalCopy(prev, value) : prev))}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? applyPosterCopy(prev, value) : prev))}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock label="备注信息">
+                    <EditableBox
+                      value={formatRemarkCopy(templateForm)}
+                      minHeight="min-h-24"
+                      multiline
+                      rows={4}
+                      placeholder={"风险提示、补充说明、机构名称或署名写在这里，每行一条"}
+                      disabled={isGenerateActionBusy}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? applyRemarkCopy(prev, value) : prev))}
                     />
                   </FieldBlock>
                 </div>
@@ -2670,21 +2649,6 @@ export function InsuranceTemplateGallery({
           </div>
         </div>,
           document.body,
-          )
-        : null}
-      {membershipPaywallOpen && typeof document !== "undefined"
-        ? createPortal(
-            <InsuranceMembershipDialog
-              open={membershipPaywallOpen}
-              source={`insurance_template_membership_${membershipPaywallAction}`}
-              contextLabel={membershipPaywallAction === "download" ? "下载高级海报" : "生成高级同款"}
-              onClose={() => setMembershipPaywallOpen(false)}
-              onUpgrade={() => {
-                setMembershipPaywallOpen(false);
-                openMembership();
-              }}
-            />,
-            document.body,
           )
         : null}
       {creditsPaywallOpen && typeof document !== "undefined"

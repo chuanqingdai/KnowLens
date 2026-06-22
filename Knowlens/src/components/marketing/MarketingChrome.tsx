@@ -40,6 +40,18 @@ type InsuranceHeaderBillingState = {
 
 const MEMBERSHIP_RETURN_PATH_KEY = "membership:return-path";
 
+function getInsuranceChromeReturnPath(fallback = "/baox") {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  const pathname = window.location.pathname || fallback;
+  const search = window.location.search || "";
+  if (pathname === "/" || pathname === "/insurance") {
+    return `/baox${search}`;
+  }
+  return `${pathname || fallback}${search}`;
+}
+
 const toolLinkGroups = [
   {
     title: "Infographic Tools",
@@ -326,16 +338,13 @@ export function MarketingChrome({
   }
 
   function openInsuranceLogin() {
-    const callbackUrl =
-      typeof window !== "undefined"
-        ? `${window.location.pathname || "/insurance"}${window.location.search || ""}`
-        : "/insurance";
-    router.push(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/insurance")}`);
+    const callbackUrl = getInsuranceChromeReturnPath();
+    router.push(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/baox")}`);
   }
 
   function openInsuranceCredits() {
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(MEMBERSHIP_RETURN_PATH_KEY, pathname || "/insurance");
+      window.sessionStorage.setItem(MEMBERSHIP_RETURN_PATH_KEY, getInsuranceChromeReturnPath(pathname || "/baox"));
     }
     router.push("/membership/credits");
   }

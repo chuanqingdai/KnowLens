@@ -27,7 +27,7 @@ import { insuranceXibaoSimpleTemplates } from "@/lib/insurance-xibao-simple-temp
 import { insuranceXibaoTemplates } from "@/lib/insurance-xibao-templates";
 
 const siteOrigin = "https://knowlens.ai";
-const pagePath = "/insurance";
+const pagePath = "/baox";
 const pageLink = `${siteOrigin}${pagePath}`;
 const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
 const heroImageUrl = `${siteOrigin}${heroImagePath}`;
@@ -399,20 +399,7 @@ function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: n
 }
 
 function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTemplateCard[]) {
-  const dailyTemplates = availableTemplates.filter((template) => template.primaryCategory === "日签");
-  const dailyFreeCount = Math.max(0, Math.round(dailyTemplates.length * 0.4));
-  const freeDailyIds = new Set(dailyTemplates.slice(0, dailyFreeCount).map(getTemplateIdentity));
-
-  return availableTemplates.map((template) => {
-    const identity = getTemplateIdentity(template);
-    if (template.primaryCategory === "节日" || template.primaryCategory === "节气") {
-      return { ...template, isFree: true };
-    }
-    if (template.primaryCategory === "日签") {
-      return { ...template, isFree: freeDailyIds.has(identity) };
-    }
-    return { ...template, isFree: false };
-  });
+  return availableTemplates.map((template) => ({ ...template, isFree: false }));
 }
 
 function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[], seed: number) {

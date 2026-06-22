@@ -12,15 +12,15 @@ type InsuranceMembershipDialogProps = {
 };
 
 const freeBenefits = [
-  "浏览保险海报案例",
-  "下载少量免费海报",
+  "新账号默认赠送 30 积分",
+  "生成和下载均按积分扣除",
 ];
 
 const annualBenefits = [
-  "解锁所有保险海报模板",
-  "一键生成同款，快速发朋友圈",
+  "所有保险海报统一按积分使用",
+  "可用于生成同款和下载海报",
   "适合私域营销与长期展业",
-  "会员有效期 1 年",
+  "积分不足时随时补充",
 ];
 
 const PENDING_CHECKOUT_KEY = "knowlens-pending-checkout-v1";
@@ -95,11 +95,24 @@ function trackInsuranceMembership(action: string, source: string, message?: stri
   }).catch(() => undefined);
 }
 
+function getInsuranceReturnPath() {
+  if (typeof window === "undefined") {
+    return "/baox";
+  }
+  const pathname = window.location.pathname || "/";
+  const search = window.location.search || "";
+  if (pathname === "/" || pathname === "/insurance") {
+    return `/baox${search}`;
+  }
+  return `${pathname || "/baox"}${search}`;
+}
+
 export function openInsuranceMembershipCheckout(source = "insurance_membership_dialog") {
   if (typeof window === "undefined") {
     return Promise.resolve();
   }
-  window.sessionStorage.setItem("membership:return-path", "/insurance");
+  const callbackUrl = getInsuranceReturnPath();
+  window.sessionStorage.setItem("membership:return-path", callbackUrl);
   window.sessionStorage.setItem(MEMBERSHIP_SOURCE_KEY, source);
   window.sessionStorage.setItem(MEMBERSHIP_PREFERRED_PLAN_KEY, "insurance");
   window.sessionStorage.setItem(MEMBERSHIP_PREFERRED_CYCLE_KEY, "yearly");
@@ -113,7 +126,6 @@ export function openInsuranceMembershipCheckout(source = "insurance_membership_d
   };
   savePendingCheckout(pendingCheckout);
 
-  const callbackUrl = `${window.location.pathname || "/insurance"}${window.location.search || ""}`;
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), CHECKOUT_REQUEST_TIMEOUT_MS);
 
@@ -130,7 +142,7 @@ export function openInsuranceMembershipCheckout(source = "insurance_membership_d
     .then(async (response) => {
       if (response.status === 401) {
         saveInsuranceAutoCheckoutIntent(source);
-        window.location.assign(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/insurance")}`);
+        window.location.assign(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/baox")}`);
         return;
       }
 
@@ -191,7 +203,7 @@ export function InsuranceMembershipDialog({
     if (!open) {
       return;
     }
-    trackInsuranceMembership("insurance_membership_dialog_exposed", source, contextLabel || "保险会员弹窗");
+    trackInsuranceMembership("insurance_membership_dialog_exposed", source, contextLabel || "保险积分弹窗");
   }, [contextLabel, open, source]);
 
   if (!open) {
@@ -199,7 +211,7 @@ export function InsuranceMembershipDialog({
   }
 
   const upgrade = () => {
-    trackInsuranceMembership("insurance_membership_upgrade_clicked", source, contextLabel || "包年会员");
+    trackInsuranceMembership("insurance_membership_upgrade_clicked", source, contextLabel || "包年积分包");
     if (onUpgrade) {
       onUpgrade();
       return;
@@ -214,7 +226,7 @@ export function InsuranceMembershipDialog({
     <div className="fixed inset-0 z-[130] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
-        aria-label="关闭会员弹窗"
+        aria-label="关闭积分弹窗"
         className="absolute inset-0 bg-zinc-950/50 backdrop-blur-[2px]"
         onClick={onClose}
       />
@@ -232,10 +244,10 @@ export function InsuranceMembershipDialog({
         <div className="max-h-[calc(100dvh-6.75rem)] overflow-y-auto px-4 pb-5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] sm:max-h-[92dvh] sm:p-6 [&::-webkit-scrollbar]:hidden">
           <div className="pr-10">
             <h3 className="text-[22px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-3xl">
-              解锁更多保险营销海报
+              补充保险海报积分
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
-              免费体验基础模板，升级后解锁高级海报、生成同款和下载权益。
+              保险海报生成和下载统一使用积分。积分不足时，补充后即可继续使用。
             </p>
           </div>
 
@@ -243,8 +255,8 @@ export function InsuranceMembershipDialog({
           <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3.5 sm:p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h4 className="text-lg font-semibold text-zinc-950">免费版</h4>
-                <p className="mt-1 text-sm text-zinc-500">先体验模板效果</p>
+                <h4 className="text-lg font-semibold text-zinc-950">新手积分</h4>
+                <p className="mt-1 text-sm text-zinc-500">注册后即可开始使用</p>
               </div>
             </div>
             <ul className="mt-4 space-y-2.5 text-sm leading-5 text-zinc-700">
@@ -262,8 +274,8 @@ export function InsuranceMembershipDialog({
               5 折
             </div>
             <div className="pr-16">
-              <h4 className="text-lg font-semibold">包年会员</h4>
-              <p className="mt-1 text-sm text-zinc-300">一年海报素材安心用</p>
+              <h4 className="text-lg font-semibold">包年积分包</h4>
+              <p className="mt-1 text-sm text-zinc-300">一年保险海报安心用</p>
             </div>
             <div className="mt-5 flex flex-wrap items-end gap-x-2 gap-y-1">
               <span className="text-4xl font-semibold tracking-tight">¥199</span>
@@ -287,7 +299,7 @@ export function InsuranceMembershipDialog({
               disabled={submitting}
               className="mt-5 hidden h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-zinc-950 transition hover:bg-amber-100 sm:inline-flex"
             >
-              {submitting ? "跳转支付中..." : "开通包年会员"}
+              {submitting ? "跳转支付中..." : "购买包年积分包"}
               <ArrowRight size={15} />
             </button>
           </section>
@@ -296,7 +308,7 @@ export function InsuranceMembershipDialog({
         <div className="border-t border-zinc-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:hidden">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-medium text-zinc-500">包年会员</p>
+              <p className="text-xs font-medium text-zinc-500">包年积分包</p>
               <p className="text-lg font-semibold leading-none text-zinc-950">¥199 <span className="text-xs font-medium text-zinc-500">/ 年</span></p>
             </div>
             <p className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">含 6000 积分</p>
@@ -307,7 +319,7 @@ export function InsuranceMembershipDialog({
             disabled={submitting}
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)] transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {submitting ? "跳转支付中..." : "开通包年会员"}
+            {submitting ? "跳转支付中..." : "购买包年积分包"}
             <ArrowRight size={16} />
           </button>
         </div>

@@ -90,7 +90,7 @@ export default function CreditRecordsPage() {
         if (storedPath?.startsWith("/") && storedPath !== "/membership/credits") {
           returnPath = storedPath;
         }
-        if (returnPath.startsWith("/insurance")) {
+        if (returnPath.startsWith("/insurance") || returnPath.startsWith("/baox")) {
           window.sessionStorage.removeItem(MEMBERSHIP_RETURN_PATH_KEY);
           window.sessionStorage.removeItem(MEMBERSHIP_SOURCE_KEY);
           window.sessionStorage.removeItem(MEMBERSHIP_PREFERRED_PLAN_KEY);
