@@ -4,7 +4,7 @@ export type AuthUser = {
   email: string;
   name: string;
   role: UserRole;
-  provider: "google";
+  provider: "google" | "password";
 };
 
 export const ADMIN_EMAIL = "chuanqingdai@gmail.com";
@@ -20,8 +20,12 @@ export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function normalizeEmailForRole(email: string) {
+  return normalizeEmail(email).replace(/^password:/, "");
+}
+
 export function isAdminEmail(email: string) {
-  const normalized = normalizeEmail(email);
+  const normalized = normalizeEmailForRole(email);
   if (normalized === ADMIN_EMAIL) {
     return true;
   }

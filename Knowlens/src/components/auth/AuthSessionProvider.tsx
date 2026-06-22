@@ -23,7 +23,7 @@ function SessionDataSync({ children }: { children: React.ReactNode }) {
       email,
       name: session?.user?.name?.trim() || email.split("@")[0] || "User",
       role: resolveRoleByEmail(email),
-      provider: "google",
+      provider: email.startsWith("password:") ? "password" : "google",
     });
   }, [session?.user?.email, session?.user?.name]);
 

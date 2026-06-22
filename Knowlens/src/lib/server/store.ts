@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findBillingPlan } from "@/lib/billing-plans";
@@ -36,6 +36,40 @@ type OpsEventInput = {
   projectId?: string;
   details?: unknown;
 };
+
+const PASSWORD_HASH_PREFIX = "scrypt:v1";
+const PASSWORD_KEY_LENGTH = 64;
+const PASSWORD_ACCOUNT_EMAIL_PREFIX = "password:";
+
+function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, PASSWORD_KEY_LENGTH).toString("hex");
+  return `${PASSWORD_HASH_PREFIX}:${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash?: string | null) {
+  if (!storedHash?.startsWith(`${PASSWORD_HASH_PREFIX}:`)) {
+    return false;
+  }
+  try {
+    const [, , salt, hashHex] = storedHash.split(":");
+    if (!salt || !hashHex) {
+      return false;
+    }
+    const expected = Buffer.from(hashHex, "hex");
+    if (expected.length !== PASSWORD_KEY_LENGTH) {
+      return false;
+    }
+    const actual = scryptSync(password, salt, expected.length);
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
+function getPasswordAccountEmail(email: string) {
+  return `${PASSWORD_ACCOUNT_EMAIL_PREFIX}${email.trim().toLowerCase()}`;
+}
 
 export type OpsEventRow = {
   id: string;
@@ -249,6 +283,84 @@ export async function upsertUser(input: {
        updated_at = excluded.updated_at`,
   ).run(id, email, input.name, input.role, nowIso(), nowIso());
   return id;
+}
+
+export async function authenticateOrCreatePasswordUser(input: {
+  email: string;
+  password: string;
+  role: "user" | "admin";
+}) {
+  const rawEmail = input.email.trim().toLowerCase();
+  const email = getPasswordAccountEmail(rawEmail);
+  const name = rawEmail.split("@")[0] || "Password User";
+  const passwordHash = hashPassword(input.password);
+  const selectSql = "SELECT id, email, name, role, password_hash, status FROM users WHERE email = ?";
+  if (hasManagedDatabase()) {
+    const existing = (await pgGet(selectSql, [email])) as
+      | { id: string; email: string; name: string; role: "user" | "admin"; password_hash?: string | null; status?: string | null }
+      | undefined;
+    if (existing) {
+      if (existing.status === "disabled") {
+        return null;
+      }
+      if (!existing.password_hash) {
+        const loggedInAt = nowIso();
+        await pgRun("UPDATE users SET password_hash = ?, last_login_at = ?, updated_at = ? WHERE id = ?", [
+          passwordHash,
+          loggedInAt,
+          loggedInAt,
+          existing.id,
+        ]);
+        return { id: existing.id, email: existing.email, name: existing.name, role: existing.role };
+      }
+      if (!verifyPassword(input.password, existing.password_hash)) {
+        return null;
+      }
+      const loggedInAt = nowIso();
+      await pgRun("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", [loggedInAt, loggedInAt, existing.id]);
+      return { id: existing.id, email: existing.email, name: existing.name, role: existing.role };
+    }
+    const id = `u-${randomUUID()}`;
+    const loggedInAt = nowIso();
+    await pgRun(
+      `INSERT INTO users (id, email, name, password_hash, role, status, last_login_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+      [id, email, name, passwordHash, input.role, loggedInAt, loggedInAt, loggedInAt],
+    );
+    return { id, email, name, role: input.role };
+  }
+  const { db } = getDb();
+  const existing = db.prepare(selectSql).get(email) as
+    | { id: string; email: string; name: string; role: "user" | "admin"; password_hash?: string | null; status?: string | null }
+    | undefined;
+  if (existing) {
+    if (existing.status === "disabled") {
+      return null;
+    }
+    if (!existing.password_hash) {
+      const loggedInAt = nowIso();
+      db.prepare("UPDATE users SET password_hash = ?, last_login_at = ?, updated_at = ? WHERE id = ?").run(
+        passwordHash,
+        loggedInAt,
+        loggedInAt,
+        existing.id,
+      );
+      return { id: existing.id, email: existing.email, name: existing.name, role: existing.role };
+    }
+    if (!verifyPassword(input.password, existing.password_hash)) {
+      return null;
+    }
+    const loggedInAt = nowIso();
+    db.prepare("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?").run(loggedInAt, loggedInAt, existing.id);
+    return { id: existing.id, email: existing.email, name: existing.name, role: existing.role };
+  }
+  const id = `u-${randomUUID()}`;
+  const loggedInAt = nowIso();
+  db.prepare(
+    `INSERT INTO users (id, email, name, password_hash, role, status, last_login_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+  ).run(id, email, name, passwordHash, input.role, loggedInAt, loggedInAt, loggedInAt);
+  return { id, email, name, role: input.role };
 }
 
 export async function listProjectsByUser(email: string) {

@@ -10,6 +10,7 @@ import {
   InsuranceMembershipDialog,
   openInsuranceMembershipCheckout,
 } from "@/components/billing/InsuranceMembershipDialog";
+import { UserMenu } from "@/components/auth/UserMenu";
 import { LocalizedMarketingText } from "@/components/i18n/LocalizedMarketingText";
 import { LocaleSwitch } from "@/components/i18n/LocaleSwitch";
 import { useLocale, type Locale } from "@/components/i18n/LocaleProvider";
@@ -545,7 +546,7 @@ export function MarketingChrome({
             ) : null}
             {membershipVariant === "insurance" ? (
               <>
-                {status === "unauthenticated" ? (
+                {!isAuthenticated ? (
                   <button
                     type="button"
                     onClick={openInsuranceLogin}
@@ -554,13 +555,19 @@ export function MarketingChrome({
                     登录
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={openInsuranceCredits}
-                    className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 min-[430px]:inline-flex"
-                  >
-                    剩余积分 {insuranceBalanceLabel}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={openInsuranceCredits}
+                      className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 min-[430px]:inline-flex"
+                    >
+                      剩余积分 {insuranceBalanceLabel}
+                    </button>
+                    <UserMenu
+                      signOutCallbackUrl={false}
+                      buttonClassName="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-800 shadow-sm transition hover:bg-zinc-100"
+                    />
+                  </>
                 )}
                 {status === "unauthenticated" || (insuranceBillingLoaded && !insuranceMemberActive) ? (
                   <button

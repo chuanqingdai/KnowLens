@@ -14,18 +14,23 @@ function getAvatarFallback(nameOrEmail: string) {
   return value.slice(0, 1).toUpperCase();
 }
 
+function getDisplayEmail(email?: string | null) {
+  return (email || "").replace(/^password:/, "");
+}
+
 type UserMenuProps = {
   buttonClassName?: string;
+  signOutCallbackUrl?: string | false;
 };
 
-export function UserMenu({ buttonClassName }: UserMenuProps) {
+export function UserMenu({ buttonClassName, signOutCallbackUrl = "/auth" }: UserMenuProps) {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const displayName = session?.user?.name?.trim() || session?.user?.email || "User";
-  const displayEmail = session?.user?.email || "";
+  const displayEmail = getDisplayEmail(session?.user?.email);
+  const displayName = session?.user?.name?.trim() || displayEmail || "User";
 
   const fallbackInitial = useMemo(() => getAvatarFallback(displayName), [displayName]);
 
@@ -136,7 +141,11 @@ export function UserMenu({ buttonClassName }: UserMenuProps) {
             type="button"
             onClick={() => {
               setOpen(false);
-              void signOut({ callbackUrl: "/auth" });
+              if (signOutCallbackUrl === false) {
+                void signOut({ redirect: false }).then(() => router.refresh());
+                return;
+              }
+              void signOut({ callbackUrl: signOutCallbackUrl });
             }}
             className="flex w-full items-center gap-2 rounded-xl border-t border-zinc-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
           >

@@ -2,7 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { resolveRoleByEmail } from "@/lib/auth";
-import { logOpsEvent, upsertUser } from "@/lib/server/store";
+import { authenticateOrCreatePasswordUser, logOpsEvent, upsertUser } from "@/lib/server/store";
 import {
   assertProductionAuthConfigLock,
   getAuthEnvSnapshot,
@@ -178,6 +178,26 @@ export const nextAuthOptions: NextAuthOptions = {
         timeout: 30000,
         // Prefer IPv4 for flaky local DNS/network paths to Google OAuth endpoints.
         agent: googleHttpsAgent,
+      },
+    }),
+    CredentialsProvider({
+      id: "password-login",
+      name: "账号密码登录",
+      credentials: {
+        email: { label: "Email", type: "email", placeholder: "you@example.com" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = (credentials?.email ?? "").trim().toLowerCase();
+        const password = credentials?.password ?? "";
+        if (!email || password.length < 6) {
+          return null;
+        }
+        return authenticateOrCreatePasswordUser({
+          email,
+          password,
+          role: resolveRoleByEmail(email),
+        });
       },
     }),
     CredentialsProvider({

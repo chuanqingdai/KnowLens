@@ -15,20 +15,18 @@ const STORAGE_KEY = "knowlens-locale";
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    if (typeof window === "undefined") {
-      return "en";
-    }
+  const [locale, setLocaleState] = useState<Locale>("en");
+
+  useEffect(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved === "en" || saved === "zh") {
-        return saved;
+        setLocaleState(saved);
       }
     } catch {
-      return "en";
+      // keep server-safe default
     }
-    return "en";
-  });
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";

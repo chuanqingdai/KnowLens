@@ -20,7 +20,10 @@ export async function runManagedSchemaMigration(sql) {
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
+      password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'user',
+      status TEXT NOT NULL DEFAULT 'active',
+      last_login_at TEXT,
       created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
       updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
     );
@@ -319,6 +322,9 @@ export async function runManagedSchemaMigration(sql) {
       ON published_case_assets(case_id, sort_order ASC, page_index ASC);
   `);
 
+  await ensurePostgresColumn(sql, "users", "password_hash TEXT");
+  await ensurePostgresColumn(sql, "users", "status TEXT NOT NULL DEFAULT 'active'");
+  await ensurePostgresColumn(sql, "users", "last_login_at TEXT");
   await ensurePostgresColumn(sql, "subscriptions", "stripe_subscription_id TEXT");
   await ensurePostgresColumn(sql, "subscriptions", "monthly_credit_amount INTEGER");
   await ensurePostgresColumn(sql, "subscriptions", "credit_period_started_at TEXT");

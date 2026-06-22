@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/i18n/LocaleProvider";
@@ -42,14 +42,13 @@ export default function AuthPage() {
   const { status: sessionStatus } = useSession();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isLocalLoginLoading, setIsLocalLoginLoading] = useState(false);
+  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [gisReady, setGisReady] = useState(false);
-  const [gisRendered, setGisRendered] = useState(false);
   const [localErrorCode, setLocalErrorCode] = useState<string | null>(null);
-  const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const { t } = useLocale();
-  const oneTapClientId =
-    process.env.NEXT_PUBLIC_GOOGLE_ONE_TAP_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const getAuthParams = () => {
     if (typeof window === "undefined") {
       return { authError: null as string | null, callbackUrl: "/app" };
@@ -64,11 +63,11 @@ export default function AuthPage() {
   const { authError, callbackUrl } = mounted
     ? getAuthParams()
     : { authError: null as string | null, callbackUrl: "/app" };
-  const canRenderGoogleButton = Boolean(oneTapClientId);
   const showLocalBypass =
     mounted &&
     isLocalNetworkHost() &&
     (process.env.NEXT_PUBLIC_ALLOW_DEV_LOGIN === "true" || process.env.NODE_ENV !== "production");
+  const canSubmitPassword = email.trim().includes("@") && password.length >= 6;
 
   useEffect(() => {
     queueMicrotask(() => setMounted(true));
@@ -82,68 +81,6 @@ export default function AuthPage() {
   }, [callbackUrl, mounted, router, sessionStatus]);
 
   useEffect(() => {
-    if (!mounted || !oneTapClientId) {
-      return;
-    }
-    if (window.google?.accounts?.id) {
-      queueMicrotask(() => setGisReady(true));
-      return;
-    }
-    const scriptId = "knowlens-google-gsi-auth";
-    if (document.getElementById(scriptId)) {
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setGisReady(true);
-    document.head.appendChild(script);
-  }, [mounted, oneTapClientId]);
-
-  useEffect(() => {
-    if (!mounted || !gisReady || !oneTapClientId || gisRendered || !googleButtonRef.current) {
-      return;
-    }
-    const id = window.google?.accounts?.id;
-    if (!id) {
-      return;
-    }
-    id.initialize({
-      client_id: oneTapClientId,
-      context: "signin",
-      auto_select: false,
-      cancel_on_tap_outside: true,
-      callback: async (response) => {
-        const credential = response?.credential?.trim();
-        if (!credential) {
-          return;
-        }
-        setIsGoogleLoading(true);
-        try {
-          await signIn("google-onetap", {
-            credential,
-            callbackUrl,
-          });
-        } finally {
-          setIsGoogleLoading(false);
-        }
-      },
-    });
-    id.renderButton?.(googleButtonRef.current, {
-      type: "standard",
-      theme: "outline",
-      size: "large",
-      text: "continue_with",
-      shape: "rectangular",
-      width: 360,
-      locale: "en",
-    });
-    queueMicrotask(() => setGisRendered(true));
-  }, [callbackUrl, gisReady, gisRendered, mounted, oneTapClientId]);
-
-  useEffect(() => {
     if (!mounted) {
       return;
     }
@@ -153,10 +90,10 @@ export default function AuthPage() {
         setIsLocalLoginLoading(false);
       });
     }
-    if (authError || localErrorCode) {
+    if (authError) {
       queueMicrotask(() => setLocalErrorCode(null));
     }
-  }, [authError, localErrorCode, mounted]);
+  }, [authError, mounted]);
 
   const activeError = authError || localErrorCode;
   const authErrorNotice = (() => {
@@ -175,9 +112,39 @@ export default function AuthPage() {
         "Google 登录在最后回调步骤失败。请检查回调地址后再试。",
       );
     }
+    if (activeError === "OAuthAccountNotLinked") {
+      return t(
+        "This Google account is not linked to the current sign-in method. Please use another Google account or the password sign-in below.",
+        "这个 Google 账号没有绑定当前登录方式。请换一个 Google 账号，或使用下方账号密码登录。",
+      );
+    }
+    if (activeError === "AccessDenied") {
+      return t(
+        "Google authorization was cancelled or denied. Please try again.",
+        "Google 授权已取消或被拒绝，请重试。",
+      );
+    }
+    if (activeError === "Configuration") {
+      return t(
+        "Google login is not fully configured on the server. Please check the production OAuth settings.",
+        "服务器上的 Google 登录配置不完整，请检查线上 OAuth 配置。",
+      );
+    }
+    if (activeError === "CredentialsSignin") {
+      return t(
+        "The email or password is incorrect. Please check it and try again.",
+        "邮箱或密码不正确，请检查后重试。",
+      );
+    }
+    if (activeError === "AUTH-PASSWORD-VALIDATION") {
+      return t(
+        "Please enter a valid email and a password with at least 6 characters.",
+        "请输入有效邮箱和至少 6 位密码。",
+      );
+    }
     return t(
-      "Google login failed. Please try again.",
-      "Google 登录失败，请重试。",
+      "Sign-in failed. Please try again.",
+      "登录失败，请重试。",
     );
   })();
 
@@ -191,11 +158,55 @@ export default function AuthPage() {
     if (activeError === "OAuthCallback") {
       return "AUTH-GOOGLE-002";
     }
+    if (activeError === "OAuthAccountNotLinked") {
+      return "AUTH-GOOGLE-003";
+    }
+    if (activeError === "AccessDenied") {
+      return "AUTH-GOOGLE-004";
+    }
+    if (activeError === "Configuration") {
+      return "AUTH-GOOGLE-005";
+    }
+    if (activeError === "CredentialsSignin") {
+      return "AUTH-PASSWORD-001";
+    }
+    if (activeError === "AUTH-PASSWORD-VALIDATION") {
+      return "AUTH-PASSWORD-002";
+    }
     return `AUTH-GENERIC-${String(activeError).slice(0, 12).toUpperCase()}`;
   })();
+  const handlePasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isPasswordLoading || isGoogleLoading) {
+      return;
+    }
+    setLocalErrorCode(null);
+    if (!canSubmitPassword) {
+      setLocalErrorCode("AUTH-PASSWORD-VALIDATION");
+      return;
+    }
+    setIsPasswordLoading(true);
+    try {
+      const result = await signIn("password-login", {
+        redirect: false,
+        email: email.trim(),
+        password,
+        callbackUrl,
+      });
+      if (result?.ok) {
+        router.replace(callbackUrl);
+        return;
+      }
+    } catch {
+      // Fall through to the same user-facing retry state as an auth failure.
+    }
+    setPassword("");
+    setIsPasswordLoading(false);
+    setLocalErrorCode("CredentialsSignin");
+  };
 
   return (
-    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-[#f6f7f9] px-4">
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f6f7f9] px-4 py-8 sm:py-10">
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -211,47 +222,116 @@ export default function AuthPage() {
           {t("KnowLens.ai", "KnowLens.ai")}
         </p>
         <h1 className="mt-2 text-[34px] font-semibold leading-[1.12] tracking-tight text-zinc-900">
-          {t("Sign in to KnowLens", "登录 KnowLens")}
+          {t("Welcome back to KnowLens", "欢迎回到 KnowLens")}
         </h1>
 
-        <div
-          ref={googleButtonRef}
-          className={`mt-6 flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white ${
-            gisRendered ? "p-1.5" : "p-0"
-          }`}
-        >
-          {!gisRendered && canRenderGoogleButton ? (
-            <span className="text-xs text-zinc-500">
-              {t("Loading Google sign-in...", "正在加载 Google 登录组件...")}
+        <form className="mt-6 space-y-3" onSubmit={handlePasswordSubmit}>
+          <label className="block text-sm font-medium text-zinc-700">
+            {t("Email", "邮箱")}
+            <span className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 transition focus-within:border-zinc-400">
+              <Mail size={16} className="text-zinc-400" />
+              <input
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setLocalErrorCode(null);
+                }}
+                className="min-w-0 flex-1 bg-transparent text-sm font-normal text-zinc-900 outline-none placeholder:text-zinc-400"
+                placeholder="name@example.com"
+                autoComplete="email"
+                inputMode="email"
+              />
             </span>
-          ) : null}
-          {!gisRendered && !canRenderGoogleButton ? (
-            <button
-              type="button"
-              onClick={() => {
-                setIsGoogleLoading(true);
-                void signIn("google", { callbackUrl }).catch(() => {
-                  setIsGoogleLoading(false);
-                });
-              }}
-              disabled={isGoogleLoading}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-zinc-900 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 hover:shadow-[0_10px_24px_rgba(15,23,42,0.20)] active:translate-y-px active:shadow-[0_6px_16px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isGoogleLoading ? (
-                <Loader2 size={15} className="animate-spin text-white/90" />
-              ) : (
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white">
-                  <GoogleMark />
-                </span>
+          </label>
+          <label className="block text-sm font-medium text-zinc-700">
+            {t("Password", "密码")}
+            <span className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 transition focus-within:border-zinc-400">
+              <Lock size={16} className="text-zinc-400" />
+              <input
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setLocalErrorCode(null);
+                }}
+                className="min-w-0 flex-1 bg-transparent text-sm font-normal text-zinc-900 outline-none placeholder:text-zinc-400"
+                placeholder={t("At least 6 characters", "至少 6 位字符")}
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                aria-label={showPassword ? t("Hide password", "隐藏密码") : t("Show password", "显示密码")}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </span>
+          </label>
+          <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+            <span>
+              {t(
+                "Use email and password to sign in. On your first sign-in, we will create a new account for you.",
+                "使用邮箱和密码登录，首次登录时，会为你直接注册新的账号。",
               )}
-              <span>
-                {isGoogleLoading
-                  ? t("Connecting...", "正在连接 Google...")
-                  : t("Sign in with Google", "使用 Google 登录")}
-              </span>
-            </button>
-          ) : null}
+            </span>
+          </div>
+          <button
+            type="submit"
+            disabled={!canSubmitPassword || isPasswordLoading || isGoogleLoading}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isPasswordLoading ? <Loader2 size={15} className="animate-spin text-white/90" /> : null}
+            <span>
+              {isPasswordLoading
+                ? t("Signing in...", "正在登录...")
+                : t("Sign in", "登录")}
+            </span>
+          </button>
+        </form>
+
+        {authErrorNotice && authErrorCode ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+            <p className="text-xs leading-5 text-red-700">{authErrorNotice}</p>
+            <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+              {t(`Error code: ${authErrorCode}`, `错误码：${authErrorCode}`)}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="my-5 flex items-center gap-3 text-xs text-zinc-400">
+          <span className="h-px flex-1 bg-zinc-200" />
+          <span>{t("or", "或")}</span>
+          <span className="h-px flex-1 bg-zinc-200" />
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (isPasswordLoading) {
+              return;
+            }
+            setIsGoogleLoading(true);
+            void signIn("google", { callbackUrl }).catch(() => {
+              setIsGoogleLoading(false);
+            });
+          }}
+          disabled={isGoogleLoading || isPasswordLoading}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isGoogleLoading ? (
+            <Loader2 size={15} className="animate-spin text-zinc-500" />
+          ) : (
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white">
+              <GoogleMark />
+            </span>
+          )}
+          <span>
+            {isGoogleLoading
+              ? t("Connecting...", "正在连接 Google...")
+              : t("Sign in with Google", "使用 Google 登录")}
+          </span>
+        </button>
 
         {showLocalBypass ? (
           <button
@@ -280,15 +360,6 @@ export default function AuthPage() {
                 : t("Skip sign-in for local testing", "本地测试跳过登录")}
             </span>
           </button>
-        ) : null}
-
-        {authErrorNotice && authErrorCode ? (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
-            <p className="text-xs leading-5 text-red-700">{authErrorNotice}</p>
-            <p className="mt-1 text-[11px] leading-5 text-zinc-500">
-              {t(`Error code: ${authErrorCode}`, `错误码：${authErrorCode}`)}
-            </p>
-          </div>
         ) : null}
 
       </section>

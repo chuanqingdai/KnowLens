@@ -56,7 +56,10 @@ function createTables(db: DatabaseSync) {
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
+      password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'user',
+      status TEXT NOT NULL DEFAULT 'active',
+      last_login_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -376,6 +379,23 @@ function createTables(db: DatabaseSync) {
   for (const columnDef of uploadJobColumns) {
     try {
       db.exec(`ALTER TABLE upload_jobs ADD COLUMN ${columnDef}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate column name/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  const userColumns = [
+    "password_hash TEXT",
+    "status TEXT NOT NULL DEFAULT 'active'",
+    "last_login_at TEXT",
+  ];
+
+  for (const columnDef of userColumns) {
+    try {
+      db.exec(`ALTER TABLE users ADD COLUMN ${columnDef}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!/duplicate column name/i.test(message)) {
