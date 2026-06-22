@@ -419,6 +419,29 @@ function parseCoreRows(value: string) {
     .filter(Boolean);
 }
 
+function formatSupplementalCopy(form: TemplateFormState) {
+  return [
+    form.description,
+    ...form.rows,
+    form.auxiliaryInfo,
+    form.organizationName,
+  ]
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function applySupplementalCopy(form: TemplateFormState, value: string): TemplateFormState {
+  const lines = parseCoreRows(value);
+  return {
+    ...form,
+    description: lines[0] || "",
+    rows: lines.slice(1),
+    auxiliaryInfo: "",
+    organizationName: "",
+  };
+}
+
 function createCustomInsuranceTemplate(): InsuranceTemplateCard {
   return {
     title: CUSTOM_INSURANCE_TEMPLATE_TITLE,
@@ -2542,53 +2565,15 @@ export function InsuranceTemplateGallery({
                     />
                   </FieldBlock>
 
-                  <FieldBlock label="副标题（选填）">
+                  <FieldBlock label="补充文案（选填）">
                     <EditableBox
-                      value={templateForm.description}
-                      placeholder="输入一句副标题"
-                      disabled={isGenerateActionBusy}
-                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, description: value } : prev))}
-                    />
-                  </FieldBlock>
-
-                  <FieldBlock label="核心要点（选填）">
-                    <EditableBox
-                      value={templateForm.rows.join("\n")}
-                      minHeight="min-h-24"
+                      value={formatSupplementalCopy(templateForm)}
+                      minHeight="min-h-36"
                       multiline
-                      rows={4}
-                      placeholder={"每行一个核心卖点"}
+                      rows={6}
+                      placeholder={"副标题、核心要点、备注或机构信息都可写在这里，每行一条"}
                       disabled={isGenerateActionBusy}
-                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, rows: parseCoreRows(value) } : prev))}
-                    />
-                  </FieldBlock>
-
-                  <FieldBlock label="辅助信息（选填）">
-                    <EditableBox
-                      value={templateForm.auxiliaryInfo}
-                      placeholder="输入风险提示或备注"
-                      disabled={isGenerateActionBusy}
-                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, auxiliaryInfo: value } : prev))}
-                    />
-                  </FieldBlock>
-
-                  <FieldBlock label="机构名称（选填）">
-                    <EditableBox
-                      value={templateForm.organizationName}
-                      placeholder="输入机构名称"
-                      disabled={isGenerateActionBusy}
-                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, organizationName: value } : prev))}
-                    />
-                  </FieldBlock>
-
-                  <FieldBlock label="视觉板式（选填）">
-                    <EditableBox
-                      value={templateForm.illustration}
-                      minHeight="min-h-20"
-                      multiline
-                      placeholder="描述海报视觉主体、背景元素和信息版式"
-                      disabled={isGenerateActionBusy}
-                      onChange={(value) => setTemplateForm((prev) => (prev ? { ...prev, illustration: value } : prev))}
+                      onChange={(value) => setTemplateForm((prev) => (prev ? applySupplementalCopy(prev, value) : prev))}
                     />
                   </FieldBlock>
                 </div>
