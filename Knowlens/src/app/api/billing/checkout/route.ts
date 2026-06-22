@@ -15,6 +15,7 @@ import {
   getBillingPlanDefaultCycle,
   isBillingPlanCycleSupported,
   type BillingCycle,
+  type BillingCurrency,
 } from "@/lib/billing-plans";
 import { logOpsEvent } from "@/lib/server/store";
 import {
@@ -33,13 +34,17 @@ function normalizedSiteUrl() {
   return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 
-function buildFallbackAmountCents(planId: string, cycle: BillingCycle) {
+function buildFallbackAmountMinorUnits(planId: string, cycle: BillingCycle) {
   const plan = findBillingPlan(planId);
   if (!plan) {
     return null;
   }
-  const usdValue = cycle === "yearly" ? plan.yearlyPrice : plan.monthlyPrice;
-  return Math.max(100, Math.round(usdValue * 100));
+  const value = cycle === "yearly" ? plan.yearlyPrice : plan.monthlyPrice;
+  return Math.max(100, Math.round(value * 100));
+}
+
+function getPlanCurrency(plan: NonNullable<ReturnType<typeof findBillingPlan>>): BillingCurrency {
+  return plan.currency ?? "usd";
 }
 
 function buildRecurringInterval(cycle: BillingCycle) {
@@ -133,6 +138,7 @@ async function createProductBackedSubscriptionSession(
     cycle: BillingCycle;
     recurringProductId: string;
     amount: number;
+    currency: BillingCurrency;
     successUrl: string;
     cancelUrl: string;
     email: string;
@@ -144,7 +150,7 @@ async function createProductBackedSubscriptionSession(
     line_items: [
       {
         price_data: {
-          currency: "usd",
+          currency: input.currency,
           product: input.recurringProductId,
           unit_amount: input.amount,
           recurring: buildRecurringInterval(input.cycle),
@@ -242,6 +248,7 @@ export async function POST(request: NextRequest) {
     const cancelUrl = `${siteUrl}/membership?checkout=cancel`;
     const recurringPriceId = getStripePriceId(plan.id, cycle);
     const recurringProductId = getStripeProductId(plan.id, cycle);
+    const planCurrency = getPlanCurrency(plan);
     const paymentLink = getStripePaymentLink(plan.id, cycle);
     if (!isStripeServerConfigured() && paymentLink) {
       logOpsEvent({
@@ -302,7 +309,7 @@ export async function POST(request: NextRequest) {
         if (!recurringProductId || !isNonRecurringSubscriptionPriceError(message)) {
           throw error;
         }
-        const amount = buildFallbackAmountCents(plan.id, cycle);
+        const amount = buildFallbackAmountMinorUnits(plan.id, cycle);
         if (!amount) {
           throw error;
         }
@@ -320,6 +327,7 @@ export async function POST(request: NextRequest) {
           cycle,
           recurringProductId,
           amount,
+          currency: planCurrency,
           successUrl,
           cancelUrl,
           email,
@@ -346,7 +354,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (recurringProductId) {
-      const amount = buildFallbackAmountCents(plan.id, cycle);
+      const amount = buildFallbackAmountMinorUnits(plan.id, cycle);
       if (!amount) {
         return NextResponse.json({ error: "Unable to resolve recurring amount." }, { status: 400 });
       }
@@ -354,6 +362,7 @@ export async function POST(request: NextRequest) {
         cycle,
         recurringProductId,
         amount,
+        currency: planCurrency,
         successUrl,
         cancelUrl,
         email,
@@ -377,7 +386,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const amount = buildFallbackAmountCents(plan.id, cycle);
+    const amount = buildFallbackAmountMinorUnits(plan.id, cycle);
     if (!amount) {
       return NextResponse.json({ error: "Unable to resolve fallback amount." }, { status: 400 });
     }
@@ -387,7 +396,7 @@ export async function POST(request: NextRequest) {
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: planCurrency,
             product_data: {
               name: `KnowLens ${plan.name} (${cycle})`,
               description: `Fallback one-time payment for ${plan.name} ${cycle} plan.`,

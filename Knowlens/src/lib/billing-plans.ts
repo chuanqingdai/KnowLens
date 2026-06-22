@@ -1,5 +1,6 @@
 export type BillingPlanId = "starter" | "pro" | "scale" | "insurance";
 export type BillingCycle = "monthly" | "yearly";
+export type BillingCurrency = "usd" | "cny";
 
 export type BillingPlanCatalogItem = {
   id: BillingPlanId;
@@ -7,6 +8,7 @@ export type BillingPlanCatalogItem = {
   monthlyCredits: number;
   monthlyPrice: number;
   yearlyPrice: number;
+  currency?: BillingCurrency;
   displayNameZh?: string;
   allowedCycles?: BillingCycle[];
 };
@@ -40,6 +42,7 @@ export const BILLING_PLAN_CATALOG: BillingPlanCatalogItem[] = [
     monthlyCredits: 6000,
     monthlyPrice: 199,
     yearlyPrice: 199,
+    currency: "cny",
     allowedCycles: ["yearly"],
   },
 ];

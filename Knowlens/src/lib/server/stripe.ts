@@ -3,6 +3,7 @@ import Stripe from "stripe";
 let stripeClient: Stripe | null = null;
 
 const DEFAULT_STRIPE_INSURANCE_PRODUCT_YEARLY = "prod_UjexmkNahAsZYi";
+const DEFAULT_STRIPE_INSURANCE_PRICE_YEARLY = "price_1TkBdJRtp72JQAtkQDuUnOXr";
 
 const STRIPE_SECRET_ENV_KEYS = [
   "STRIPE_SECRET_KEY",
@@ -105,7 +106,8 @@ export function getStripePriceId(planId: string, cycle: "monthly" | "yearly") {
     insurance: {
       yearly:
         process.env.NEXT_PUBLIC_STRIPE_INSURANCE_YEARLY?.trim() ||
-        process.env.NEXT_PUBLIC_STRIPE_INSURANCE_PRICE_YEARLY?.trim(),
+        process.env.NEXT_PUBLIC_STRIPE_INSURANCE_PRICE_YEARLY?.trim() ||
+        DEFAULT_STRIPE_INSURANCE_PRICE_YEARLY,
     },
   };
   const value = map[planId]?.[cycle]?.trim();
