@@ -12,8 +12,8 @@ type InsuranceMembershipDialogProps = {
 };
 
 const freeBenefits = [
-  "新账号默认赠送 30 积分",
-  "生成和下载均按积分扣除",
+  "新账号赠送 30 积分体验额度",
+  "可生成或下载 5 张保险海报",
 ];
 
 const annualBenefits = [
@@ -335,7 +335,7 @@ export function InsuranceMembershipDialog({
         <div className="max-h-[calc(100dvh-6.75rem)] overflow-y-auto px-4 pb-5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] sm:max-h-[92dvh] sm:p-6 [&::-webkit-scrollbar]:hidden">
           <div className="pr-10">
             <h3 className="text-[22px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-3xl">
-              解锁更多保险营销海报
+              保险海报包年
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
               覆盖日常展业和客户沟通场景，购买后即可生成同款并下载使用。
@@ -374,7 +374,10 @@ export function InsuranceMembershipDialog({
               <span className="pb-1 text-xs text-zinc-500 line-through">原价 399元</span>
             </div>
             <p className="mt-2 inline-flex rounded-full bg-white/10 px-3 py-1 text-sm font-medium text-amber-200">
-              一次到账 6000 积分
+              一次到账 6000 积分，可生成或下载 1000 张海报
+            </p>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">
+              生成或下载每张海报消耗 6 积分。
             </p>
             <ul className="mt-4 space-y-2.5 text-sm leading-5 text-zinc-100">
               {annualBenefits.map((benefit) => (
@@ -402,7 +405,7 @@ export function InsuranceMembershipDialog({
               <p className="text-xs font-medium text-zinc-500">积分充值包</p>
               <p className="text-lg font-semibold leading-none text-zinc-950">¥199 <span className="text-xs font-medium text-zinc-500">/ 年</span></p>
             </div>
-            <p className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">含 6000 积分</p>
+            <p className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">1000 张海报额度</p>
           </div>
           <button
             type="button"
