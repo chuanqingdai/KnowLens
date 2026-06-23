@@ -6,6 +6,7 @@ import { ArrowRight, ChevronDown } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  clearInsurancePendingCheckout,
   consumeInsuranceAutoCheckoutIntent,
   InsuranceMembershipDialog,
   openInsuranceCreditTopupCheckout,
@@ -227,7 +228,12 @@ export function MarketingChrome({
   const [oneTapTriggered, setOneTapTriggered] = useState(false);
   const [useGoogleFallback, setUseGoogleFallback] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
-  const [insuranceMembershipOpen, setInsuranceMembershipOpen] = useState(false);
+  const [insuranceMembershipOpen, setInsuranceMembershipOpen] = useState(() => {
+    if (membershipVariant !== "insurance" || typeof window === "undefined") {
+      return false;
+    }
+    return new URL(window.location.href).searchParams.get("checkout") === "cancel";
+  });
   const [insuranceHeaderBilling, setInsuranceHeaderBilling] = useState<InsuranceHeaderBillingState | null>(null);
   const [insuranceBillingRefreshVersion, setInsuranceBillingRefreshVersion] = useState(0);
   const insuranceAutoCheckoutTriggeredRef = useRef(false);
@@ -318,6 +324,21 @@ export function MarketingChrome({
     insuranceAutoCheckoutTriggeredRef.current = true;
     void openInsuranceCreditTopupCheckout(intent.source || "insurance_auto_checkout_after_login");
   }, [isAuthenticated, isInsuranceChrome]);
+
+  useEffect(() => {
+    if (!isInsuranceChrome || typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("checkout") !== "cancel") {
+      return;
+    }
+    clearInsurancePendingCheckout();
+    url.searchParams.delete("checkout");
+    url.searchParams.delete("source");
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState(null, "", nextUrl || "/baox");
+  }, [isInsuranceChrome]);
 
   useEffect(() => {
     if (forceLocale && locale !== forceLocale) {

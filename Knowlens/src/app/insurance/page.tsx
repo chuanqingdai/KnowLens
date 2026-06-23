@@ -314,20 +314,30 @@ function getTemplateFileNumber(template: InsuranceTemplateCard, prefix: string) 
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
-function getRecentTemplatePriority(template: InsuranceTemplateCard) {
+function getTemplateQualityPriority(template: InsuranceTemplateCard) {
   const gaodingMatch = template.imageSrc?.match(/\/insurance\/posters\/gaoding-(\d+)\.png$/);
-  if (!gaodingMatch) {
-    return 0;
+  const category = template.primaryCategory || template.category;
+
+  if (gaodingMatch) {
+    const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+    if (fileNumber >= 228 && fileNumber <= 248) return 1_250;
+    if (fileNumber >= 181 && fileNumber <= 186) return 1_180;
+    if (fileNumber >= 151 && fileNumber <= 180) return 1_120;
+    if (fileNumber >= 121 && fileNumber <= 150) return 1_100;
+    if (fileNumber >= 111 && fileNumber <= 120) return 1_060;
+    if (fileNumber >= 1 && fileNumber <= 30) return 980;
+    if (fileNumber >= 31 && fileNumber <= 60) return 960;
+    if (fileNumber >= 61 && fileNumber <= 90) return 940;
+    if (fileNumber >= 91 && fileNumber <= 110) return 880;
+    if (fileNumber >= 197 && fileNumber <= 227) return 840;
+    if (fileNumber >= 187 && fileNumber <= 196) return 760;
   }
-  const fileNumber = Number.parseInt(gaodingMatch[1], 10);
-  if (fileNumber >= 181) return 650;
-  if (fileNumber >= 151) return 600;
-  if (fileNumber >= 121) return 550;
-  if (fileNumber >= 111) return 500;
-  if (fileNumber >= 91) return 450;
-  if (fileNumber >= 61) return 400;
-  if (fileNumber >= 31) return 350;
-  return 300;
+
+  if (category === "科普") return 900;
+  if (category === "产品" || category === "养老" || category === "理财" || category === "理赔") return 860;
+  if (category === "喜报" || category === "重疾" || category === "健康" || category === "车险") return 820;
+  if (category === "品宣" || category === "日签" || category === "保险") return 760;
+  return 700;
 }
 
 function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
@@ -336,7 +346,7 @@ function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
   const title = template.title || "";
 
   if (imageSrc.includes("/hongkong-")) {
-    return 9_500;
+    return -500;
   }
   if (imageSrc.includes("/father-")) {
     return -900;
@@ -374,9 +384,9 @@ function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: n
     if (priorityDelta !== 0) {
       return priorityDelta;
     }
-    const recentDelta = getRecentTemplatePriority(right) - getRecentTemplatePriority(left);
-    if (recentDelta !== 0) {
-      return recentDelta;
+    const qualityDelta = getTemplateQualityPriority(right) - getTemplateQualityPriority(left);
+    if (qualityDelta !== 0) {
+      return qualityDelta;
     }
     const shuffleDelta = getTemplateShuffleScore(left, seed) - getTemplateShuffleScore(right, seed);
     if (shuffleDelta !== 0) {
@@ -404,56 +414,57 @@ function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTempl
 
 function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplateCard[], seed: number) {
   const categoryOrder = [
-    "节日",
     "科普",
-    "日签",
-    "喜报",
-    "节气",
     "产品",
-    "理赔",
     "养老",
     "理财",
-    "车险",
+    "理赔",
+    "喜报",
     "重疾",
     "健康",
+    "车险",
+    "保险",
     "品宣",
+    "日签",
     "生日",
     "活动",
-    "保险",
+    "节日",
+    "节气",
   ];
   const categoryRoundOrder = [
     "科普",
     "产品",
-    "日签",
-    "喜报",
-    "理赔",
     "养老",
     "理财",
-    "车险",
+    "理赔",
+    "喜报",
     "重疾",
-    "节日",
-    "节气",
-    "日签",
     "健康",
-    "品宣",
-    "生日",
-    "活动",
+    "车险",
     "保险",
     "科普",
     "产品",
-    "喜报",
-    "理赔",
     "养老",
     "理财",
-    "车险",
+    "理赔",
+    "喜报",
+    "品宣",
+    "日签",
+    "生日",
+    "活动",
+    "节日",
+    "节气",
+    "科普",
+    "产品",
+    "养老",
+    "理财",
     "重疾",
     "健康",
+    "车险",
+    "保险",
     "品宣",
     "生日",
     "活动",
-    "保险",
-    "节日",
-    "节气",
     "日签",
   ];
   const grouped = new Map<string, InsuranceTemplateCard[]>();

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import {
   InsuranceTemplateGallery,
   type InsuranceTemplateCard,
@@ -17,8 +17,21 @@ type InsurancePageClientProps = {
   initialCategory: string;
 };
 
+const HERO_SLIDES = [
+  {
+    src: "/insurance/hero-insurance-poster-wide.webp",
+    alt: "保险文案生成海报示例",
+  },
+  {
+    src: "/insurance/hero-brand-aesthetics.jpg",
+    alt: "KnowLens 与保险品牌视觉海报展示",
+  },
+] as const;
+
 export function InsurancePageClient({ templates, categories, initialCategory }: InsurancePageClientProps) {
   const [activeSection, setActiveSection] = useState<"showcase" | "mine">("showcase");
+  const [activeHeroSlide, setActiveHeroSlide] = useState(0);
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
 
   useEffect(() => {
     trackInsuranceEvent({
@@ -50,6 +63,39 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
     },
     [activeSection, initialCategory],
   );
+
+  const selectHeroSlide = useCallback(
+    (nextSlide: number, source: "auto" | "arrow" | "dot") => {
+      const normalizedSlide = (nextSlide + HERO_SLIDES.length) % HERO_SLIDES.length;
+      setActiveHeroSlide(normalizedSlide);
+      if (source !== "auto") {
+        trackInsuranceEvent({
+          action: "hero_slide_change",
+          message: "Insurance hero slide changed.",
+          details: {
+            source,
+            slideIndex: normalizedSlide,
+          },
+        });
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (isHeroPaused || HERO_SLIDES.length < 2) {
+      return;
+    }
+    const prefersReducedMotion =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      selectHeroSlide(activeHeroSlide + 1, "auto");
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [activeHeroSlide, isHeroPaused, selectHeroSlide]);
 
   return (
     <MarketingChrome
@@ -95,15 +141,58 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
             </div>
           </div>
 
-          <div className="relative aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm sm:rounded-2xl lg:max-w-none">
-            <Image
-              src="/insurance/hero-insurance-poster-wide.webp"
-              alt="保险文案生成海报示例"
-              fill
-              priority
-              sizes="(min-width: 1024px) 610px, 100vw"
-              className="object-contain"
-            />
+          <div
+            className="group relative aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 shadow-sm sm:rounded-2xl lg:max-w-none"
+            onMouseEnter={() => setIsHeroPaused(true)}
+            onMouseLeave={() => setIsHeroPaused(false)}
+            onFocusCapture={() => setIsHeroPaused(true)}
+            onBlurCapture={() => setIsHeroPaused(false)}
+          >
+            {HERO_SLIDES.map((slide, index) => (
+              <Image
+                key={slide.src}
+                src={slide.src}
+                alt={slide.alt}
+                fill
+                priority={index === 0}
+                quality={95}
+                sizes="(min-width: 1024px) 610px, 100vw"
+                className={`object-cover transition duration-700 ease-out ${
+                  activeHeroSlide === index ? "scale-100 opacity-100" : "scale-[1.02] opacity-0"
+                }`}
+              />
+            ))}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/45 to-transparent" />
+            <button
+              type="button"
+              aria-label="上一张"
+              onClick={() => selectHeroSlide(activeHeroSlide - 1, "arrow")}
+              className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-zinc-950/35 text-white opacity-0 shadow-sm backdrop-blur transition hover:bg-zinc-950/55 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/70 group-hover:opacity-100"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              aria-label="下一张"
+              onClick={() => selectHeroSlide(activeHeroSlide + 1, "arrow")}
+              className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-zinc-950/35 text-white opacity-0 shadow-sm backdrop-blur transition hover:bg-zinc-950/55 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/70 group-hover:opacity-100"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-zinc-950/35 px-2.5 py-2 backdrop-blur">
+              {HERO_SLIDES.map((slide, index) => (
+                <button
+                  key={`${slide.src}-indicator`}
+                  type="button"
+                  aria-label={`切换到第 ${index + 1} 张`}
+                  aria-current={activeHeroSlide === index}
+                  onClick={() => selectHeroSlide(index, "dot")}
+                  className={`h-2 rounded-full transition ${
+                    activeHeroSlide === index ? "w-7 bg-white" : "w-2 bg-white/55 hover:bg-white/80"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </section>
 

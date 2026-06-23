@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         },
       ],
       success_url: `${siteUrl}/membership?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl}/membership?checkout=cancel`,
+      cancel_url: `${siteUrl}/baox?checkout=cancel&source=insurance_credit_topup`,
       customer_email: email.replace(/^password:/, ""),
       metadata: {
         source: "knowlens-credit-topup",
@@ -115,7 +115,6 @@ export async function POST(request: NextRequest) {
         user_email: email,
         checkout_source: checkoutSource,
       },
-      payment_method_types: ["wechat_pay", "alipay", "card"],
       payment_method_options: {
         wechat_pay: {
           client: "web",

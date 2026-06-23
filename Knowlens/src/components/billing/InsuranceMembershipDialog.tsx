@@ -54,6 +54,10 @@ function clearPendingCheckout() {
   window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
 }
 
+export function clearInsurancePendingCheckout() {
+  clearPendingCheckout();
+}
+
 function saveInsuranceAutoCheckoutIntent(source: string) {
   if (typeof window === "undefined") {
     return;
