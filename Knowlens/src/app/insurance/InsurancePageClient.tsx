@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import {
   InsuranceTemplateGallery,
   type InsuranceTemplateCard,
@@ -93,7 +93,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
     }
     const timer = window.setInterval(() => {
       selectHeroSlide(activeHeroSlide + 1, "auto");
-    }, 3000);
+    }, 4000);
     return () => window.clearInterval(timer);
   }, [activeHeroSlide, isHeroPaused, selectHeroSlide]);
 
@@ -112,7 +112,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
           <div className="flex max-w-3xl flex-col items-center lg:items-start">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-700 shadow-sm sm:mb-5 sm:px-4 sm:py-2 sm:text-xs">
               <Sparkles size={14} />
-              BAOX联合出品
+              保罗万象联合出品
             </div>
             <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-zinc-950 sm:text-5xl sm:leading-tight">
               <span className="block">保险营销海报</span>
@@ -155,7 +155,6 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
                 alt={slide.alt}
                 fill
                 priority={index === 0}
-                quality={95}
                 sizes="(min-width: 1024px) 610px, 100vw"
                 className={`object-cover transition duration-700 ease-out ${
                   activeHeroSlide === index ? "scale-100 opacity-100" : "scale-[1.02] opacity-0"
@@ -163,23 +162,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
               />
             ))}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950/45 to-transparent" />
-            <button
-              type="button"
-              aria-label="上一张"
-              onClick={() => selectHeroSlide(activeHeroSlide - 1, "arrow")}
-              className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-zinc-950/35 text-white opacity-0 shadow-sm backdrop-blur transition hover:bg-zinc-950/55 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/70 group-hover:opacity-100"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              aria-label="下一张"
-              onClick={() => selectHeroSlide(activeHeroSlide + 1, "arrow")}
-              className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-zinc-950/35 text-white opacity-0 shadow-sm backdrop-blur transition hover:bg-zinc-950/55 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/70 group-hover:opacity-100"
-            >
-              <ChevronRight size={18} />
-            </button>
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-zinc-950/35 px-2.5 py-2 backdrop-blur">
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
               {HERO_SLIDES.map((slide, index) => (
                 <button
                   key={`${slide.src}-indicator`}
@@ -187,8 +170,8 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
                   aria-label={`切换到第 ${index + 1} 张`}
                   aria-current={activeHeroSlide === index}
                   onClick={() => selectHeroSlide(index, "dot")}
-                  className={`h-2 rounded-full transition ${
-                    activeHeroSlide === index ? "w-7 bg-white" : "w-2 bg-white/55 hover:bg-white/80"
+                  className={`rounded-full transition ${
+                    activeHeroSlide === index ? "h-1.5 w-4 bg-white/80" : "h-1.5 w-1.5 bg-white/35 hover:bg-white/60"
                   }`}
                 />
               ))}
