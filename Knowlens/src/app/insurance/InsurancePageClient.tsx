@@ -112,7 +112,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
           <div className="flex max-w-3xl flex-col items-center lg:items-start">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-700 shadow-sm sm:mb-5 sm:px-4 sm:py-2 sm:text-xs">
               <Sparkles size={14} />
-              保罗万象联合出品
+              保罗万相联合出品
             </div>
             <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-zinc-950 sm:text-5xl sm:leading-tight">
               <span className="block">保险营销海报</span>
