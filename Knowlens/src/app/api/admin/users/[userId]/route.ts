@@ -148,6 +148,19 @@ async function queryOne(sqlText: string, params: unknown[] = []) {
   return (db.prepare(sqlText).get(...params) || null) as Record<string, unknown> | null;
 }
 
+function buildUserLookupClause(userLookup: string) {
+  if (!userLookup.includes("@")) {
+    return { where: "id = ?", params: [userLookup] };
+  }
+
+  const email = userLookup.toLowerCase();
+  const passwordEmail = email.startsWith("password:") ? email : `password:${email}`;
+  return {
+    where: "(LOWER(email) = ? OR LOWER(email) = ?)",
+    params: [email, passwordEmail],
+  };
+}
+
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -376,7 +389,7 @@ export async function GET(
     return NextResponse.json({ error: "userId is required." }, { status: 400 });
   }
 
-  const lookupIsEmail = userLookup.includes("@");
+  const userLookupClause = buildUserLookupClause(userLookup);
   const userRow = await queryOne(
     `SELECT
        id,
@@ -386,9 +399,9 @@ export async function GET(
        created_at as "createdAt",
        updated_at as "updatedAt"
      FROM users
-     WHERE ${lookupIsEmail ? "LOWER(email) = ?" : "id = ?"}
+     WHERE ${userLookupClause.where}
      LIMIT 1`,
-    [lookupIsEmail ? userLookup.toLowerCase() : userLookup],
+    userLookupClause.params,
   );
 
   if (!userRow) {
@@ -635,15 +648,15 @@ export async function POST(
   }
   const reason = (body.reason || "").trim().slice(0, 280);
 
-  const lookupIsEmail = userLookup.includes("@");
+  const userLookupClause = buildUserLookupClause(userLookup);
   const userRow = await queryOne(
     `SELECT
        id,
        email
      FROM users
-     WHERE ${lookupIsEmail ? "LOWER(email) = ?" : "id = ?"}
+     WHERE ${userLookupClause.where}
      LIMIT 1`,
-    [lookupIsEmail ? userLookup.toLowerCase() : userLookup],
+    userLookupClause.params,
   );
 
   if (!userRow) {

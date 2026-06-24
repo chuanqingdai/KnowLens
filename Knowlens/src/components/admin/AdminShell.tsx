@@ -31,7 +31,7 @@ export function AdminShell({ title, description, children }: AdminShellProps) {
   }, [session?.user?.email]);
   const adminHintEmail = isAdminEmail("local@knowlens.ai")
     ? "local@knowlens.ai"
-    : "chuanqingdai@gmail.com";
+    : "jaydenkong777@gmail.com";
 
   if (!isAdmin) {
     return (

@@ -7,7 +7,8 @@ export type AuthUser = {
   provider: "google" | "password";
 };
 
-export const ADMIN_EMAIL = "chuanqingdai@gmail.com";
+export const ADMIN_EMAIL = "jaydenkong777@gmail.com";
+export const LEGACY_ADMIN_EMAIL = "chuanqingdai@gmail.com";
 export const LOCAL_ADMIN_EMAIL = "local@knowlens.ai";
 
 const LOCAL_TEST_ADMIN_EMAIL_PATTERN = /^local(?:\+.*)?@knowlens\.ai$/;
@@ -26,7 +27,7 @@ function normalizeEmailForRole(email: string) {
 
 export function isAdminEmail(email: string) {
   const normalized = normalizeEmailForRole(email);
-  if (normalized === ADMIN_EMAIL) {
+  if (normalized === ADMIN_EMAIL || normalized === LEGACY_ADMIN_EMAIL) {
     return true;
   }
   if (ADMIN_EMAIL_ALLOWLIST.includes(normalized)) {
