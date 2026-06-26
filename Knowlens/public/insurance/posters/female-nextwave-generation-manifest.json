@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-06-26T06:08:41.756Z",
+  "results": [
+    {
+      "title": "意外险和寿险，不是一回事",
+      "imageSrc": "/insurance/posters/female-baoxian-02.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 1484079,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-26T06:07:01.529Z",
+      "normalized": true
+    },
+    {
+      "title": "受益人写清楚，爱才不绕远路",
+      "imageSrc": "/insurance/posters/female-baoxian-03.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2495531,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-26T06:07:51.120Z",
+      "normalized": true
+    },
+    {
+      "title": "长期型保险，先看现金价值表",
+      "imageSrc": "/insurance/posters/female-baoxian-04.png",
+      "aspectRatio": "9:16",
+      "size": "864x1536",
+      "bytes": 2436466,
+      "width": 864,
+      "height": 1536,
+      "contentType": "image/png",
+      "generatedAt": "2026-06-26T06:08:41.756Z",
+      "normalized": true
+    }
+  ],
+  "failures": []
+}

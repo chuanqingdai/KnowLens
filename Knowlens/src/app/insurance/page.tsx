@@ -15,6 +15,8 @@ import { gaodingFinanceInsuranceTemplates } from "@/lib/insurance-gaoding-financ
 import { gaodingKepuInsuranceTemplates } from "@/lib/insurance-gaoding-kepu-templates";
 import { gaodingPensionInsuranceTemplates } from "@/lib/insurance-gaoding-pension-templates";
 import { businessInsuranceTemplates } from "@/lib/insurance-business-templates";
+import { femaleFirstwaveTemplates } from "@/lib/insurance-female-firstwave-templates";
+import { femaleNextwaveTemplates } from "@/lib/insurance-female-nextwave-templates";
 import { hongKongInsuranceTemplates } from "@/lib/insurance-hongkong-templates";
 import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
@@ -32,6 +34,26 @@ const pageLink = `${siteOrigin}${pagePath}`;
 const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
 const heroImageUrl = `${siteOrigin}${heroImagePath}`;
 const hideHongKongInsuranceTemplates = true;
+const SHOWCASE_BASE_CATEGORIES = [
+  "全部",
+  "日签",
+  "节日",
+  "节气",
+  "科普",
+  "喜报",
+  "产品",
+  "理赔",
+  "养老",
+  "理财",
+  "车险",
+  "重疾",
+  "健康",
+  "品宣",
+  "生日",
+  "活动",
+  "保险",
+  "港险",
+] as const;
 
 export const metadata: Metadata = {
   title: "保险模板中心 | 保险营销内容生成 | KnowLens.ai",
@@ -82,6 +104,8 @@ export const metadata: Metadata = {
 
 const baseTemplates: InsuranceTemplateCard[] = [
   ...(hideHongKongInsuranceTemplates ? [] : (hongKongInsuranceTemplates as InsuranceTemplateCard[])),
+  ...(femaleFirstwaveTemplates as InsuranceTemplateCard[]),
+  ...(femaleNextwaveTemplates as InsuranceTemplateCard[]),
   ...(gaodingKepuInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingFinanceInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingPensionInsuranceTemplates as InsuranceTemplateCard[]),
@@ -315,6 +339,10 @@ function getTemplateFileNumber(template: InsuranceTemplateCard, prefix: string) 
 }
 
 function getTemplateQualityPriority(template: InsuranceTemplateCard) {
+  if (template.imageSrc?.includes("/insurance/posters/female-")) {
+    return 1_300;
+  }
+
   const gaodingMatch = template.imageSrc?.match(/\/insurance\/posters\/gaoding-(\d+)\.png$/);
   const category = template.primaryCategory || template.category;
 
@@ -503,33 +531,15 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
 
 const visibleTemplates = orderInsuranceTemplatesForShowcase(
   applyInsuranceTemplateAccessStrategy(
-    baseTemplates
-      .filter(hasAvailableTemplateImage)
-      .filter((template) => !isExpiredSeasonalShowcaseTemplate(template)),
+    baseTemplates.filter(hasAvailableTemplateImage).filter((template) => !isExpiredSeasonalShowcaseTemplate(template)),
   ),
   0,
 );
 
-const showcaseCategories = [
-  "全部",
-  "日签",
-  "节日",
-  "节气",
-  "科普",
-  "喜报",
-  "产品",
-  "理赔",
-  "养老",
-  "理财",
-  "车险",
-  "重疾",
-  "健康",
-  "品宣",
-  "生日",
-  "活动",
-  "保险",
-  "港险",
-].filter((category) => !hideHongKongInsuranceTemplates || category !== "港险");
+const showcaseCategories = SHOWCASE_BASE_CATEGORIES.filter(
+  (category) => !hideHongKongInsuranceTemplates || category !== "港险",
+);
+const showcaseCategorySet = new Set<string>(showcaseCategories);
 
 type InsurancePageProps = {
   searchParams?: Promise<{
@@ -540,7 +550,9 @@ type InsurancePageProps = {
 function pickInitialCategory(value: string | string[] | undefined) {
   const category = Array.isArray(value) ? value[0] : value;
   const normalizedCategory = category?.trim();
-  return normalizedCategory && showcaseCategories.includes(normalizedCategory) ? normalizedCategory : "全部";
+  return normalizedCategory && showcaseCategorySet.has(normalizedCategory)
+    ? (normalizedCategory as (typeof showcaseCategories)[number])
+    : "全部";
 }
 
 export default async function InsurancePage({ searchParams }: InsurancePageProps) {

@@ -205,6 +205,47 @@ function resolveGenerationsEndpoint(endpoint) {
   return endpoint;
 }
 
+function isDuomiEndpoint(endpoint) {
+  return /duomiapi\.com/i.test(endpoint || "");
+}
+
+function buildAuthHeader(endpoint, apiKey) {
+  return isDuomiEndpoint(endpoint) ? apiKey : `Bearer ${apiKey}`;
+}
+
+function appendQueryParam(url, key, value) {
+  if (!url) {
+    return url;
+  }
+  const hasQuery = url.includes("?");
+  const hasTrailing = url.endsWith("?") || url.endsWith("&");
+  if (hasQuery) {
+    if (hasTrailing) {
+      return `${url}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+    }
+    return `${url}&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+  }
+  return `${url}?${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+function findTaskId(data) {
+  if (!data || typeof data !== "object") {
+    return "";
+  }
+  const obj = data;
+  for (const key of ["task_id", "taskId", "id", "job_id", "jobId"]) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  const nested = obj.data || obj.result;
+  if (nested && nested !== data) {
+    return findTaskId(nested);
+  }
+  return "";
+}
+
 function readNestedUrl(candidate) {
   if (!candidate) return "";
   if (typeof candidate === "string") return candidate.trim();
@@ -261,15 +302,56 @@ function parseGeneratedImage(payload) {
   return { imageUrl: "", imageBase64: "" };
 }
 
+async function pollDuomiTask({ endpoint, apiKey, taskId }) {
+  const candidates = [
+    `${endpoint.replace(/\/$/, "")}/${encodeURIComponent(taskId)}`,
+    `https://duomiapi.com/v1/tasks/${encodeURIComponent(taskId)}`,
+    `https://duomiapi.com/v1/images/generations/${encodeURIComponent(taskId)}`,
+    `https://duomiapi.com/v1/images/generations/result/${encodeURIComponent(taskId)}`,
+  ];
+  for (let round = 0; round < 8; round += 1) {
+    for (const candidate of candidates) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const response = await fetch(candidate, {
+          method: "GET",
+          headers: {
+            Authorization: buildAuthHeader(endpoint, apiKey),
+            Accept: "application/json",
+          },
+          signal: controller.signal,
+        });
+        const rawText = await response.text();
+        const body = rawText ? JSON.parse(rawText) : null;
+        if (!response.ok) {
+          continue;
+        }
+        const generated = parseGeneratedImage(body);
+        if (generated.imageUrl || generated.imageBase64) {
+          return generated;
+        }
+      } catch {
+        // Ignore individual polling candidate failures and keep trying.
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  throw new Error(`Duomi async generation did not return an image for task ${taskId}.`);
+}
+
 async function generateImage({ endpoint, apiKey, model, prompt, size }) {
   const responseFormat = responseFormatArg === "b64_json" ? "b64_json" : "url";
+  const requestEndpoint = isDuomiEndpoint(endpoint) ? appendQueryParam(endpoint, "async", "true") : endpoint;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
-  const response = await fetch(endpoint, {
+  const response = await fetch(requestEndpoint, {
     method: "POST",
     signal: controller.signal,
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: buildAuthHeader(endpoint, apiKey),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -293,6 +375,12 @@ async function generateImage({ endpoint, apiKey, model, prompt, size }) {
     throw new Error(message);
   }
   const generated = parseGeneratedImage(body);
+  if (isDuomiEndpoint(endpoint) && !generated.imageUrl && !generated.imageBase64) {
+    const taskId = findTaskId(body);
+    if (taskId) {
+      return pollDuomiTask({ endpoint, apiKey, taskId });
+    }
+  }
   if (!generated.imageUrl && !generated.imageBase64) {
     throw new Error("Image provider response did not include an image payload.");
   }
