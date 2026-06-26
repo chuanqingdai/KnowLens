@@ -3,7 +3,7 @@ export const organizationName = "";
 export function createInsuranceTemplateFormState(template) {
   return {
     title: template.title,
-    description: template.description,
+    description: template.posterDescription ?? template.description,
     rows: template.rows,
     auxiliaryInfo: template.auxiliaryInfo || "",
     organizationName,

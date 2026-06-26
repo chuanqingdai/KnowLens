@@ -230,6 +230,54 @@ const femaleNextwaveConfig = [
   { sourceImageSrc: "/insurance/posters/gaoding-237.png", outputImageSrc: "/insurance/posters/female-baoxian-02.png", styleId: "minimal-white", accent: "#ececf2", illustrationNote: "加入奶白留白、细花枝和清透提示卡，让保险认知类海报更安静好读。" },
   { sourceImageSrc: "/insurance/posters/gaoding-238.png", outputImageSrc: "/insurance/posters/female-baoxian-03.png", styleId: "watercolor-story", accent: "#e6e3f1", illustrationNote: "加入柔雾花叶、米紫水彩和轻家庭场景，让受益人主题更柔和有情绪。" },
   { sourceImageSrc: "/insurance/posters/gaoding-239.png", outputImageSrc: "/insurance/posters/female-baoxian-04.png", styleId: "light-luxury", accent: "#ead9e7", illustrationNote: "加入珍珠白信息卡、柔粉金边和精致留白，让长期型保险说明更有品质感。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-021.png", outputImageSrc: "/insurance/posters/female-riqian-05.png", styleId: "watercolor-story", accent: "#f4dce7", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的柔粉水彩晨光、花束书桌和精致便笺。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-024.png", outputImageSrc: "/insurance/posters/female-riqian-06.png", styleId: "minimal-white", accent: "#f1e2e8", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的奶白留白、淡粉便笺和柔光桌面。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-043.png", outputImageSrc: "/insurance/posters/female-jieri-05.png", styleId: "watercolor-story", accent: "#e2efe8", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的清透花束、浅绿水彩和柔白留白。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-014.png", outputImageSrc: "/insurance/posters/female-jieri-06.png", styleId: "minimal-white", accent: "#ece8e2", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的浅灰纸纹、白花、柔光和安静留白。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-157.png", outputImageSrc: "/insurance/posters/female-jieqi-05.png", styleId: "minimal-white", accent: "#e9eff2", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的奶白清单卡、玻璃高光和淡雅花枝。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-171.png", outputImageSrc: "/insurance/posters/female-jieqi-06.png", styleId: "warm-family", accent: "#f3ded4", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的暖光桌面、浅米色花叶和柔软留白。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-189.png", outputImageSrc: "/insurance/posters/female-kepu-05.png", styleId: "handdrawn-care", accent: "#ecdcd4", illustrationNote: "加入手账式资料袋、细线箭头和花叶标注，让出险通知科普更亲和好读。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-190.png", outputImageSrc: "/insurance/posters/female-kepu-06.png", styleId: "minimal-white", accent: "#e9eef3", illustrationNote: "加入奶白时间轴、清透信息卡和浅粉标签，让理赔核定时间线更整洁专业。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-079.png", outputImageSrc: "/insurance/posters/female-xibao-05.png", styleId: "light-luxury", accent: "#f2d7df", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的玫瑰金奖杯、缎带花束和柔金纸片。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-089.png", outputImageSrc: "/insurance/posters/female-xibao-06.png", styleId: "soft-3d", accent: "#eadff1", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的圆润荣誉徽章、粉紫高光和精致庆祝层次。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-031.png", outputImageSrc: "/insurance/posters/female-chanpin-05.png", styleId: "watercolor-story", accent: "#efe0d6", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的温柔书桌、花束便笺和柔和产品卡片。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-032.png", outputImageSrc: "/insurance/posters/female-chanpin-06.png", styleId: "minimal-white", accent: "#e8edf2", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的奶白家庭卡片、淡花枝和亲子用品留白。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-017.png", outputImageSrc: "/insurance/posters/female-lipei-05.png", styleId: "minimal-white", accent: "#eee2d8", illustrationNote: "加入奶白资料清单、浅金分隔线和柔光服务台，让报案方式海报更像专业服务指引。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-044.png", outputImageSrc: "/insurance/posters/female-lipei-06.png", styleId: "warm-family", accent: "#f2ddd3", illustrationNote: "加入暖米色文件夹、花束角标和亲切咨询场景，让理赔注意事项更不冰冷。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-231.png", outputImageSrc: "/insurance/posters/female-yanglao-05.png", styleId: "watercolor-story", accent: "#e3edf0", illustrationNote: "加入清透水彩窗光、照护清单和柔和花叶，让长期照护主题更细腻安心。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-248.png", outputImageSrc: "/insurance/posters/female-yanglao-06.png", styleId: "light-luxury", accent: "#ecdbc8", illustrationNote: "加入香槟金领取节奏线、珍珠白账户卡和温柔花束，让年金领取安排更有品质感。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-159.png", outputImageSrc: "/insurance/posters/female-licai-05.png", styleId: "soft-3d", accent: "#eadff1", illustrationNote: "加入圆润理财模块、柔紫高光和珍珠白卡片，让智慧理财主题更现代精致。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-161.png", outputImageSrc: "/insurance/posters/female-licai-06.png", styleId: "light-luxury", accent: "#ead8c8", illustrationNote: "加入香槟金曲线、柔雾花束和米金桌面，让财智规划更显稳健高级。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-244.png", outputImageSrc: "/insurance/posters/female-chexian-05.png", styleId: "watercolor-story", accent: "#dfeaf5", illustrationNote: "加入轻水彩道路、花束角标和蓝白留白，让交强险风险场景更易读、更温柔。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-245.png", outputImageSrc: "/insurance/posters/female-chexian-06.png", styleId: "minimal-white", accent: "#e8edf3", illustrationNote: "加入奶白责任清单、浅雾蓝车身和细花枝，让三者险额度说明更干净专业。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-042.png", outputImageSrc: "/insurance/posters/female-zhongji-05.png", styleId: "medical-fresh", accent: "#dfeef0", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的清透医疗卡片、淡花叶和蓝绿柔光。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-061.png", outputImageSrc: "/insurance/posters/female-zhongji-06.png", styleId: "light-luxury", accent: "#f0dce4", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的柔粉金边、康复花束和珍珠白信息块。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-045.png", outputImageSrc: "/insurance/posters/female-jiankang-05.png", styleId: "watercolor-story", accent: "#dfeef1", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的清透花叶水彩、柔白窗光和健康手账。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-052.png", outputImageSrc: "/insurance/posters/female-jiankang-06.png", styleId: "warm-family", accent: "#f2ddd4", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的暖光桌面、花束和轻柔医疗提示卡。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-005.png", outputImageSrc: "/insurance/posters/female-pinxuan-05.png", styleId: "light-luxury", accent: "#efdae2", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的珍珠白家庭信息卡、柔粉金边和低调盾牌光影。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-057.png", outputImageSrc: "/insurance/posters/female-pinxuan-06.png", styleId: "watercolor-story", accent: "#dfeef2", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的蓝绿水彩、花叶边饰和清透留白。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-056.png", outputImageSrc: "/insurance/posters/female-shengri-05.png", styleId: "watercolor-story", accent: "#f3ddd8", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的奶油花束、水彩礼盒和柔光窗景。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-132.png", outputImageSrc: "/insurance/posters/female-shengri-06.png", styleId: "minimal-white", accent: "#f0e2e8", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的奶白留白、淡粉便笺和精致小花束。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-083.png", outputImageSrc: "/insurance/posters/female-huodong-05.png", styleId: "warm-family", accent: "#f2ddd3", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的暖光花艺、柔软信息卡和沙龙场景。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-087.png", outputImageSrc: "/insurance/posters/female-huodong-06.png", styleId: "light-luxury", accent: "#ead8c8", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的米金圆桌、珍珠白卡片和花束茶歇。" },
+
+  { sourceImageSrc: "/insurance/posters/gaoding-033.png", outputImageSrc: "/insurance/posters/female-baoxian-05.png", styleId: "warm-family", accent: "#f2ddd4", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的暖米色家庭场景、保单卡片和淡花枝。" },
+  { sourceImageSrc: "/insurance/posters/gaoding-059.png", outputImageSrc: "/insurance/posters/female-baoxian-06.png", styleId: "minimal-white", accent: "#ececf2", illustrationNote: "保留稿定原文文案，只把视觉改成女性偏好的奶白知识卡、细线分隔和柔粉提示标签。" },
 ];
 
 function findSourceTemplate(config) {
@@ -260,10 +308,11 @@ function createFemaleNextwaveTemplate(config) {
     accent: config.accent,
     format: "9:16 海报",
     aspectRatio: "9:16",
-    description: source.description || `${source.primaryCategory || source.category}女性风格海报`,
-    prompt: `${source.prompt} 画面采用更符合女性客户偏好的保险营销风格，保持行业专业感，不要做成电商促销图。`,
-    illustration: `${source.illustration} ${config.illustrationNote}`,
-    auxiliaryInfo: source.auxiliaryInfo || "",
+    posterDescription: "",
+    description: source.description || "",
+    prompt: `${source.prompt} 画面采用更符合女性客户偏好的保险营销风格，重点体现温柔、精致、干净、松弛、有生活质感的审美；多用花束、茶席、亲子、柔光桌面、手账纸感、珍珠白、奶杏色、柔粉、浅蓝绿、香槟金等元素；保持保险行业专业感，不要做成男性商务大字报、硬科技风、强促销图或红黑战报。`,
+    illustration: `${source.illustration} ${config.illustrationNote} 整体要像女性客户愿意收藏和转发的精致保险营销海报，柔和但不幼稚，温暖但不俗艳。`,
+    auxiliaryInfo: "",
   };
 }
 
