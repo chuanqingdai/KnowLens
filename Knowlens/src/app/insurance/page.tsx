@@ -339,10 +339,6 @@ function getTemplateFileNumber(template: InsuranceTemplateCard, prefix: string) 
 }
 
 function getTemplateQualityPriority(template: InsuranceTemplateCard) {
-  if (template.imageSrc?.includes("/insurance/posters/female-")) {
-    return 1_300;
-  }
-
   const gaodingMatch = template.imageSrc?.match(/\/insurance\/posters\/gaoding-(\d+)\.png$/);
   const category = template.primaryCategory || template.category;
 
@@ -406,6 +402,17 @@ function getTemplateShuffleScore(template: InsuranceTemplateCard, seed: number) 
   return hashStringToNumber(`${seed}:${identity}`);
 }
 
+function getTemplateSourceBucket(template: InsuranceTemplateCard) {
+  const imageSrc = template.imageSrc || "";
+  if (imageSrc.includes("/insurance/posters/gaoding-")) {
+    return "gaoding";
+  }
+  if (imageSrc.includes("/insurance/posters/female-")) {
+    return "female";
+  }
+  return "standard";
+}
+
 function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: number) {
   return [...templates].sort((left, right) => {
     const priorityDelta = getSeasonalTemplatePriority(right) - getSeasonalTemplatePriority(left);
@@ -434,6 +441,33 @@ function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: n
     }
     return 0;
   });
+}
+
+function scatterTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: number) {
+  const sourceOrder = ["gaoding", "female", "standard"];
+  const grouped = new Map<string, InsuranceTemplateCard[]>();
+
+  for (const template of sortTemplatesWithinCategory(templates, seed)) {
+    const source = getTemplateSourceBucket(template);
+    const current = grouped.get(source) || [];
+    current.push(template);
+    grouped.set(source, current);
+  }
+
+  const ordered: InsuranceTemplateCard[] = [];
+  let hasRemaining = true;
+  while (hasRemaining) {
+    hasRemaining = false;
+    for (const source of sourceOrder) {
+      const queue = grouped.get(source);
+      if (queue && queue.length > 0) {
+        ordered.push(queue.shift() as InsuranceTemplateCard);
+        hasRemaining = true;
+      }
+    }
+  }
+
+  return ordered;
 }
 
 function applyInsuranceTemplateAccessStrategy(availableTemplates: InsuranceTemplateCard[]) {
@@ -510,7 +544,7 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
   }
 
   for (const [category, templates] of grouped) {
-    grouped.set(category, sortTemplatesWithinCategory(templates, seed + hashStringToNumber(category)));
+    grouped.set(category, scatterTemplatesWithinCategory(templates, seed + hashStringToNumber(category)));
   }
 
   const ordered: InsuranceTemplateCard[] = [];

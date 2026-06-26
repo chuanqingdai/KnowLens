@@ -555,6 +555,17 @@ function getClientTemplateQualityPriority(template: InsuranceTemplateCard) {
   return 700;
 }
 
+function getClientTemplateSourceBucket(template: InsuranceTemplateCard) {
+  const imageSrc = template.imageSrc || "";
+  if (imageSrc.includes("/insurance/posters/gaoding-")) {
+    return "gaoding";
+  }
+  if (imageSrc.includes("/insurance/posters/female-")) {
+    return "female";
+  }
+  return "standard";
+}
+
 function sortShowcaseTemplatesForRefresh(templates: InsuranceTemplateCard[], seed: number) {
   return [...templates].sort((left, right) => {
     const priorityDelta = getClientSeasonalPriority(right) - getClientSeasonalPriority(left);
@@ -571,6 +582,33 @@ function sortShowcaseTemplatesForRefresh(templates: InsuranceTemplateCard[], see
     }
     return getTemplateIdentity(left).localeCompare(getTemplateIdentity(right));
   });
+}
+
+function scatterShowcaseTemplatesForRefresh(templates: InsuranceTemplateCard[], seed: number) {
+  const sourceOrder = ["gaoding", "female", "standard"];
+  const grouped = new Map<string, InsuranceTemplateCard[]>();
+
+  for (const template of sortShowcaseTemplatesForRefresh(templates, seed)) {
+    const source = getClientTemplateSourceBucket(template);
+    const current = grouped.get(source) || [];
+    current.push(template);
+    grouped.set(source, current);
+  }
+
+  const ordered: InsuranceTemplateCard[] = [];
+  let hasRemaining = true;
+  while (hasRemaining) {
+    hasRemaining = false;
+    for (const source of sourceOrder) {
+      const queue = grouped.get(source);
+      if (queue && queue.length > 0) {
+        ordered.push(queue.shift() as InsuranceTemplateCard);
+        hasRemaining = true;
+      }
+    }
+  }
+
+  return ordered;
 }
 
 function orderShowcaseTemplatesForRefresh(
@@ -599,7 +637,7 @@ function orderShowcaseTemplatesForRefresh(
   }
 
   for (const [category, categoryTemplates] of grouped) {
-    grouped.set(category, sortShowcaseTemplatesForRefresh(categoryTemplates, seed + hashStringToNumber(category)));
+    grouped.set(category, scatterShowcaseTemplatesForRefresh(categoryTemplates, seed + hashStringToNumber(category)));
   }
 
   const ordered: InsuranceTemplateCard[] = [];
