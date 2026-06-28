@@ -128,9 +128,24 @@ function mapTemplateToPublicCase(template: TemplateCaseLike, index: number): Pub
   };
 }
 
-export async function GET() {
+function parsePositiveInteger(value: string | null, fallback: number, max: number) {
+  const parsed = Number.parseInt(value || "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(parsed, max);
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const summaryOnly = searchParams.get("summary") === "1" || searchParams.get("summary") === "true";
+  const limit = parsePositiveInteger(searchParams.get("limit"), summaryOnly ? 48 : 120, 120);
   const publishedCases = (
-    await listPublishedCases({ limit: 120, includeAssets: true, includeLatestVideoExportAssets: true })
+    await listPublishedCases({
+      limit,
+      includeAssets: !summaryOnly,
+      includeLatestVideoExportAssets: !summaryOnly,
+    })
   )
     .slice()
     .sort((left, right) => {
@@ -151,20 +166,22 @@ export async function GET() {
       sortOrder: item.sortOrder,
       publishedAt: item.publishedAt,
       updatedAt: item.updatedAt,
-      assets: (item.assets || []).map((asset) => ({
-        id: asset.id,
-        slug: asset.slug,
-        title: asset.title,
-        description: asset.description,
-        pageIndex: asset.pageIndex,
-        fileUrl: asset.fileUrl,
-        viewerUrl: asset.viewerUrl,
-        downloadUrl: asset.downloadUrl,
-        thumbnailUrl: asset.thumbnailUrl,
-        mimeType: asset.mimeType,
-        width: asset.width,
-        height: asset.height,
-      })),
+      assets: summaryOnly
+        ? []
+        : (item.assets || []).map((asset) => ({
+            id: asset.id,
+            slug: asset.slug,
+            title: asset.title,
+            description: asset.description,
+            pageIndex: asset.pageIndex,
+            fileUrl: asset.fileUrl,
+            viewerUrl: asset.viewerUrl,
+            downloadUrl: asset.downloadUrl,
+            thumbnailUrl: asset.thumbnailUrl,
+            mimeType: asset.mimeType,
+            width: asset.width,
+            height: asset.height,
+          })),
     }));
 
   const presentCategories = new Set(
@@ -193,13 +210,13 @@ export async function GET() {
       const rightTime = Date.parse(right.publishedAt || right.updatedAt || "") || 0;
       return rightTime - leftTime;
     })
-    .slice(0, 120);
+    .slice(0, limit);
 
   return NextResponse.json(
     { cases },
     {
       headers: {
-        "Cache-Control": "no-store, max-age=0",
+        "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=1800",
       },
     },
   );

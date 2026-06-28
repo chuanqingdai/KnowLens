@@ -1495,24 +1495,46 @@ export default function Home() {
   }, []);
   useEffect(() => {
     let isCancelled = false;
-    fetch("/api/public/cases")
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
-      .then((payload: { cases?: PublicCaseApiItem[] }) => {
-        if (isCancelled) {
-          return;
-        }
-        const nextItems = (payload.cases || [])
-          .map((item, index) => mapPublicCaseToFeatured(item, index))
-          .filter(Boolean) as FeaturedCaseItem[];
-        setPublishedFeaturedItems(nextItems);
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setPublishedFeaturedItems([]);
-        }
-      });
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+
+    const loadPublishedCases = () => {
+      fetch("/api/public/cases?summary=1&limit=48")
+        .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load cases."))))
+        .then((payload: { cases?: PublicCaseApiItem[] }) => {
+          if (isCancelled) {
+            return;
+          }
+          const nextItems = (payload.cases || [])
+            .map((item, index) => mapPublicCaseToFeatured(item, index))
+            .filter(Boolean) as FeaturedCaseItem[];
+          setPublishedFeaturedItems(nextItems);
+        })
+        .catch(() => {
+          if (!isCancelled) {
+            setPublishedFeaturedItems([]);
+          }
+        });
+    };
+
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
+      idleId = idleWindow.requestIdleCallback(loadPublishedCases, { timeout: 1600 });
+    } else {
+      timeoutId = window.setTimeout(loadPublishedCases, 900);
+    }
+
     return () => {
       isCancelled = true;
+      if (idleId !== undefined && idleWindow.cancelIdleCallback) {
+        idleWindow.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, []);
   const activeUploadJobIdsKey = useMemo(

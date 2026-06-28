@@ -1490,6 +1490,17 @@ export function InsuranceTemplateGallery({
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const categoryFromUrl = new URLSearchParams(window.location.search).get("category")?.trim();
+    if (categoryFromUrl && categories.includes(categoryFromUrl)) {
+      setActiveCategory(categoryFromUrl);
+    }
+  }, [categories]);
+
   const templateByTitle = useMemo(() => new Map(templates.map((template) => [template.title, template])), [templates]);
   const filteredTemplates = useMemo(() => {
     const matchedTemplates = templates

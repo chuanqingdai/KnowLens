@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { InsurancePageClient } from "@/app/insurance/InsurancePageClient";
 import type { InsuranceTemplateCard } from "@/app/insurance/InsuranceTemplateGallery";
 import { availableInsuranceTemplateImages } from "@/lib/insurance-available-template-images";
@@ -308,8 +306,7 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
   if (availableInsuranceTemplateImages.has(template.imageSrc)) {
     return true;
   }
-  const localImagePath = path.join(process.cwd(), "public", template.imageSrc.replace(/^\/+/, ""));
-  return existsSync(localImagePath);
+  return false;
 }
 
 function isExpiredSeasonalShowcaseTemplate(template: InsuranceTemplateCard) {
@@ -573,31 +570,13 @@ const visibleTemplates = orderInsuranceTemplatesForShowcase(
 const showcaseCategories = SHOWCASE_BASE_CATEGORIES.filter(
   (category) => !hideHongKongInsuranceTemplates || category !== "港险",
 );
-const showcaseCategorySet = new Set<string>(showcaseCategories);
 
-type InsurancePageProps = {
-  searchParams?: Promise<{
-    category?: string | string[];
-  }>;
-};
-
-function pickInitialCategory(value: string | string[] | undefined) {
-  const category = Array.isArray(value) ? value[0] : value;
-  const normalizedCategory = category?.trim();
-  return normalizedCategory && showcaseCategorySet.has(normalizedCategory)
-    ? (normalizedCategory as (typeof showcaseCategories)[number])
-    : "全部";
-}
-
-export default async function InsurancePage({ searchParams }: InsurancePageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const initialCategory = pickInitialCategory(resolvedSearchParams?.category);
-
+export default function InsurancePage() {
   return (
     <InsurancePageClient
       templates={visibleTemplates}
       categories={showcaseCategories}
-      initialCategory={initialCategory}
+      initialCategory="全部"
     />
   );
 }
