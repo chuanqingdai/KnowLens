@@ -512,7 +512,7 @@ export function MarketingChrome({
                 className="h-[30px] w-[30px] object-contain"
               />
             </span>
-            <span className="hidden text-sm font-semibold tracking-tight min-[380px]:inline">KnowLens.ai</span>
+            <span className="hidden text-sm font-semibold tracking-tight min-[380px]:inline">{isInsuranceChrome ? "展页" : "KnowLens.ai"}</span>
           </Link>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {showLocaleSwitch ? <LocaleSwitch /> : null}
