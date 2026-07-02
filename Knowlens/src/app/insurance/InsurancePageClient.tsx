@@ -115,7 +115,7 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
               保罗万相联合出品
             </div>
             <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-zinc-950 sm:text-5xl sm:leading-tight">
-              <span className="block">保险营销海报</span>
+              <span className="block">「展页」保险海报</span>
               <span className="block">一键制作同款</span>
             </h1>
             <p className="mt-4 max-w-2xl text-[15px] leading-7 text-zinc-600 sm:mt-5 sm:text-base sm:leading-7">
