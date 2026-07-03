@@ -381,6 +381,9 @@ function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
   if (imageSrc.includes("/duanwu-")) {
     return -900;
   }
+  if (secondaryCategory.includes("小暑") || title.includes("小暑")) {
+    return 220;
+  }
 
   return 0;
 }

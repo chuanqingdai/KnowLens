@@ -101,6 +101,52 @@ export const solarTermTemplates = [
     imageSrc: "/insurance/posters/jieqi-06.png",
     aspectRatio: "1:1",
   },
+  ...[
+    {
+      title: "小暑安康，愿清风入怀",
+      illustration: "小暑节气祝福海报，荷叶、清风、浅绿色水纹和夏日柔光构成清爽画面，标题使用醒目的中文书法字体，整体温柔高级，适合客户节气问候。",
+      imageSrc: "/insurance/posters/yingxiao-66.png",
+    },
+    {
+      title: "小暑初来，愿心静身安",
+      illustration: "小暑初来主题海报，浅米色纸感背景、树荫、凉茶、蒲扇和清透荷叶组成安静构图，标题使用大号中文书法字体，氛围清凉克制。",
+      imageSrc: "/insurance/posters/yingxiao-67.png",
+    },
+    {
+      title: "小暑纳凉，愿一夏无忧",
+      illustration: "小暑纳凉祝福海报，夏日窗边、绿植、微风纱帘、凉茶和淡蓝水纹形成清爽空间，标题使用醒目的中文书法字体，画面留白舒适。",
+      imageSrc: "/insurance/posters/yingxiao-68.png",
+    },
+    {
+      title: "小暑荷香，愿岁月清甜",
+      illustration: "小暑荷香节气海报，荷花、荷叶、水面光斑和柔和晨光形成雅致国风画面，标题使用清雅中文书法字体，整体清甜、温和、有高级感。",
+      imageSrc: "/insurance/posters/yingxiao-69.png",
+    },
+    {
+      title: "小暑清欢，愿平安常在",
+      illustration: "小暑清欢祝福海报，清风、荷叶、浅绿渐变、水面涟漪和安静日光构成节气氛围，标题使用稳重中文书法字体，适合保险客户轻问候。",
+      imageSrc: "/insurance/posters/yingxiao-70.png",
+    },
+  ].map((template) => ({
+    title: template.title,
+    category: "节气",
+    primaryCategory: "节气",
+    secondaryCategory: "小暑祝福",
+    description: "小暑节气客户问候",
+    prompt:
+      "基于小暑节气祝福模板，生成一张中文小暑海报。只显示输入标题，标题文字内容必须完全按输入呈现；副标题为空，不要生成副标题或空占位。不显示字段名、分类词、核心要点、辅助信息、机构名称、二维码、联系方式、品牌、logo或任何额外文案。画面内容必须和小暑强相关，突出荷叶、清风、纳凉、夏日柔光、水纹、凉茶或树荫等自然意象，节气氛围浓，清新高级，参考高质量节气营销海报的构图和留白。",
+    format: "9:16 海报",
+    audience: "小暑节气客户问候",
+    fields: ["标题"],
+    accent: "#dcfce7",
+    rows: [],
+    auxiliaryInfo: "",
+    illustration: template.illustration,
+    imageSrc: template.imageSrc,
+    aspectRatio: "9:16",
+    styleId: "festival-chinese",
+    isFree: true,
+  })),
   {
     title: "大暑将近，健康风险也要提前看",
     category: "节气",

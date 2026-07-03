@@ -526,6 +526,7 @@ function getClientSeasonalPriority(template: InsuranceTemplateCard) {
   if (imageSrc.includes("/xiazhi-")) return -900;
   if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) return -900;
   if (imageSrc.includes("/duanwu-")) return -900;
+  if (secondaryCategory.includes("小暑") || title.includes("小暑")) return 220;
   return 0;
 }
 
