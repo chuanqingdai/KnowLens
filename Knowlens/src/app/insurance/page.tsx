@@ -18,6 +18,7 @@ import { femaleNextwaveTemplates } from "@/lib/insurance-female-nextwave-templat
 import { hongKongInsuranceTemplates } from "@/lib/insurance-hongkong-templates";
 import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
+import { medicalReminderTemplates } from "@/lib/insurance-medical-reminder-templates";
 import { productMarketingTemplates } from "@/lib/insurance-product-marketing-templates";
 import { productScienceTemplates } from "@/lib/insurance-product-science-templates";
 import { productTemplates } from "@/lib/insurance-product-templates";
@@ -119,6 +120,7 @@ const baseTemplates: InsuranceTemplateCard[] = [
   ...(activityTemplates as InsuranceTemplateCard[]),
   ...(productTemplates as InsuranceTemplateCard[]),
   ...(criticalIllnessTemplates as InsuranceTemplateCard[]),
+  ...(medicalReminderTemplates as InsuranceTemplateCard[]),
   ...(marketingInsuranceTemplates as InsuranceTemplateCard[]),
   ...(productMarketingTemplates as InsuranceTemplateCard[]),
   ...(liabilityProductTemplates as InsuranceTemplateCard[]),

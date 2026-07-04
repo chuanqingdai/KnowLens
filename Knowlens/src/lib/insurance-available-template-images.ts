@@ -789,4 +789,11 @@ export const availableInsuranceTemplateImages = new Set([
   "/insurance/posters/zhongji-08.png",
   "/insurance/posters/zhongji-09.png",
   "/insurance/posters/zhongji-10.png",
+  "/insurance/posters/medical-reminder-01.png",
+  "/insurance/posters/medical-reminder-02.png",
+  "/insurance/posters/service-info-change-01.png",
+  "/insurance/posters/health-check-notice-01.png",
+  "/insurance/posters/policy-review-invite-01.png",
+  "/insurance/posters/renewal-payment-reminder-01.png",
+  "/insurance/posters/kids-growth-reminder-01.png",
 ]);
