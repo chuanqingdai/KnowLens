@@ -32,6 +32,7 @@ const pageLink = `${siteOrigin}${pagePath}`;
 const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
 const heroImageUrl = `${siteOrigin}${heroImagePath}`;
 const hideHongKongInsuranceTemplates = true;
+const INITIAL_SHOWCASE_TEMPLATE_COUNT = 8;
 const SHOWCASE_BASE_CATEGORIES = [
   "全部",
   "日签",
@@ -563,12 +564,13 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
   return [...ordered, ...sortTemplatesWithinCategory(extras, seed)];
 }
 
-const visibleTemplates = orderInsuranceTemplatesForShowcase(
+export const insuranceShowcaseTemplates = orderInsuranceTemplatesForShowcase(
   applyInsuranceTemplateAccessStrategy(
     baseTemplates.filter(hasAvailableTemplateImage).filter((template) => !isExpiredSeasonalShowcaseTemplate(template)),
   ),
   0,
 );
+const initialShowcaseTemplates = insuranceShowcaseTemplates.slice(0, INITIAL_SHOWCASE_TEMPLATE_COUNT);
 
 const showcaseCategories = SHOWCASE_BASE_CATEGORIES.filter(
   (category) => !hideHongKongInsuranceTemplates || category !== "港险",
@@ -577,7 +579,7 @@ const showcaseCategories = SHOWCASE_BASE_CATEGORIES.filter(
 export default function InsurancePage() {
   return (
     <InsurancePageClient
-      templates={visibleTemplates}
+      templates={initialShowcaseTemplates}
       categories={showcaseCategories}
       initialCategory="全部"
     />

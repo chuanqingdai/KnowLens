@@ -44,6 +44,9 @@ type InsuranceTemplateGalleryProps = {
   categories: string[];
   initialCategory?: string;
   mode?: "showcase" | "mine";
+  hasDeferredTemplates?: boolean;
+  isDeferredTemplateLoading?: boolean;
+  onLoadDeferredTemplates?: () => void;
 };
 
 type SupportedTemplateAspectRatio = "1:1" | "9:16" | "16:9" | "3:4";
@@ -1474,6 +1477,9 @@ export function InsuranceTemplateGallery({
   categories,
   initialCategory = "全部",
   mode = "showcase",
+  hasDeferredTemplates = false,
+  isDeferredTemplateLoading = false,
+  onLoadDeferredTemplates,
 }: InsuranceTemplateGalleryProps) {
   const safeInitialCategory = categories.includes(initialCategory) ? initialCategory : "全部";
   const [activeCategory, setActiveCategory] = useState(safeInitialCategory);
@@ -1560,10 +1566,17 @@ export function InsuranceTemplateGallery({
     [myPosterRecords, visibleTemplateCount],
   );
   const activeCollectionSize = isMineMode ? myPosterRecords.length : filteredTemplates.length;
-  const hasMoreTemplates = visibleTemplateCount < activeCollectionSize;
+  const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || hasDeferredTemplates;
   const loadMoreTemplates = useCallback(() => {
-    setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
-  }, [activeCollectionSize]);
+    if (visibleTemplateCount < activeCollectionSize) {
+      setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
+      return;
+    }
+    if (hasDeferredTemplates && !isDeferredTemplateLoading) {
+      onLoadDeferredTemplates?.();
+      setVisibleTemplateCount((current) => current + TEMPLATE_LOAD_BATCH_SIZE);
+    }
+  }, [activeCollectionSize, hasDeferredTemplates, isDeferredTemplateLoading, onLoadDeferredTemplates, visibleTemplateCount]);
 
   const activePosterState = activeTemplate ? posterStateByTitle[activeTemplate.title] : undefined;
   const isGeneratingPoster = activePosterState?.status === "generating";
@@ -2529,7 +2542,9 @@ export function InsuranceTemplateGallery({
         <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
           {hasMoreTemplates ? (
             <div className="mx-auto grid max-w-md grid-cols-2 gap-3 sm:max-w-xl sm:grid-cols-3">
-              {Array.from({ length: Math.min(TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize - visibleTemplateCount, 3) }).map(
+              {Array.from({
+                length: Math.max(1, Math.min(TEMPLATE_LOAD_BATCH_SIZE, Math.max(activeCollectionSize - visibleTemplateCount, 1), 3)),
+              }).map(
                 (_, index) => (
                   <div
                     key={index}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowRight, Sparkles } from "lucide-react";
 import {
@@ -29,9 +29,39 @@ const HERO_SLIDES = [
 ] as const;
 
 export function InsurancePageClient({ templates, categories, initialCategory }: InsurancePageClientProps) {
+  const [showcaseTemplates, setShowcaseTemplates] = useState(templates);
+  const [isTemplateCatalogLoading, setIsTemplateCatalogLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<"showcase" | "mine">("showcase");
   const [activeHeroSlide, setActiveHeroSlide] = useState(0);
   const [isHeroPaused, setIsHeroPaused] = useState(false);
+  const fullTemplateRequestRef = useRef(false);
+
+  useEffect(() => {
+    setShowcaseTemplates(templates);
+  }, [templates]);
+
+  const loadAllTemplates = useCallback(() => {
+    if (fullTemplateRequestRef.current || showcaseTemplates.length > templates.length) {
+      return;
+    }
+    fullTemplateRequestRef.current = true;
+    setIsTemplateCatalogLoading(true);
+    fetch("/api/insurance/templates", { cache: "force-cache" })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load templates."))))
+      .then((payload: { templates?: InsuranceTemplateCard[] }) => {
+        if (Array.isArray(payload.templates) && payload.templates.length > templates.length) {
+          setShowcaseTemplates(payload.templates);
+        } else {
+          fullTemplateRequestRef.current = false;
+        }
+      })
+      .catch(() => {
+        fullTemplateRequestRef.current = false;
+      })
+      .finally(() => {
+        setIsTemplateCatalogLoading(false);
+      });
+  }, [showcaseTemplates.length, templates.length]);
 
   useEffect(() => {
     trackInsuranceEvent({
@@ -39,11 +69,11 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
       message: "Insurance landing page viewed.",
       details: {
         initialCategory,
-        templateCount: templates.length,
+        templateCount: showcaseTemplates.length,
         categoryCount: categories.length,
       },
     });
-  }, [categories.length, initialCategory, templates.length]);
+  }, [categories.length, initialCategory, showcaseTemplates.length]);
 
   const selectSection = useCallback(
     (nextSection: "showcase" | "mine") => {
@@ -206,10 +236,13 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
           </div>
           <InsuranceTemplateGallery
             key={activeSection}
-            templates={templates}
+            templates={showcaseTemplates}
             categories={categories}
             initialCategory={initialCategory}
             mode={activeSection}
+            hasDeferredTemplates={activeSection === "showcase" && showcaseTemplates.length <= templates.length}
+            isDeferredTemplateLoading={isTemplateCatalogLoading}
+            onLoadDeferredTemplates={loadAllTemplates}
           />
         </section>
       </div>
