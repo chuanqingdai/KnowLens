@@ -506,6 +506,13 @@ function getTemplateIdentity(template: InsuranceTemplateCard) {
   return template.imageSrc || `${template.primaryCategory}:${template.secondaryCategory}:${template.title}`;
 }
 
+function areStringArraysEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((item, index) => item === right[index]);
+}
+
 function hashStringToNumber(input: string) {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -1522,6 +1529,9 @@ export function InsuranceTemplateGallery({
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const [settledPreviewIds, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
   const [canAutoLoadAfterScroll, setCanAutoLoadAfterScroll] = useState(false);
+  const [stableShowcaseTemplateIds, setStableShowcaseTemplateIds] = useState<string[]>([]);
+  const showcaseOrderResetKeyRef = useRef("");
+  const loadMoreInFlightRef = useRef(false);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
 
@@ -1536,15 +1546,54 @@ export function InsuranceTemplateGallery({
   }, [categories]);
 
   const templateByTitle = useMemo(() => new Map(templates.map((template) => [template.title, template])), [templates]);
-  const filteredTemplates = useMemo(() => {
-    const matchedTemplates = templates
-      .filter((template) => !isExpiredSeasonalTemplate(template))
-      .filter((template) => templateMatchesCategory(template, activeCategory));
+  const matchedTemplates = useMemo(
+    () =>
+      templates
+        .filter((template) => !isExpiredSeasonalTemplate(template))
+        .filter((template) => templateMatchesCategory(template, activeCategory)),
+    [activeCategory, templates],
+  );
+  const orderedTemplateCandidates = useMemo(() => {
     if (isMineMode) {
       return matchedTemplates;
     }
     return orderShowcaseTemplatesForRefresh(matchedTemplates, activeCategory, showcaseRefreshSeed);
-  }, [activeCategory, isMineMode, showcaseRefreshSeed, templates]);
+  }, [activeCategory, isMineMode, matchedTemplates, showcaseRefreshSeed]);
+  const orderedTemplateCandidateIds = useMemo(
+    () => orderedTemplateCandidates.map(getTemplateIdentity),
+    [orderedTemplateCandidates],
+  );
+  const orderedTemplateCandidateById = useMemo(
+    () => new Map(orderedTemplateCandidates.map((template) => [getTemplateIdentity(template), template])),
+    [orderedTemplateCandidates],
+  );
+  const showcaseOrderResetKey = `${isMineMode ? "mine" : "showcase"}:${activeCategory}:${showcaseRefreshSeed}`;
+  useEffect(() => {
+    if (isMineMode) {
+      return;
+    }
+    setStableShowcaseTemplateIds((current) => {
+      if (showcaseOrderResetKeyRef.current !== showcaseOrderResetKey) {
+        showcaseOrderResetKeyRef.current = showcaseOrderResetKey;
+        return areStringArraysEqual(current, orderedTemplateCandidateIds) ? current : orderedTemplateCandidateIds;
+      }
+
+      const candidateIdSet = new Set(orderedTemplateCandidateIds);
+      const keptIds = current.filter((id) => candidateIdSet.has(id));
+      const keptIdSet = new Set(keptIds);
+      const appendedIds = orderedTemplateCandidateIds.filter((id) => !keptIdSet.has(id));
+      const nextIds = [...keptIds, ...appendedIds];
+      return areStringArraysEqual(current, nextIds) ? current : nextIds;
+    });
+  }, [isMineMode, orderedTemplateCandidateIds, showcaseOrderResetKey]);
+  const filteredTemplates = useMemo(() => {
+    if (isMineMode || stableShowcaseTemplateIds.length === 0) {
+      return orderedTemplateCandidates;
+    }
+    return stableShowcaseTemplateIds
+      .map((id) => orderedTemplateCandidateById.get(id))
+      .filter((template): template is InsuranceTemplateCard => Boolean(template));
+  }, [isMineMode, orderedTemplateCandidateById, orderedTemplateCandidates, stableShowcaseTemplateIds]);
   const myPosterRecords = useMemo(() => {
     const records: MyPosterRecord[] = [];
     for (const [templateKey, state] of Object.entries(posterStateByTitle)) {
@@ -1596,7 +1645,7 @@ export function InsuranceTemplateGallery({
     () => myPosterRecords.slice(0, visibleTemplateCount),
     [myPosterRecords, visibleTemplateCount],
   );
-  const activeCollectionSize = isMineMode ? myPosterRecords.length : filteredTemplates.length;
+  const activeCollectionSize = isMineMode ? myPosterRecords.length : orderedTemplateCandidates.length;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || hasDeferredTemplates;
   const visibleTemplatePreviewsReady =
     !isMineMode &&
@@ -1613,6 +1662,11 @@ export function InsuranceTemplateGallery({
     });
   }, []);
   const loadMoreTemplates = useCallback(() => {
+    if (loadMoreInFlightRef.current) {
+      return;
+    }
+    loadMoreInFlightRef.current = true;
+    setCanAutoLoadAfterScroll(false);
     if (visibleTemplateCount < activeCollectionSize) {
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
       return;
@@ -1620,7 +1674,9 @@ export function InsuranceTemplateGallery({
     if (hasDeferredTemplates && !isDeferredTemplateLoading) {
       onLoadDeferredTemplates?.();
       setVisibleTemplateCount((current) => current + TEMPLATE_LOAD_BATCH_SIZE);
+      return;
     }
+    loadMoreInFlightRef.current = false;
   }, [activeCollectionSize, hasDeferredTemplates, isDeferredTemplateLoading, onLoadDeferredTemplates, visibleTemplateCount]);
 
   const activePosterState = activeTemplate ? posterStateByTitle[activeTemplate.title] : undefined;
@@ -1674,6 +1730,10 @@ export function InsuranceTemplateGallery({
     observer.observe(node);
     return () => observer.disconnect();
   }, [canAutoLoadAfterScroll, hasMoreTemplates, isMineMode, loadMoreTemplates, visibleTemplatePreviewsReady]);
+
+  useEffect(() => {
+    loadMoreInFlightRef.current = false;
+  }, [activeCategory, isDeferredTemplateLoading, visibleTemplateCount]);
 
   useEffect(() => {
     setCanAutoLoadAfterScroll(false);
@@ -2449,7 +2509,7 @@ export function InsuranceTemplateGallery({
           </div>
         </div>
       ) : (
-        <div className="columns-2 [column-gap:0.75rem] sm:[column-gap:1rem] lg:columns-3 xl:columns-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {isMineMode
             ? visibleMyPosterRecords.map((record, index) => {
                 const aspectClass = getAspectClassFromRatio(record.aspectRatio);
@@ -2458,7 +2518,7 @@ export function InsuranceTemplateGallery({
                   <article
                     key={record.id}
                     onClick={() => openMyPosterRecord(record, "card")}
-                    className="group relative mb-3 inline-block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
+                    className="group relative w-full cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
                   >
                     <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2527,7 +2587,7 @@ export function InsuranceTemplateGallery({
                   <article
                     key={getTemplateIdentity(template)}
                     onClick={() => requestOpenTemplate(template, "card")}
-                    className="group relative mb-3 inline-block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
+                    className="group relative w-full cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
                   >
                     <div className="relative w-full overflow-hidden bg-white">
                       <CasePreview
@@ -2595,7 +2655,7 @@ export function InsuranceTemplateGallery({
         {emptyCategoryCards.map((card) => (
           <article
             key={card.id}
-            className="mb-3 inline-block w-full break-inside-avoid-column overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.04)] sm:mb-4"
+            className="w-full overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
           >
             <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-200" />
             <div className="p-3">
