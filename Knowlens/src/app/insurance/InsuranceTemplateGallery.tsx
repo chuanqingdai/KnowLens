@@ -805,13 +805,6 @@ function formatGeneratedPosterTime(createdAt: number) {
   }
 }
 
-function getTemplatePreviewImageSrc(imageSrc: string) {
-  if (!imageSrc.startsWith("/")) {
-    return imageSrc;
-  }
-  return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=384&q=65`;
-}
-
 function CasePreview({
   template,
   eager = false,
@@ -825,8 +818,7 @@ function CasePreview({
 }) {
   const aspectClass = getAspectClass(template);
   const originalImageSrc = template.imageSrc || "";
-  const previewImageSrc = getTemplatePreviewImageSrc(originalImageSrc);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const [useOriginalFallback, setUseOriginalFallback] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const reportSettled = useCallback(() => {
@@ -836,18 +828,10 @@ function CasePreview({
   }, [onPreviewSettled, previewId]);
 
   useEffect(() => {
+    setUseOriginalFallback(false);
     setLoaded(false);
     setFailed(false);
-    const frame = window.requestAnimationFrame(() => {
-      const image = imageRef.current;
-      if (image?.complete && image.naturalWidth > 0) {
-        setLoaded(true);
-        reportSettled();
-      }
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [previewImageSrc, reportSettled]);
+  }, [originalImageSrc]);
 
   useEffect(() => {
     if (!originalImageSrc) {
@@ -867,13 +851,13 @@ function CasePreview({
             </div>
           </div>
         ) : (
-          // Native image loading is more reliable inside CSS multi-column masonry on mobile Safari.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            ref={imageRef}
-            src={previewImageSrc}
+          <Image
+            src={originalImageSrc}
             alt={`${template.title}海报`}
+            fill
             loading={eager ? "eager" : "lazy"}
+            sizes="(min-width: 1280px) 280px, (min-width: 1024px) 30vw, 50vw"
+            unoptimized={useOriginalFallback}
             decoding="async"
             className="insurance-template-poster-image absolute inset-0 z-10 h-full w-full rounded-none bg-white object-cover [transform:translateZ(0)]"
             onLoad={() => {
@@ -881,6 +865,11 @@ function CasePreview({
               reportSettled();
             }}
             onError={() => {
+              if (!useOriginalFallback && originalImageSrc.startsWith("/")) {
+                setLoaded(false);
+                setUseOriginalFallback(true);
+                return;
+              }
               setFailed(true);
               reportSettled();
               trackInsuranceEvent({
@@ -889,11 +878,11 @@ function CasePreview({
                 status: "error",
                 details: {
                   ...getTemplateAnalyticsDetails(template, false),
-                  imageSrc: previewImageSrc,
+                  imageSrc: originalImageSrc,
                 },
               });
             }}
-            referrerPolicy={previewImageSrc.startsWith("/") ? undefined : "no-referrer"}
+            referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
           />
         )}
       </div>
@@ -1691,7 +1680,7 @@ export function InsuranceTemplateGallery({
   }, [activeCategory, isMineMode, visibleTemplateCount]);
 
   useEffect(() => {
-    if (isMineMode || !visibleTemplatePreviewsReady || !hasMoreTemplates) {
+    if (isMineMode || !hasMoreTemplates) {
       return;
     }
     const handleScroll = () => {
@@ -1699,7 +1688,7 @@ export function InsuranceTemplateGallery({
     };
     window.addEventListener("scroll", handleScroll, { once: true, passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [hasMoreTemplates, isMineMode, visibleTemplatePreviewsReady]);
+  }, [activeCategory, hasMoreTemplates, isMineMode, visibleTemplateCount]);
 
   useEffect(() => {
     setSettledPreviewIds((current) => {
