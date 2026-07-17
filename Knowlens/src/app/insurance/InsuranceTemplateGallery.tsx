@@ -805,23 +805,55 @@ function formatGeneratedPosterTime(createdAt: number) {
   }
 }
 
-function CasePreview({ template, eager = false }: { template: InsuranceTemplateCard; eager?: boolean }) {
+function getTemplatePreviewImageSrc(imageSrc: string) {
+  if (!imageSrc.startsWith("/")) {
+    return imageSrc;
+  }
+  return `/_next/image?url=${encodeURIComponent(imageSrc)}&w=384&q=65`;
+}
+
+function CasePreview({
+  template,
+  eager = false,
+  previewId,
+  onPreviewSettled,
+}: {
+  template: InsuranceTemplateCard;
+  eager?: boolean;
+  previewId?: string;
+  onPreviewSettled?: (previewId: string) => void;
+}) {
   const aspectClass = getAspectClass(template);
   const originalImageSrc = template.imageSrc || "";
+  const previewImageSrc = getTemplatePreviewImageSrc(originalImageSrc);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const reportSettled = useCallback(() => {
+    if (previewId) {
+      onPreviewSettled?.(previewId);
+    }
+  }, [onPreviewSettled, previewId]);
 
   useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
     const frame = window.requestAnimationFrame(() => {
       const image = imageRef.current;
       if (image?.complete && image.naturalWidth > 0) {
         setLoaded(true);
+        reportSettled();
       }
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [originalImageSrc]);
+  }, [previewImageSrc, reportSettled]);
+
+  useEffect(() => {
+    if (!originalImageSrc) {
+      reportSettled();
+    }
+  }, [originalImageSrc, reportSettled]);
 
   if (originalImageSrc) {
     return (
@@ -839,25 +871,29 @@ function CasePreview({ template, eager = false }: { template: InsuranceTemplateC
           // eslint-disable-next-line @next/next/no-img-element
           <img
             ref={imageRef}
-            src={originalImageSrc}
+            src={previewImageSrc}
             alt={`${template.title}海报`}
             loading={eager ? "eager" : "lazy"}
             decoding="async"
             className="insurance-template-poster-image absolute inset-0 z-10 h-full w-full rounded-none bg-white object-cover [transform:translateZ(0)]"
-            onLoad={() => setLoaded(true)}
+            onLoad={() => {
+              setLoaded(true);
+              reportSettled();
+            }}
             onError={() => {
               setFailed(true);
+              reportSettled();
               trackInsuranceEvent({
                 action: "template_preview_image_failed",
                 message: "Insurance template preview image failed to load.",
                 status: "error",
                 details: {
                   ...getTemplateAnalyticsDetails(template, false),
-                  imageSrc: originalImageSrc,
+                  imageSrc: previewImageSrc,
                 },
               });
             }}
-            referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
+            referrerPolicy={previewImageSrc.startsWith("/") ? undefined : "no-referrer"}
           />
         )}
       </div>
@@ -1495,6 +1531,8 @@ export function InsuranceTemplateGallery({
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
   const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
+  const [settledPreviewIds, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
+  const [canAutoLoadAfterScroll, setCanAutoLoadAfterScroll] = useState(false);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
 
@@ -1561,12 +1599,30 @@ export function InsuranceTemplateGallery({
     () => filteredTemplates.slice(0, visibleTemplateCount),
     [filteredTemplates, visibleTemplateCount],
   );
+  const visibleTemplatePreviewIds = useMemo(
+    () => visibleTemplates.map(getTemplateIdentity),
+    [visibleTemplates],
+  );
   const visibleMyPosterRecords = useMemo(
     () => myPosterRecords.slice(0, visibleTemplateCount),
     [myPosterRecords, visibleTemplateCount],
   );
   const activeCollectionSize = isMineMode ? myPosterRecords.length : filteredTemplates.length;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || hasDeferredTemplates;
+  const visibleTemplatePreviewsReady =
+    !isMineMode &&
+    visibleTemplatePreviewIds.length > 0 &&
+    visibleTemplatePreviewIds.every((previewId) => settledPreviewIds.has(previewId));
+  const handleTemplatePreviewSettled = useCallback((previewId: string) => {
+    setSettledPreviewIds((current) => {
+      if (current.has(previewId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(previewId);
+      return next;
+    });
+  }, []);
   const loadMoreTemplates = useCallback(() => {
     if (visibleTemplateCount < activeCollectionSize) {
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
@@ -1611,7 +1667,7 @@ export function InsuranceTemplateGallery({
   }, []);
 
   useEffect(() => {
-    if (!hasMoreTemplates) {
+    if (!hasMoreTemplates || isMineMode || !visibleTemplatePreviewsReady || !canAutoLoadAfterScroll) {
       return;
     }
     const node = loadMoreRef.current;
@@ -1624,11 +1680,42 @@ export function InsuranceTemplateGallery({
           loadMoreTemplates();
         }
       },
-      { rootMargin: "640px 0px" },
+      { rootMargin: "240px 0px" },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [filteredTemplates.length, hasMoreTemplates, loadMoreTemplates]);
+  }, [canAutoLoadAfterScroll, hasMoreTemplates, isMineMode, loadMoreTemplates, visibleTemplatePreviewsReady]);
+
+  useEffect(() => {
+    setCanAutoLoadAfterScroll(false);
+  }, [activeCategory, isMineMode, visibleTemplateCount]);
+
+  useEffect(() => {
+    if (isMineMode || !visibleTemplatePreviewsReady || !hasMoreTemplates) {
+      return;
+    }
+    const handleScroll = () => {
+      setCanAutoLoadAfterScroll(true);
+    };
+    window.addEventListener("scroll", handleScroll, { once: true, passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [hasMoreTemplates, isMineMode, visibleTemplatePreviewsReady]);
+
+  useEffect(() => {
+    setSettledPreviewIds((current) => {
+      const visibleIdSet = new Set(visibleTemplatePreviewIds);
+      let changed = false;
+      const next = new Set<string>();
+      for (const previewId of current) {
+        if (visibleIdSet.has(previewId)) {
+          next.add(previewId);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [visibleTemplatePreviewIds]);
 
   const showDownloadToast = (message = "正在下载海报中...", duration = 2200) => {
     setDownloadToast(message);
@@ -2454,7 +2541,12 @@ export function InsuranceTemplateGallery({
                     className="group relative mb-3 inline-block w-full cursor-pointer break-inside-avoid-column overflow-hidden border border-zinc-200 bg-white align-top shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
                     <div className="relative w-full overflow-hidden bg-white">
-                      <CasePreview template={template} eager={index < TEMPLATE_INITIAL_LOAD_COUNT} />
+                      <CasePreview
+                        template={template}
+                        eager={index < TEMPLATE_INITIAL_LOAD_COUNT}
+                        previewId={getTemplateIdentity(template)}
+                        onPreviewSettled={handleTemplatePreviewSettled}
+                      />
                       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
                       <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center px-3 opacity-0 transition hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
                         <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
@@ -2541,20 +2633,14 @@ export function InsuranceTemplateGallery({
       {!(isMineMode && myPosterRecords.length === 0) ? (
         <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
           {hasMoreTemplates ? (
-            <div className="mx-auto grid max-w-md grid-cols-2 gap-3 sm:max-w-xl sm:grid-cols-3">
-              {Array.from({
-                length: Math.max(1, Math.min(TEMPLATE_LOAD_BATCH_SIZE, Math.max(activeCollectionSize - visibleTemplateCount, 1), 3)),
-              }).map(
-                (_, index) => (
-                  <div
-                    key={index}
-                    className="h-20 overflow-hidden border border-zinc-200 bg-zinc-100 shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
-                  >
-                    <div className="h-full w-full animate-pulse bg-gradient-to-r from-zinc-100 via-white to-zinc-100" />
-                  </div>
-                ),
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={loadMoreTemplates}
+              disabled={isDeferredTemplateLoading}
+              className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:text-zinc-950 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isDeferredTemplateLoading ? "正在加载..." : `再加载 ${TEMPLATE_LOAD_BATCH_SIZE} 张海报`}
+            </button>
           ) : (
             "已经到底部了"
           )}
