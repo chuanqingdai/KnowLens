@@ -1558,20 +1558,17 @@ export function InsuranceTemplateGallery({
   const [posterStateByTitle, setPosterStateByTitle] = useState<Record<string, GeneratedPosterState>>(loadStoredPosterState);
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
   const downloadToastTimerRef = useRef<number | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [isCheckingCredits, setIsCheckingCredits] = useState(false);
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
   const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const [settledPreviewIds, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
-  const [canAutoLoadAfterScroll, setCanAutoLoadAfterScroll] = useState(false);
   const [isTemplateBatchLoading, setIsTemplateBatchLoading] = useState(false);
   const [stableShowcaseTemplateIds, setStableShowcaseTemplateIds] = useState<string[]>([]);
   const showcaseOrderResetKeyRef = useRef("");
   const loadMoreInFlightRef = useRef(false);
   const lastLoadMoreCompletedAtRef = useRef(0);
-  const lastLoadMoreScrollYRef = useRef(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
 
@@ -1690,12 +1687,10 @@ export function InsuranceTemplateGallery({
     typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || Boolean(hasDeferredTemplatesForActiveCategory);
   const showTemplateBatchLoading = !isMineMode && (isTemplateBatchLoading || isDeferredTemplateLoading);
-  const initialTemplatePreviewsReady =
+  const visibleTemplatePreviewsReady =
     isMineMode ||
     visibleTemplatePreviewIds.length === 0 ||
-    visibleTemplatePreviewIds
-      .slice(0, Math.min(TEMPLATE_INITIAL_LOAD_COUNT, visibleTemplatePreviewIds.length))
-      .every((previewId) => settledPreviewIds.has(previewId));
+    visibleTemplatePreviewIds.every((previewId) => settledPreviewIds.has(previewId));
   const handleTemplatePreviewSettled = useCallback((previewId: string) => {
     setSettledPreviewIds((current) => {
       if (current.has(previewId)) {
@@ -1711,10 +1706,6 @@ export function InsuranceTemplateGallery({
       return;
     }
     loadMoreInFlightRef.current = true;
-    setCanAutoLoadAfterScroll(false);
-    if (typeof window !== "undefined") {
-      lastLoadMoreScrollYRef.current = window.scrollY;
-    }
     if (visibleTemplateCount < activeCollectionSize) {
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
       lastLoadMoreCompletedAtRef.current = Date.now();
@@ -1783,66 +1774,51 @@ export function InsuranceTemplateGallery({
   }, []);
 
   useEffect(() => {
-    if (
-      !hasMoreTemplates ||
-      isMineMode ||
-      isTemplateBatchLoading ||
-      isDeferredTemplateLoading ||
-      !initialTemplatePreviewsReady ||
-      !canAutoLoadAfterScroll
-    ) {
-      return;
-    }
-    const node = loadMoreRef.current;
-    if (!node) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadMoreTemplates();
-        }
-      },
-      { rootMargin: "240px 0px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [
-    canAutoLoadAfterScroll,
-    hasMoreTemplates,
-    isDeferredTemplateLoading,
-    isMineMode,
-    isTemplateBatchLoading,
-    loadMoreTemplates,
-    initialTemplatePreviewsReady,
-  ]);
-
-  useEffect(() => {
     if (!isTemplateBatchLoading && !isDeferredTemplateLoading) {
       loadMoreInFlightRef.current = false;
     }
   }, [activeCategory, isDeferredTemplateLoading, isTemplateBatchLoading, visibleTemplateCount]);
 
   useEffect(() => {
-    setCanAutoLoadAfterScroll(false);
-  }, [activeCategory, isMineMode, visibleTemplateCount]);
-
-  useEffect(() => {
-    if (isMineMode || !hasMoreTemplates || isTemplateBatchLoading || isDeferredTemplateLoading) {
+    if (
+      isMineMode ||
+      !hasMoreTemplates ||
+      isTemplateBatchLoading ||
+      isDeferredTemplateLoading ||
+      !visibleTemplatePreviewsReady
+    ) {
       return;
     }
-    const handleScroll = () => {
+    const handleLoadMoreIntent = () => {
       if (Date.now() - lastLoadMoreCompletedAtRef.current < 900) {
         return;
       }
-      if (Math.abs(window.scrollY - lastLoadMoreScrollYRef.current) < 80) {
+      const scrollBottom = window.scrollY + window.innerHeight;
+      const documentHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+      if (documentHeight - scrollBottom > 480) {
         return;
       }
-      setCanAutoLoadAfterScroll(true);
+      loadMoreTemplates();
     };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [activeCategory, hasMoreTemplates, isDeferredTemplateLoading, isMineMode, isTemplateBatchLoading, visibleTemplateCount]);
+    window.addEventListener("scroll", handleLoadMoreIntent, { passive: true });
+    window.addEventListener("wheel", handleLoadMoreIntent, { passive: true });
+    window.addEventListener("touchmove", handleLoadMoreIntent, { passive: true });
+    window.addEventListener("resize", handleLoadMoreIntent);
+    return () => {
+      window.removeEventListener("scroll", handleLoadMoreIntent);
+      window.removeEventListener("wheel", handleLoadMoreIntent);
+      window.removeEventListener("touchmove", handleLoadMoreIntent);
+      window.removeEventListener("resize", handleLoadMoreIntent);
+    };
+  }, [
+    hasMoreTemplates,
+    isDeferredTemplateLoading,
+    isMineMode,
+    isTemplateBatchLoading,
+    loadMoreTemplates,
+    visibleTemplateCount,
+    visibleTemplatePreviewsReady,
+  ]);
 
   useEffect(() => {
     setSettledPreviewIds((current) => {
@@ -2779,7 +2755,7 @@ export function InsuranceTemplateGallery({
       )}
 
       {!(isMineMode && myPosterRecords.length === 0) ? (
-        <div ref={loadMoreRef} className="flex min-h-20 items-center justify-center pb-10 pt-6 text-center text-sm text-zinc-400">
+        <div className="flex min-h-20 items-center justify-center pb-10 pt-6 text-center text-sm text-zinc-400">
           {showTemplateBatchLoading ? (
             <span className="inline-flex items-center gap-2">
               <LoaderCircle size={16} className="animate-spin text-zinc-500" />
