@@ -1571,6 +1571,7 @@ export function InsuranceTemplateGallery({
   const showcaseOrderResetKeyRef = useRef("");
   const loadMoreInFlightRef = useRef(false);
   const lastLoadMoreCompletedAtRef = useRef(0);
+  const lastLoadMoreScrollYRef = useRef(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
 
@@ -1689,11 +1690,12 @@ export function InsuranceTemplateGallery({
     typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || Boolean(hasDeferredTemplatesForActiveCategory);
   const showTemplateBatchLoading = !isMineMode && (isTemplateBatchLoading || isDeferredTemplateLoading);
-  const visibleTemplatePreviewsReady =
-    !isMineMode &&
-    (visibleTemplatePreviewIds.length === 0
-      ? Boolean(hasDeferredTemplatesForActiveCategory)
-      : visibleTemplatePreviewIds.every((previewId) => settledPreviewIds.has(previewId)));
+  const initialTemplatePreviewsReady =
+    isMineMode ||
+    visibleTemplatePreviewIds.length === 0 ||
+    visibleTemplatePreviewIds
+      .slice(0, Math.min(TEMPLATE_INITIAL_LOAD_COUNT, visibleTemplatePreviewIds.length))
+      .every((previewId) => settledPreviewIds.has(previewId));
   const handleTemplatePreviewSettled = useCallback((previewId: string) => {
     setSettledPreviewIds((current) => {
       if (current.has(previewId)) {
@@ -1710,6 +1712,9 @@ export function InsuranceTemplateGallery({
     }
     loadMoreInFlightRef.current = true;
     setCanAutoLoadAfterScroll(false);
+    if (typeof window !== "undefined") {
+      lastLoadMoreScrollYRef.current = window.scrollY;
+    }
     if (visibleTemplateCount < activeCollectionSize) {
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
       lastLoadMoreCompletedAtRef.current = Date.now();
@@ -1783,7 +1788,7 @@ export function InsuranceTemplateGallery({
       isMineMode ||
       isTemplateBatchLoading ||
       isDeferredTemplateLoading ||
-      !visibleTemplatePreviewsReady ||
+      !initialTemplatePreviewsReady ||
       !canAutoLoadAfterScroll
     ) {
       return;
@@ -1809,7 +1814,7 @@ export function InsuranceTemplateGallery({
     isMineMode,
     isTemplateBatchLoading,
     loadMoreTemplates,
-    visibleTemplatePreviewsReady,
+    initialTemplatePreviewsReady,
   ]);
 
   useEffect(() => {
@@ -1830,9 +1835,12 @@ export function InsuranceTemplateGallery({
       if (Date.now() - lastLoadMoreCompletedAtRef.current < 900) {
         return;
       }
+      if (Math.abs(window.scrollY - lastLoadMoreScrollYRef.current) < 80) {
+        return;
+      }
       setCanAutoLoadAfterScroll(true);
     };
-    window.addEventListener("scroll", handleScroll, { once: true, passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, [activeCategory, hasMoreTemplates, isDeferredTemplateLoading, isMineMode, isTemplateBatchLoading, visibleTemplateCount]);
 
