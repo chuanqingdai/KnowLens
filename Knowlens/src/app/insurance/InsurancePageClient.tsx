@@ -15,6 +15,7 @@ type InsurancePageClientProps = {
   templates: InsuranceTemplateCard[];
   categories: string[];
   initialCategory: string;
+  totalTemplateCount: number;
 };
 
 const HERO_SLIDES = [
@@ -28,40 +29,101 @@ const HERO_SLIDES = [
   },
 ] as const;
 
-export function InsurancePageClient({ templates, categories, initialCategory }: InsurancePageClientProps) {
+const TEMPLATE_BATCH_SIZE = 8;
+
+function getTemplateIdentity(template: InsuranceTemplateCard) {
+  return template.imageSrc || `${template.primaryCategory}:${template.secondaryCategory}:${template.title}`;
+}
+
+function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory: string) {
+  if (activeCategory === "全部") {
+    return true;
+  }
+  return (template.primaryCategory || template.category) === activeCategory;
+}
+
+export function InsurancePageClient({ templates, categories, initialCategory, totalTemplateCount }: InsurancePageClientProps) {
   const [showcaseTemplates, setShowcaseTemplates] = useState(templates);
   const [isTemplateCatalogLoading, setIsTemplateCatalogLoading] = useState(false);
+  const [templateTotalByCategory, setTemplateTotalByCategory] = useState<Record<string, number>>({
+    全部: totalTemplateCount,
+  });
+  const [templateOffsetByCategory, setTemplateOffsetByCategory] = useState<Record<string, number>>({
+    全部: templates.length,
+  });
   const [activeSection, setActiveSection] = useState<"showcase" | "mine">("showcase");
   const [activeHeroSlide, setActiveHeroSlide] = useState(0);
   const [isHeroPaused, setIsHeroPaused] = useState(false);
-  const fullTemplateRequestRef = useRef(false);
+  const templateBatchRequestRef = useRef(false);
 
   useEffect(() => {
     setShowcaseTemplates(templates);
-  }, [templates]);
+    setTemplateTotalByCategory({ 全部: totalTemplateCount });
+    setTemplateOffsetByCategory({ 全部: templates.length });
+  }, [templates, totalTemplateCount]);
 
-  const loadAllTemplates = useCallback(() => {
-    if (fullTemplateRequestRef.current || showcaseTemplates.length > templates.length) {
+  const getLoadedTemplateCountForCategory = useCallback(
+    (category: string) =>
+      showcaseTemplates.filter((template) => templateMatchesCategory(template, category || "全部")).length,
+    [showcaseTemplates],
+  );
+
+  const hasMoreTemplateBatch = useCallback(
+    (category: string) => {
+      const normalizedCategory = category || "全部";
+      const knownTotal = templateTotalByCategory[normalizedCategory];
+      if (typeof knownTotal === "number") {
+        return getLoadedTemplateCountForCategory(normalizedCategory) < knownTotal;
+      }
+      return getLoadedTemplateCountForCategory(normalizedCategory) < totalTemplateCount;
+    },
+    [getLoadedTemplateCountForCategory, templateTotalByCategory, totalTemplateCount],
+  );
+
+  const loadTemplateBatch = useCallback((category = "全部") => {
+    const normalizedCategory = category || "全部";
+    if (templateBatchRequestRef.current || !hasMoreTemplateBatch(normalizedCategory)) {
       return;
     }
-    fullTemplateRequestRef.current = true;
+    templateBatchRequestRef.current = true;
     setIsTemplateCatalogLoading(true);
-    fetch("/api/insurance/templates", { cache: "force-cache" })
+    const offset =
+      templateOffsetByCategory[normalizedCategory] ??
+      getLoadedTemplateCountForCategory(normalizedCategory);
+    const query = new URLSearchParams({
+      offset: String(offset),
+      limit: String(TEMPLATE_BATCH_SIZE),
+    });
+    if (normalizedCategory !== "全部") {
+      query.set("category", normalizedCategory);
+    }
+    fetch(`/api/insurance/templates?${query.toString()}`, { cache: "force-cache" })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load templates."))))
-      .then((payload: { templates?: InsuranceTemplateCard[] }) => {
-        if (Array.isArray(payload.templates) && payload.templates.length > templates.length) {
-          setShowcaseTemplates(payload.templates);
-        } else {
-          fullTemplateRequestRef.current = false;
+      .then((payload: { templates?: InsuranceTemplateCard[]; total?: number }) => {
+        const nextTemplates = Array.isArray(payload.templates) ? payload.templates : [];
+        setTemplateTotalByCategory((current) => ({
+          ...current,
+          [normalizedCategory]: typeof payload.total === "number" ? payload.total : current[normalizedCategory] ?? 0,
+        }));
+        setTemplateOffsetByCategory((current) => ({
+          ...current,
+          [normalizedCategory]: offset + nextTemplates.length,
+        }));
+        if (nextTemplates.length === 0) {
+          return;
         }
+        setShowcaseTemplates((current) => {
+          const existingIds = new Set(current.map(getTemplateIdentity));
+          const appendedTemplates = nextTemplates.filter((template) => !existingIds.has(getTemplateIdentity(template)));
+          return appendedTemplates.length > 0 ? [...current, ...appendedTemplates] : current;
+        });
       })
-      .catch(() => {
-        fullTemplateRequestRef.current = false;
-      })
+      .catch(() => undefined)
       .finally(() => {
+        templateBatchRequestRef.current = false;
         setIsTemplateCatalogLoading(false);
       });
-  }, [showcaseTemplates.length, templates.length]);
+  }, [getLoadedTemplateCountForCategory, hasMoreTemplateBatch, templateOffsetByCategory]);
 
   useEffect(() => {
     trackInsuranceEvent({
@@ -240,9 +302,9 @@ export function InsurancePageClient({ templates, categories, initialCategory }: 
             categories={categories}
             initialCategory={initialCategory}
             mode={activeSection}
-            hasDeferredTemplates={activeSection === "showcase" && showcaseTemplates.length <= templates.length}
+            hasDeferredTemplates={(category) => activeSection === "showcase" && hasMoreTemplateBatch(category)}
             isDeferredTemplateLoading={isTemplateCatalogLoading}
-            onLoadDeferredTemplates={loadAllTemplates}
+            onLoadDeferredTemplates={loadTemplateBatch}
           />
         </section>
       </div>

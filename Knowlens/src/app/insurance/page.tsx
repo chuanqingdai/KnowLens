@@ -584,6 +584,7 @@ export default function InsurancePage() {
       templates={initialShowcaseTemplates}
       categories={showcaseCategories}
       initialCategory="全部"
+      totalTemplateCount={insuranceShowcaseTemplates.length}
     />
   );
 }

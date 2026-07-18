@@ -44,9 +44,9 @@ type InsuranceTemplateGalleryProps = {
   categories: string[];
   initialCategory?: string;
   mode?: "showcase" | "mine";
-  hasDeferredTemplates?: boolean;
+  hasDeferredTemplates?: boolean | ((activeCategory: string) => boolean);
   isDeferredTemplateLoading?: boolean;
-  onLoadDeferredTemplates?: () => void;
+  onLoadDeferredTemplates?: (activeCategory: string) => void;
 };
 
 type SupportedTemplateAspectRatio = "1:1" | "9:16" | "16:9" | "3:4";
@@ -1646,11 +1646,14 @@ export function InsuranceTemplateGallery({
     [myPosterRecords, visibleTemplateCount],
   );
   const activeCollectionSize = isMineMode ? myPosterRecords.length : orderedTemplateCandidates.length;
-  const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || hasDeferredTemplates;
+  const hasDeferredTemplatesForActiveCategory =
+    typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
+  const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || Boolean(hasDeferredTemplatesForActiveCategory);
   const visibleTemplatePreviewsReady =
     !isMineMode &&
-    visibleTemplatePreviewIds.length > 0 &&
-    visibleTemplatePreviewIds.every((previewId) => settledPreviewIds.has(previewId));
+    (visibleTemplatePreviewIds.length === 0
+      ? Boolean(hasDeferredTemplatesForActiveCategory)
+      : visibleTemplatePreviewIds.every((previewId) => settledPreviewIds.has(previewId)));
   const handleTemplatePreviewSettled = useCallback((previewId: string) => {
     setSettledPreviewIds((current) => {
       if (current.has(previewId)) {
@@ -1671,13 +1674,20 @@ export function InsuranceTemplateGallery({
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
       return;
     }
-    if (hasDeferredTemplates && !isDeferredTemplateLoading) {
-      onLoadDeferredTemplates?.();
+    if (hasDeferredTemplatesForActiveCategory && !isDeferredTemplateLoading) {
+      onLoadDeferredTemplates?.(activeCategory);
       setVisibleTemplateCount((current) => current + TEMPLATE_LOAD_BATCH_SIZE);
       return;
     }
     loadMoreInFlightRef.current = false;
-  }, [activeCollectionSize, hasDeferredTemplates, isDeferredTemplateLoading, onLoadDeferredTemplates, visibleTemplateCount]);
+  }, [
+    activeCategory,
+    activeCollectionSize,
+    hasDeferredTemplatesForActiveCategory,
+    isDeferredTemplateLoading,
+    onLoadDeferredTemplates,
+    visibleTemplateCount,
+  ]);
 
   const activePosterState = activeTemplate ? posterStateByTitle[activeTemplate.title] : undefined;
   const isGeneratingPoster = activePosterState?.status === "generating";
