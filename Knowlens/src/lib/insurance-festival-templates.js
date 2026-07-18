@@ -3,6 +3,27 @@ const sharedPrompt =
 
 export const festivalTemplates = [
   {
+    title: "七夕",
+    category: "节日",
+    primaryCategory: "节日",
+    secondaryCategory: "七夕祝福",
+    description: "七夕节日祝福海报",
+    prompt:
+      "基于七夕节日祝福模板，生成一张中文七夕海报。只显示输入标题、日期和极短祝福语，标题文字内容必须完全按输入呈现；标题的字体风格必须是醒目的中文毛笔书法风格，但不要额外写出“毛笔字”“书法字”等字样。不显示字段名、分类词、核心要点、辅助信息、机构名称、二维码、联系方式、品牌、logo或任何额外文案。画面内容必须和七夕强相关，浪漫但克制，突出星河、鹊桥、丝带、暖色宣纸或夜空意象，构图高级，有留白。",
+    format: "9:16 海报",
+    audience: "七夕节日祝福",
+    fields: ["标题", "副标题", "日期"],
+    accent: "#E99A7A",
+    rows: ["所念皆安", "爱有归处", "8月19日"],
+    auxiliaryInfo: "",
+    illustration:
+      "七夕国风毛笔字海报，暖米色宣纸、玫瑰粉丝带、深蓝星空、鹊桥剪影和金色线条作为边缘装饰，标题巨大醒目，整体浪漫克制。",
+    imageSrc: "/insurance/posters/festival-qixi-brush-01.png",
+    aspectRatio: "9:16",
+    styleId: "festival-chinese",
+    isFree: true,
+  },
+  {
     title: "端午安康",
     category: "节日",
     primaryCategory: "节日",

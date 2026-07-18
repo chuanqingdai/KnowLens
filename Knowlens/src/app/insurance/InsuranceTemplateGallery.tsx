@@ -1644,7 +1644,7 @@ export function InsuranceTemplateGallery({
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
   const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
-  const [settledPreviewIds, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
+  const [, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
   const [isTemplateBatchLoading, setIsTemplateBatchLoading] = useState(false);
   const [stableShowcaseTemplateIds, setStableShowcaseTemplateIds] = useState<string[]>([]);
   const showcaseOrderResetKeyRef = useRef("");
@@ -1768,10 +1768,6 @@ export function InsuranceTemplateGallery({
     typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || Boolean(hasDeferredTemplatesForActiveCategory);
   const showTemplateBatchLoading = !isMineMode && (isTemplateBatchLoading || isDeferredTemplateLoading);
-  const visibleTemplatePreviewsReady =
-    isMineMode ||
-    visibleTemplatePreviewIds.length === 0 ||
-    visibleTemplatePreviewIds.every((previewId) => settledPreviewIds.has(previewId));
   const handleTemplatePreviewSettled = useCallback((previewId: string) => {
     setSettledPreviewIds((current) => {
       if (current.has(previewId)) {
@@ -1865,8 +1861,7 @@ export function InsuranceTemplateGallery({
       isMineMode ||
       !hasMoreTemplates ||
       isTemplateBatchLoading ||
-      isDeferredTemplateLoading ||
-      !visibleTemplatePreviewsReady
+      isDeferredTemplateLoading
     ) {
       return;
     }
@@ -1881,6 +1876,7 @@ export function InsuranceTemplateGallery({
       }
       loadMoreTemplates();
     };
+    window.requestAnimationFrame(handleLoadMoreIntent);
     window.addEventListener("scroll", handleLoadMoreIntent, { passive: true });
     window.addEventListener("wheel", handleLoadMoreIntent, { passive: true });
     window.addEventListener("touchmove", handleLoadMoreIntent, { passive: true });
@@ -1898,7 +1894,6 @@ export function InsuranceTemplateGallery({
     isTemplateBatchLoading,
     loadMoreTemplates,
     visibleTemplateCount,
-    visibleTemplatePreviewsReady,
   ]);
 
   useEffect(() => {

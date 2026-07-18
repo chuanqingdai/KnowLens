@@ -796,4 +796,10 @@ export const availableInsuranceTemplateImages = new Set([
   "/insurance/posters/policy-review-invite-01.png",
   "/insurance/posters/renewal-payment-reminder-01.png",
   "/insurance/posters/kids-growth-reminder-01.png",
+  "/insurance/posters/jieqi-dashu-brush-01.png",
+  "/insurance/posters/jieqi-liqiu-brush-01.png",
+  "/insurance/posters/jieqi-chushu-brush-01.png",
+  "/insurance/posters/jieqi-bailu-brush-01.png",
+  "/insurance/posters/jieqi-qiufen-brush-01.png",
+  "/insurance/posters/festival-qixi-brush-01.png",
 ]);
