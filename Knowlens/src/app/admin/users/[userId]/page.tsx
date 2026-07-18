@@ -230,6 +230,7 @@ export default function AdminUserDetailPage() {
   const [creditsHasMore, setCreditsHasMore] = useState(false);
   const [giftPlanId, setGiftPlanId] = useState<BillingPlanId>("starter");
   const [giftCycle, setGiftCycle] = useState<BillingCycle>("monthly");
+  const [giftCreditAmount, setGiftCreditAmount] = useState("1200");
   const [giftReason, setGiftReason] = useState("");
   const [giftLoading, setGiftLoading] = useState(false);
   const [giftError, setGiftError] = useState("");
@@ -268,6 +269,13 @@ export default function AdminUserDetailPage() {
   }, [giftCycle, selectedGiftPlan]);
 
   useEffect(() => {
+    if (!selectedGiftPlan) {
+      return;
+    }
+    setGiftCreditAmount(String(selectedGiftPlan.monthlyCredits));
+  }, [selectedGiftPlan]);
+
+  useEffect(() => {
     if (!userId) {
       setLoading(false);
       setError("缺少 userId。");
@@ -285,6 +293,7 @@ export default function AdminUserDetailPage() {
     setCreditsHasMore(false);
     setGiftPlanId("starter");
     setGiftCycle("monthly");
+    setGiftCreditAmount("1200");
     setGiftReason("");
     setGiftError("");
     setGiftSuccess("");
@@ -411,6 +420,11 @@ export default function AdminUserDetailPage() {
       setGiftError("请选择有效的会员套餐。");
       return;
     }
+    const normalizedGiftCredits = Math.round(Number(giftCreditAmount));
+    if (!Number.isFinite(normalizedGiftCredits) || normalizedGiftCredits <= 0 || normalizedGiftCredits > 100_000) {
+      setGiftError("发放积分需为 1 到 100000 之间的数字。");
+      return;
+    }
     setGiftLoading(true);
     setGiftError("");
     setGiftSuccess("");
@@ -425,6 +439,7 @@ export default function AdminUserDetailPage() {
           action: "gift_membership",
           planId: giftPlanId,
           cycle: giftCycle,
+          amount: normalizedGiftCredits,
           reason: giftReason,
         }),
       }).then(readJsonOrThrow)) as GiftMembershipResponse;
@@ -464,9 +479,12 @@ export default function AdminUserDetailPage() {
       void loadCreditsPage(1);
       setGiftPlanId("starter");
       setGiftCycle("monthly");
+      setGiftCreditAmount("1200");
       setGiftReason("");
       const selectedPlanName = selectedPlan.displayNameZh || selectedPlan.name;
-      setGiftSuccess(`已开通 ${selectedPlanName}${giftCycle === "yearly" ? " 年度" : " 月度"}会员。`);
+      setGiftSuccess(
+        `已开通 ${selectedPlanName}${giftCycle === "yearly" ? " 年度" : " 月度"}会员，并发放 ${normalizedGiftCredits.toLocaleString("zh-CN")} 积分。`,
+      );
       window.setTimeout(() => setGiftSuccess(""), 2600);
     } catch (fetchError) {
       setGiftError(fetchError instanceof Error ? fetchError.message : "开通会员失败。");
@@ -612,7 +630,7 @@ export default function AdminUserDetailPage() {
                   开通会员
                 </div>
                 <p className="mt-1 text-[11px] leading-5 text-zinc-500">
-                  直接为用户开通与线上一致的会员权限，并发放对应积分。保险包年会员会自动按一年有效期发放 6000 积分。
+                  直接为用户开通与线上一致的会员权限，并发放积分。选择套餐会自动带出默认积分，也可改成新用户赠送额度。
                 </p>
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <select
@@ -638,9 +656,21 @@ export default function AdminUserDetailPage() {
                 </div>
                 {!selectedGiftPlanSupportsMonthly ? (
                   <p className="mt-2 text-[11px] leading-5 text-zinc-500">
-                    当前套餐仅支持年度开通，授予后立即生效 1 年，并发放 6000 积分。
+                    当前套餐仅支持年度开通，授予后立即生效 1 年。
                   </p>
                 ) : null}
+                <label className="mt-2 block text-[11px] font-medium text-zinc-600">
+                  发放积分
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    step={1}
+                    value={giftCreditAmount}
+                    onChange={(event) => setGiftCreditAmount(event.target.value)}
+                    className="mt-1 h-8 w-full rounded-lg border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900"
+                  />
+                </label>
                 <input
                   type="text"
                   value={giftReason}

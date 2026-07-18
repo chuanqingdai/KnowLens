@@ -680,6 +680,14 @@ export async function POST(
       return NextResponse.json({ error: "Unsupported membership plan." }, { status: 400 });
     }
 
+    const giftCredits =
+      typeof body.amount === "undefined" || body.amount === null || body.amount === ""
+        ? plan.monthlyCredits
+        : Math.round(Number(body.amount));
+    if (!Number.isFinite(giftCredits) || giftCredits <= 0 || giftCredits > 100_000) {
+      return NextResponse.json({ error: "Gift membership credits must be between 1 and 100000." }, { status: 400 });
+    }
+
     const cycle = isBillingPlanCycleSupported(plan.id, requestedCycle)
       ? requestedCycle
       : getBillingPlanDefaultCycle(plan.id);
@@ -692,7 +700,7 @@ export async function POST(
       planId: plan.id,
       planName: plan.name,
       cycle,
-      monthlyCredits: plan.monthlyCredits,
+      monthlyCredits: giftCredits,
       startedAt: startedAt.toISOString(),
       renewAt: renewAt.toISOString(),
       checkoutSource: "admin_membership_gift",
@@ -724,7 +732,8 @@ export async function POST(
         planId: plan.id,
         planName: plan.name,
         cycle,
-        monthlyCredits: plan.monthlyCredits,
+        monthlyCredits: giftCredits,
+        defaultPlanCredits: plan.monthlyCredits,
         reason,
       },
     });

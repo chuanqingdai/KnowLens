@@ -964,6 +964,11 @@ function PosterPreview({
   const showImageLoadingShimmer = Boolean(shouldRenderPreviewImage && !previewImageLoaded);
 
   useEffect(() => {
+    setFailedImageSrc("");
+    setLoadedImageSrc("");
+  }, [imageSrc]);
+
+  useEffect(() => {
     if (!generatedImageSrc || isGenerating) {
       return;
     }
@@ -993,6 +998,17 @@ function PosterPreview({
         <div className={`relative overflow-hidden bg-zinc-100 ${aspectClass} ${fitClass}`}>
           {showImageLoadingShimmer ? (
             <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-10 transition-opacity duration-500" />
+          ) : null}
+          {showImageLoadingShimmer && !isGenerating ? (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/72 backdrop-blur-[1px]">
+              <div className="mx-5 flex max-w-[260px] flex-col items-center rounded-2xl border border-zinc-200 bg-white/95 px-5 py-4 text-center shadow-[0_16px_34px_rgba(15,23,42,0.12)]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-700">
+                  <LoaderCircle size={18} className="animate-spin" />
+                </div>
+                <p className="mt-3 text-sm font-semibold text-zinc-900">海报图片加载中</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">图片加载完成后会自动显示。</p>
+              </div>
+            </div>
           ) : null}
           {shouldRenderPreviewImage && canUseNextImageForInsuranceSrc(previewImageSrc) ? (
             <Image
@@ -1043,7 +1059,7 @@ function PosterPreview({
             </div>
           ) : null}
           {isGenerating ? (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/62 backdrop-blur-[2px]">
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/62 backdrop-blur-[2px]">
               <div className="mx-5 flex max-w-[320px] flex-col items-center rounded-2xl border border-zinc-200 bg-white/96 px-5 py-4 text-center shadow-[0_16px_34px_rgba(15,23,42,0.14)]">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600">
                   <LoaderCircle size={18} className="animate-spin" />
@@ -1057,7 +1073,7 @@ function PosterPreview({
             </div>
           ) : null}
           {isFailed ? (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]">
               <div className="max-w-[250px] rounded-lg border border-red-100 bg-white px-4 py-3 text-center shadow-sm">
                 <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600">
                   <AlertCircle size={14} />
