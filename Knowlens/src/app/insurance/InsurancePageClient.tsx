@@ -83,7 +83,7 @@ export function InsurancePageClient({ templates, categories, initialCategory, to
   const loadTemplateBatch = useCallback((category = "全部") => {
     const normalizedCategory = category || "全部";
     if (templateBatchRequestRef.current || !hasMoreTemplateBatch(normalizedCategory)) {
-      return;
+      return Promise.resolve(0);
     }
     templateBatchRequestRef.current = true;
     setIsTemplateCatalogLoading(true);
@@ -97,7 +97,7 @@ export function InsurancePageClient({ templates, categories, initialCategory, to
     if (normalizedCategory !== "全部") {
       query.set("category", normalizedCategory);
     }
-    fetch(`/api/insurance/templates?${query.toString()}`, { cache: "force-cache" })
+    return fetch(`/api/insurance/templates?${query.toString()}`, { cache: "force-cache" })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load templates."))))
       .then((payload: { templates?: InsuranceTemplateCard[]; total?: number }) => {
         const nextTemplates = Array.isArray(payload.templates) ? payload.templates : [];
@@ -110,20 +110,26 @@ export function InsurancePageClient({ templates, categories, initialCategory, to
           [normalizedCategory]: offset + nextTemplates.length,
         }));
         if (nextTemplates.length === 0) {
-          return;
+          return 0;
+        }
+        const existingTemplateIds = new Set(showcaseTemplates.map(getTemplateIdentity));
+        const appendedTemplates = nextTemplates.filter((template) => !existingTemplateIds.has(getTemplateIdentity(template)));
+        if (appendedTemplates.length === 0) {
+          return 0;
         }
         setShowcaseTemplates((current) => {
           const existingIds = new Set(current.map(getTemplateIdentity));
-          const appendedTemplates = nextTemplates.filter((template) => !existingIds.has(getTemplateIdentity(template)));
-          return appendedTemplates.length > 0 ? [...current, ...appendedTemplates] : current;
+          const safeAppendedTemplates = appendedTemplates.filter((template) => !existingIds.has(getTemplateIdentity(template)));
+          return safeAppendedTemplates.length > 0 ? [...current, ...safeAppendedTemplates] : current;
         });
+        return appendedTemplates.length;
       })
-      .catch(() => undefined)
+      .catch(() => 0)
       .finally(() => {
         templateBatchRequestRef.current = false;
         setIsTemplateCatalogLoading(false);
       });
-  }, [getLoadedTemplateCountForCategory, hasMoreTemplateBatch, templateOffsetByCategory]);
+  }, [getLoadedTemplateCountForCategory, hasMoreTemplateBatch, showcaseTemplates, templateOffsetByCategory]);
 
   useEffect(() => {
     trackInsuranceEvent({

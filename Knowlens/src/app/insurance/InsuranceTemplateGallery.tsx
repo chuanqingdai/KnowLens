@@ -33,6 +33,7 @@ export type InsuranceTemplateCard = {
   auxiliaryInfo: string;
   illustration: string;
   imageSrc?: string;
+  thumbnailSrc?: string;
   aspectRatio?: "9:16" | "3:4" | "4:5" | "16:11" | "1:1" | "16:9" | "4:3";
   styleId?: string;
   isFree?: boolean;
@@ -46,7 +47,7 @@ type InsuranceTemplateGalleryProps = {
   mode?: "showcase" | "mine";
   hasDeferredTemplates?: boolean | ((activeCategory: string) => boolean);
   isDeferredTemplateLoading?: boolean;
-  onLoadDeferredTemplates?: (activeCategory: string) => void;
+  onLoadDeferredTemplates?: (activeCategory: string) => Promise<number> | number | void;
 };
 
 type SupportedTemplateAspectRatio = "1:1" | "9:16" | "16:9" | "3:4";
@@ -400,6 +401,15 @@ function getAspectClassFromRatio(aspectRatio?: SupportedTemplateAspectRatio) {
 
 function canUseNextImageForInsuranceSrc(imageSrc: string) {
   return imageSrc.startsWith("/") && !imageSrc.startsWith("/api/");
+}
+
+function getInsuranceTemplatePreviewSrc(template: InsuranceTemplateCard) {
+  if (template.thumbnailSrc) {
+    return template.thumbnailSrc;
+  }
+  const imageSrc = template.imageSrc || "";
+  const match = imageSrc.match(/^\/insurance\/posters\/([^/?#]+)\.png$/i);
+  return match ? `/insurance/posters/thumbs/${match[1]}.webp` : imageSrc;
 }
 
 function normalizeAspectRatioChoice(aspectRatio?: string): SupportedTemplateAspectRatio {
@@ -825,6 +835,9 @@ function CasePreview({
 }) {
   const aspectClass = getAspectClass(template);
   const originalImageSrc = template.imageSrc || "";
+  const thumbnailImageSrc = getInsuranceTemplatePreviewSrc(template);
+  const previewImageSrc = thumbnailImageSrc || originalImageSrc;
+  const [activeImageSrc, setActiveImageSrc] = useState(previewImageSrc);
   const [useOriginalFallback, setUseOriginalFallback] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -835,18 +848,19 @@ function CasePreview({
   }, [onPreviewSettled, previewId]);
 
   useEffect(() => {
+    setActiveImageSrc(previewImageSrc);
     setUseOriginalFallback(false);
     setLoaded(false);
     setFailed(false);
-  }, [originalImageSrc]);
+  }, [previewImageSrc]);
 
   useEffect(() => {
-    if (!originalImageSrc) {
+    if (!activeImageSrc) {
       reportSettled();
     }
-  }, [originalImageSrc, reportSettled]);
+  }, [activeImageSrc, reportSettled]);
 
-  if (originalImageSrc) {
+  if (activeImageSrc) {
     return (
       <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
         {!loaded ? <div className="skeleton-shimmer pointer-events-none absolute inset-0 z-0" /> : null}
@@ -859,12 +873,12 @@ function CasePreview({
           </div>
         ) : (
           <Image
-            src={originalImageSrc}
+            src={activeImageSrc}
             alt={`${template.title}海报`}
             fill
             loading={eager ? "eager" : "lazy"}
-            sizes="(min-width: 1280px) 280px, (min-width: 1024px) 30vw, 50vw"
-            unoptimized={useOriginalFallback}
+            sizes="(min-width: 1280px) 260px, (min-width: 1024px) 28vw, 50vw"
+            unoptimized={useOriginalFallback || activeImageSrc !== originalImageSrc}
             decoding="async"
             className="insurance-template-poster-image absolute inset-0 z-10 h-full w-full rounded-none bg-white object-cover [transform:translateZ(0)]"
             onLoad={() => {
@@ -872,6 +886,11 @@ function CasePreview({
               reportSettled();
             }}
             onError={() => {
+              if (activeImageSrc !== originalImageSrc && originalImageSrc) {
+                setLoaded(false);
+                setActiveImageSrc(originalImageSrc);
+                return;
+              }
               if (!useOriginalFallback && originalImageSrc.startsWith("/")) {
                 setLoaded(false);
                 setUseOriginalFallback(true);
@@ -885,11 +904,11 @@ function CasePreview({
                 status: "error",
                 details: {
                   ...getTemplateAnalyticsDetails(template, false),
-                  imageSrc: originalImageSrc,
+                  imageSrc: activeImageSrc,
                 },
               });
             }}
-            referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
+            referrerPolicy={activeImageSrc.startsWith("/") ? undefined : "no-referrer"}
           />
         )}
       </div>
@@ -897,6 +916,24 @@ function CasePreview({
   }
 
   return <div aria-hidden="true" className={`w-full bg-white ${aspectClass}`} />;
+}
+
+function TemplateCardSkeleton({ index }: { index: number }) {
+  const aspectClass = index % 4 === 1 ? "aspect-[3/4]" : "aspect-[9/16]";
+  return (
+    <article aria-hidden="true" className="w-full overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]">
+      <div className={`skeleton-shimmer w-full ${aspectClass}`} />
+      <div className="p-2.5 sm:p-3">
+        <div className="flex gap-1.5">
+          <div className="h-5 w-10 rounded-md bg-zinc-100" />
+          <div className="h-5 w-14 rounded-md bg-zinc-100" />
+        </div>
+        <div className="mt-3 h-4 w-4/5 rounded bg-zinc-100" />
+        <div className="mt-2 h-3 w-full rounded bg-zinc-100" />
+        <div className="mt-1.5 h-3 w-2/3 rounded bg-zinc-100" />
+      </div>
+    </article>
+  );
 }
 
 function PosterPreview({
@@ -1529,9 +1566,11 @@ export function InsuranceTemplateGallery({
   const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const [settledPreviewIds, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
   const [canAutoLoadAfterScroll, setCanAutoLoadAfterScroll] = useState(false);
+  const [isTemplateBatchLoading, setIsTemplateBatchLoading] = useState(false);
   const [stableShowcaseTemplateIds, setStableShowcaseTemplateIds] = useState<string[]>([]);
   const showcaseOrderResetKeyRef = useRef("");
   const loadMoreInFlightRef = useRef(false);
+  const lastLoadMoreCompletedAtRef = useRef(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
 
@@ -1649,6 +1688,7 @@ export function InsuranceTemplateGallery({
   const hasDeferredTemplatesForActiveCategory =
     typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || Boolean(hasDeferredTemplatesForActiveCategory);
+  const showTemplateBatchLoading = !isMineMode && (isTemplateBatchLoading || isDeferredTemplateLoading);
   const visibleTemplatePreviewsReady =
     !isMineMode &&
     (visibleTemplatePreviewIds.length === 0
@@ -1665,18 +1705,33 @@ export function InsuranceTemplateGallery({
     });
   }, []);
   const loadMoreTemplates = useCallback(() => {
-    if (loadMoreInFlightRef.current) {
+    if (loadMoreInFlightRef.current || isTemplateBatchLoading) {
       return;
     }
     loadMoreInFlightRef.current = true;
     setCanAutoLoadAfterScroll(false);
     if (visibleTemplateCount < activeCollectionSize) {
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
+      lastLoadMoreCompletedAtRef.current = Date.now();
       return;
     }
     if (hasDeferredTemplatesForActiveCategory && !isDeferredTemplateLoading) {
-      onLoadDeferredTemplates?.(activeCategory);
-      setVisibleTemplateCount((current) => current + TEMPLATE_LOAD_BATCH_SIZE);
+      setIsTemplateBatchLoading(true);
+      Promise.resolve(onLoadDeferredTemplates?.(activeCategory))
+        .then((loadedCount) => {
+          const safeLoadedCount =
+            typeof loadedCount === "number" && Number.isFinite(loadedCount)
+              ? Math.max(0, Math.min(loadedCount, TEMPLATE_LOAD_BATCH_SIZE))
+              : 0;
+          if (safeLoadedCount > 0) {
+            setVisibleTemplateCount((current) => current + safeLoadedCount);
+          }
+        })
+        .finally(() => {
+          lastLoadMoreCompletedAtRef.current = Date.now();
+          loadMoreInFlightRef.current = false;
+          setIsTemplateBatchLoading(false);
+        });
       return;
     }
     loadMoreInFlightRef.current = false;
@@ -1685,6 +1740,7 @@ export function InsuranceTemplateGallery({
     activeCollectionSize,
     hasDeferredTemplatesForActiveCategory,
     isDeferredTemplateLoading,
+    isTemplateBatchLoading,
     onLoadDeferredTemplates,
     visibleTemplateCount,
   ]);
@@ -1701,7 +1757,7 @@ export function InsuranceTemplateGallery({
     if (isMineMode) {
       return;
     }
-    queueMicrotask(() => setShowcaseRefreshSeed(createShowcaseRefreshSeed()));
+    setShowcaseRefreshSeed(0);
   }, [isMineMode]);
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
 
@@ -1722,7 +1778,14 @@ export function InsuranceTemplateGallery({
   }, []);
 
   useEffect(() => {
-    if (!hasMoreTemplates || isMineMode || !visibleTemplatePreviewsReady || !canAutoLoadAfterScroll) {
+    if (
+      !hasMoreTemplates ||
+      isMineMode ||
+      isTemplateBatchLoading ||
+      isDeferredTemplateLoading ||
+      !visibleTemplatePreviewsReady ||
+      !canAutoLoadAfterScroll
+    ) {
       return;
     }
     const node = loadMoreRef.current;
@@ -1739,26 +1802,39 @@ export function InsuranceTemplateGallery({
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [canAutoLoadAfterScroll, hasMoreTemplates, isMineMode, loadMoreTemplates, visibleTemplatePreviewsReady]);
+  }, [
+    canAutoLoadAfterScroll,
+    hasMoreTemplates,
+    isDeferredTemplateLoading,
+    isMineMode,
+    isTemplateBatchLoading,
+    loadMoreTemplates,
+    visibleTemplatePreviewsReady,
+  ]);
 
   useEffect(() => {
-    loadMoreInFlightRef.current = false;
-  }, [activeCategory, isDeferredTemplateLoading, visibleTemplateCount]);
+    if (!isTemplateBatchLoading && !isDeferredTemplateLoading) {
+      loadMoreInFlightRef.current = false;
+    }
+  }, [activeCategory, isDeferredTemplateLoading, isTemplateBatchLoading, visibleTemplateCount]);
 
   useEffect(() => {
     setCanAutoLoadAfterScroll(false);
   }, [activeCategory, isMineMode, visibleTemplateCount]);
 
   useEffect(() => {
-    if (isMineMode || !hasMoreTemplates) {
+    if (isMineMode || !hasMoreTemplates || isTemplateBatchLoading || isDeferredTemplateLoading) {
       return;
     }
     const handleScroll = () => {
+      if (Date.now() - lastLoadMoreCompletedAtRef.current < 900) {
+        return;
+      }
       setCanAutoLoadAfterScroll(true);
     };
     window.addEventListener("scroll", handleScroll, { once: true, passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [activeCategory, hasMoreTemplates, isMineMode, visibleTemplateCount]);
+  }, [activeCategory, hasMoreTemplates, isDeferredTemplateLoading, isMineMode, isTemplateBatchLoading, visibleTemplateCount]);
 
   useEffect(() => {
     setSettledPreviewIds((current) => {
@@ -2686,22 +2762,25 @@ export function InsuranceTemplateGallery({
             </div>
           </article>
         ))}
+        {showTemplateBatchLoading
+          ? Array.from({ length: TEMPLATE_LOAD_BATCH_SIZE }).map((_, index) => (
+              <TemplateCardSkeleton key={`template-loading-${activeCategory}-${index}`} index={index} />
+            ))
+          : null}
         </div>
       )}
 
       {!(isMineMode && myPosterRecords.length === 0) ? (
-        <div ref={loadMoreRef} className="pt-8 pb-12 text-center text-sm text-zinc-400">
-          {hasMoreTemplates ? (
-            <button
-              type="button"
-              onClick={loadMoreTemplates}
-              disabled={isDeferredTemplateLoading}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:text-zinc-950 disabled:cursor-wait disabled:opacity-60"
-            >
-              {isDeferredTemplateLoading ? "正在加载..." : `再加载 ${TEMPLATE_LOAD_BATCH_SIZE} 张海报`}
-            </button>
+        <div ref={loadMoreRef} className="flex min-h-20 items-center justify-center pb-10 pt-6 text-center text-sm text-zinc-400">
+          {showTemplateBatchLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <LoaderCircle size={16} className="animate-spin text-zinc-500" />
+              正在加载 8 张海报...
+            </span>
+          ) : hasMoreTemplates ? (
+            <span>继续下滑加载更多海报</span>
           ) : (
-            "已经到底部了"
+            <span>已经到底部了</span>
           )}
         </div>
       ) : null}
