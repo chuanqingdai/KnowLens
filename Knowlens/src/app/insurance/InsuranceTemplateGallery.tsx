@@ -495,17 +495,42 @@ function templateMatchesCategory(template: InsuranceTemplateCard, activeCategory
   return getTemplatePrimaryCategory(template) === activeCategory;
 }
 
+const EXPIRED_SEASONAL_TEMPLATE_KEYWORDS = ["父亲节", "端午", "夏至", "小暑"];
+const EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS = [
+  "/father-",
+  "/xiazhi-",
+  "/duanwu-",
+  "/duanwu-free-",
+];
+const FEATURED_SHOWCASE_TEMPLATE_LIMIT = 6;
+const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
+  "/insurance/posters/female-jiankang-03.png",
+  "/insurance/posters/female-kepu-04.png",
+  "/insurance/posters/female-lipei-04.png",
+  "/insurance/posters/female-chexian-03.png",
+  "/insurance/posters/female-baoxian-03.png",
+  "/insurance/posters/female-yanglao-05.png",
+  "/insurance/posters/female-jiankang-05.png",
+  "/insurance/posters/health-check-notice-01.png",
+];
+
 function isExpiredSeasonalTemplate(template: InsuranceTemplateCard) {
   const imageSrc = template.imageSrc || "";
-  const title = template.title || "";
-  const secondaryCategory = template.secondaryCategory || "";
-  const categoryText = `${template.primaryCategory || ""} ${template.category || ""} ${secondaryCategory} ${title}`;
+  const categoryText = [
+    template.primaryCategory,
+    template.category,
+    template.secondaryCategory,
+    template.title,
+    template.description,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  if (imageSrc.includes("/father-") || imageSrc.includes("/xiazhi-") || imageSrc.includes("/duanwu-")) {
+  if (EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS.some((marker) => imageSrc.includes(marker))) {
     return true;
   }
 
-  return categoryText.includes("父亲节") || categoryText.includes("夏至") || categoryText.includes("端午");
+  return EXPIRED_SEASONAL_TEMPLATE_KEYWORDS.some((keyword) => categoryText.includes(keyword));
 }
 
 function getTemplatePrimaryCategory(template: InsuranceTemplateCard) {
@@ -542,11 +567,10 @@ function getClientSeasonalPriority(template: InsuranceTemplateCard) {
   const title = template.title || "";
 
   if (imageSrc.includes("/hongkong-")) return -500;
-  if (imageSrc.includes("/father-")) return -900;
-  if (imageSrc.includes("/xiazhi-")) return -900;
-  if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) return -900;
-  if (imageSrc.includes("/duanwu-")) return -900;
-  if (secondaryCategory.includes("小暑") || title.includes("小暑")) return 220;
+  if (isExpiredSeasonalTemplate(template)) return -900;
+  if (secondaryCategory.includes("七夕") || title.includes("七夕")) return 180;
+  if (secondaryCategory.includes("中秋") || title.includes("中秋")) return 160;
+  if (secondaryCategory.includes("国庆") || title.includes("国庆")) return 140;
   return 0;
 }
 
@@ -585,6 +609,31 @@ function getClientTemplateSourceBucket(template: InsuranceTemplateCard) {
     return "female";
   }
   return "standard";
+}
+
+function getClientQualityTier(template: InsuranceTemplateCard) {
+  const priority = getClientTemplateQualityPriority(template);
+  if (priority >= 1_000) return "premium";
+  if (priority >= 860) return "strong";
+  return "standard";
+}
+
+function getFeaturedShowcaseTemplateRank(template: InsuranceTemplateCard) {
+  const index = FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER.indexOf(template.imageSrc || "");
+  return index === -1 ? Number.POSITIVE_INFINITY : index;
+}
+
+function pinFeaturedShowcaseTemplates(templates: InsuranceTemplateCard[]) {
+  const featured = templates
+    .filter((template) => getFeaturedShowcaseTemplateRank(template) !== Number.POSITIVE_INFINITY)
+    .sort((left, right) => getFeaturedShowcaseTemplateRank(left) - getFeaturedShowcaseTemplateRank(right))
+    .slice(0, FEATURED_SHOWCASE_TEMPLATE_LIMIT);
+  if (!featured.length) {
+    return templates;
+  }
+
+  const featuredIds = new Set(featured.map(getTemplateIdentity));
+  return [...featured, ...templates.filter((template) => !featuredIds.has(getTemplateIdentity(template)))];
 }
 
 function sortShowcaseTemplatesForRefresh(templates: InsuranceTemplateCard[], seed: number) {
@@ -644,7 +693,8 @@ function orderShowcaseTemplatesForRefresh(
     return sortShowcaseTemplatesForRefresh(templates, seed + hashStringToNumber(activeCategory));
   }
 
-  const grouped = new Map<string, InsuranceTemplateCard[]>();
+  const tierOrder = ["premium", "strong", "standard"] as const;
+  const grouped = new Map<string, Map<string, InsuranceTemplateCard[]>>();
   const extras: InsuranceTemplateCard[] = [];
   for (const template of templates) {
     const category = template.primaryCategory || template.category;
@@ -652,29 +702,44 @@ function orderShowcaseTemplatesForRefresh(
       extras.push(template);
       continue;
     }
-    const current = grouped.get(category) || [];
+    const tier = getClientQualityTier(template);
+    const tierMap = grouped.get(tier) || new Map<string, InsuranceTemplateCard[]>();
+    const current = tierMap.get(category) || [];
     current.push(template);
-    grouped.set(category, current);
+    tierMap.set(category, current);
+    grouped.set(tier, tierMap);
   }
 
-  for (const [category, categoryTemplates] of grouped) {
-    grouped.set(category, scatterShowcaseTemplatesForRefresh(categoryTemplates, seed + hashStringToNumber(category)));
+  for (const tier of tierOrder) {
+    const tierMap = grouped.get(tier);
+    if (!tierMap) {
+      continue;
+    }
+    for (const [category, categoryTemplates] of tierMap) {
+      tierMap.set(category, scatterShowcaseTemplatesForRefresh(categoryTemplates, seed + hashStringToNumber(`${tier}:${category}`)));
+    }
   }
 
   const ordered: InsuranceTemplateCard[] = [];
-  let hasRemaining = true;
-  while (hasRemaining) {
-    hasRemaining = false;
-    for (const category of SHOWCASE_CATEGORY_ROUND_ORDER) {
-      const queue = grouped.get(category);
-      if (queue && queue.length > 0) {
-        ordered.push(queue.shift() as InsuranceTemplateCard);
-        hasRemaining = true;
+  for (const tier of tierOrder) {
+    const tierMap = grouped.get(tier);
+    if (!tierMap) {
+      continue;
+    }
+    let hasRemaining = true;
+    while (hasRemaining) {
+      hasRemaining = false;
+      for (const category of SHOWCASE_CATEGORY_ROUND_ORDER) {
+        const queue = tierMap.get(category);
+        if (queue && queue.length > 0) {
+          ordered.push(queue.shift() as InsuranceTemplateCard);
+          hasRemaining = true;
+        }
       }
     }
   }
 
-  return [...ordered, ...sortShowcaseTemplatesForRefresh(extras, seed)];
+  return pinFeaturedShowcaseTemplates([...ordered, ...sortShowcaseTemplatesForRefresh(extras, seed)]);
 }
 
 function createShowcaseRefreshSeed() {
@@ -2595,7 +2660,7 @@ export function InsuranceTemplateGallery({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="columns-2 gap-3 sm:gap-4 lg:columns-3 xl:columns-4">
           {isMineMode
             ? visibleMyPosterRecords.map((record, index) => {
                 const aspectClass = getAspectClassFromRatio(record.aspectRatio);
@@ -2604,7 +2669,7 @@ export function InsuranceTemplateGallery({
                   <article
                     key={record.id}
                     onClick={() => openMyPosterRecord(record, "card")}
-                    className="group relative w-full cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    className="group relative mb-3 inline-block w-full break-inside-avoid cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
                     <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2673,7 +2738,7 @@ export function InsuranceTemplateGallery({
                   <article
                     key={getTemplateIdentity(template)}
                     onClick={() => requestOpenTemplate(template, "card")}
-                    className="group relative w-full cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    className="group relative mb-3 inline-block w-full break-inside-avoid cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
                   >
                     <div className="relative w-full overflow-hidden bg-white">
                       <CasePreview
@@ -2741,7 +2806,7 @@ export function InsuranceTemplateGallery({
         {emptyCategoryCards.map((card) => (
           <article
             key={card.id}
-            className="w-full overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+            className="mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] sm:mb-4"
           >
             <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-200" />
             <div className="p-3">
@@ -2764,7 +2829,9 @@ export function InsuranceTemplateGallery({
         ))}
         {showTemplateBatchLoading
           ? Array.from({ length: TEMPLATE_LOAD_BATCH_SIZE }).map((_, index) => (
-              <TemplateCardSkeleton key={`template-loading-${activeCategory}-${index}`} index={index} />
+              <div key={`template-loading-${activeCategory}-${index}`} className="mb-3 inline-block w-full break-inside-avoid sm:mb-4">
+                <TemplateCardSkeleton index={index} />
+              </div>
             ))
           : null}
         </div>

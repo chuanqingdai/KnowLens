@@ -34,6 +34,24 @@ const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
 const heroImageUrl = `${siteOrigin}${heroImagePath}`;
 const hideHongKongInsuranceTemplates = true;
 const INITIAL_SHOWCASE_TEMPLATE_COUNT = 8;
+const EXPIRED_SEASONAL_TEMPLATE_KEYWORDS = ["父亲节", "端午", "夏至", "小暑"];
+const EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS = [
+  "/father-",
+  "/xiazhi-",
+  "/duanwu-",
+  "/duanwu-free-",
+];
+const FEATURED_SHOWCASE_TEMPLATE_LIMIT = 6;
+const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
+  "/insurance/posters/female-jiankang-03.png",
+  "/insurance/posters/female-kepu-04.png",
+  "/insurance/posters/female-lipei-04.png",
+  "/insurance/posters/female-chexian-03.png",
+  "/insurance/posters/female-baoxian-03.png",
+  "/insurance/posters/female-yanglao-05.png",
+  "/insurance/posters/female-jiankang-05.png",
+  "/insurance/posters/health-check-notice-01.png",
+];
 const SHOWCASE_BASE_CATEGORIES = [
   "全部",
   "日签",
@@ -314,19 +332,21 @@ function hasAvailableTemplateImage(template: InsuranceTemplateCard) {
 
 function isExpiredSeasonalShowcaseTemplate(template: InsuranceTemplateCard) {
   const imageSrc = template.imageSrc || "";
-  const title = template.title || "";
-  const secondaryCategory = template.secondaryCategory || "";
-  const categoryText = `${template.primaryCategory || ""} ${template.category || ""} ${secondaryCategory} ${title}`;
+  const categoryText = [
+    template.primaryCategory,
+    template.category,
+    template.secondaryCategory,
+    template.title,
+    template.description,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  if (imageSrc.includes("/father-") || imageSrc.includes("/xiazhi-") || imageSrc.includes("/duanwu-")) {
+  if (EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS.some((marker) => imageSrc.includes(marker))) {
     return true;
   }
 
-  return (
-    categoryText.includes("父亲节") ||
-    categoryText.includes("夏至") ||
-    categoryText.includes("端午")
-  );
+  return EXPIRED_SEASONAL_TEMPLATE_KEYWORDS.some((keyword) => categoryText.includes(keyword));
 }
 
 function getTemplateIdentity(template: InsuranceTemplateCard) {
@@ -372,20 +392,17 @@ function getSeasonalTemplatePriority(template: InsuranceTemplateCard) {
   if (imageSrc.includes("/hongkong-")) {
     return -500;
   }
-  if (imageSrc.includes("/father-")) {
+  if (isExpiredSeasonalShowcaseTemplate(template)) {
     return -900;
   }
-  if (imageSrc.includes("/xiazhi-")) {
-    return -900;
+  if (secondaryCategory.includes("七夕") || title.includes("七夕")) {
+    return 180;
   }
-  if (secondaryCategory.includes("端午") || title.includes("端午") || imageSrc.includes("/duanwu-free-")) {
-    return -900;
+  if (secondaryCategory.includes("中秋") || title.includes("中秋")) {
+    return 160;
   }
-  if (imageSrc.includes("/duanwu-")) {
-    return -900;
-  }
-  if (secondaryCategory.includes("小暑") || title.includes("小暑")) {
-    return 220;
+  if (secondaryCategory.includes("国庆") || title.includes("国庆")) {
+    return 140;
   }
 
   return 0;
@@ -414,6 +431,31 @@ function getTemplateSourceBucket(template: InsuranceTemplateCard) {
     return "female";
   }
   return "standard";
+}
+
+function getTemplateQualityTier(template: InsuranceTemplateCard) {
+  const priority = getTemplateQualityPriority(template);
+  if (priority >= 1_000) return "premium";
+  if (priority >= 860) return "strong";
+  return "standard";
+}
+
+function getFeaturedShowcaseTemplateRank(template: InsuranceTemplateCard) {
+  const index = FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER.indexOf(template.imageSrc || "");
+  return index === -1 ? Number.POSITIVE_INFINITY : index;
+}
+
+function pinFeaturedShowcaseTemplates(templates: InsuranceTemplateCard[]) {
+  const featured = templates
+    .filter((template) => getFeaturedShowcaseTemplateRank(template) !== Number.POSITIVE_INFINITY)
+    .sort((left, right) => getFeaturedShowcaseTemplateRank(left) - getFeaturedShowcaseTemplateRank(right))
+    .slice(0, FEATURED_SHOWCASE_TEMPLATE_LIMIT);
+  if (!featured.length) {
+    return templates;
+  }
+
+  const featuredIds = new Set(featured.map(getTemplateIdentity));
+  return [...featured, ...templates.filter((template) => !featuredIds.has(getTemplateIdentity(template)))];
 }
 
 function sortTemplatesWithinCategory(templates: InsuranceTemplateCard[], seed: number) {
@@ -532,7 +574,8 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
     "活动",
     "日签",
   ];
-  const grouped = new Map<string, InsuranceTemplateCard[]>();
+  const tierOrder = ["premium", "strong", "standard"] as const;
+  const grouped = new Map<string, Map<string, InsuranceTemplateCard[]>>();
   const extras: InsuranceTemplateCard[] = [];
 
   for (const template of availableTemplates) {
@@ -541,29 +584,44 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
       extras.push(template);
       continue;
     }
-    const current = grouped.get(category) || [];
+    const tier = getTemplateQualityTier(template);
+    const tierMap = grouped.get(tier) || new Map<string, InsuranceTemplateCard[]>();
+    const current = tierMap.get(category) || [];
     current.push(template);
-    grouped.set(category, current);
+    tierMap.set(category, current);
+    grouped.set(tier, tierMap);
   }
 
-  for (const [category, templates] of grouped) {
-    grouped.set(category, scatterTemplatesWithinCategory(templates, seed + hashStringToNumber(category)));
+  for (const tier of tierOrder) {
+    const tierMap = grouped.get(tier);
+    if (!tierMap) {
+      continue;
+    }
+    for (const [category, templates] of tierMap) {
+      tierMap.set(category, scatterTemplatesWithinCategory(templates, seed + hashStringToNumber(`${tier}:${category}`)));
+    }
   }
 
   const ordered: InsuranceTemplateCard[] = [];
-  let hasRemaining = true;
-  while (hasRemaining) {
-    hasRemaining = false;
-    for (const category of categoryRoundOrder) {
-      const queue = grouped.get(category);
-      if (queue && queue.length > 0) {
-        ordered.push(queue.shift() as InsuranceTemplateCard);
-        hasRemaining = true;
+  for (const tier of tierOrder) {
+    const tierMap = grouped.get(tier);
+    if (!tierMap) {
+      continue;
+    }
+    let hasRemaining = true;
+    while (hasRemaining) {
+      hasRemaining = false;
+      for (const category of categoryRoundOrder) {
+        const queue = tierMap.get(category);
+        if (queue && queue.length > 0) {
+          ordered.push(queue.shift() as InsuranceTemplateCard);
+          hasRemaining = true;
+        }
       }
     }
   }
 
-  return [...ordered, ...sortTemplatesWithinCategory(extras, seed)];
+  return pinFeaturedShowcaseTemplates([...ordered, ...sortTemplatesWithinCategory(extras, seed)]);
 }
 
 export const insuranceShowcaseTemplates = orderInsuranceTemplatesForShowcase(
