@@ -226,6 +226,30 @@ function readProjectTraceId(job: { requestJson?: string | null }) {
   }
 }
 
+function readJobRequestSnapshot(job: { requestJson?: string | null }) {
+  try {
+    return job.requestJson ? JSON.parse(job.requestJson) as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function shouldSkipFreeWatermark(job: { requestJson?: string | null }) {
+  const snapshot = readJobRequestSnapshot(job);
+  const clientContext =
+    snapshot && typeof snapshot.clientContext === "object" && snapshot.clientContext !== null
+      ? snapshot.clientContext as Record<string, unknown>
+      : null;
+  if (!clientContext) {
+    return false;
+  }
+
+  return (
+    clientContext.source === "insurance_template_gallery" &&
+    clientContext.generationKind === "regenerate"
+  );
+}
+
 async function requestImageByPolicy(input: {
   providerPolicy: OrderedImageProvider[];
   imageModel: string;
@@ -862,7 +886,9 @@ export async function POST(request: NextRequest) {
           causeCode: input.causeCode,
         },
       });
-      const prompt = isFreeUser ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
+      const prompt = isFreeUser && !shouldSkipFreeWatermark(current.job)
+        ? appendFreeWatermarkInstruction(basePrompt)
+        : basePrompt;
       const fallback = await requestImageByPolicy({
         providerPolicy: fallbackPolicy,
         imageModel,
@@ -1098,7 +1124,9 @@ export async function POST(request: NextRequest) {
         taskIndex: queuedTask.taskIndex,
       },
     });
-    const prompt = isFreeUser ? appendFreeWatermarkInstruction(basePrompt) : basePrompt;
+    const prompt = isFreeUser && !shouldSkipFreeWatermark(current.job)
+      ? appendFreeWatermarkInstruction(basePrompt)
+      : basePrompt;
     await logGenerationOpsEvent({
       action: "generation.provider.create.start",
       status: "info",

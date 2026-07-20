@@ -1575,6 +1575,7 @@ async function generateInsurancePosterViaWorkspaceImageJob({
       source: "insurance_template_gallery",
       title,
       providerPolicy: INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY,
+      generationKind: "regenerate",
     },
   };
   const prepareResponse = await fetch("/api/workspace/image/generate-batch", {
