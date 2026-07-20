@@ -502,16 +502,22 @@ const EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS = [
   "/duanwu-",
   "/duanwu-free-",
 ];
-const FEATURED_SHOWCASE_TEMPLATE_LIMIT = 6;
+const FEATURED_SHOWCASE_TEMPLATE_LIMIT = 12;
 const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
+  "/insurance/posters/jieqi-dashu-brush-01.png",
   "/insurance/posters/female-jiankang-03.png",
+  "/insurance/posters/festival-qixi-brush-01.png",
   "/insurance/posters/female-kepu-04.png",
   "/insurance/posters/female-lipei-04.png",
   "/insurance/posters/female-chexian-03.png",
   "/insurance/posters/female-baoxian-03.png",
   "/insurance/posters/female-yanglao-05.png",
+  "/insurance/posters/jieqi-liqiu-brush-01.png",
   "/insurance/posters/female-jiankang-05.png",
+  "/insurance/posters/jieqi-chushu-brush-01.png",
   "/insurance/posters/health-check-notice-01.png",
+  "/insurance/posters/jieqi-bailu-brush-01.png",
+  "/insurance/posters/jieqi-qiufen-brush-01.png",
 ];
 
 function isExpiredSeasonalTemplate(template: InsuranceTemplateCard) {
@@ -1643,7 +1649,6 @@ export function InsuranceTemplateGallery({
   const [creditsPaywallOpen, setCreditsPaywallOpen] = useState(false);
   const [creditsPaywallBalance, setCreditsPaywallBalance] = useState<number | null>(null);
   const [creditsPaywallAction, setCreditsPaywallAction] = useState<MembershipGateAction>("generate");
-  const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
   const [, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
   const [isTemplateBatchLoading, setIsTemplateBatchLoading] = useState(false);
   const [stableShowcaseTemplateIds, setStableShowcaseTemplateIds] = useState<string[]>([]);
@@ -1671,12 +1676,7 @@ export function InsuranceTemplateGallery({
         .filter((template) => templateMatchesCategory(template, activeCategory)),
     [activeCategory, templates],
   );
-  const orderedTemplateCandidates = useMemo(() => {
-    if (isMineMode) {
-      return matchedTemplates;
-    }
-    return orderShowcaseTemplatesForRefresh(matchedTemplates, activeCategory, showcaseRefreshSeed);
-  }, [activeCategory, isMineMode, matchedTemplates, showcaseRefreshSeed]);
+  const orderedTemplateCandidates = matchedTemplates;
   const orderedTemplateCandidateIds = useMemo(
     () => orderedTemplateCandidates.map(getTemplateIdentity),
     [orderedTemplateCandidates],
@@ -1685,7 +1685,7 @@ export function InsuranceTemplateGallery({
     () => new Map(orderedTemplateCandidates.map((template) => [getTemplateIdentity(template), template])),
     [orderedTemplateCandidates],
   );
-  const showcaseOrderResetKey = `${isMineMode ? "mine" : "showcase"}:${activeCategory}:${showcaseRefreshSeed}`;
+  const showcaseOrderResetKey = `${isMineMode ? "mine" : "showcase"}:${activeCategory}`;
   useEffect(() => {
     if (isMineMode) {
       return;
@@ -1826,12 +1826,6 @@ export function InsuranceTemplateGallery({
     ? [...kepuStyleOptions, ...insuranceStyleOptions]
     : insuranceStyleOptions;
   const activePosterImageSrc = activePosterState?.imageSrc || activeTemplate?.imageSrc || "";
-  useEffect(() => {
-    if (isMineMode) {
-      return;
-    }
-    setShowcaseRefreshSeed(0);
-  }, [isMineMode]);
   const activeTemplateIsCustom = Boolean(activeTemplate?.isCustom);
 
   useEffect(() => {
