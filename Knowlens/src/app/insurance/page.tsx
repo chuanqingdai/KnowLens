@@ -12,6 +12,7 @@ import { gaodingExtractedInsuranceTemplates } from "@/lib/insurance-gaoding-extr
 import { gaodingFinanceInsuranceTemplates } from "@/lib/insurance-gaoding-finance-templates";
 import { gaodingKepuInsuranceTemplates } from "@/lib/insurance-gaoding-kepu-templates";
 import { gaodingPensionInsuranceTemplates } from "@/lib/insurance-gaoding-pension-templates";
+import { gaodingReferenceInsuranceTemplates } from "@/lib/insurance-gaoding-reference-templates";
 import { businessInsuranceTemplates } from "@/lib/insurance-business-templates";
 import { femaleFirstwaveTemplates } from "@/lib/insurance-female-firstwave-templates";
 import { femaleNextwaveTemplates } from "@/lib/insurance-female-nextwave-templates";
@@ -130,6 +131,7 @@ const baseTemplates: InsuranceTemplateCard[] = [
   ...(hideHongKongInsuranceTemplates ? [] : (hongKongInsuranceTemplates as InsuranceTemplateCard[])),
   ...(femaleFirstwaveTemplates as InsuranceTemplateCard[]),
   ...(femaleNextwaveTemplates as InsuranceTemplateCard[]),
+  ...(gaodingReferenceInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingKepuInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingFinanceInsuranceTemplates as InsuranceTemplateCard[]),
   ...(gaodingPensionInsuranceTemplates as InsuranceTemplateCard[]),
@@ -370,6 +372,7 @@ function getTemplateQualityPriority(template: InsuranceTemplateCard) {
 
   if (gaodingMatch) {
     const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+    if (fileNumber >= 249 && fileNumber <= 284) return 1_260;
     if (fileNumber >= 228 && fileNumber <= 248) return 1_250;
     if (fileNumber >= 181 && fileNumber <= 186) return 1_180;
     if (fileNumber >= 151 && fileNumber <= 180) return 1_120;
