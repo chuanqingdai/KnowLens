@@ -372,7 +372,7 @@ function getTemplateQualityPriority(template: InsuranceTemplateCard) {
 
   if (gaodingMatch) {
     const fileNumber = Number.parseInt(gaodingMatch[1], 10);
-    if (fileNumber >= 249 && fileNumber <= 284) return 1_260;
+    if (fileNumber >= 249 && fileNumber <= 292) return 1_260;
     if (fileNumber >= 228 && fileNumber <= 248) return 1_250;
     if (fileNumber >= 181 && fileNumber <= 186) return 1_180;
     if (fileNumber >= 151 && fileNumber <= 180) return 1_120;
