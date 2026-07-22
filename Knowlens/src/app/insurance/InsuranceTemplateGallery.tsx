@@ -191,6 +191,7 @@ const CUSTOM_INSURANCE_TEMPLATE_TITLE = "自定义海报";
 const INSURANCE_POSTER_STATE_STORAGE_KEY = "knowlens:insurance:poster-state:v1";
 const TEMPLATE_INITIAL_LOAD_COUNT = 8;
 const TEMPLATE_LOAD_BATCH_SIZE = 8;
+const TEMPLATE_CATEGORY_INITIAL_ROW_COUNT = 4;
 const INSURANCE_WORKSPACE_IMAGE_POLL_INTERVAL_MS = 2500;
 const INSURANCE_WORKSPACE_IMAGE_POLL_TIMEOUT_MS = 660000;
 const INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY = "duomi,gptsapi";
@@ -1768,6 +1769,11 @@ export function InsuranceTemplateGallery({
   const hasDeferredTemplatesForActiveCategory =
     typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
   const hasMoreTemplates = visibleTemplateCount < activeCollectionSize || Boolean(hasDeferredTemplatesForActiveCategory);
+  const visibleTemplateRowNeedsBackfill =
+    !isMineMode &&
+    activeCategory !== "全部" &&
+    visibleTemplates.length < TEMPLATE_CATEGORY_INITIAL_ROW_COUNT &&
+    Boolean(hasDeferredTemplatesForActiveCategory);
   const showTemplateBatchLoading = !isMineMode && (isTemplateBatchLoading || isDeferredTemplateLoading);
   const handleTemplatePreviewSettled = useCallback((previewId: string) => {
     setSettledPreviewIds((current) => {
@@ -1850,6 +1856,22 @@ export function InsuranceTemplateGallery({
       loadMoreInFlightRef.current = false;
     }
   }, [activeCategory, isDeferredTemplateLoading, isTemplateBatchLoading, visibleTemplateCount]);
+
+  useEffect(() => {
+    if (
+      !visibleTemplateRowNeedsBackfill ||
+      isTemplateBatchLoading ||
+      isDeferredTemplateLoading
+    ) {
+      return;
+    }
+    loadMoreTemplates();
+  }, [
+    isDeferredTemplateLoading,
+    isTemplateBatchLoading,
+    loadMoreTemplates,
+    visibleTemplateRowNeedsBackfill,
+  ]);
 
   useEffect(() => {
     if (
