@@ -34,7 +34,7 @@ const pageLink = `${siteOrigin}${pagePath}`;
 const heroImagePath = "/insurance/hero-insurance-poster-wide.webp";
 const heroImageUrl = `${siteOrigin}${heroImagePath}`;
 const hideHongKongInsuranceTemplates = true;
-const INITIAL_SHOWCASE_TEMPLATE_COUNT = 8;
+const INITIAL_SHOWCASE_TEMPLATE_COUNT = 24;
 const EXPIRED_SEASONAL_TEMPLATE_KEYWORDS = ["父亲节", "端午", "夏至", "小暑"];
 const EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS = [
   "/father-",
@@ -44,6 +44,20 @@ const EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS = [
 ];
 const FEATURED_SHOWCASE_TEMPLATE_LIMIT = 12;
 const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
+  "/insurance/posters/gaoding-285.png",
+  "/insurance/posters/gaoding-286.png",
+  "/insurance/posters/gaoding-287.png",
+  "/insurance/posters/gaoding-288.png",
+  "/insurance/posters/gaoding-289.png",
+  "/insurance/posters/gaoding-290.png",
+  "/insurance/posters/gaoding-291.png",
+  "/insurance/posters/gaoding-292.png",
+  "/insurance/posters/gaoding-181.png",
+  "/insurance/posters/gaoding-182.png",
+  "/insurance/posters/gaoding-183.png",
+  "/insurance/posters/gaoding-184.png",
+  "/insurance/posters/gaoding-185.png",
+  "/insurance/posters/gaoding-186.png",
   "/insurance/posters/jieqi-dashu-brush-01.png",
   "/insurance/posters/female-jiankang-03.png",
   "/insurance/posters/festival-qixi-brush-01.png",
@@ -372,6 +386,7 @@ function getTemplateQualityPriority(template: InsuranceTemplateCard) {
 
   if (gaodingMatch) {
     const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+    if (fileNumber >= 285 && fileNumber <= 292) return 1_340;
     if (fileNumber >= 249 && fileNumber <= 292) return 1_260;
     if (fileNumber >= 228 && fileNumber <= 248) return 1_250;
     if (fileNumber >= 181 && fileNumber <= 186) return 1_180;
@@ -454,10 +469,33 @@ function getFeaturedShowcaseTemplateRank(template: InsuranceTemplateCard) {
   return index === -1 ? Number.POSITIVE_INFINITY : index;
 }
 
-function pinFeaturedShowcaseTemplates(templates: InsuranceTemplateCard[]) {
+function getFeaturedShowcaseTemplateSortBand(template: InsuranceTemplateCard) {
+  const rank = getFeaturedShowcaseTemplateRank(template);
+  if (rank === Number.POSITIVE_INFINITY) {
+    return rank;
+  }
+  const category = template.primaryCategory || template.category;
+  const imageSrc = template.imageSrc || "";
+  const premiumKepuBoost = category === "科普" || imageSrc.includes("/gaoding-28") ? -6 : 0;
+  return Math.max(0, Math.floor((rank + premiumKepuBoost) / 4));
+}
+
+function pinFeaturedShowcaseTemplates(templates: InsuranceTemplateCard[], seed = 0) {
   const featured = templates
     .filter((template) => getFeaturedShowcaseTemplateRank(template) !== Number.POSITIVE_INFINITY)
-    .sort((left, right) => getFeaturedShowcaseTemplateRank(left) - getFeaturedShowcaseTemplateRank(right))
+    .sort((left, right) => {
+      const bandDelta = getFeaturedShowcaseTemplateSortBand(left) - getFeaturedShowcaseTemplateSortBand(right);
+      if (bandDelta !== 0) {
+        return bandDelta;
+      }
+      if (seed !== 0) {
+        const shuffleDelta = getTemplateShuffleScore(left, seed + 9_719) - getTemplateShuffleScore(right, seed + 9_719);
+        if (shuffleDelta !== 0) {
+          return shuffleDelta;
+        }
+      }
+      return getFeaturedShowcaseTemplateRank(left) - getFeaturedShowcaseTemplateRank(right);
+    })
     .slice(0, FEATURED_SHOWCASE_TEMPLATE_LIMIT);
   if (!featured.length) {
     return templates;
@@ -630,7 +668,7 @@ function orderInsuranceTemplatesForShowcase(availableTemplates: InsuranceTemplat
     }
   }
 
-  return pinFeaturedShowcaseTemplates([...ordered, ...sortTemplatesWithinCategory(extras, seed)]);
+  return pinFeaturedShowcaseTemplates([...ordered, ...sortTemplatesWithinCategory(extras, seed)], seed);
 }
 
 export const insuranceShowcaseTemplates = orderInsuranceTemplatesForShowcase(

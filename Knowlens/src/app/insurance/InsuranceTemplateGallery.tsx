@@ -393,6 +393,59 @@ function getAspectClass(template: InsuranceTemplateCard) {
   return template.rows.length >= 5 ? "aspect-[4/5]" : template.rows.length >= 4 ? "aspect-[3/4]" : "aspect-[16/11]";
 }
 
+function getAspectHeightScore(aspectRatio?: string) {
+  if (aspectRatio === "9:16") return 16 / 9;
+  if (aspectRatio === "3:4") return 4 / 3;
+  if (aspectRatio === "1:1") return 1;
+  if (aspectRatio === "16:9") return 9 / 16;
+  if (aspectRatio === "4:3") return 3 / 4;
+  if (aspectRatio === "4:5") return 5 / 4;
+  if (aspectRatio === "16:11") return 11 / 16;
+  return 1.25;
+}
+
+function getTemplateMasonryHeightScore(template: InsuranceTemplateCard) {
+  const inferredAspectRatio =
+    template.aspectRatio || (template.rows.length >= 5 ? "4:5" : template.rows.length >= 4 ? "3:4" : "16:11");
+  return getAspectHeightScore(inferredAspectRatio) + 0.34;
+}
+
+function getGeneratedPosterMasonryHeightScore(record: MyPosterRecord) {
+  return getAspectHeightScore(record.aspectRatio || "9:16") + 0.32;
+}
+
+function getResponsiveMasonryColumnCount() {
+  if (typeof window === "undefined") return 2;
+  if (window.matchMedia("(min-width: 1280px)").matches) return 4;
+  if (window.matchMedia("(min-width: 1024px)").matches) return 3;
+  return 2;
+}
+
+function splitStableMasonryColumns<T>(
+  items: T[],
+  columnCount: number,
+  getHeightScore: (item: T) => number,
+) {
+  const safeColumnCount = Math.max(1, Math.min(4, Math.round(columnCount)));
+  const columns = Array.from({ length: safeColumnCount }, () => ({
+    height: 0,
+    items: [] as T[],
+  }));
+
+  for (const item of items) {
+    let targetColumnIndex = 0;
+    for (let index = 1; index < columns.length; index += 1) {
+      if (columns[index].height < columns[targetColumnIndex].height) {
+        targetColumnIndex = index;
+      }
+    }
+    columns[targetColumnIndex].items.push(item);
+    columns[targetColumnIndex].height += getHeightScore(item);
+  }
+
+  return columns.map((column) => column.items);
+}
+
 function getAspectClassFromRatio(aspectRatio?: SupportedTemplateAspectRatio) {
   if (aspectRatio === "1:1") return "aspect-square";
   if (aspectRatio === "16:9") return "aspect-video";
@@ -505,6 +558,20 @@ const EXPIRED_SEASONAL_TEMPLATE_IMAGE_MARKERS = [
 ];
 const FEATURED_SHOWCASE_TEMPLATE_LIMIT = 12;
 const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
+  "/insurance/posters/gaoding-285.png",
+  "/insurance/posters/gaoding-286.png",
+  "/insurance/posters/gaoding-287.png",
+  "/insurance/posters/gaoding-288.png",
+  "/insurance/posters/gaoding-289.png",
+  "/insurance/posters/gaoding-290.png",
+  "/insurance/posters/gaoding-291.png",
+  "/insurance/posters/gaoding-292.png",
+  "/insurance/posters/gaoding-181.png",
+  "/insurance/posters/gaoding-182.png",
+  "/insurance/posters/gaoding-183.png",
+  "/insurance/posters/gaoding-184.png",
+  "/insurance/posters/gaoding-185.png",
+  "/insurance/posters/gaoding-186.png",
   "/insurance/posters/jieqi-dashu-brush-01.png",
   "/insurance/posters/female-jiankang-03.png",
   "/insurance/posters/festival-qixi-brush-01.png",
@@ -587,6 +654,8 @@ function getClientTemplateQualityPriority(template: InsuranceTemplateCard) {
 
   if (gaodingMatch) {
     const fileNumber = Number.parseInt(gaodingMatch[1], 10);
+    if (fileNumber >= 285 && fileNumber <= 292) return 1_340;
+    if (fileNumber >= 249 && fileNumber <= 292) return 1_260;
     if (fileNumber >= 228 && fileNumber <= 248) return 1_250;
     if (fileNumber >= 181 && fileNumber <= 186) return 1_180;
     if (fileNumber >= 151 && fileNumber <= 180) return 1_120;
@@ -630,10 +699,33 @@ function getFeaturedShowcaseTemplateRank(template: InsuranceTemplateCard) {
   return index === -1 ? Number.POSITIVE_INFINITY : index;
 }
 
-function pinFeaturedShowcaseTemplates(templates: InsuranceTemplateCard[]) {
+function getFeaturedShowcaseTemplateSortBand(template: InsuranceTemplateCard) {
+  const rank = getFeaturedShowcaseTemplateRank(template);
+  if (rank === Number.POSITIVE_INFINITY) {
+    return rank;
+  }
+  const category = template.primaryCategory || template.category;
+  const imageSrc = template.imageSrc || "";
+  const premiumKepuBoost = category === "科普" || imageSrc.includes("/gaoding-28") ? -6 : 0;
+  return Math.max(0, Math.floor((rank + premiumKepuBoost) / 4));
+}
+
+function pinFeaturedShowcaseTemplates(templates: InsuranceTemplateCard[], seed = 0) {
   const featured = templates
     .filter((template) => getFeaturedShowcaseTemplateRank(template) !== Number.POSITIVE_INFINITY)
-    .sort((left, right) => getFeaturedShowcaseTemplateRank(left) - getFeaturedShowcaseTemplateRank(right))
+    .sort((left, right) => {
+      const bandDelta = getFeaturedShowcaseTemplateSortBand(left) - getFeaturedShowcaseTemplateSortBand(right);
+      if (bandDelta !== 0) {
+        return bandDelta;
+      }
+      if (seed !== 0) {
+        const shuffleDelta = getShowcaseShuffleScore(left, seed + 9_719) - getShowcaseShuffleScore(right, seed + 9_719);
+        if (shuffleDelta !== 0) {
+          return shuffleDelta;
+        }
+      }
+      return getFeaturedShowcaseTemplateRank(left) - getFeaturedShowcaseTemplateRank(right);
+    })
     .slice(0, FEATURED_SHOWCASE_TEMPLATE_LIMIT);
   if (!featured.length) {
     return templates;
@@ -746,7 +838,7 @@ function orderShowcaseTemplatesForRefresh(
     }
   }
 
-  return pinFeaturedShowcaseTemplates([...ordered, ...sortShowcaseTemplatesForRefresh(extras, seed)]);
+  return pinFeaturedShowcaseTemplates([...ordered, ...sortShowcaseTemplatesForRefresh(extras, seed)], seed);
 }
 
 function createShowcaseRefreshSeed() {
@@ -1654,11 +1746,33 @@ export function InsuranceTemplateGallery({
   const [, setSettledPreviewIds] = useState<Set<string>>(() => new Set());
   const [isTemplateBatchLoading, setIsTemplateBatchLoading] = useState(false);
   const [stableShowcaseTemplateIds, setStableShowcaseTemplateIds] = useState<string[]>([]);
+  const [showcaseRefreshSeed, setShowcaseRefreshSeed] = useState(0);
+  const [masonryColumnCount, setMasonryColumnCount] = useState(2);
   const showcaseOrderResetKeyRef = useRef("");
   const loadMoreInFlightRef = useRef(false);
   const lastLoadMoreCompletedAtRef = useRef(0);
   const customTemplate = useMemo(() => createCustomInsuranceTemplate(), []);
   const isMineMode = mode === "mine";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const syncColumnCount = () => setMasonryColumnCount(getResponsiveMasonryColumnCount());
+    syncColumnCount();
+    window.addEventListener("resize", syncColumnCount);
+    return () => window.removeEventListener("resize", syncColumnCount);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (isMineMode) {
+      return;
+    }
+    setShowcaseRefreshSeed(createShowcaseRefreshSeed());
+  }, [isMineMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1678,7 +1792,13 @@ export function InsuranceTemplateGallery({
         .filter((template) => templateMatchesCategory(template, activeCategory)),
     [activeCategory, templates],
   );
-  const orderedTemplateCandidates = matchedTemplates;
+  const orderedTemplateCandidates = useMemo(
+    () =>
+      isMineMode
+        ? matchedTemplates
+        : orderShowcaseTemplatesForRefresh(matchedTemplates, activeCategory, showcaseRefreshSeed),
+    [activeCategory, isMineMode, matchedTemplates, showcaseRefreshSeed],
+  );
   const orderedTemplateCandidateIds = useMemo(
     () => orderedTemplateCandidates.map(getTemplateIdentity),
     [orderedTemplateCandidates],
@@ -1687,7 +1807,7 @@ export function InsuranceTemplateGallery({
     () => new Map(orderedTemplateCandidates.map((template) => [getTemplateIdentity(template), template])),
     [orderedTemplateCandidates],
   );
-  const showcaseOrderResetKey = `${isMineMode ? "mine" : "showcase"}:${activeCategory}`;
+  const showcaseOrderResetKey = `${isMineMode ? "mine" : "showcase"}:${activeCategory}:${showcaseRefreshSeed}`;
   useEffect(() => {
     if (isMineMode) {
       return;
@@ -1765,6 +1885,14 @@ export function InsuranceTemplateGallery({
     () => myPosterRecords.slice(0, visibleTemplateCount),
     [myPosterRecords, visibleTemplateCount],
   );
+  const visibleTemplateColumns = useMemo(
+    () => splitStableMasonryColumns(visibleTemplates, masonryColumnCount, getTemplateMasonryHeightScore),
+    [masonryColumnCount, visibleTemplates],
+  );
+  const visibleMyPosterColumns = useMemo(
+    () => splitStableMasonryColumns(visibleMyPosterRecords, masonryColumnCount, getGeneratedPosterMasonryHeightScore),
+    [masonryColumnCount, visibleMyPosterRecords],
+  );
   const activeCollectionSize = isMineMode ? myPosterRecords.length : orderedTemplateCandidates.length;
   const hasDeferredTemplatesForActiveCategory =
     typeof hasDeferredTemplates === "function" ? hasDeferredTemplates(activeCategory) : hasDeferredTemplates;
@@ -1793,6 +1921,7 @@ export function InsuranceTemplateGallery({
     if (visibleTemplateCount < activeCollectionSize) {
       setVisibleTemplateCount((current) => Math.min(current + TEMPLATE_LOAD_BATCH_SIZE, activeCollectionSize));
       lastLoadMoreCompletedAtRef.current = Date.now();
+      loadMoreInFlightRef.current = false;
       return;
     }
     if (hasDeferredTemplatesForActiveCategory && !isDeferredTemplateLoading) {
@@ -2672,86 +2801,98 @@ export function InsuranceTemplateGallery({
           </div>
         </div>
       ) : (
-        <div className="columns-2 gap-3 sm:gap-4 lg:columns-3 xl:columns-4">
-          {isMineMode
-            ? visibleMyPosterRecords.map((record, index) => {
-                const aspectClass = getAspectClassFromRatio(record.aspectRatio);
-                const originalImageSrc = record.imageSrc;
-                return (
-                  <article
-                    key={record.id}
-                    onClick={() => openMyPosterRecord(record, "card")}
-                    className="group relative mb-3 inline-block w-full break-inside-avoid cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
-                  >
-                    <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={originalImageSrc}
-                        alt={`${record.posterTitle || "我的海报"}海报`}
-                        loading={index < TEMPLATE_INITIAL_LOAD_COUNT ? "eager" : "lazy"}
-                        decoding="async"
-                        className="insurance-template-poster-image absolute inset-0 h-full w-full rounded-none object-contain"
-                        referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
-                      />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
-                      <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center px-3 opacity-0 transition hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
-                        <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
-                          <button
-                            type="button"
-                            aria-label={`重新生成：${record.posterTitle || record.template.title}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openMyPosterRecord(record, "hover_button");
-                            }}
-                            className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
-                          >
-                            <RefreshCw size={15} className="mr-1.5" />
-                            重新生成
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`下载海报：${record.posterTitle || record.template.title}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              requestDownloadMyPosterRecord(record, "hover_button");
-                            }}
-                            className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50"
-                          >
-                            <Download size={15} className="mr-1.5" />
-                            下载海报
-                          </button>
+        <>
+          <div
+            className="grid gap-3 sm:gap-4"
+            style={{ gridTemplateColumns: `repeat(${masonryColumnCount}, minmax(0, 1fr))` }}
+          >
+            {isMineMode
+              ? visibleMyPosterColumns.map((column, columnIndex) => (
+                <div key={`my-poster-column-${columnIndex}`} className="flex min-w-0 flex-col gap-3 sm:gap-4">
+                  {column.map((record) => {
+                    const index = visibleMyPosterRecords.findIndex((item) => item.id === record.id);
+                    const aspectClass = getAspectClassFromRatio(record.aspectRatio);
+                    const originalImageSrc = record.imageSrc;
+                    return (
+                      <article
+                        key={record.id}
+                        onClick={() => openMyPosterRecord(record, "card")}
+                        className="group relative w-full cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                      >
+                        <div className={`relative w-full overflow-hidden bg-white ${aspectClass}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={originalImageSrc}
+                            alt={`${record.posterTitle || "我的海报"}海报`}
+                            loading={index < TEMPLATE_INITIAL_LOAD_COUNT ? "eager" : "lazy"}
+                            decoding="async"
+                            className="insurance-template-poster-image absolute inset-0 h-full w-full rounded-none object-contain"
+                            referrerPolicy={originalImageSrc.startsWith("/") ? undefined : "no-referrer"}
+                          />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-zinc-950/42 via-zinc-950/18 to-transparent opacity-0 transition group-hover:opacity-100" />
+                          <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center px-3 opacity-0 transition hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+                            <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-black/10 px-1.5 py-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-[2px]">
+                              <button
+                                type="button"
+                                aria-label={`重新生成：${record.posterTitle || record.template.title}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openMyPosterRecord(record, "hover_button");
+                                }}
+                                className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(15,23,42,0.34),0_3px_10px_rgba(15,23,42,0.2)] transition hover:bg-zinc-800"
+                              >
+                                <RefreshCw size={15} className="mr-1.5" />
+                                重新生成
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`下载海报：${record.posterTitle || record.template.title}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  requestDownloadMyPosterRecord(record, "hover_button");
+                                }}
+                                className="relative z-20 inline-flex h-10 min-w-[116px] items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-zinc-900 shadow-[0_12px_24px_rgba(15,23,42,0.26),0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-zinc-200 transition hover:bg-zinc-50"
+                              >
+                                <Download size={15} className="mr-1.5" />
+                                下载海报
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div className="p-2.5 sm:p-3">
-                      <h3 className="text-[13px] font-medium leading-5 text-zinc-900 sm:text-[15px] sm:leading-6">
-                        {record.posterTitle || record.template.title}
-                      </h3>
-                      {record.posterDescription ? (
-                        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
-                          {record.posterDescription}
-                        </p>
-                      ) : null}
-                      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500 sm:mt-3 sm:text-xs">
-                        <span>{record.isCurrent ? "最新生成" : "历史记录"}</span>
-                        <span className="shrink-0 whitespace-nowrap tabular-nums">{formatGeneratedPosterTime(record.createdAt)}</span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })
-            : visibleTemplates.map((template, index) => {
-                const likes = [8, 5, 13, 7, 11, 4, 10, 6, 3, 9, 2, 12][index % 12];
-                const views = [68, 34, 96, 52, 81, 29, 73, 41, 24, 59, 18, 88][index % 12];
-                const labels = getCardLabels(template);
-                const canDownload = Boolean(posterStateByTitle[template.title]?.imageSrc || template.imageSrc);
+                        <div className="p-2.5 sm:p-3">
+                          <h3 className="text-[13px] font-medium leading-5 text-zinc-900 sm:text-[15px] sm:leading-6">
+                            {record.posterTitle || record.template.title}
+                          </h3>
+                          {record.posterDescription ? (
+                            <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-zinc-500 sm:mt-2 sm:text-sm sm:leading-6">
+                              {record.posterDescription}
+                            </p>
+                          ) : null}
+                          <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500 sm:mt-3 sm:text-xs">
+                            <span>{record.isCurrent ? "最新生成" : "历史记录"}</span>
+                            <span className="shrink-0 whitespace-nowrap tabular-nums">{formatGeneratedPosterTime(record.createdAt)}</span>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ))
+              : visibleTemplateColumns.map((column, columnIndex) => (
+                <div key={`template-column-${columnIndex}`} className="flex min-w-0 flex-col gap-3 sm:gap-4">
+                  {column.map((template) => {
+                    const index = visibleTemplates.findIndex((item) => getTemplateIdentity(item) === getTemplateIdentity(template));
+                    const likes = [8, 5, 13, 7, 11, 4, 10, 6, 3, 9, 2, 12][index % 12];
+                    const views = [68, 34, 96, 52, 81, 29, 73, 41, 24, 59, 18, 88][index % 12];
+                    const labels = getCardLabels(template);
+                    const canDownload = Boolean(posterStateByTitle[template.title]?.imageSrc || template.imageSrc);
 
-                return (
-                  <article
-                    key={getTemplateIdentity(template)}
-                    onClick={() => requestOpenTemplate(template, "card")}
-                    className="group relative mb-3 inline-block w-full break-inside-avoid cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] sm:mb-4"
-                  >
+                    return (
+                      <article
+                        key={getTemplateIdentity(template)}
+                        onClick={() => requestOpenTemplate(template, "card")}
+                        className="group relative w-full cursor-pointer overflow-hidden border border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.05)] transition hover:border-zinc-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                      >
                     <div className="relative w-full overflow-hidden bg-white">
                       <CasePreview
                         template={template}
@@ -2812,41 +2953,50 @@ export function InsuranceTemplateGallery({
                         <span className="shrink-0 whitespace-nowrap tabular-nums">{views} 次浏览</span>
                       </div>
                     </div>
-                  </article>
-                );
-              })}
-        {emptyCategoryCards.map((card) => (
-          <article
-            key={card.id}
-            className="mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)] sm:mb-4"
-          >
-            <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-200" />
-            <div className="p-3">
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-                <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
-                  {activeCategory}
-                </span>
-                <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
-                  占位图
-                </span>
-              </div>
-              <h3 className="mt-3 text-[15px] font-medium leading-6 text-zinc-900">{card.title}</h3>
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-500">{card.description}</p>
-              <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">
-                <span>即将上线</span>
-                <span className="shrink-0 whitespace-nowrap">模板占位</span>
-              </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ))}
+          </div>
+          {emptyCategoryCards.length > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              {emptyCategoryCards.map((card) => (
+                <article
+                  key={card.id}
+                  className="w-full overflow-hidden rounded-xl border border-dashed border-zinc-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.04)]"
+                >
+                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-200" />
+                  <div className="p-3">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                      <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
+                        {activeCategory}
+                      </span>
+                      <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500">
+                        占位图
+                      </span>
+                    </div>
+                    <h3 className="mt-3 text-[15px] font-medium leading-6 text-zinc-900">{card.title}</h3>
+                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-500">{card.description}</p>
+                    <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">
+                      <span>即将上线</span>
+                      <span className="shrink-0 whitespace-nowrap">模板占位</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
-          </article>
-        ))}
-        {showTemplateBatchLoading
-          ? Array.from({ length: TEMPLATE_LOAD_BATCH_SIZE }).map((_, index) => (
-              <div key={`template-loading-${activeCategory}-${index}`} className="mb-3 inline-block w-full break-inside-avoid sm:mb-4">
-                <TemplateCardSkeleton index={index} />
-              </div>
-            ))
-          : null}
-        </div>
+          ) : null}
+          {showTemplateBatchLoading ? (
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: TEMPLATE_LOAD_BATCH_SIZE }).map((_, index) => (
+                <div key={`template-loading-${activeCategory}-${index}`} className="w-full">
+                  <TemplateCardSkeleton index={index} />
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
       )}
 
       {!(isMineMode && myPosterRecords.length === 0) ? (
