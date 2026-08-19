@@ -40,6 +40,7 @@ const wwwHost = canonicalHost && !canonicalHost.startsWith("www.") ? `www.${cano
 const nextConfig: NextConfig = {
   serverExternalPackages: ["ffmpeg-static"],
   staticPageGenerationTimeout: 180,
+  allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.1.5"],
   async redirects() {
     const redirects = [];
     if (canonicalHost && wwwHost) {

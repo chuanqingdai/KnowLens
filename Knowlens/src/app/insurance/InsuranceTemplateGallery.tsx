@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
 import { AlertCircle, ArrowRight, Check, ChevronDown, Download, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { INSURANCE_CUSTOM_POSTER_EVENT } from "@/app/insurance/InsuranceCustomPosterButton";
 import {
@@ -196,6 +197,14 @@ const INSURANCE_WORKSPACE_IMAGE_POLL_INTERVAL_MS = 2500;
 const INSURANCE_WORKSPACE_IMAGE_POLL_TIMEOUT_MS = 660000;
 const INSURANCE_WORKSPACE_IMAGE_PROVIDER_POLICY = "duomi,gptsapi";
 const aspectRatioOptions: SupportedTemplateAspectRatio[] = ["1:1", "9:16", "16:9", "3:4"];
+
+function getInsuranceAuthCallbackUrl() {
+  if (typeof window === "undefined") {
+    return "/baox";
+  }
+  const pathname = window.location.pathname === "/insurance" ? "/baox" : window.location.pathname || "/baox";
+  return `${pathname}${window.location.search || ""}${window.location.hash || ""}`;
+}
 
 const insuranceStyleOptions: InsuranceStyleOption[] = [
   {
@@ -1732,6 +1741,7 @@ export function InsuranceTemplateGallery({
   onLoadDeferredTemplates,
 }: InsuranceTemplateGalleryProps) {
   const safeInitialCategory = categories.includes(initialCategory) ? initialCategory : "全部";
+  const { status: authStatus } = useSession();
   const [activeCategory, setActiveCategory] = useState(safeInitialCategory);
   const [visibleTemplateCount, setVisibleTemplateCount] = useState(TEMPLATE_INITIAL_LOAD_COUNT);
   const [activeTemplate, setActiveTemplate] = useState<InsuranceTemplateCard | null>(null);
@@ -2153,6 +2163,21 @@ export function InsuranceTemplateGallery({
     openInsuranceCreditTopupCheckout("insurance_template_credit_topup");
   };
 
+  const requestInsuranceLoginForAction = (action: MembershipGateAction) => {
+    trackInsuranceEvent({
+      action: "auth_required_shown",
+      message: "Insurance template action requires sign in.",
+      details: {
+        action,
+        activeTemplateTitle: activeTemplate?.isCustom ? CUSTOM_INSURANCE_TEMPLATE_TITLE : activeTemplate?.title,
+        activeTemplateCategory: activeTemplate?.primaryCategory,
+        activeTemplateSecondaryCategory: activeTemplate?.secondaryCategory,
+      },
+    });
+    const callbackUrl = getInsuranceAuthCallbackUrl();
+    window.location.assign(`/auth?callbackUrl=${encodeURIComponent(callbackUrl || "/baox")}`);
+  };
+
   const fetchBillingCredits = async () => {
     const response = await fetch("/api/billing/credits", {
       method: "GET",
@@ -2162,14 +2187,27 @@ export function InsuranceTemplateGallery({
     });
     const payload = (await response.json().catch(() => null)) as BillingCreditsPayload | null;
     return {
+      status: response.status,
       ok: response.ok && Boolean(payload?.ok),
       payload,
     };
   };
 
   const verifyCreditsForAction = async (action: MembershipGateAction) => {
+    if (authStatus === "unauthenticated") {
+      requestInsuranceLoginForAction(action);
+      return null;
+    }
+    if (authStatus === "loading") {
+      showDownloadToast("正在确认登录状态，请稍后再试", 2200);
+      return null;
+    }
     try {
-      const { ok, payload } = await fetchBillingCredits();
+      const { status, ok, payload } = await fetchBillingCredits();
+      if (status === 401) {
+        requestInsuranceLoginForAction(action);
+        return null;
+      }
       const balance = Number(payload?.balance ?? 0);
       if (!ok || !Number.isFinite(balance) || balance < INSURANCE_POSTER_GENERATION_CREDITS) {
         openCreditsPaywall(Number.isFinite(balance) ? balance : null, action);

@@ -515,6 +515,36 @@ export function MarketingChrome({
             <span className="hidden text-sm font-semibold tracking-tight min-[380px]:inline">{isInsuranceChrome ? "展页" : "KnowLens.ai"}</span>
           </Link>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+            {membershipVariant === "insurance" ? (
+              <div className="flex items-center gap-1 min-[430px]:hidden">
+                {!isAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={openInsuranceLogin}
+                    className="inline-flex h-8 items-center rounded-full border border-zinc-300 bg-white px-3 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-100"
+                  >
+                    登录
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openInsuranceCredits}
+                    className="inline-flex h-8 max-w-[108px] items-center rounded-full border border-zinc-300 bg-white px-3 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-100"
+                  >
+                    <span className="truncate">积分 {insuranceBalanceLabel}</span>
+                  </button>
+                )}
+                {status === "unauthenticated" || insuranceBillingLoaded ? (
+                  <button
+                    type="button"
+                    onClick={() => setInsuranceMembershipOpen(true)}
+                    className="inline-flex h-8 items-center rounded-full bg-zinc-950 px-3 text-[11px] font-medium text-white shadow-sm transition hover:bg-zinc-800"
+                  >
+                    会员
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {showLocaleSwitch ? <LocaleSwitch /> : null}
             {showToolsMenu ? (
               <div
@@ -588,12 +618,8 @@ export function MarketingChrome({
                       onClick={openInsuranceCredits}
                       className="hidden h-9 items-center rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 min-[430px]:inline-flex"
                     >
-                      剩余积分 {insuranceBalanceLabel}
+                      积分 {insuranceBalanceLabel}
                     </button>
-                    <UserMenu
-                      signOutCallbackUrl={false}
-                      buttonClassName="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-800 shadow-sm transition hover:bg-zinc-100"
-                    />
                   </>
                 )}
                 {status === "unauthenticated" || insuranceBillingLoaded ? (
@@ -604,6 +630,12 @@ export function MarketingChrome({
                   >
                     购买会员
                   </button>
+                ) : null}
+                {isAuthenticated ? (
+                  <UserMenu
+                    signOutCallbackUrl={false}
+                    buttonClassName="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-800 shadow-sm transition hover:bg-zinc-100"
+                  />
                 ) : null}
               </>
             ) : (
