@@ -661,7 +661,7 @@ function AspectSkeleton({
 }
 
 export default function LandingPage() {
-  const { t, locale } = useLocale();
+  const { t, locale, setLocale } = useLocale();
   const toOptimized = (imagePath: string) =>
     withAssetVersion(normalizeAssetPath(`/landing-optimized${imagePath}`));
   const toOriginal = (imagePath: string) =>
@@ -684,6 +684,7 @@ export default function LandingPage() {
   );
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const [openFaqIds, setOpenFaqIds] = useState<Set<string>>(new Set(["q1", "q2"]));
+  const didApplyDefaultLocaleRef = useRef(false);
   const activeFlow =
     capabilityFlows.find((flow) => flow.id === activeFlowId) ??
     capabilityFlows.find((flow) => flow.id === DEFAULT_CAPABILITY_FLOW_ID) ??
@@ -701,6 +702,14 @@ export default function LandingPage() {
       setCheckoutPlanId(null);
     }
   };
+
+  useEffect(() => {
+    if (didApplyDefaultLocaleRef.current) {
+      return;
+    }
+    didApplyDefaultLocaleRef.current = true;
+    setLocale("en");
+  }, [setLocale]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
