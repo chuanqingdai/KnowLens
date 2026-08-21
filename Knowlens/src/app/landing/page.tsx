@@ -319,50 +319,74 @@ const faqItems = [
   {
     id: "q1",
     question: "What is an AI infographic and video generator?",
+    questionZh: "什么是 AI 信息图与视频生成器？",
     answer:
       "An AI infographic and video generator turns a topic, notes, plain text, or a rough outline into visual content such as infographics, visual summaries, posters, carousel-style visuals, and short explainer videos.",
+    answerZh:
+      "AI 信息图与视频生成器可以把主题、笔记、纯文本或大纲转成信息图、视觉摘要、海报、轮播式视觉内容和短解说视频。",
   },
   {
     id: "q2",
     question: "Can I use KnowLens as an infographic maker?",
+    questionZh: "可以把 KnowLens 当作信息图制作器使用吗？",
     answer:
       "Yes. KnowLens works as an AI infographic maker for topics, notes, short explanations, and plain text. It helps organize your message into sections, highlights, and infographic-style visuals.",
+    answerZh:
+      "可以。KnowLens 可以把主题、笔记、短说明和纯文本整理成分区、重点和信息图式视觉内容。",
   },
   {
     id: "q3",
     question: "Can I use KnowLens to generate videos?",
+    questionZh: "KnowLens 可以生成视频吗？",
     answer:
       "Yes. KnowLens can help create short explainer video drafts from a topic, notes, or a rough outline. It is useful for educational content, science topics, YouTube Shorts, TikTok, and quick visual explanations.",
+    answerZh:
+      "可以。KnowLens 可以根据主题、笔记或大纲创建短解说视频草稿，适合教育内容、科学主题、YouTube Shorts、TikTok 和快速视觉解释。",
   },
   {
     id: "q4",
     question: "What can I use as input?",
+    questionZh: "我可以输入什么内容？",
     answer:
       "You can start with a topic, notes, plain text, a short explanation, an idea, or a rough outline. KnowLens currently focuses on text-based input so the creation flow stays simple and predictable.",
+    answerZh:
+      "你可以从主题、笔记、纯文本、短说明、一个想法或大纲开始。KnowLens 目前聚焦文本输入，让创作流程更简单、可控。",
   },
   {
     id: "q5",
     question: "Does KnowLens support PDF or report uploads?",
+    questionZh: "KnowLens 支持 PDF 或报告上传吗？",
     answer:
       "Not yet. KnowLens does not currently support PDF, report, document, white paper, or file uploads. Please paste the key text, notes, or topic directly into the editor.",
+    answerZh:
+      "暂时不支持。KnowLens 目前不支持 PDF、报告、文档、白皮书或文件上传，请把关键文本、笔记或主题直接粘贴到编辑器。",
   },
   {
     id: "q6",
     question: "Is KnowLens only for science infographics?",
+    questionZh: "KnowLens 只能做科学信息图吗？",
     answer:
       "No. You can use KnowLens for science infographics, educational visuals, business explainers, social media visuals, visual summaries, posters, and short explainer videos.",
+    answerZh:
+      "不是。你可以用 KnowLens 制作科学信息图、教育视觉、商业解释图、社媒视觉、视觉摘要、海报和短解说视频。",
   },
   {
     id: "q7",
     question: "Do I need design experience?",
+    questionZh: "我需要设计经验吗？",
     answer:
       "No. KnowLens helps structure your text, choose a visual direction, and generate a polished visual draft. You can start with messy notes or a simple topic.",
+    answerZh:
+      "不需要。KnowLens 会帮你整理文本结构、选择视觉方向并生成精致的视觉草稿，你可以从零散笔记或简单主题开始。",
   },
   {
     id: "q8",
     question: "How is this different from a normal poster maker?",
+    questionZh: "它和普通海报制作器有什么不同？",
     answer:
       "A normal poster maker usually starts with templates. KnowLens starts with your idea or notes, then helps turn the content into infographics, visual summaries, carousel-style visuals, posters, or short explainer videos.",
+    answerZh:
+      "普通海报制作器通常从模板开始；KnowLens 从你的想法或笔记开始，再把内容转成信息图、视觉摘要、轮播式视觉、海报或短解说视频。",
   },
 ];
 
@@ -766,10 +790,10 @@ export default function LandingPage() {
     "@type": "FAQPage",
     mainEntity: faqItems.map((item) => ({
       "@type": "Question",
-      name: item.question,
+      name: t(item.question, item.questionZh),
       acceptedAnswer: {
         "@type": "Answer",
-        text: item.answer,
+        text: t(item.answer, item.answerZh),
       },
     })),
   };
@@ -827,8 +851,11 @@ export default function LandingPage() {
               <ProgressiveImage
                 src={toOriginal(heroImage)}
                 fallbackSrc={toOriginal(heroImage)}
-                alt="AI-generated infographic and short video examples for education, science, visual summaries, posters, and carousel-style visuals"
-                title="AI Infographic and Video Generator Examples"
+                alt={t(
+                  "AI-generated infographic and short video examples for education, science, visual summaries, posters, and carousel-style visuals",
+                  "AI 生成的教育、科学、视觉摘要、海报、轮播式视觉和短视频案例",
+                )}
+                title={t("AI Infographic and Video Generator Examples", "AI 信息图与视频生成器案例")}
                 className="absolute inset-0 block h-full w-full scale-[1.02] object-cover align-top"
                 loading="eager"
                 fetchPriority="high"
@@ -925,7 +952,7 @@ export default function LandingPage() {
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
                         fallbackSrc={toOriginal(item.cover)}
-                        alt={t(`${item.titleEn} AI infographic example`, `${item.titleEn} AI infographic example`)}
+                        alt={t(`${item.titleEn} AI infographic example`, `${item.titleZh} AI 信息图案例`)}
                         title={t(item.titleEn, item.titleZh)}
                         className="block h-full w-full object-cover align-top"
                         loading={index < previewWideCases.length ? "eager" : "lazy"}
@@ -950,7 +977,7 @@ export default function LandingPage() {
                       <ProgressiveImage
                         src={toOptimized(item.cover)}
                         fallbackSrc={toOriginal(item.cover)}
-                        alt={t(`${item.titleEn} visual summary example`, `${item.titleEn} visual summary example`)}
+                        alt={t(`${item.titleEn} visual summary example`, `${item.titleZh} 视觉摘要案例`)}
                         title={t(item.titleEn, item.titleZh)}
                         className="block h-full w-full object-cover align-top"
                         loading={index < previewTallCases.length ? "eager" : "lazy"}
@@ -1167,7 +1194,10 @@ export default function LandingPage() {
               ))}
             </div>
             <p className="mt-3 text-xs leading-5 text-amber-800">
-              * GPT-image2 limited-time 70% off offer. Availability windows may change.
+              {t(
+                "* GPT-image2 limited-time 70% off offer. Availability windows may change.",
+                "* GPT-image2 限时 3 折优惠，活动时间可能调整。",
+              )}
             </p>
           </div>
         </section>
@@ -1175,10 +1205,13 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
           <div className="mx-auto w-full max-w-[860px]">
             <h2 className="text-center text-[30px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-[40px]">
-              Frequently Asked Questions
+              {t("Frequently Asked Questions", "常见问题")}
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-7 text-zinc-600">
-              Answers about KnowLens, AI infographic generation, AI video generation, text to infographic workflows, visual summaries, posters, and short explainer videos.
+              {t(
+                "Answers about KnowLens, AI infographic generation, AI video generation, text to infographic workflows, visual summaries, posters, and short explainer videos.",
+                "了解 KnowLens、AI 信息图生成、AI 视频生成、文本转信息图、视觉摘要、海报和短解说视频相关问题。",
+              )}
             </p>
 
             <div className="mt-6 space-y-2">
@@ -1201,12 +1234,12 @@ export default function LandingPage() {
                       }
                       className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
                     >
-                      <span className="text-sm font-medium text-zinc-900">{item.question}</span>
+                      <span className="text-sm font-medium text-zinc-900">{t(item.question, item.questionZh)}</span>
                       <span className="text-xs text-zinc-500">{isOpen ? "−" : "+"}</span>
                     </button>
                     {isOpen ? (
                       <div className="border-t border-zinc-200 px-4 py-3 text-sm leading-7 text-zinc-600">
-                        {item.answer}
+                        {t(item.answer, item.answerZh)}
                       </div>
                     ) : null}
                   </article>
@@ -1219,10 +1252,13 @@ export default function LandingPage() {
         <section className="mx-auto w-full max-w-6xl px-4 pb-10 pt-2 sm:px-6">
           <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-8 text-center sm:px-10">
             <h3 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
-              Create an Infographic or Video with KnowLens
+              {t("Create an Infographic or Video with KnowLens", "用 KnowLens 创建信息图或视频")}
             </h3>
             <p className="mx-auto mt-2 max-w-2xl text-sm leading-7 text-zinc-600">
-              Start with a topic, notes, or plain text. Generate clear visual summaries, posters, carousel-style visuals, and short explainer videos in minutes.
+              {t(
+                "Start with a topic, notes, or plain text. Generate clear visual summaries, posters, carousel-style visuals, and short explainer videos in minutes.",
+                "从主题、笔记或纯文本开始，几分钟内生成清晰的视觉摘要、海报、轮播式视觉内容和短解说视频。",
+              )}
             </p>
             <div className="mt-5">
               <Link
@@ -1230,7 +1266,7 @@ export default function LandingPage() {
                 onClick={() => trackLandingGenerateClick("footer_cta")}
                 className={`${LANDING_CTA_CLASS} h-11 min-w-[164px] px-6 text-sm`}
               >
-                Create an Infographic or Video
+                {t("Create an Infographic or Video", "创建信息图或视频")}
               </Link>
             </div>
           </div>
