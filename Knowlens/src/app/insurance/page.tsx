@@ -18,6 +18,7 @@ import { femaleFirstwaveTemplates } from "@/lib/insurance-female-firstwave-templ
 import { femaleNextwaveTemplates } from "@/lib/insurance-female-nextwave-templates";
 import { insuranceGapfillTemplates } from "@/lib/insurance-gapfill-templates";
 import { insuranceHotspotTemplates } from "@/lib/insurance-hotspot-templates";
+import { insuranceNextwaveTemplates } from "@/lib/insurance-nextwave-templates";
 import { hongKongInsuranceTemplates } from "@/lib/insurance-hongkong-templates";
 import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
@@ -54,18 +55,24 @@ const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
   "/insurance/posters/hotspot-09.png",
   "/insurance/posters/gapfill-01.png",
   "/insurance/posters/gapfill-21.png",
+  "/insurance/posters/nextwave-01.png",
+  "/insurance/posters/nextwave-11.png",
   "/insurance/posters/gaoding-289.png",
   "/insurance/posters/gaoding-290.png",
   "/insurance/posters/hotspot-18.png",
   "/insurance/posters/hotspot-24.png",
   "/insurance/posters/gapfill-37.png",
   "/insurance/posters/gapfill-46.png",
+  "/insurance/posters/nextwave-21.png",
+  "/insurance/posters/nextwave-31.png",
   "/insurance/posters/gaoding-291.png",
   "/insurance/posters/gaoding-292.png",
   "/insurance/posters/hotspot-32.png",
   "/insurance/posters/hotspot-38.png",
   "/insurance/posters/gapfill-08.png",
   "/insurance/posters/gapfill-39.png",
+  "/insurance/posters/nextwave-39.png",
+  "/insurance/posters/nextwave-46.png",
   "/insurance/posters/gaoding-181.png",
   "/insurance/posters/gaoding-182.png",
   "/insurance/posters/hotspot-46.png",
@@ -161,6 +168,7 @@ const baseTemplates: InsuranceTemplateCard[] = [
   ...(hideHongKongInsuranceTemplates ? [] : (hongKongInsuranceTemplates as InsuranceTemplateCard[])),
   ...(insuranceGapfillTemplates as InsuranceTemplateCard[]),
   ...(insuranceHotspotTemplates as InsuranceTemplateCard[]),
+  ...(insuranceNextwaveTemplates as InsuranceTemplateCard[]),
   ...(femaleFirstwaveTemplates as InsuranceTemplateCard[]),
   ...(femaleNextwaveTemplates as InsuranceTemplateCard[]),
   ...(gaodingReferenceInsuranceTemplates as InsuranceTemplateCard[]),
