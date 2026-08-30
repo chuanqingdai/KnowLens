@@ -16,6 +16,7 @@ import { gaodingReferenceInsuranceTemplates } from "@/lib/insurance-gaoding-refe
 import { businessInsuranceTemplates } from "@/lib/insurance-business-templates";
 import { femaleFirstwaveTemplates } from "@/lib/insurance-female-firstwave-templates";
 import { femaleNextwaveTemplates } from "@/lib/insurance-female-nextwave-templates";
+import { insuranceHotspotTemplates } from "@/lib/insurance-hotspot-templates";
 import { hongKongInsuranceTemplates } from "@/lib/insurance-hongkong-templates";
 import { liabilityProductTemplates } from "@/lib/insurance-liability-product-templates";
 import { marketingInsuranceTemplates } from "@/lib/insurance-marketing-templates";
@@ -48,12 +49,20 @@ const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
   "/insurance/posters/gaoding-286.png",
   "/insurance/posters/gaoding-287.png",
   "/insurance/posters/gaoding-288.png",
+  "/insurance/posters/hotspot-01.png",
+  "/insurance/posters/hotspot-09.png",
   "/insurance/posters/gaoding-289.png",
   "/insurance/posters/gaoding-290.png",
+  "/insurance/posters/hotspot-18.png",
+  "/insurance/posters/hotspot-24.png",
   "/insurance/posters/gaoding-291.png",
   "/insurance/posters/gaoding-292.png",
+  "/insurance/posters/hotspot-32.png",
+  "/insurance/posters/hotspot-38.png",
   "/insurance/posters/gaoding-181.png",
   "/insurance/posters/gaoding-182.png",
+  "/insurance/posters/hotspot-46.png",
+  "/insurance/posters/hotspot-50.png",
   "/insurance/posters/gaoding-183.png",
   "/insurance/posters/gaoding-184.png",
   "/insurance/posters/gaoding-185.png",
@@ -143,6 +152,7 @@ export const metadata: Metadata = {
 
 const baseTemplates: InsuranceTemplateCard[] = [
   ...(hideHongKongInsuranceTemplates ? [] : (hongKongInsuranceTemplates as InsuranceTemplateCard[])),
+  ...(insuranceHotspotTemplates as InsuranceTemplateCard[]),
   ...(femaleFirstwaveTemplates as InsuranceTemplateCard[]),
   ...(femaleNextwaveTemplates as InsuranceTemplateCard[]),
   ...(gaodingReferenceInsuranceTemplates as InsuranceTemplateCard[]),
