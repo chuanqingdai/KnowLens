@@ -8,6 +8,7 @@ import { dailyQuoteTemplates } from "@/lib/insurance-daily-templates";
 import { festivalTemplates } from "@/lib/insurance-festival-templates";
 import { insuranceFourthwaveTemplates } from "@/lib/insurance-fourthwave-templates";
 import { insuranceFifthwaveTemplates } from "@/lib/insurance-fifthwave-templates";
+import { insuranceSixthwaveTemplates } from "@/lib/insurance-sixthwave-templates";
 import { gaoding067InsuranceTemplates } from "@/lib/insurance-gaoding-067-templates";
 import { gaoding068InsuranceTemplates } from "@/lib/insurance-gaoding-068-templates";
 import { gaodingExtractedInsuranceTemplates } from "@/lib/insurance-gaoding-extracted-templates";
@@ -63,6 +64,8 @@ const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
   "/insurance/posters/fourthwave-18.png",
   "/insurance/posters/fifthwave-01.png",
   "/insurance/posters/fifthwave-11.png",
+  "/insurance/posters/sixthwave-01.png",
+  "/insurance/posters/sixthwave-04.png",
   "/insurance/posters/gaoding-289.png",
   "/insurance/posters/gaoding-290.png",
   "/insurance/posters/hotspot-18.png",
@@ -75,6 +78,8 @@ const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
   "/insurance/posters/fourthwave-43.png",
   "/insurance/posters/fifthwave-21.png",
   "/insurance/posters/fifthwave-29.png",
+  "/insurance/posters/sixthwave-08.png",
+  "/insurance/posters/sixthwave-17.png",
   "/insurance/posters/gaoding-291.png",
   "/insurance/posters/gaoding-292.png",
   "/insurance/posters/hotspot-32.png",
@@ -87,6 +92,8 @@ const FEATURED_SHOWCASE_TEMPLATE_IMAGE_ORDER = [
   "/insurance/posters/fourthwave-27.png",
   "/insurance/posters/fifthwave-35.png",
   "/insurance/posters/fifthwave-45.png",
+  "/insurance/posters/sixthwave-28.png",
+  "/insurance/posters/sixthwave-42.png",
   "/insurance/posters/gaoding-181.png",
   "/insurance/posters/gaoding-182.png",
   "/insurance/posters/hotspot-46.png",
@@ -185,6 +192,7 @@ const baseTemplates: InsuranceTemplateCard[] = [
   ...(insuranceNextwaveTemplates as InsuranceTemplateCard[]),
   ...(insuranceFourthwaveTemplates as InsuranceTemplateCard[]),
   ...(insuranceFifthwaveTemplates as InsuranceTemplateCard[]),
+  ...(insuranceSixthwaveTemplates as InsuranceTemplateCard[]),
   ...(femaleFirstwaveTemplates as InsuranceTemplateCard[]),
   ...(femaleNextwaveTemplates as InsuranceTemplateCard[]),
   ...(gaodingReferenceInsuranceTemplates as InsuranceTemplateCard[]),
